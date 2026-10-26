@@ -1,0 +1,42 @@
+#!/bin/sh
+# 提交后把"这版对用户有什么变化"补进 CHANGELOG.md（用户 2026-10-24：
+# 「当更新修改内容自动更新更新日志」）。
+#
+# 为什么放在 post-commit 而不是 pre-commit：pre-commit 里改文件会让"刚按下去的提交"
+# 与"磁盘上的内容"不一致（要么得重跑一次提交，要么悄悄漏掉那一笔），
+# 而 post-commit 只把新条目落成一处**未提交的工作区改动** —— 你看得见、能改措辞、
+# 下一笔提交顺手带上。日志是给人读的文案，机器只能起草，最后一道得留给人。
+#
+# 三条硬约束：
+# - 只动 CHANGELOG.md，绝不 commit、绝不 amend、绝不 stage；
+# - 没得可写时完全静默（不啰嗦，不产生任何文件改动）；
+# - 脚本或 node 不在（离线机器、部分 CI 容器）就正常退出 —— 钩子不许把提交体验弄坏。
+#
+# 启用：npm run hooks:install（一条命令；新克隆的人需要各跑一次，
+# 因为 git 的 core.hooksPath 是本地配置，进不了版本库）。
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+# 统一仓后 product 是仓库子目录：脚本在 <repo>/product/scripts/ 下，按钩子自身位置定位。
+# 不能再用 $REPO_ROOT/scripts（那是拆分前的旧布局，统一仓后会找不到脚本、日志永远不更新）。
+SCRIPT="$HOOK_DIR/../scripts/changelog.mjs"
+if ! command -v node >/dev/null 2>&1; then
+  exit 0
+fi
+
+out=$(node "$SCRIPT" 2>&1)
+code=$?
+if [ $code -eq 0 ]; then
+  # 有内容可写时才回声；没得可写时脚本只打一行，这里也不刷屏
+  case "$out" in
+    *"没有待记录的改动"*) exit 0 ;;
+  esac
+  printf '%s\n' "$out" | sed 's/^/[changelog] /'
+  printf '%s\n' '[changelog] 以上条目已写进 CHANGELOG.md（未提交）。措辞想改就改，下一笔提交带上它。'
+  exit 0
+fi
+
+# 失败不阻断提交（post-commit 的退出码不影响已完成的提交），但要说清楚，
+# 免得"日志没更新"变成一件没人知道的事。
+printf '%s\n' "$out" | sed 's/^/[changelog][失败] /'
+exit 0

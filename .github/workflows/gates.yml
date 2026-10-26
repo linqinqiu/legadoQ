@@ -1,0 +1,181 @@
+name: 真浏览器门禁（发布红线）
+
+# 把 tools/verify/ 下**真浏览器**的门禁接进 CI —— 它们是"现量"的：
+# 开真 Chrome 打开真界面、量版面/图层/交互，不打桩、不看快照。
+#
+# 为什么单独一个 workflow 而不是塞进 ci.yml：
+# - 它们慢（每个 10~60 秒，全跑 20 分钟以上），塞进 ci.yml 会让每次 push 都等；
+# - 它们需要真浏览器与服务在跑，环境要求比单测高；
+# - 失败时的排查方式不同（要看截图，不是看堆栈）。
+#
+# 所以：PR 只跑**冒烟三件套**（快、覆盖面大），全量门禁只在 main 推送 / 手动触发 / 发版前跑。
+#
+# 2026-10-26 重建：重组时这 7 个 workflow 被压成一行（0 换行 + BOM），GitHub 解析不了，
+# CI 自重组起从未真的跑过。除格式外修了三处会假绿/假红的地方：
+#   1. Chrome 安装：`apt-get install google-chrome-stable` 在 ubuntu runner 上装不上
+#      （仓库源里没有这个包），改成先探测 runner 自带的 Chrome、没有再装 .deb；
+#   2. 起服务：不再手写 `& + curl 轮询`，`start.mjs` 自己会等 /healthz 就绪；
+#   3. 路径统一到 product/ 下（defaults.working-directory）。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: '跑全量门禁（默认只跑冒烟三件套）'
+        type: boolean
+        default: false
+  # 发版前必跑
+  release:
+    types: [published]
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: product
+
+jobs:
+  smoke:
+    name: 冒烟（版本 / 构建一致 / 端到端 / 开源卫生）
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: product/web/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: 安装依赖
+        run: npm ci --prefix web
+
+      - name: 准备 Chrome（门禁要真浏览器）
+        run: |
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -z "$CHROME" ]; then
+            echo "runner 上没有 Chrome，装一份官方 .deb"
+            curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            sudo apt-get install -y /tmp/chrome.deb
+            CHROME="$(command -v google-chrome)"
+          fi
+          echo "用 $CHROME"
+          echo "LEGADO_CHROME=$CHROME" >> "$GITHUB_ENV"
+
+      - name: 构建前端与 jar
+        # product 根的 `npm run build` 一次做完三步：web dist → :app:fatJar →
+        # bundled-ui-check（包内前端 == dist）。再单独跑一遍 fatJar 是重复。
+        run: |
+          chmod +x gradlew
+          npm run build
+
+      - name: 起服务
+        # start.mjs 自己会等 /healthz 可答才返回；起不来它会以非零码退出并指出日志位置。
+        run: node start.mjs --no-open
+
+      - name: 门禁 1 —— 版本号单一来源
+        run: node tools/verify/version-check.mjs
+
+      - name: 门禁 2 —— 跑着的前端 == 最新构建（防"改了看不到"）
+        run: node tools/verify/bundled-ui-check.mjs
+
+      - name: 门禁 3 —— 端到端自检（搜索→详情→目录→正文→净化）
+        run: node tools/verify/selfcheck.mjs
+        # 这条会真的联网打书源站：CI 出口 IP 常被限流或墙掉，红了不代表产品坏。
+        # 所以不阻塞合并，但**必须看日志** —— 它红了要么是产品坏了，要么是网络不行，两者都要人判。
+        continue-on-error: true
+
+      - name: 门禁 4 —— 开源卫生（无个人路径 / 无说谎文档 / 端点不悬空）
+        run: node tools/verify/opensource-hygiene-check.mjs
+
+      - name: 上传截图（失败时排查用）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-shots
+          path: product/tools/verify/out/shots
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: 失败时留一份服务日志
+        if: failure()
+        run: tail -200 server.log || true
+
+  full:
+    name: 全量门禁
+    if: (github.event_name == 'workflow_dispatch' && inputs.full) || github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: product/web/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: 安装与构建
+        run: |
+          npm ci --prefix web
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -z "$CHROME" ]; then
+            curl -fsSL -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            sudo apt-get install -y /tmp/chrome.deb
+            CHROME="$(command -v google-chrome)"
+          fi
+          echo "LEGADO_CHROME=$CHROME" >> "$GITHUB_ENV"
+          chmod +x gradlew
+          # 三步一体：web dist → :app:fatJar → bundled-ui-check
+          npm run build
+
+      - name: 起服务
+        run: node start.mjs --no-open
+
+      - name: 跑全部门禁（串行，失败继续跑完再汇总）
+        run: |
+          # 门禁一律串行：多个门禁会抢同一个 profile 与同一个实例的探针数据。
+          #
+          # 关于"产物类门禁"（package-check / desktop-check）：
+          #   这两个判的是**发版产物**，不是源码。full job 只跑 :app:fatJar，
+          #   不产 dist/qingyue-<版本>.zip，也不产桌面壳 dist/desktop/qingyue/qingyue.exe。
+          #   而产它们的两支脚本都是 Windows 专属（scripts/package.mjs 要求
+          #   runtime/bin/java.exe；scripts/package-desktop.mjs 要求 qingyue.exe），
+          #   在 ubuntu-latest 上必然 fail —— 所以这里**不补**打包步骤。
+          #   那两支门禁已改成"前置产物不存在 → NOTE + exit 0"（范式同 stalled-client-check），
+          #   让"没测到"与"测了但坏了"分开；产物真存在时它们照旧判 FAIL。
+          fail=0
+          for f in tools/verify/*-check.mjs tools/verify/selfcheck.mjs; do
+            echo "──────── $f ────────"
+            node "$f" || { echo "FAILED: $f"; fail=1; }
+          done
+          exit $fail
+
+      - name: 上传截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-shots-full
+          path: product/tools/verify/out/shots
+          if-no-files-found: ignore
+          retention-days: 14

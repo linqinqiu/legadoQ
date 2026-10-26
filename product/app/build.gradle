@@ -1,0 +1,237 @@
+plugins {
+    alias libs.plugins.kotlin.jvm
+    alias libs.plugins.kotlin.serialization
+    id 'application'
+    id 'jacoco'
+}
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+test {
+    // 测试工作进程的堆上限。不写就按物理内存的一档去要（本机 24GB → 要 6GB 提交空间），
+    // 而这台机器同时跑着服务本体 + 门禁的 headless Chrome，提交内存常常只剩几百 MB，
+    // 表现是 `insufficient memory for the Java Runtime Environment … mmap failed to map 400556032 bytes`
+    // —— 红的是 JVM 起不来，不是任何一条用例失败（实测过一次，崩溃日志落在 app/ 下）。
+    maxHeapSize = '768m'
+    // 测试库都是 `Files.createTempFile` 建的（落在 java.io.tmpdir）。某些开发环境（沙箱/杀软）
+    // 会对系统临时目录里的 sqlite 文件上锁，表现为大面积「另一个程序正在使用此文件」假失败；
+    // 用 LEGADO_TEST_TMP 把测试临时文件挪到普通目录即可。CI 不设它，行为不变。
+    systemProperty "java.io.tmpdir", System.getenv("LEGADO_TEST_TMP") ?: System.getProperty("java.io.tmpdir")
+    // 失败时打全量异常（默认 SHORT 只有类名和行号，跨平台差异排查要消息与栈）。
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+    finalizedBy jacocoTestReport
+}
+
+// 框架守门：钉死"框架不含内容 + 端点计数契约"。任何破坏默认暴露面（改动 141/19/8
+// 端点计数，或让 plugin/ 容器夹带具体功能）的提交都会在 build 阶段直接红。
+// 与前端 `web/test/FrameworkHasNoContent.test.ts` + `web/test/ApiCatalog.test.ts` 互为双锁。
+tasks.register('verifyFramework', Test) {
+    group = 'verification'
+    description = '钉死框架不夹带内容 + 端点计数契约（141 端点 / 19 组 / AI 自定义接入 8 条）。'
+    maxHeapSize = '768m'
+    systemProperty "java.io.tmpdir", System.getenv("LEGADO_TEST_TMP") ?: System.getProperty("java.io.tmpdir")
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+    // 本仓库的测试统一是 JUnit 4（`junit:junit:4.13.2`），没有 JUnit 5 依赖，
+    // 所以这里**不能**写 useJUnitPlatform / includeTags —— 那会让任务找不到任何用例。
+    // 收口靠类过滤：只跑这两个守门类。
+    filter {
+        includeTestsMatching 'io.legado.PluginFrameworkHasNoContentTest'
+        includeTestsMatching 'io.legado.FrameworkContractTest'
+    }
+}
+
+// 每次 build 都跑框架守门，守住默认暴露面。
+check.dependsOn verifyFramework
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        csv.required = true
+        html.required = true
+    }
+}
+
+/**
+ * 覆盖率报告（可绕过"已知失败基线"）。
+ *
+ * 为什么单独一个任务：`jacocoTestReport` 依赖 `test`，而本机 `test` 有一条
+ * **已知的、环境相关的**失败（`E2EScenariosTest` scenario 2，在
+ * `tools/verify/baselines/server-test-failures-47.txt` 里）。那条一红，
+ * `test` 任务就失败，覆盖率报告**整个生成不出来** —— 等于"有测试失败就没法看覆盖率"，
+ * 而覆盖率恰恰是最该在有失败时看的。
+ *
+ * 所以这里复制一份 test 任务，唯一区别是 `ignoreFailures = true`：
+ * 测试照跑、执行数据照样记录，但任务本身不因失败而中断，覆盖率报告能正常出。
+ *
+ * 用法：`./gradlew :app:testCoverageReport`
+ * 产物：`app/build/reports/jacoco/testCoverage/html/index.html`
+ */
+tasks.register('testCoverage', Test) {
+    group = 'verification'
+    description = '跑测试并生成覆盖率报告，不受已知失败基线影响（ignoreFailures）'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnit()
+    // 与 test 任务同一套环境设置
+    maxHeapSize = '768m'
+    systemProperty "java.io.tmpdir", System.getenv("LEGADO_TEST_TMP") ?: System.getProperty("java.io.tmpdir")
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+    // 关键：测试失败不中断任务，执行数据仍会写进 jacoco 的 .exec
+    ignoreFailures = true
+    finalizedBy 'testCoverageReport'
+}
+
+tasks.register('testCoverageReport', JacocoReport) {
+    group = 'verification'
+    description = '由 testCoverage 的执行数据生成覆盖率报告（html / xml / csv）'
+    dependsOn 'testCoverage'
+    executionData fileTree(buildDir).include('jacoco/testCoverage.exec', 'jacoco/test.exec')
+    sourceDirectories.setFrom files(sourceSets.main.kotlin.sourceDirectories)
+    classDirectories.setFrom files(sourceSets.main.output.classesDirs)
+    reports {
+        xml.required = true
+        csv.required = true
+        html.required = true
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/testCoverage/html')
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/testCoverage/jacocoTestReport.xml')
+        csv.outputLocation = layout.buildDirectory.file('reports/jacoco/testCoverage/jacocoTestReport.csv')
+    }
+}
+
+
+group = 'io.legado'
+version = '0.0.0'
+
+base {
+    // plain jar 与发行版统一叫 legado：Docker 构建层 `jar uf …/lib/legado-*.jar`
+    // 按这个名找（issue #11）。嵌套 settings.gradle 删除后子项目名回落 'server'，
+    // plain jar 会漂成 server-<版本>.jar；fatJar 下面已显式 set 同名，不受影响。
+    archivesName = 'legado'
+}
+
+java {
+    toolchain {
+        // 本机只有 JDK 17（JDK 21 镜像拉不下来）。target 本来就是 17，降级只影响编译器版本。
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+}
+
+application {
+    // 名字钉死 legado：Docker 运行层拷 install/legado、启动 bin/legado。
+    // 嵌套 settings.gradle 删除后（A 档）子项目名回落成 'server'，installDist 产物会漂成
+    // install/legado/bin/legado，容器里既拷不到也起不来（issue #11 修复时发现）。
+    applicationName = 'legado'
+    mainClass = 'io.legado.ApplicationKt'
+}
+
+// 普通 jar（installDist / 发行版用它）也要带版本号：BuildInfo 读的是
+// Package.implementationVersion，没有它 /healthz 和启动日志就永远显示 "dev"。
+tasks.named('jar', Jar) {
+    manifest {
+        attributes(
+            'Main-Class': 'io.legado.ApplicationKt',
+            'Implementation-Title': 'Legado Server',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+tasks.register('fatJar', Jar) {
+    archiveBaseName.set('legado')
+    archiveClassifier.set('all')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // web/dist 自 2026-10-11（B 档）起不再进版本库：干净检出里它不存在，而 processResources
+    // 只在它存在时才拷进 jar —— 不在这里拦一道，就会得到一个"只有后端、没有界面"的包，
+    // 而且静默成功。注意只拦 fatJar：:app:test 不依赖界面产物，不能连带卡住。
+    doFirst {
+        if (!file("${rootProject.projectDir}/web/dist/index.html").exists()) {
+            throw new GradleException("web/dist is missing — run `npm run build` first (or `npm --prefix web run build`).\nweb/dist 里没有界面产物 —— 先跑 `npm run build` 再打 fatJar。")
+        }
+    }
+    manifest {
+        attributes(
+            'Main-Class': 'io.legado.ApplicationKt',
+            'Implementation-Title': 'Legado Server',
+            'Implementation-Version': project.version
+        )
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with tasks.jar
+}
+
+/**
+ * **有前端产物时，`gradlew build` / `assemble` 也要刷新 fatJar。**
+ *
+ * 原来 `fatJar` 只被 `npm run build` 这一条路调用。任何走标准 Gradle 的入口（IDE 的 Build、
+ * `gradlew build`、CI）都只重打普通 jar —— 而 `start.mjs` 跑的偏偏是 `-all.jar`。
+ * 2026-10-26 那次"重启了但界面还是三天前的"就是这么来的：09:12 重建出了
+ * `legado-0.8.6.jar`，`legado-0.8.6-all.jar` 停在 01:25，启动器按文件名挑包、完全看不出包是旧的。
+ *
+ * 只在 `web/dist` 存在时挂：它不进版本库（见下面 doFirst 的注释），干净检出里后端-only 的
+ * `gradlew build` 不该被"先跑 npm run build"这道要求卡死。
+ */
+if (file("${rootProject.projectDir}/web/dist/index.html").exists()) {
+    tasks.named('assemble') { dependsOn 'fatJar' }
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    if (file("${rootProject.projectDir}/web/dist").exists()) {
+        from("${rootProject.projectDir}/web/dist") {
+            into("static")
+        }
+    }
+    // 更新日志随包发出：界面上那张「更新日志」页读的是 classpath 里这一份，
+    // 不是去猜磁盘上的仓库路径（jar 单独拷到别的机器、Docker 镜像里都不该有路径依赖）。
+    if (file("${rootProject.projectDir}/CHANGELOG.md").exists()) {
+        from("${rootProject.projectDir}/CHANGELOG.md") {
+            into("meta")
+            rename { "changelog.md" }
+        }
+    }
+    // **必须把这两个动态 `from` 显式登记成输入。**
+    // `from(...)` 在配置阶段才求值，Gradle 的增量快照有时抓不到它们：
+    // 表现是 `processResources` 被判定 UP-TO-DATE，而 `meta/changelog.md` 还是上一次构建的旧副本
+    // —— 用户看到的现象就是「改了 CHANGELOG，界面里的更新日志没变」（0.8.4 实测踩到）。
+    // 用 `inputs.files(...).withPropertyName(...)` 把它们钉进任务输入，内容一变就重跑。
+    inputs.files("${rootProject.projectDir}/CHANGELOG.md")
+        .withPropertyName("bundledChangelog")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    if (file("${rootProject.projectDir}/web/dist").exists()) {
+        inputs.dir("${rootProject.projectDir}/web/dist")
+            .withPropertyName("bundledWebDist")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
+}
+
+dependencies {
+    implementation "io.ktor:ktor-server-cio:3.4.3"
+    implementation "io.ktor:ktor-server-core:3.4.3"
+    implementation "io.ktor:ktor-server-content-negotiation:3.4.3"
+    implementation "io.ktor:ktor-serialization-kotlinx-json:3.4.3"
+    implementation "io.ktor:ktor-server-sessions:3.4.3"
+    implementation "io.ktor:ktor-server-websockets:3.4.3"
+    implementation "io.ktor:ktor-server-status-pages:3.4.3"
+    implementation "org.xerial:sqlite-jdbc:3.49.1.0"
+    implementation "org.jsoup:jsoup:1.18.3"
+    // 规则引擎的 @xpath 方言支持（与 Legado 同款 xpath-on-jsoup），本地已有缓存版本 2.5.1
+    implementation "cn.wanghaomiao:JsoupXpath:2.5.1"
+    implementation "com.jayway.jsonpath:json-path:2.9.0"
+    implementation "org.mozilla:rhino:1.8.0"
+    implementation "org.slf4j:slf4j-simple:2.0.16"
+    testImplementation "io.ktor:ktor-server-test-host:3.4.3"
+    testImplementation "io.ktor:ktor-client-content-negotiation:3.4.3"
+    testImplementation libs.junit
+}
+

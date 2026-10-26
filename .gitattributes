@@ -1,0 +1,35 @@
+# Git attributes for QingYue AI Framework
+# Ensures consistent line endings across platforms
+
+# Default: UTF-8 with LF line endings for text files
+* text=auto eol=lf
+
+# Special handling for shell scripts
+*.sh diff=shell eol=lf
+*.bat diff=binary eol=crlf
+
+# Markdown files - keep as documentation
+*.md linguist-documentation eol=lf
+
+# Configuration files
+*.yml linguist-documentation eol=lf
+*.yaml linguist-documentation eol=lf
+
+# Source code
+*.kt eol=lf
+*.java eol=lf
+*.ts eol=lf
+*.tsx eol=lf
+*.json linguist-defined-data eol=lf
+
+# Batch files on Windows
+*.cmd eol=crlf
+
+# Exclude binary files from line ending conversion
+*.jar binary
+*.zip binary
+*.tar.gz binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary

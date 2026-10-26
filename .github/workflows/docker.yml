@@ -1,0 +1,94 @@
+name: Build and Publish Docker Image
+
+# 2026-10-26 重建：重组时这 7 个 workflow 被压成一行（0 换行 + BOM），GitHub 解析不了，
+# CI 自重组起从未真的跑过。这个文件除了重写格式，还修了一处会**真的构建错**的问题：
+# Dockerfile 与构建输入都在 `product/` 下，而旧文件的 `paths` 过滤器与 `context` 还指着
+# 仓库根的 `app/**`、`web/**`、`./Dockerfile` —— 那些路径已经不存在，过滤器永不命中、
+# context 也找不到 Dockerfile。
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - 'product/app/**'
+      - 'product/web/**'
+      - 'product/gradle/**'
+      - 'product/build.gradle'
+      - 'product/settings.gradle'
+      - 'product/Dockerfile'
+      - 'product/compose.yml'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Target platforms'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: string
+      push:
+        description: 'Push image to registry'
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU for multi-arch build
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          # 构建上下文与 Dockerfile 都在 product/：镜像层里那句
+          # `jar uf .../lib/legado-*.jar`（issue #11）按 `legado-*` 找包，
+          # 上下文换错就会静默打出一个没有前端或名字不对的镜像。
+          context: ./product
+          file: ./product/Dockerfile
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

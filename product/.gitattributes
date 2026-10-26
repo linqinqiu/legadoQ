@@ -1,0 +1,31 @@
+# 行尾归一：仓库里一律 LF，检出时不随平台改写。
+# 起因：core.autocrlf=true 让 Windows 检出 CRLF，于是同一份源码在
+# 「索引 / 工作树」之间来回转换，diff 里整文件都算改动，还把 52 个文件
+# 搞成了 w/mixed（一个文件里两种行尾）。加这份文件后转换只发生在
+# 工作树侧，索引与所有贡献者看到的 diff 都是同一套 LF。
+* text=auto eol=lf
+
+# Windows 批处理：CRLF 是解释器要求，保持原样
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell 脚本：容器/CI 里跑，必须 LF
+*.sh text eol=lf
+
+# 二进制一律不转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text eol=lf
+*.jar binary
+*.zip binary
+*.sqlite binary
+*.sqlite-wal binary
+*.sqlite-shm binary
+*.woff binary
+*.woff2 binary
+
+# Gradle 包装 jar 是二进制
+gradle/wrapper/gradle-wrapper.jar binary

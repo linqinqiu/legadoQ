@@ -1,0 +1,1063 @@
+{
+ "base": "http://127.0.0.1:1234",
+ "takenAt": "2026-10-10T02:39:48.214Z",
+ "screens": [
+  {
+   "vp": "desk-1440",
+   "route": "#library",
+   "viewport": {
+    "w": 1440,
+    "h": 900
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 140,
+    "right": 1300,
+    "top": 120,
+    "bottom": 480
+   },
+   "contentWidth": 1160,
+   "contentTop": 120,
+   "coveragePct": 19,
+   "mastheadCost": 58,
+   "sideDeadPx": 280,
+   "sideDeadPct": 19,
+   "bottomDeadPx": 420,
+   "bottomDeadPct": 47,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 48,
+    "count": 4,
+    "cardMax": 48
+   },
+   "cards": [],
+   "h1": {
+    "text": "找一本书，安静地读下去。",
+    "size": 34,
+    "box": {
+     "x": 144,
+     "y": 159,
+     "w": 1152,
+     "h": 41
+    }
+   },
+   "kickerCount": 1,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1440",
+   "route": "#shelf",
+   "viewport": {
+    "w": 1440,
+    "h": 900
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 140,
+    "right": 1300,
+    "top": 80,
+    "bottom": 620
+   },
+   "contentWidth": 1160,
+   "contentTop": 80,
+   "coveragePct": 21,
+   "mastheadCost": 18,
+   "sideDeadPx": 280,
+   "sideDeadPct": 19,
+   "bottomDeadPx": 280,
+   "bottomDeadPct": 31,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 7,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 39,
+    "count": 18,
+    "cardMax": 39
+   },
+   "cards": [
+    {
+     "x": 144,
+     "y": 371,
+     "w": 153,
+     "h": 247
+    },
+    {
+     "x": 311,
+     "y": 371,
+     "w": 153,
+     "h": 247
+    },
+    {
+     "x": 477,
+     "y": 371,
+     "w": 153,
+     "h": 247
+    }
+   ],
+   "h1": {
+    "text": "书架3 本",
+    "size": 23,
+    "box": {
+     "x": 144,
+     "y": 102,
+     "w": 77,
+     "h": 30
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1440",
+   "route": "#sources",
+   "viewport": {
+    "w": 1440,
+    "h": 900
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 0,
+    "right": 1140,
+    "top": 80,
+    "bottom": 900
+   },
+   "contentWidth": 1140,
+   "contentTop": 80,
+   "coveragePct": 21,
+   "mastheadCost": 18,
+   "sideDeadPx": 300,
+   "sideDeadPct": 21,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 1,
+   "buttonHeights": {
+    "min": 34,
+    "median": 48,
+    "max": 48,
+    "count": 16,
+    "cardMax": 48
+   },
+   "cards": [],
+   "h1": {
+    "text": "书源管理",
+    "size": 34,
+    "box": {
+     "x": 348,
+     "y": 130,
+     "w": 210,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1440",
+   "route": "#explore",
+   "viewport": {
+    "w": 1440,
+    "h": 900
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 140,
+    "right": 1300,
+    "top": 80,
+    "bottom": 900
+   },
+   "contentWidth": 1160,
+   "contentTop": 80,
+   "coveragePct": 63,
+   "mastheadCost": 18,
+   "sideDeadPx": 280,
+   "sideDeadPct": 19,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 7,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 34,
+    "count": 12,
+    "cardMax": 278
+   },
+   "cards": [],
+   "h1": {
+    "text": "发现",
+    "size": 34,
+    "box": {
+     "x": 144,
+     "y": 98,
+     "w": 68,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1440",
+   "route": "#subscriptions",
+   "viewport": {
+    "w": 1440,
+    "h": 900
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 300,
+    "right": 1120,
+    "top": 80,
+    "bottom": 700
+   },
+   "contentWidth": 820,
+   "contentTop": 80,
+   "coveragePct": 14,
+   "mastheadCost": 18,
+   "sideDeadPx": 620,
+   "sideDeadPct": 43,
+   "bottomDeadPx": 200,
+   "bottomDeadPct": 22,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 30,
+    "median": 39,
+    "max": 41,
+    "count": 6,
+    "cardMax": 41
+   },
+   "cards": [],
+   "h1": {
+    "text": "订阅",
+    "size": 34,
+    "box": {
+     "x": 304,
+     "y": 98,
+     "w": 617,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 2
+  },
+  {
+   "vp": "desk-1440",
+   "route": "#settings",
+   "viewport": {
+    "w": 1440,
+    "h": 900
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 20,
+    "right": 1100,
+    "top": 80,
+    "bottom": 640
+   },
+   "contentWidth": 1080,
+   "contentTop": 80,
+   "coveragePct": 28,
+   "mastheadCost": 18,
+   "sideDeadPx": 360,
+   "sideDeadPct": 25,
+   "bottomDeadPx": 260,
+   "bottomDeadPct": 29,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 34,
+    "median": 34,
+    "max": 34,
+    "count": 8,
+    "cardMax": 34
+   },
+   "cards": [],
+   "h1": {
+    "text": "设置",
+    "size": 34,
+    "box": {
+     "x": 32,
+     "y": 98,
+     "w": 68,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1180",
+   "route": "#library",
+   "viewport": {
+    "w": 1180,
+    "h": 800
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 40,
+    "right": 1140,
+    "top": 120,
+    "bottom": 480
+   },
+   "contentWidth": 1100,
+   "contentTop": 120,
+   "coveragePct": 26,
+   "mastheadCost": 58,
+   "sideDeadPx": 80,
+   "sideDeadPct": 7,
+   "bottomDeadPx": 320,
+   "bottomDeadPct": 40,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 48,
+    "count": 4,
+    "cardMax": 48
+   },
+   "cards": [],
+   "h1": {
+    "text": "找一本书，安静地读下去。",
+    "size": 34,
+    "box": {
+     "x": 44,
+     "y": 159,
+     "w": 1092,
+     "h": 41
+    }
+   },
+   "kickerCount": 1,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1180",
+   "route": "#shelf",
+   "viewport": {
+    "w": 1180,
+    "h": 800
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 40,
+    "right": 1140,
+    "top": 80,
+    "bottom": 620
+   },
+   "contentWidth": 1100,
+   "contentTop": 80,
+   "coveragePct": 28,
+   "mastheadCost": 18,
+   "sideDeadPx": 80,
+   "sideDeadPct": 7,
+   "bottomDeadPx": 180,
+   "bottomDeadPct": 23,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 7,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 39,
+    "count": 18,
+    "cardMax": 39
+   },
+   "cards": [
+    {
+     "x": 44,
+     "y": 371,
+     "w": 144,
+     "h": 235
+    },
+    {
+     "x": 202,
+     "y": 371,
+     "w": 144,
+     "h": 235
+    },
+    {
+     "x": 360,
+     "y": 371,
+     "w": 144,
+     "h": 235
+    }
+   ],
+   "h1": {
+    "text": "书架3 本",
+    "size": 23,
+    "box": {
+     "x": 44,
+     "y": 102,
+     "w": 77,
+     "h": 30
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1180",
+   "route": "#sources",
+   "viewport": {
+    "w": 1180,
+    "h": 800
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 0,
+    "right": 1020,
+    "top": 80,
+    "bottom": 800
+   },
+   "contentWidth": 1020,
+   "contentTop": 80,
+   "coveragePct": 26,
+   "mastheadCost": 18,
+   "sideDeadPx": 160,
+   "sideDeadPct": 14,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 1,
+   "buttonHeights": {
+    "min": 34,
+    "median": 48,
+    "max": 48,
+    "count": 14,
+    "cardMax": 48
+   },
+   "cards": [],
+   "h1": {
+    "text": "书源管理",
+    "size": 34,
+    "box": {
+     "x": 339,
+     "y": 121,
+     "w": 210,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1180",
+   "route": "#explore",
+   "viewport": {
+    "w": 1180,
+    "h": 800
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 40,
+    "right": 1140,
+    "top": 80,
+    "bottom": 800
+   },
+   "contentWidth": 1100,
+   "contentTop": 80,
+   "coveragePct": 71,
+   "mastheadCost": 18,
+   "sideDeadPx": 80,
+   "sideDeadPct": 7,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 6,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 34,
+    "count": 12,
+    "cardMax": 301
+   },
+   "cards": [],
+   "h1": {
+    "text": "发现",
+    "size": 34,
+    "box": {
+     "x": 44,
+     "y": 98,
+     "w": 68,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "desk-1180",
+   "route": "#subscriptions",
+   "viewport": {
+    "w": 1180,
+    "h": 800
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 160,
+    "right": 1000,
+    "top": 80,
+    "bottom": 700
+   },
+   "contentWidth": 840,
+   "contentTop": 80,
+   "coveragePct": 20,
+   "mastheadCost": 18,
+   "sideDeadPx": 340,
+   "sideDeadPct": 29,
+   "bottomDeadPx": 100,
+   "bottomDeadPct": 13,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 30,
+    "median": 39,
+    "max": 41,
+    "count": 6,
+    "cardMax": 41
+   },
+   "cards": [],
+   "h1": {
+    "text": "订阅",
+    "size": 34,
+    "box": {
+     "x": 174,
+     "y": 98,
+     "w": 617,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 2
+  },
+  {
+   "vp": "desk-1180",
+   "route": "#settings",
+   "viewport": {
+    "w": 1180,
+    "h": 800
+   },
+   "headerH": 62,
+   "inkBox": {
+    "left": 20,
+    "right": 940,
+    "top": 80,
+    "bottom": 800
+   },
+   "contentWidth": 920,
+   "contentTop": 80,
+   "coveragePct": 53,
+   "mastheadCost": 18,
+   "sideDeadPx": 260,
+   "sideDeadPct": 22,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 34,
+    "median": 34,
+    "max": 34,
+    "count": 6,
+    "cardMax": 34
+   },
+   "cards": [],
+   "h1": {
+    "text": "设置",
+    "size": 34,
+    "box": {
+     "x": 32,
+     "y": 98,
+     "w": 68,
+     "h": 41
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "mobile-390",
+   "route": "#library",
+   "viewport": {
+    "w": 390,
+    "h": 844
+   },
+   "headerH": 56,
+   "inkBox": {
+    "left": 0,
+    "right": 380,
+    "top": 80,
+    "bottom": 640
+   },
+   "contentWidth": 380,
+   "contentTop": 80,
+   "coveragePct": 39,
+   "mastheadCost": 24,
+   "sideDeadPx": 10,
+   "sideDeadPct": 3,
+   "bottomDeadPx": 204,
+   "bottomDeadPct": 24,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 48,
+    "count": 4,
+    "cardMax": 48
+   },
+   "cards": [],
+   "h1": {
+    "text": "找一本书，安静地读下去。",
+    "size": 27,
+    "box": {
+     "x": 18,
+     "y": 125,
+     "w": 354,
+     "h": 32
+    }
+   },
+   "kickerCount": 1,
+   "proseCount": 0
+  },
+  {
+   "vp": "mobile-390",
+   "route": "#shelf",
+   "viewport": {
+    "w": 390,
+    "h": 844
+   },
+   "headerH": 56,
+   "inkBox": {
+    "left": 0,
+    "right": 400,
+    "top": 80,
+    "bottom": 700
+   },
+   "contentWidth": 400,
+   "contentTop": 80,
+   "coveragePct": 55,
+   "mastheadCost": 24,
+   "sideDeadPx": 0,
+   "sideDeadPct": 0,
+   "bottomDeadPx": 144,
+   "bottomDeadPct": 17,
+   "overflowX": false,
+   "overflowCulprits": [
+    {
+     "path": "button",
+     "right": 471,
+     "width": 77,
+     "cssWidth": "77.4531px",
+     "minWidth": "auto",
+     "whiteSpace": "normal",
+     "text": "未分组3",
+     "chain": [
+      {
+       "path": "div.shelf-group-bar",
+       "width": 354,
+       "right": 372,
+       "padding": "0px/0px",
+       "maxWidth": "none"
+      },
+      {
+       "path": "main.shelf-page",
+       "width": 390,
+       "right": 390,
+       "padding": "18px/18px",
+       "maxWidth": "none"
+      },
+      {
+       "path": "div.app-shell.theme-light",
+       "width": 390,
+       "right": 390,
+       "padding": "0px/0px",
+       "maxWidth": "none"
+      },
+      {
+       "path": "div",
+       "width": 390,
+       "right": 390,
+       "padding": "0px/0px",
+       "maxWidth": "none"
+      }
+     ]
+    },
+    {
+     "path": "small",
+     "right": 458,
+     "width": 6,
+     "cssWidth": "6.45312px",
+     "minWidth": "auto",
+     "whiteSpace": "normal",
+     "text": "3",
+     "chain": [
+      {
+       "path": "button",
+       "width": 77,
+       "right": 471,
+       "padding": "12px/12px",
+       "maxWidth": "none"
+      },
+      {
+       "path": "div.shelf-group-bar",
+       "width": 354,
+       "right": 372,
+       "padding": "0px/0px",
+       "maxWidth": "none"
+      },
+      {
+       "path": "main.shelf-page",
+       "width": 390,
+       "right": 390,
+       "padding": "18px/18px",
+       "maxWidth": "none"
+      },
+      {
+       "path": "div.app-shell.theme-light",
+       "width": 390,
+       "right": 390,
+       "padding": "0px/0px",
+       "maxWidth": "none"
+      }
+     ]
+    }
+   ],
+   "gridColumns": 3,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 39,
+    "count": 18,
+    "cardMax": 39
+   },
+   "cards": [
+    {
+     "x": 18,
+     "y": 495,
+     "w": 111,
+     "h": 192
+    },
+    {
+     "x": 139,
+     "y": 495,
+     "w": 111,
+     "h": 192
+    },
+    {
+     "x": 261,
+     "y": 495,
+     "w": 111,
+     "h": 192
+    }
+   ],
+   "h1": {
+    "text": "书架3 本",
+    "size": 20,
+    "box": {
+     "x": 18,
+     "y": 92,
+     "w": 71,
+     "h": 26
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "mobile-390",
+   "route": "#sources",
+   "viewport": {
+    "w": 390,
+    "h": 844
+   },
+   "headerH": 56,
+   "inkBox": {
+    "left": 0,
+    "right": 400,
+    "top": 60,
+    "bottom": 860
+   },
+   "contentWidth": 400,
+   "contentTop": 60,
+   "coveragePct": 84,
+   "mastheadCost": 4,
+   "sideDeadPx": 0,
+   "sideDeadPct": 0,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 1,
+   "buttonHeights": {
+    "min": 34,
+    "median": 48,
+    "max": 48,
+    "count": 15,
+    "cardMax": 48
+   },
+   "cards": [],
+   "h1": {
+    "text": "书源管理",
+    "size": 27,
+    "box": {
+     "x": 18,
+     "y": 525,
+     "w": 210,
+     "h": 32
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "mobile-390",
+   "route": "#explore",
+   "viewport": {
+    "w": 390,
+    "h": 844
+   },
+   "headerH": 56,
+   "inkBox": {
+    "left": 0,
+    "right": 380,
+    "top": 80,
+    "bottom": 860
+   },
+   "contentWidth": 380,
+   "contentTop": 80,
+   "coveragePct": 73,
+   "mastheadCost": 24,
+   "sideDeadPx": 10,
+   "sideDeadPct": 3,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 3,
+   "buttonHeights": {
+    "min": 30,
+    "median": 30,
+    "max": 34,
+    "count": 12,
+    "cardMax": 218
+   },
+   "cards": [],
+   "h1": {
+    "text": "发现",
+    "size": 27,
+    "box": {
+     "x": 18,
+     "y": 92,
+     "w": 54,
+     "h": 32
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  },
+  {
+   "vp": "mobile-390",
+   "route": "#subscriptions",
+   "viewport": {
+    "w": 390,
+    "h": 844
+   },
+   "headerH": 56,
+   "inkBox": {
+    "left": 0,
+    "right": 380,
+    "top": 80,
+    "bottom": 860
+   },
+   "contentWidth": 380,
+   "contentTop": 80,
+   "coveragePct": 44,
+   "mastheadCost": 24,
+   "sideDeadPx": 10,
+   "sideDeadPct": 3,
+   "bottomDeadPx": 0,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 30,
+    "median": 34,
+    "max": 39,
+    "count": 6,
+    "cardMax": 39
+   },
+   "cards": [],
+   "h1": {
+    "text": "订阅",
+    "size": 27,
+    "box": {
+     "x": 18,
+     "y": 92,
+     "w": 354,
+     "h": 32
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 2
+  },
+  {
+   "vp": "mobile-390",
+   "route": "#settings",
+   "viewport": {
+    "w": 390,
+    "h": 844
+   },
+   "headerH": 56,
+   "inkBox": {
+    "left": 0,
+    "right": 380,
+    "top": 80,
+    "bottom": 840
+   },
+   "contentWidth": 380,
+   "contentTop": 80,
+   "coveragePct": 63,
+   "mastheadCost": 24,
+   "sideDeadPx": 10,
+   "sideDeadPct": 3,
+   "bottomDeadPx": 4,
+   "bottomDeadPct": 0,
+   "overflowX": false,
+   "overflowCulprits": [],
+   "gridColumns": 0,
+   "buttonHeights": {
+    "min": 34,
+    "median": 34,
+    "max": 34,
+    "count": 6,
+    "cardMax": 34
+   },
+   "cards": [],
+   "h1": {
+    "text": "设置",
+    "size": 27,
+    "box": {
+     "x": 18,
+     "y": 88,
+     "w": 54,
+     "h": 32
+    }
+   },
+   "kickerCount": 0,
+   "proseCount": 0
+  }
+ ],
+ "settles": {
+  "desk-1440 #library": {
+   "waitedMs": 2154,
+   "settled": true,
+   "box": "477x1324:32"
+  },
+  "desk-1440 #shelf": {
+   "waitedMs": 2433,
+   "settled": true,
+   "box": "618x1324:91"
+  },
+  "desk-1440 #sources": {
+   "waitedMs": 2370,
+   "settled": true,
+   "box": "904x1362:439"
+  },
+  "desk-1440 #explore": {
+   "waitedMs": 3163,
+   "settled": true,
+   "box": "1009x1324:183"
+  },
+  "desk-1440 #subscriptions": {
+   "waitedMs": 2155,
+   "settled": true,
+   "box": "685x1324:29"
+  },
+  "desk-1440 #settings": {
+   "waitedMs": 2139,
+   "settled": true,
+   "box": "621x1348:44"
+  },
+  "desk-1180 #library": {
+   "waitedMs": 2142,
+   "settled": true,
+   "box": "477x1092:32"
+  },
+  "desk-1180 #shelf": {
+   "waitedMs": 2139,
+   "settled": true,
+   "box": "606x1092:91"
+  },
+  "desk-1180 #sources": {
+   "waitedMs": 2406,
+   "settled": true,
+   "box": "808x1103:439"
+  },
+  "desk-1180 #explore": {
+   "waitedMs": 3325,
+   "settled": true,
+   "box": "824x1092:183"
+  },
+  "desk-1180 #subscriptions": {
+   "waitedMs": 2129,
+   "settled": true,
+   "box": "685x1066:29"
+  },
+  "desk-1180 #settings": {
+   "waitedMs": 2153,
+   "settled": true,
+   "box": "797x1089:44"
+  },
+  "mobile-390 #library": {
+   "waitedMs": 2127,
+   "settled": true,
+   "box": "639x358:31"
+  },
+  "mobile-390 #shelf": {
+   "waitedMs": 2220,
+   "settled": true,
+   "box": "687x359:87"
+  },
+  "mobile-390 #sources": {
+   "waitedMs": 2385,
+   "settled": true,
+   "box": "853x362:438"
+  },
+  "mobile-390 #explore": {
+   "waitedMs": 3295,
+   "settled": true,
+   "box": "820x358:182"
+  },
+  "mobile-390 #subscriptions": {
+   "waitedMs": 2133,
+   "settled": true,
+   "box": "822x358:28"
+  },
+  "mobile-390 #settings": {
+   "waitedMs": 2141,
+   "settled": true,
+   "box": "836x358:43"
+  }
+ },
+ "note": "2026-10-10 重立：旧 frame-frozen-20261009.json 是在 PWA 安装横幅(.pwa-install-banner, position:fixed)随机出现时抓的 —— 横幅一出现就成了最低墨迹节点，把 desk-1440 与 mobile-390 的底部死白压到 2%、控件中位高抬到 34（同一份基线里 desk-1180 却是 40%/30，自相矛盾）。tools/verify/frame-metrics.mjs 已在测量前摘掉横幅，这里按无横幅的稳定态重立，与 PROPOSAL-018 §1 的表(47%/30)一致。书库本身一字未改。"
+}

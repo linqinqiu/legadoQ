@@ -1,0 +1,162 @@
+name: Build Legado Server JAR
+
+# 出可运行产物：内嵌前端的 fatJar + 标准分发包，PR 只跑测试不发布。
+#
+# 2026-10-26 重建：重组时这 7 个 workflow 被压成一行（0 换行 + BOM），GitHub 解析不了，
+# CI 自重组起从未真的跑过。除格式外改了四处：
+#   1. 路径统一到 product/ 下（Dockerfile、Gradle、web 包都在那一层）；
+#   2. JDK 从 21 改回 17 —— app/build.gradle 的 toolchain 锁 17，runner 上只有 21 时
+#      Gradle 会去找一个不存在的 17 直接红；
+#   3. 打 fatJar 之后加一步 `bundled-ui-check`：确认"烤进包里的前端 == 刚构建的 dist"。
+#      这一步是本 workflow 以前最该有却没有的 —— 产物发布出去、里面却是旧界面，
+#      流水线照样全绿；
+#   4. `cache-dependency-path` 指向 package-lock.json（原来指 package.json，缓存键等于没锁依赖）。
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-jar-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: product
+
+jobs:
+  build:
+    name: Build & Package JAR
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: product/web/package-lock.json
+
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # 与 app/build.gradle 的 toolchain 一致；写 21 会让 Gradle 找不到 17
+          java-version: '17'
+          cache: gradle
+
+      - name: Build Web Client
+        run: |
+          npm ci --prefix web
+          npm --prefix web run build
+
+      - name: Run Web & Server Verification Tests
+        env:
+          LEGADO_TEST_TMP: ${{ runner.temp }}/legado-test
+        run: |
+          npm --prefix web run check
+          # 必须经 web 包跑（cwd=product/web）：从仓库根用 npx tsx 找不到 web/tsconfig.json，
+          # JSX 回落 classic 编译报 "React is not defined"，且 npx 会临时拉一个不匹配锁定版本的 tsx。
+          npm --prefix web test
+          chmod +x gradlew
+          ./gradlew :app:test --no-daemon --console=plain
+
+      - name: Build Standalone Fat JAR & Distribution
+        run: ./gradlew :app:fatJar :app:distZip --no-daemon --console=plain
+
+      - name: 核对包内前端就是刚构建的那份
+        # 服务没在跑，这一条会 SKIP 掉"运行中的实例"那一格；其余三格（dist /
+        # processResources / jar 内）照样比对。
+        run: node tools/verify/bundled-ui-check.mjs
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p artifacts
+          cp app/build/libs/legado-*-all.jar artifacts/legado.jar
+          if ls app/build/distributions/*.zip > /dev/null 2>&1; then
+            cp app/build/distributions/*.zip artifacts/legado-dist.zip
+          fi
+          echo "=== Built Artifacts ==="
+          ls -lh artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado-binaries
+          path: product/artifacts/*
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Determine Release Tag & Name
+        id: release_meta
+        if: github.event_name != 'pull_request'
+        run: |
+          BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+          echo "build_time=${BUILD_TIME}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "release_name=青阅 Legado Server ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=latest" >> "$GITHUB_OUTPUT"
+            echo "release_name=青阅 Legado Server Continuous Build (latest)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Recreate latest release & tag
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 删除旧的 latest Release，确保新建时 GitHub 发布时间戳刷新为最新
+          gh release delete latest --yes || true
+          # 更新并强制推送 latest Git Tag 指向当前 Commit
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f latest "${{ github.sha }}"
+          git push --force origin refs/tags/latest:refs/tags/latest
+
+      - name: Auto Publish / Update GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.release_meta.outputs.release_name }}
+          body: |
+            ## 自动构建发布
+
+            本 Release 由 GitHub Actions 随 Commit 自动编译打包生成：
+            - **Commit**: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+            - **Branch / Ref**: `${{ github.ref_name }}`
+            - **Build Time**: `${{ steps.release_meta.outputs.build_time }} (UTC+8)`
+
+            ### 二进制产物下载
+            - **`legado.jar`**：开箱即用独立 Fat JAR（内嵌完整 Web 前端与后端服务，单文件运行）
+            - **`legado-dist.zip`**：标准分发包（含 `bin/` 启动脚本与依赖库）
+
+            ### 快速启动
+            ```bash
+            # 极简启动 (Java 17+)
+            java -jar legado.jar
+
+            # 自定义端口与数据目录
+            LEGADO_PORT=8080 LEGADO_DATA_DIR=./ls_data java -jar legado.jar
+            ```
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: |
+            product/artifacts/legado.jar
+            product/artifacts/legado-dist.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

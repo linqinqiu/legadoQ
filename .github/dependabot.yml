@@ -1,0 +1,19 @@
+version: 2
+
+# 只开 github-actions 一个生态。
+#
+# 为什么不批量升 Gradle / npm 依赖：这是**桌面端 JVM 应用**，Kotlin / KSP / Gradle / JDK
+# 四者版本必须彼此对齐（KSP 必须匹配 Kotlin、Gradle 必须支持该 JDK），批量升其中任何一个
+# 都会把另外三个顶到不兼容的组合上；而这套组合没有"跑一遍测试就能验"的等价物 —— 真正要验
+# 的是打包产物能不能起、插件能不能装。那属于人来做的一次升级 PR，不是机器人每周开五个。
+# npm 同理：web 依赖锁在 package-lock.json 里，升级要连带 typecheck/构建/真浏览器门禁一起过。
+#
+# 依赖升级仍然会做，但**单独走 PR**、人工判断兼容性；Dependabot 只负责它真正擅长的、
+# 无兼容矩阵的 GitHub Actions 版本。
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5

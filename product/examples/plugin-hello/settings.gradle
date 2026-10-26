@@ -1,0 +1,3 @@
+// 独立的构建根 —— 故意**不**继承主工程的 settings.gradle。
+// 插件要能脱离源码树独立构建，才说明"写插件不需要改主程序"是真的。
+rootProject.name = 'qingyue-plugin-hello'

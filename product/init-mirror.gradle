@@ -1,0 +1,24 @@
+// 构建层的兼容修复，与业务逻辑无关 —— 这一类东西必须就地写清"为什么 + 什么时候能删"，
+// 否则后人会把它当成项目设计的一部分（对照 workbuddy-switch 里 `[patch.crates-io]` 那段注释的写法）。
+//
+// 为什么需要：本机到 Maven Central / plugins.gradle.org 的链路基本不可用（8s 超时都拉不完），
+//            而 `settings.gradle` 里声明的是官方仓库，开源分发时那份声明必须留着，不能改。
+// 怎么用：    显式传入，不在仓库里自动生效 ——  ./gradlew -I init-mirror.gradle :app:test
+//            （`--offline` 走本地缓存时它也不碍事；两者经常一起用）
+// 什么时候删：网络能正常到 Maven Central 的机器上直接不传这个参数即可；
+//            若哪天要彻底移除，删掉本文件就行 —— 它不参与编译产物，也不改变依赖版本。
+//
+// 做法：清空 settings 里声明的仓库列表，换成阿里云镜像。**只动解析源，不动任何依赖坐标。**
+def mirrors = [
+        'https://maven.aliyun.com/repository/gradle-plugin',
+        'https://maven.aliyun.com/repository/public',
+        'https://maven.aliyun.com/repository/google',
+]
+
+settingsEvaluated { settings ->
+    settings.pluginManagement.repositories.clear()
+    mirrors.each { u -> settings.pluginManagement.repositories.maven { url = u } }
+
+    settings.dependencyResolutionManagement.repositories.clear()
+    mirrors.each { u -> settings.dependencyResolutionManagement.repositories.maven { url = u } }
+}

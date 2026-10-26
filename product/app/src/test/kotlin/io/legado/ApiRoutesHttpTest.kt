@@ -1,0 +1,654 @@
+package io.legado
+
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.cookies.*
+import io.ktor.client.plugins.websocket.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.testing.*
+import io.ktor.websocket.*
+import kotlinx.serialization.json.Json
+import org.junit.Assert.*
+import org.junit.Test
+import java.nio.file.Files
+import java.nio.file.Path
+import io.legado.cache.CoverCache
+import io.legado.model.BatchSourceRequest
+import io.legado.model.BatchSourceResponse
+import io.legado.model.BookRequest
+import io.legado.model.BookshelfItem
+import io.legado.model.BookshelfSourceSwitchRequest
+import io.legado.model.BookshelfStatusRequest
+import io.legado.model.BookshelfWriteRequest
+import io.legado.model.ContentRequest
+import io.legado.model.ImportRequest
+import io.legado.model.ImportResponse
+import io.legado.model.ReadingProgress
+import io.legado.model.SearchRequest
+import io.legado.model.SourceHealthCheckRequest
+import io.legado.model.SourceHealthCheckResponse
+import io.legado.model.SourceRecord
+import io.legado.model.SourceSubscription
+import io.legado.model.SourceSummary
+import io.legado.model.SourceValidateRequest
+import io.legado.model.SourceWriteRequest
+import io.legado.model.SubscriptionWriteRequest
+import io.legado.model.ValidateResponse
+
+class ApiRoutesHttpTest {
+
+
+    @Test
+    fun `healthz endpoint returns ok status`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-health", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            }
+
+            val resp = client.get("/healthz")
+            assertEquals(HttpStatusCode.OK, resp.status)
+            assertTrue(resp.bodyAsText().contains("ok"))
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `source management endpoints full crud, validate, export and import`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-sources", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+                install(HttpCookies)
+            }
+
+            // 1. 服务不设身份（绑定地址是唯一的门）：不带任何凭据的读请求就是 200 公开读，
+            //    这里原按"将要做认证层"写成期望 401 —— 认证层从未实现，401 在服务端根本不存在。
+            val publicResp = client.get("/api/sources")
+            assertEquals(HttpStatusCode.OK, publicResp.status)
+            assertEquals(0, publicResp.body<List<SourceSummary>>().size)
+
+
+            // 2. Import valid sources
+            val sampleSource1 = """{"bookSourceUrl":"https://source1.com","bookSourceName":"测试源1","searchUrl":"/search?k={{key}}","ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"/b/{{$.id}}"}}"""
+            val sampleSource2 = """{"bookSourceUrl":"https://source2.com","bookSourceName":"测试源2","searchUrl":"/search?k={{key}}","ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"/b/{{$.id}}"}}"""
+
+            val importResp = client.post("/api/sources/import") {
+                contentType(ContentType.Application.Json)
+                setBody(ImportRequest(listOf(sampleSource1, sampleSource2)))
+            }
+            assertEquals(HttpStatusCode.OK, importResp.status)
+            val importResult = importResp.body<ImportResponse>()
+            assertEquals(2, importResult.imported)
+
+            // 3. List sources
+            val listResp = client.get("/api/sources")
+            assertEquals(HttpStatusCode.OK, listResp.status)
+            val sources = listResp.body<List<SourceSummary>>()
+            assertEquals(2, sources.size)
+
+            // 4. Filter sources with query parameter
+            val queryResp = client.get("/api/sources?q=测试源1")
+            assertEquals(HttpStatusCode.OK, queryResp.status)
+            val querySources = queryResp.body<List<SourceSummary>>()
+            assertEquals(1, querySources.size)
+            assertEquals("测试源1", querySources[0].name)
+
+            // 5. Get source by ID
+            val getResp = client.get("/api/sources/https%3A%2F%2Fsource1.com")
+            assertEquals(HttpStatusCode.OK, getResp.status)
+            val sourceRecord = getResp.body<SourceRecord>()
+            assertEquals("https://source1.com", sourceRecord.id)
+
+            // Get non-existent source by ID -> 404
+            val notFoundResp = client.get("/api/sources/https%3A%2F%2Fnonexistent.com")
+            assertEquals(HttpStatusCode.NotFound, notFoundResp.status)
+
+            // 6. Validate source
+            val validateResp = client.post("/api/sources/https%3A%2F%2Fsource1.com/validate") {
+            }
+            assertEquals(HttpStatusCode.OK, validateResp.status)
+            val validateResult = validateResp.body<ValidateResponse>()
+            assertTrue(validateResult.valid)
+
+            // 6b. 带草稿时校验未保存内容：编辑器里写坏的结构必须当场暴露，不能去看库里的旧副本
+            val draftResp = client.post("/api/sources/https%3A%2F%2Fsource1.com/validate") {
+                contentType(ContentType.Application.Json)
+                setBody(SourceValidateRequest("""{"bookSourceName":"缺少地址的草稿"}"""))
+            }
+            assertEquals(HttpStatusCode.OK, draftResp.status)
+            assertEquals(false, draftResp.body<ValidateResponse>().valid)
+
+            // 7. Update source (PUT)
+            val updatedJson = """{"bookSourceUrl":"https://source1.com","bookSourceName":"更新后的源1","searchUrl":"/s?k={{key}}","ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"/b/{{$.id}}"}}"""
+            val putResp = client.put("/api/sources/https%3A%2F%2Fsource1.com") {
+                contentType(ContentType.Application.Json)
+                setBody(SourceWriteRequest(updatedJson, sourceRecord.version))
+            }
+            assertEquals(HttpStatusCode.OK, putResp.status)
+
+            // Update with conflicting version -> 409
+            val conflictResp = client.put("/api/sources/https%3A%2F%2Fsource1.com") {
+                contentType(ContentType.Application.Json)
+                setBody(SourceWriteRequest(updatedJson, 999))
+            }
+            assertEquals(HttpStatusCode.Conflict, conflictResp.status)
+
+            // 8. Export sources
+            val exportResp = client.get("/api/sources/export")
+            assertEquals(HttpStatusCode.OK, exportResp.status)
+            assertTrue(exportResp.bodyAsText().contains("https://source1.com"))
+
+            val exportSingleResp = client.get("/api/sources/export?id=https%3A%2F%2Fsource1.com")
+            assertEquals(HttpStatusCode.OK, exportSingleResp.status)
+            assertTrue(exportSingleResp.bodyAsText().contains("更新后的源1"))
+
+            // 9. Delete source
+            val deleteResp = client.delete("/api/sources/https%3A%2F%2Fsource2.com") {
+            }
+            assertEquals(HttpStatusCode.NoContent, deleteResp.status)
+
+            // Delete already deleted source -> 404
+            val deleteAgainResp = client.delete("/api/sources/https%3A%2F%2Fsource2.com") {
+            }
+            assertEquals(HttpStatusCode.NotFound, deleteAgainResp.status)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `bookshelf crud, reading progress, status and source switch routes`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-shelf", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+                install(HttpCookies)
+            }
+
+
+            // 1. Initial bookshelf empty
+            val initialShelfResp = client.get("/api/bookshelf")
+            assertEquals(HttpStatusCode.OK, initialShelfResp.status)
+            assertEquals(0, initialShelfResp.body<List<BookshelfItem>>().size)
+
+            // 2. Add book to bookshelf
+            val addShelfResp = client.post("/api/bookshelf") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    BookshelfWriteRequest(
+                        sourceId = "https://src.com",
+                        bookUrl = "https://src.com/book/1",
+                        name = "修仙奇传",
+                        author = "仙人",
+                        tocUrl = "https://src.com/toc/1",
+                    )
+                )
+            }
+            assertEquals(HttpStatusCode.OK, addShelfResp.status)
+            val addedItem = addShelfResp.body<BookshelfItem>()
+            assertEquals("修仙奇传", addedItem.name)
+
+            // 3. Update reading progress
+            val saveProgressResp = client.put("/api/reading-progress") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    ReadingProgress(
+                        sourceId = "https://src.com",
+                        bookUrl = "https://src.com/book/1",
+                        chapterUrl = "https://src.com/c/5",
+                        chapterIndex = 4,
+                        scrollPosition = 0.5,
+                    )
+                )
+            }
+            assertEquals(HttpStatusCode.OK, saveProgressResp.status)
+
+            // 4. Get reading progress
+            val getProgressResp = client.get("/api/reading-progress?sourceId=https%3A%2F%2Fsrc.com&bookUrl=https%3A%2F%2Fsrc.com%2Fbook%2F1")
+            assertEquals(HttpStatusCode.OK, getProgressResp.status)
+            val loadedProgress = getProgressResp.body<ReadingProgress>()
+            assertEquals(4, loadedProgress.chapterIndex)
+            assertEquals(0.5, loadedProgress.scrollPosition, 0.001)
+
+            // Get progress for non-existent book -> 204 NoContent
+            val nonExistentProgress = client.get("/api/reading-progress?sourceId=https%3A%2F%2Fsrc.com&bookUrl=https%3A%2F%2Fnone.com")
+            assertEquals(HttpStatusCode.NoContent, nonExistentProgress.status)
+
+            // 5. Update completed status
+            val setCompletedResp = client.put("/api/bookshelf/status") {
+                contentType(ContentType.Application.Json)
+                setBody(BookshelfStatusRequest("https://src.com", "https://src.com/book/1", completed = true))
+            }
+            assertEquals(HttpStatusCode.OK, setCompletedResp.status)
+            assertTrue(setCompletedResp.body<BookshelfItem>().completed)
+
+            // 6. Switch source
+            val switchResp = client.post("/api/bookshelf/switch-source") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    BookshelfSourceSwitchRequest(
+                        oldSourceId = "https://src.com",
+                        oldBookUrl = "https://src.com/book/1",
+                        book = BookshelfWriteRequest(
+                            sourceId = "https://newsrc.com",
+                            bookUrl = "https://newsrc.com/book/1",
+                            name = "修仙奇传",
+                            author = "仙人",
+                            tocUrl = "https://newsrc.com/toc/1",
+                        )
+                    )
+                )
+            }
+            assertEquals(HttpStatusCode.OK, switchResp.status)
+            val switchedItem = switchResp.body<BookshelfItem>()
+            assertEquals("https://newsrc.com", switchedItem.sourceId)
+
+            // 7. Bookshelf cache endpoints
+            val queueCacheResp = client.post("/api/bookshelf/cache") {
+                contentType(ContentType.Application.Json)
+                setBody(BookRequest("https://newsrc.com", "https://newsrc.com/book/1"))
+            }
+            assertEquals(HttpStatusCode.Accepted, queueCacheResp.status)
+
+            val cancelCacheResp = client.delete("/api/bookshelf/cache?sourceId=https%3A%2F%2Fnewsrc.com&bookUrl=https%3A%2F%2Fnewsrc.com%2Fbook%2F1") {
+            }
+            assertEquals(HttpStatusCode.NoContent, cancelCacheResp.status)
+
+            // 8. Delete book from bookshelf
+            val deleteShelfResp = client.delete("/api/bookshelf?sourceId=https%3A%2F%2Fnewsrc.com&bookUrl=https%3A%2F%2Fnewsrc.com%2Fbook%2F1") {
+            }
+            assertEquals(HttpStatusCode.NoContent, deleteShelfResp.status)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `subscriptions crud and update endpoints`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-subs", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+                install(HttpCookies)
+            }
+
+
+            // 1. Initial list empty
+            val listResp = client.get("/api/subscriptions")
+            assertEquals(HttpStatusCode.OK, listResp.status)
+            assertEquals(0, listResp.body<List<SourceSubscription>>().size)
+
+            // 2. Add subscription with invalid URL -> 400
+            val invalidAddResp = client.post("/api/subscriptions") {
+                contentType(ContentType.Application.Json)
+                setBody(SubscriptionWriteRequest("not-a-valid-url", enabled = true))
+            }
+            assertEquals(HttpStatusCode.BadRequest, invalidAddResp.status)
+
+            // 3. Add subscription with valid URL
+            val validAddResp = client.post("/api/subscriptions") {
+                contentType(ContentType.Application.Json)
+                setBody(SubscriptionWriteRequest("https://example.com/sources.json", enabled = true))
+            }
+            assertEquals(HttpStatusCode.OK, validAddResp.status)
+            val sub = validAddResp.body<SourceSubscription>()
+            assertEquals("https://example.com/sources.json", sub.url)
+
+            // 4. Delete subscription
+            val deleteSubResp = client.delete("/api/subscriptions/${sub.id}") {
+            }
+            assertEquals(HttpStatusCode.NoContent, deleteSubResp.status)
+
+            // Delete non-existent subscription -> 404
+            val deleteNonExistent = client.delete("/api/subscriptions/99999") {
+            }
+            assertEquals(HttpStatusCode.NotFound, deleteNonExistent.status)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `search, debug, book details, chapters and content routes`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-books", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+                install(HttpCookies)
+            }
+
+
+            // 1. Search with blank keyword -> 400
+            val blankSearchResp = client.post("/api/search") {
+                contentType(ContentType.Application.Json)
+                setBody(SearchRequest(keyword = "   "))
+            }
+            assertEquals(HttpStatusCode.BadRequest, blankSearchResp.status)
+
+            // 2. Import a test source
+            val sourceJson = """{
+                "bookSourceUrl":"https://testbook.com",
+                "bookSourceName":"书籍测试源",
+                "searchUrl":"/search?k={{key}}",
+                "ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"/b/{{$.id}}"},
+                "ruleBookInfo":{"name":"$.title","tocUrl":"/toc/1"},
+                "ruleToc":{"chapterList":"$.chapters","chapterName":"$.title","chapterUrl":"$.url"},
+                "ruleContent":{"content":"$.content"}
+            }"""
+            client.post("/api/sources/import") {
+                contentType(ContentType.Application.Json)
+                setBody(ImportRequest(listOf(sourceJson)))
+            }
+
+            // 3. Debug SSE endpoint
+            val debugResp = client.get("/api/sources/https%3A%2F%2Ftestbook.com/debug?keyword=测试")
+            assertEquals(HttpStatusCode.OK, debugResp.status)
+            assertTrue(debugResp.bodyAsText().contains("event:"))
+
+            // Debug non-existent source -> 404
+            val debugNotFound = client.get("/api/sources/https%3A%2F%2Fnone.com/debug")
+            assertEquals(HttpStatusCode.NotFound, debugNotFound.status)
+
+            // 4. Books content endpoint validations
+            val invalidContentResp = client.post("/api/books/content") {
+                contentType(ContentType.Application.Json)
+                setBody(ContentRequest(sourceId = "", chapterUrl = ""))
+            }
+            assertEquals(HttpStatusCode.BadRequest, invalidContentResp.status)
+
+            val notFoundContentResp = client.post("/api/books/content") {
+                contentType(ContentType.Application.Json)
+                setBody(ContentRequest(sourceId = "https://nonexistent.com", chapterUrl = "https://nonexistent.com/c1"))
+            }
+            assertEquals(HttpStatusCode.NotFound, notFoundContentResp.status)
+
+            // 5. Covers endpoint (non-existent key -> 404)
+            val coverNotFoundResp = client.get("/api/covers/nonexistent-key-1234")
+            assertEquals(HttpStatusCode.NotFound, coverNotFoundResp.status)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `adding book to bookshelf returns immediately without blocking and caches cover asynchronously`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-bookshelf-async", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+                install(HttpCookies)
+            }
+
+
+            val startTime = System.currentTimeMillis()
+            val addResp = client.post("/api/bookshelf") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    BookshelfWriteRequest(
+                        sourceId = "https://src.com",
+                        bookUrl = "https://src.com/book/async-cover",
+                        name = "异步封面测试",
+                        author = "测试作者",
+                        tocUrl = "https://src.com/toc/1",
+                        coverUrl = "https://src.com/cover.jpg"
+                    )
+                )
+            }
+            val elapsed = System.currentTimeMillis() - startTime
+            assertEquals(HttpStatusCode.OK, addResp.status)
+            val addedItem = addResp.body<BookshelfItem>()
+            assertEquals("异步封面测试", addedItem.name)
+            // Immediately upon post, coverKey is null (non-blocking)
+            assertNull(addedItem.coverKey)
+
+            // Bookshelf list shows the book immediately
+            val shelfResp = client.get("/api/bookshelf")
+            assertEquals(HttpStatusCode.OK, shelfResp.status)
+            val shelfList = shelfResp.body<List<BookshelfItem>>()
+            assertEquals(1, shelfList.size)
+            assertEquals("异步封面测试", shelfList.first().name)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `adding book to bookshelf uses locally cached cover immediately`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-bookshelf-hit", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            // Pre-seed cover in local cache
+            val coverCache = CoverCache(tempDir) { "image/png" to byteArrayOf(1, 2, 3) }
+            val cachedCover = coverCache.cache("https://src.com/cached-cover.png")
+
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+                install(HttpCookies)
+            }
+
+
+            val addResp = client.post("/api/bookshelf") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    BookshelfWriteRequest(
+                        sourceId = "https://src.com",
+                        bookUrl = "https://src.com/book/cached-cover-book",
+                        name = "秒开封面书",
+                        author = "作者",
+                        tocUrl = "https://src.com/toc/1",
+                        coverUrl = "https://src.com/cached-cover.png"
+                    )
+                )
+            }
+            assertEquals(HttpStatusCode.OK, addResp.status)
+            val addedItem = addResp.body<BookshelfItem>()
+            assertEquals("秒开封面书", addedItem.name)
+            // Immediately returns cached cover key
+            assertEquals(cachedCover.key, addedItem.coverKey)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `batch source operations and health check endpoint`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-source-batch", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+                install(HttpCookies)
+            }
+
+
+            // 1. Import test sources
+            val sources = listOf(
+                """{"bookSourceUrl":"https://batch1.com","bookSourceName":"批量源1","bookSourceGroup":"旧分组","searchUrl":"/search?key={{key}}","ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"/b/{{$.id}}"}}""",
+                """{"bookSourceUrl":"https://batch2.com","bookSourceName":"批量源2","bookSourceGroup":"旧分组","searchUrl":"/search?key={{key}}","ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"/b/{{$.id}}"}}""",
+                """{"bookSourceUrl":"https://batch3.com","bookSourceName":"批量源3","searchUrl":"/search?key={{key}}","ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"/b/{{$.id}}"}}"""
+            )
+            val importResp = client.post("/api/sources/import") {
+                contentType(ContentType.Application.Json)
+                setBody(ImportRequest(sources))
+            }
+            assertEquals(HttpStatusCode.OK, importResp.status)
+
+            // 2. Batch Disable
+            val disableResp = client.post("/api/sources/batch") {
+                contentType(ContentType.Application.Json)
+                setBody(BatchSourceRequest(action = "disable", ids = listOf("https://batch1.com", "https://batch2.com")))
+            }
+            assertEquals(HttpStatusCode.OK, disableResp.status)
+            val disableBody = disableResp.body<BatchSourceResponse>()
+            assertTrue(disableBody.ok)
+            assertEquals(2, disableBody.affected)
+
+            // Verify list sources reflects disabled
+            val listResp1 = client.get("/api/sources")
+            val list1 = listResp1.body<List<SourceSummary>>()
+            assertFalse(list1.first { it.id == "https://batch1.com" }.enabled)
+            assertFalse(list1.first { it.id == "https://batch2.com" }.enabled)
+            assertTrue(list1.first { it.id == "https://batch3.com" }.enabled)
+
+            // 3. Batch Enable
+            val enableResp = client.post("/api/sources/batch") {
+                contentType(ContentType.Application.Json)
+                setBody(BatchSourceRequest(action = "enable", ids = listOf("https://batch1.com")))
+            }
+            assertEquals(HttpStatusCode.OK, enableResp.status)
+            val enableBody = enableResp.body<BatchSourceResponse>()
+            assertEquals(1, enableBody.affected)
+
+            // 4. Batch Set Group
+            val groupResp = client.post("/api/sources/batch") {
+                contentType(ContentType.Application.Json)
+                setBody(BatchSourceRequest(action = "set_group", ids = listOf("https://batch1.com", "https://batch3.com"), group = "精品新组"))
+            }
+            assertEquals(HttpStatusCode.OK, groupResp.status)
+            val groupBody = groupResp.body<BatchSourceResponse>()
+            assertEquals(2, groupBody.affected)
+
+            val listResp2 = client.get("/api/sources")
+            val list2 = listResp2.body<List<SourceSummary>>()
+            assertEquals("精品新组", list2.first { it.id == "https://batch1.com" }.group)
+            assertEquals("精品新组", list2.first { it.id == "https://batch3.com" }.group)
+            assertEquals("旧分组", list2.first { it.id == "https://batch2.com" }.group)
+
+            // 5. Health Check Endpoint
+            val healthResp = client.post("/api/sources/health-check") {
+                contentType(ContentType.Application.Json)
+                setBody(SourceHealthCheckRequest(ids = listOf("https://batch1.com"), timeoutMs = 1000L))
+            }
+            assertEquals(HttpStatusCode.OK, healthResp.status)
+            val healthBody = healthResp.body<SourceHealthCheckResponse>()
+            assertEquals(1, healthBody.total)
+            assertEquals(1, healthBody.results.size)
+            assertEquals("https://batch1.com", healthBody.results.first().id)
+
+            // 6. Batch Delete
+            val deleteResp = client.post("/api/sources/batch") {
+                contentType(ContentType.Application.Json)
+                setBody(BatchSourceRequest(action = "delete", ids = listOf("https://batch1.com", "https://batch2.com", "https://batch3.com")))
+            }
+            assertEquals(HttpStatusCode.OK, deleteResp.status)
+            val deleteBody = deleteResp.body<BatchSourceResponse>()
+            assertEquals(3, deleteBody.affected)
+
+            val listResp3 = client.get("/api/sources")
+            val list3 = listResp3.body<List<SourceSummary>>()
+            assertEquals(0, list3.size)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+}
+
+

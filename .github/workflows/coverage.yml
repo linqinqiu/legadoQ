@@ -1,0 +1,105 @@
+# 覆盖率报告
+#
+# 跑前后端测试、生成合并的覆盖率总报告，作为构建产物留存。
+#
+# 三条纪律（写在最前面，避免后来人把它改成门禁）：
+# 1. **不设阈值、不因覆盖率低而失败。** 一上来就卡百分比只会逼人写凑数测试。
+#    先看清楚哪里没覆盖，再决定要不要卡、卡在哪。
+# 2. **测试失败也照样出报告。** 覆盖率最该在有失败的时候看 —— 那正是"哪块没测到
+#    最可能出问题"的时候。所以后端用 `testCoverage`（ignoreFailures），前端 c8 跑完也照常产出。
+# 3. **报告要能下载。** 生成 HTML 后作为 artifact 上传，PR 里点得开。
+#
+# 2026-10-26 重建：重组时这 7 个 workflow 被压成一行（0 换行 + BOM），GitHub 解析不了，
+# CI 自重组起从未真的跑过。路径统一到 product/ 下（defaults.working-directory）。
+name: 覆盖率报告
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: product
+
+jobs:
+  coverage:
+    name: 前后端覆盖率
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: product/web/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: 安装依赖
+        run: npm ci --prefix web
+
+      - name: 后端测试 + JaCoCo
+        # 用 testCoverage 而不是 test：它 ignoreFailures，
+        # 已知失败基线不会挡住报告生成。
+        env:
+          LEGADO_TEST_TMP: ${{ runner.temp }}/legado-test
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testCoverage --no-daemon --console=plain
+
+      - name: 前端测试 + c8
+        run: npm --prefix web run test:coverage
+
+      - name: 合并成总报告
+        run: node scripts/coverage-report.mjs --skip-run --json
+
+      - name: 把摘要贴到 Job Summary（PR 里直接看得到）
+        if: always()
+        run: |
+          if [ -f coverage-report/summary.md ]; then
+            cat coverage-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "没有生成摘要 —— 检查上面的日志" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 上传报告（HTML 可直接下载打开）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            product/coverage-report/
+            product/app/build/reports/jacoco/testCoverage/
+            product/web/coverage/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: 覆盖率摘要进日志（不阻塞）
+        if: always()
+        run: |
+          if [ -f coverage-report/summary.json ]; then
+            node --input-type=module -e "
+              import { readFileSync } from 'node:fs';
+              const s = JSON.parse(readFileSync('./coverage-report/summary.json', 'utf8'));
+              const line = (l, v) => console.log(l + ': ' + (v ?? 'n/a'));
+              line('整体行覆盖', s.combined ? s.combined.lines.pct + '%' : null);
+              line('后端行覆盖', s.backend ? s.backend.totals.lines.pct + '%' : null);
+              line('前端行覆盖', s.frontend ? s.frontend.totals.lines.pct + '%' : null);
+            "
+          fi

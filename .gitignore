@@ -1,0 +1,59 @@
+# 忽略运行时数据
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 打包产物
+release/
+dist/
+build/
+
+# 单一仓（2026-10-25 重组后：product/ 与外层 docs/scripts 同属一个 git 仓，不再嵌套独立仓）
+# 旧的两层嵌套仓库（外层 E:\legado + 内层 product）的 .git 已归档到 E:\legado-archive\（product-old.git / workspace-old.git），设为只读
+# 上游参照浅克隆在 E:\legado-out\upstream（工作区外），若误放入仓内则忽略
+/legado-out/
+
+# 大体积二进制与探测产物（避免误提交上百 MB）
+*.tar.gz
+*.zip
+_probe/
+refs/
+
+# 仓库卫生补丁（2026-10-20 结构重排）：
+# 便携发行包与半成品暂存目录绝不进仓库根（STRUCTURE.md：产物出库）
+/qingyue-dist/
+/legado-dist/
+*_stage/
+/scripts/_*
+# 构建与探针日志统一进 logs/，根目录不留散 log
+/logs/
+
+# AI 配置文件（含 API Key，需保护隐私）
+agent-profiles.json
+
+# ── 本机散落杂物（2026-10-25 收口）：不入库，避免污染 git status / IDE 搜索 ──
+# tmp/：本机一次性探针、调试脚本、抓包与日志（logs/ 之外又一处散落；经查 124 项均未跟踪）
+/tmp/
+# git worktrees（与内层 legado/.gitignore 的 .worktrees/ 保持一致）
+/.worktrees/
+# DSH 沙箱 ACL 诊断/恢复产物（diagnose-windows-sandbox-acl 技能生成，非项目文件）
+/.dsh-acl-*/
+/.acl-*/
+# 根目录散落的构建日志：*.log 覆盖不到 .txt；按上方约定它们本应进 logs/
+/gradle-*-log.txt
+
+# 便携发行包的组装目录（2026-10-26 补）：里面是 `data/legado.sqlite` 的**真实书库副本**
+# （149 MB + 4 MB WAL）+ fatJar + 整套 jlink JRE，合计 225 MB。
+# 上面那条 `dist/` 匹配不到它，于是 `git add -A` 会把个人阅读数据连二进制一起提交上去 ——
+# 即使推到私有仓也是永久泄密（git 历史删不干净）。这条规则是那次误提交的唯一防线。
+/legado-releases/
+# DSH 工具在仓根留下的本地状态目录，与项目无关
+/.dsh-ops/

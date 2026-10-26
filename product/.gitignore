@@ -1,0 +1,176 @@
+*.iml
+.gradle
+local.properties
+.DS_Store
+/build
+build/
+/captures
+.externalNativeBuild
+/release
+/tmp
+node_modules
+node_modules/
+**/node_modules/
+/app/app
+/app/google
+/app/gradle.properties
+.idea/
+# Kotlin 2.0
+.kotlin/
+.cxx
+.vscode
+# local E2E runtime web bundle (copied from web/dist)
+app/src/main/resources/static/
+.env
+.data/
+# 外部模型连接档案：里面有 apiKey（用户填的密钥），与 .env 同级待遇，严禁入库。
+# 运行时由 AgentProfileStore 写在「安装根」和 .data/ 两处；.data/ 已被上面覆盖，这里锚住根目录那份。
+/agent-profiles.json
+# 本机部署的数据目录（SQLite + 封面 + WebDAV 落盘），含用户书架，严禁入库。
+# 必须锚住具体位置：不带 / 的 data/ 会连带吞掉 app/src/main/kotlin/io/legado/data/，
+# 那里新拆出来的 DAO 文件对 git 直接不可见（0.8.2 结构重排时抓到）。
+# 0.8.3 目录重排（server/ → app/）后，实际部署目录变成了 app/data/；旧的
+# /data/ 与 /server/data/ 两条规则一并保留，避免漏放历史路径。
+/data/
+/server/data/
+/app/data/
+*.log
+tools/verify/out/
+.agents/
+# 新骨架前端（qingyue 的构建产物）按目录挂载给 /next，不烤进 jar 也不入库：
+# 它是另一个仓库的产物，进版本库就会变成"源码与产物谁新谁旧"的老问题
+/next/
+# 整合包（jar + runtime + next + start.bat）的组装目录与 zip
+/dist/
+.worktrees/
+coverage/
+web/coverage/
+# 覆盖率总报告（scripts/coverage-report.mjs 生成，可随时重跑，不入库）
+/coverage-report/
+
+
+.pptr-profile/
+
+# 本机改动差异，含本机绝对路径，只作本地留档用，不入库
+# 本机启动器产物：图标与 .lnk 快捷方式（tools/verify/make-ico.mjs 写在这里），含本机路径，不入库
+/assets/
+
+# 本机 2026-09-22 的整份本地差异快照（99 个文件），只作历史留档；
+# 里面的东西要么已进提交历史（如 JDK 17 toolchain 已在 app/build.gradle），要么早已作废，
+# 所以不随仓库分发，也不许在文档里当"现行依据"引用。
+local-patches.diff
+
+# tools/：默认忽略（顶层 dbq.mjs/Guard.java/JpTest.java + 未被文档引用的一次性探针/渲染/产物脚本，out/ 亦忽略），
+# 但放行 README/AGENTS/CHANGELOG/docs 通篇引用的门禁脚本（tools/verify/*.mjs）及其共享依赖 env/zip-make/multipart，
+# 否则文档叫贡献者跑的门禁根本不在仓库里。要增删分发件改这里逐条列。
+/tools/*
+# 顶层这个不是探针而是启动链路的一环（AGENTS/CHANGELOG 都让贡献者跑它），单独放行。
+!/tools/make-cds.mjs
+# 简繁转换词表的生成脚本。产物 web/src/reader/dict/openccData.ts 是提交的，
+# 而它的文件头与 AGENTS.md 都指着这个脚本说"重跑口径在这里" —— 不放行就是又一份
+# "文档里写着、仓库里没有"。裁剪口径与实测体积都写在脚本里。
+!/tools/gen-script-dict.mjs
+!/tools/verify/
+/tools/verify/*
+!/tools/verify/baselines/
+!/tools/verify/depth-check.mjs
+!/tools/verify/authfixes.mjs
+!/tools/verify/backup-cookie-import-check.mjs
+!/tools/verify/backup-kept-check.mjs
+!/tools/verify/backup-upload-check.mjs
+!/tools/verify/book-detail-check.mjs
+!/tools/verify/chaincheck.mjs
+!/tools/verify/context-dialect-census.mjs
+!/tools/verify/controls-audit.mjs
+!/tools/verify/env.mjs
+!/tools/verify/explore-detail-check.mjs
+!/tools/verify/icon-square-census.mjs
+!/tools/verify/index-selector-census.mjs
+!/tools/verify/multipart.mjs
+!/tools/verify/media-reader-check.mjs
+!/tools/verify/opensource-hygiene-check.mjs
+!/tools/verify/snapshot-coverage.mjs
+!/tools/verify/archive-verify.mjs
+!/tools/verify/overlay-audit.mjs
+!/tools/verify/overlay-tier-check.mjs
+!/tools/verify/paginate-flow-check.mjs
+!/tools/verify/reader-flow-check.mjs
+!/tools/verify/reader-page-anim-check.mjs
+!/tools/verify/reader-transition-check.mjs
+!/tools/verify/reader-typography-check.mjs
+!/tools/verify/reading-log-check.mjs
+!/tools/verify/note-check.mjs
+!/tools/verify/shortcut-check.mjs
+!/tools/verify/replace-regex-census.mjs
+!/tools/verify/replace-regex-e2e.mjs
+!/tools/verify/rss-census.mjs
+!/tools/verify/rss-check.mjs
+!/tools/verify/selfcheck.mjs
+!/tools/verify/shelf-layout-check.mjs
+!/tools/verify/shelf-layout-measure.mjs
+!/tools/verify/source-editor-check.mjs
+!/tools/verify/source-health-check.mjs
+!/tools/verify/source-login-check.mjs
+!/tools/verify/source-picker-check.mjs
+!/tools/verify/source-scale-check.mjs
+!/tools/verify/stalled-client-check.mjs
+!/tools/verify/subscription-check.mjs
+!/tools/verify/uiaudit.mjs
+!/tools/verify/urloptions-census.mjs
+!/tools/verify/version-check.mjs
+!/tools/verify/webview-login-probe.mjs
+!/tools/verify/frame-metrics.mjs
+!/tools/verify/ui-shell-check.mjs
+!/tools/verify/logs-ui-check.mjs
+!/tools/verify/search-layout-check.mjs
+!/tools/verify/toc-rule-check.mjs
+!/tools/verify/local-image-check.mjs
+!/tools/verify/specified-source-search-check.mjs
+!/tools/verify/zip-make.mjs
+!/tools/verify/md-table-check.mjs
+# AGENTS.md 与 docs 里点名引用到的这几份也放出来：门禁与工具"文档里写着、仓库里没有"，
+# 别人 clone 下来照着跑只会得到一条 ENOENT（开源前对账引用面时抓到的 7 份）。
+!/tools/verify/external-login-check.mjs
+!/tools/verify/external-login-ui-check.mjs
+!/tools/verify/portal-theme-check.mjs
+!/tools/verify/preview.mjs
+!/tools/verify/snapshot.mjs
+!/tools/verify/testreport.mjs
+!/tools/verify/tts-custom-engine-check.mjs
+!/tools/verify/next-mount-check.mjs
+!/tools/verify/next-ui-check.mjs
+!/tools/verify/package-check.mjs
+# 桌面化门禁（PROPOSAL-017 / ADR-017 一期验证）
+!/tools/verify/desktop-check.mjs
+# 首次打开的用户协议门禁
+!/tools/verify/agreement-check.mjs
+!/tools/verify/cache-range-check.mjs
+!/tools/verify/explore-empty-check.mjs
+!/tools/verify/webview-ui-check.mjs
+!/tools/verify/webview-diagnostics-check.mjs
+!/tools/verify/retired/
+# ── 2026-10-21：白名单从「逐条列文件」改成「按模式放行 + 明确排除」─────────────
+# 逐条列的方式漏了 12 个文件，其中 offline-login-check.mjs 是 45 个门禁之一：
+# 它只在本地磁盘上、CI checkout 后不存在 ⇒ 「本地跑 45 个 / CI 跑 44 个」，
+# 而没有任何机制会发现这个差集。另外 4 个漏掉的脚本里写死了 E:/legado/legado
+# 与本机 Chrome 路径，因为没入库，opensource-hygiene-check（只扫 git ls-files）
+# 也永远扫不到它们 —— 正是它声称要防的那类 bug。
+# 改成模式放行后，新增门禁脚本不必再记得回来加一行。
+!/tools/verify/*.mjs
+!/tools/verify/baselines/
+!/tools/verify/retired/
+# 例外：这几个是一次性本机探针/产物脚本，含本机绝对路径或写本机图标/快捷方式，
+# 按 docs/STRUCTURE.md「产物出库」不入库（真要用就本地留着）。
+/tools/verify/webview-diagnose.mjs
+/tools/verify/webview-sandbox-probe.mjs
+/tools/verify/webview-ui-diagnostics.mjs
+/tools/verify/make-ico.mjs
+/tools/verify/render-icons.mjs
+/tools/verify/zip-inspect.mjs
+/tools/verify/extract-failures.mjs
+/tools/verify/test-failure-detail.mjs
+/tools/verify/options-e2e-probe.mjs
+/tools/verify/commit-pending-waves.mjs
+/tools/verify/healthcheck.mjs
+# start.mjs / stop.mjs 已改为「以自身目录为安装根 + 全部位置可环境变量覆盖」，
+# 不再含任何本机绝对路径，所以从忽略名单里放出来随仓库分发。

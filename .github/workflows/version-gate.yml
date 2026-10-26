@@ -1,0 +1,221 @@
+# ---------------------------------------------------------------------------
+# 青阅（QingYue）版本 / 变更日志治理门禁。
+# 仅约束治理动作，不修改任何应用源码。
+# 落点：应用仓库（含 Gradle 真源与 CI），发布类 job 只绑 main 与 v* Tag。
+#
+# 设计要点（详见 docs/ 里的版本日志治理说明）：
+#   - PR 门禁：代码路径变更时，要求 CHANGELOG 或 version 同时变更。
+#   - Tag/version 一致性：Tag 去掉 v 后必须 == Gradle version，否则中止发布。
+#   - 发布后冒烟：启动产物，断言 /healthz 返回的 version == Tag。
+#
+# 2026-10-26 重建：重组时这 7 个 workflow 被压成一行（0 换行 + BOM），GitHub 解析不了，
+# CI 自重组起从未真的跑过。除格式外改了四处：
+#   1. PR 门禁的两个"动过没有"匹配从 `^CHANGELOG.md$` / `app/build.gradle$` 改成
+#      `product/` 前缀 —— 重组后这两个文件都在 product/ 下，旧写法永远匹配不到，
+#      于是"改了代码没记日志"会被判成豁免（假绿）；
+#   2. 发布冒烟从 TODO 骨架改成真的跑：构建 → 起服务 → 断言 /healthz 的 version == Tag，
+#      并顺手断言 `ui` 指纹非空（0.8.7 起 /healthz 会自报包内前端哈希，这正是
+#      "产物来自旧构建"最直接的探测器）；
+#   3. 派生文件校验按统一仓的层级走（VERSION 在仓库根、package.json 两层各一份）；
+#   4. 第三方 Action 的 SHA 固定只对 checkout / setup-java 保留（原样），
+#      新加的 setup-node 暂用 @v4 —— 全量固定 SHA 记在待办里，不在本次顺手改。
+# ---------------------------------------------------------------------------
+name: 版本与变更日志门禁
+
+# 发布类工作流只绑 main 与 v* Tag。开发分支只跑 build+lint，不进入本工作流。
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: version-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: product
+
+jobs:
+  # =========================================================================
+  # Job 1：PR 门禁 —— 代码路径变更时要求 CHANGELOG 或 version 变更
+  # =========================================================================
+  pr-gate:
+    name: PR 门禁（代码路径变更需 CHANGELOG/version 同行）
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出
+        # 第三方 Action 固定到 commit SHA（供应链安全）
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        with:
+          fetch-depth: 0
+
+      - name: 判定变更范围
+        id: scope
+        shell: bash
+        run: |
+          # 代码路径（触发版本/CHANGELOG 门禁）；按需增删
+          CODE_PATHS="product/app/ product/web/ product/gradle/ product/build.gradle product/settings.gradle"
+          CHANGED=$(git -C "$GITHUB_WORKSPACE" diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+            || git -C "$GITHUB_WORKSPACE" diff --name-only HEAD~1 HEAD)
+          echo "changed files:"
+          echo "$CHANGED"
+          printf '%s\n' "$CHANGED" > /tmp/changed.txt
+          code_touched=0
+          for p in $CODE_PATHS; do
+            if grep -q "^$p" /tmp/changed.txt; then code_touched=1; break; fi
+          done
+          echo "code_touched=$code_touched" >> "$GITHUB_OUTPUT"
+          # 是否动了 CHANGELOG 或 version —— 重组后两者都在 product/ 下，
+          # 旧写法（^CHANGELOG.md$）永远匹配不到，门禁会假绿。
+          changelog_touched=$(grep -c '^product/CHANGELOG\.md$' /tmp/changed.txt || true)
+          version_touched=$(grep -c 'product/app/build\.gradle$' /tmp/changed.txt || true)
+          echo "changelog_touched=$changelog_touched" >> "$GITHUB_OUTPUT"
+          echo "version_touched=$version_touched" >> "$GITHUB_OUTPUT"
+
+      - name: 门禁校验
+        if: steps.scope.outputs.code_touched == '1'
+        shell: bash
+        run: |
+          if [ "${{ steps.scope.outputs.changelog_touched }}" != "0" ] || \
+             [ "${{ steps.scope.outputs.version_touched }}" != "0" ]; then
+            echo "✓ 代码路径变更已附带 CHANGELOG 条目或 version 变更，门禁通过。"
+          else
+            echo "✗ 代码路径有变更，但既未改 CHANGELOG.md 也未改 app/build.gradle 的 version。"
+            echo "  请同步更新 CHANGELOG 或 bump version（细则见 docs/changelog-guide.md）。"
+            exit 1
+          fi
+
+      - name: 豁免说明
+        if: steps.scope.outputs.code_touched != '1'
+        shell: bash
+        run: echo "本 PR 未触及代码路径，门禁豁免（纯文档/内容/CI 变更）。"
+
+  # =========================================================================
+  # Job 2：Tag / version 一致性校验（发布前红线）
+  # =========================================================================
+  tag-version-consistency:
+    name: Tag 与 version 一致性校验
+    # 只在打 v* Tag 时跑；main 上的普通 push 不触发（避免误报）
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: 解析 Gradle version（真源）
+        id: gradle
+        shell: bash
+        run: |
+          # 从 app/build.gradle 取 project 级 version；排除 toolVersion 等相似字段
+          VER=$(grep -m1 -E "^version[[:space:]]*[:=]" app/build.gradle \
+                | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+          echo "gradle_version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Gradle 真源 version = $VER"
+
+      - name: 解析 Tag 并校验
+        id: tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"                 # 例如 v0.8.7
+          TAG_NO_V="${TAG#v}"                       # 0.8.7
+          GRADLE="${{ steps.gradle.outputs.gradle_version }}"
+          echo "tag=$TAG  tag_no_v=$TAG_NO_V  gradle=$GRADLE"
+          if [ -z "$GRADLE" ]; then
+            echo "✗ 未能解析 Gradle version，中止发布。" && exit 1
+          fi
+          if [ "$TAG_NO_V" != "$GRADLE" ]; then
+            echo "✗ Tag($TAG_NO_V) 去掉 v 后 ≠ Gradle version($GRADLE)，中止发布。"
+            echo "  发布要求 version bump → CHANGELOG → Tag → Release 原子化。"
+            exit 1
+          fi
+          echo "✓ Tag 与 version 一致（$TAG_NO_V）。"
+
+      # 派生文件（VERSION / 两层 package.json）与真源必须一致 —— 漂移过一次就是
+      # "界面显示 0.8.6、产物叫 0.8.7" 这种查半天的东西。
+      - name: 校验派生文件一致性
+        shell: bash
+        run: |
+          GRADLE="${{ steps.gradle.outputs.gradle_version }}"
+          fail=0
+          if [ -f "../VERSION" ]; then
+            VV=$(tr -d 'v' < ../VERSION | tr -d '[:space:]')
+            [ "$VV" = "$GRADLE" ] && echo "✓ VERSION=$VV" || { echo "✗ VERSION=$VV ≠ $GRADLE"; fail=1; }
+          fi
+          for pf in package.json ../package.json web/package.json; do
+            if [ -f "$pf" ]; then
+              pv=$(grep -m1 -E '"version"' "$pf" | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1)
+              [ "$pv" = "$GRADLE" ] && echo "✓ $pf version=$pv" || { echo "✗ $pf version=$pv ≠ $GRADLE"; fail=1; }
+            fi
+          done
+          exit $fail
+
+  # =========================================================================
+  # Job 3：发布冒烟（起真产物，断言 /healthz 的 version == Tag）
+  # =========================================================================
+  release-smoke:
+    name: 发布冒烟（/healthz 版本断言）
+    needs: [tag-version-consistency]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: 检出
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: 准备 JDK 17
+        uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedbca3e77
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: 准备 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: product/web/package-lock.json
+
+      - name: 构建产物
+        run: |
+          npm ci --prefix web
+          chmod +x gradlew
+          # 三步一体：web dist → :app:fatJar → bundled-ui-check
+          npm run build
+
+      - name: 起产物并断言版本与界面指纹
+        shell: bash
+        run: |
+          TAG_NO_V="${GITHUB_REF_NAME#v}"
+          node start.mjs --no-open
+          BODY=$(curl -s --max-time 10 http://127.0.0.1:1234/healthz)
+          echo "healthz: $BODY"
+          HV=$(printf '%s' "$BODY" | grep -oE '"version"[ ]*:[ ]*"[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ "$HV" != "$TAG_NO_V" ]; then
+            echo "✗ 运行版本=$HV ≠ Tag=$TAG_NO_V —— 产物来自旧构建，发布失败。"
+            exit 1
+          fi
+          # 0.8.7 起 /healthz 自报包内前端哈希：空 = 这个包里根本没烤进界面
+          UI=$(printf '%s' "$BODY" | grep -oE '"ui"[ ]*:[ ]*"[^"]+"' | sed -E 's/.*"ui"[ ]*:[ ]*"([^"]*)".*/\1/')
+          if [ -z "$UI" ]; then
+            echo "✗ /healthz 没报出包内前端指纹（static/index.html 不在包里？）"
+            exit 1
+          fi
+          echo "✓ 运行版本=$HV，包内前端=$UI"
+          node tools/verify/bundled-ui-check.mjs
+
+      - name: 收尾停服
+        if: always()
+        run: node stop.mjs || true

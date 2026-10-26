@@ -1,0 +1,128 @@
+# 框架守门（契约多把锁）
+#
+# 钉死"框架只立稳固钩子、内容交外部"这条硬约束，四把锁各自盯一段：
+#   前端双锁 —— product/web/test/ApiCatalog.test.ts（端点总数与分组数的绝对计数断言，
+#                外加 AI 自定义接入 8 条）+ FrameworkHasNoContent.test.ts（内容→框架方向，
+#                容器不许反向依赖）
+#   后端守门 —— :app:verifyFramework（plugin/ 容器不夹带具体功能 + 端点计数契约）
+#   文档第三锁 —— scripts/gen-api-reference.mjs --check（agent-api.json ↔ docs/API-REFERENCE.md）
+#   日志第四锁 —— scripts/changelog.mjs --check（有 feat/fix 提交却没进日志就红）
+#   结构第五锁 —— tools/verify/depth-check.mjs（域包平铺、前端限深）
+#
+# 2026-10-26 重建：重组时这 7 个文件被压成一行（0 换行 + BOM），GitHub 解析不了，
+# CI 自重组起从未真的跑过。重写时把路径挪到 product/ 下、JDK 统一 17，
+# 并且**不再在 job 名里抄端点数** —— 权威值只有 ApiCatalog.test.ts 那条绝对断言，
+# 文档抄一份就必然滞后（"139/19/8" 就是上一个抄本，实际早已是 141）。
+# 与本地一一对应：`npm --prefix product/web test`、`./gradlew :app:verifyFramework`、
+# `npm run docs:api-check`。
+name: 框架守门（契约双锁）
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一 ref 上取消旧运行，省 CI 分钟。
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: product
+
+jobs:
+  frontend-gate:
+    name: 前端双锁（计数断言 + 内容→框架方向）
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: product/.nvmrc
+          cache: npm
+          cache-dependency-path: product/web/package-lock.json
+
+      - name: 安装前端依赖
+        # 显式 --prefix web：product 根的 npm ci 装的是根包，根 `npm test` 还会去调 Gradle
+        # （这个 job 没有 JDK，必然红）。
+        run: npm ci --prefix web --no-audit --no-fund
+
+      - name: 跑前端判据（含 ApiCatalog / FrameworkHasNoContent 双锁）
+        run: npm --prefix web test
+
+  changelog-gate:
+    name: 更新日志不漏记（feat/fix 必须有用户可见条目）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        # 边界要看"最后一笔动过 CHANGELOG 的提交"，浅克隆会把这条边界切掉，
+        # 于是把已记录的提交误报成漏记。拉全历史（这仓库不大）。
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: product/.nvmrc
+
+      # 提交是日志的唯一事实来源，那么"有 feat/fix 却没进日志"就该红。
+      # 少了这一条，"自动更新日志"只剩一个可选脚本，没人会被拦。
+      - name: 有该记而没记的改动就失败
+        run: node scripts/changelog.mjs --check
+
+  backend-gate:
+    name: 后端守门（框架不夹带内容 + 端点计数契约）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # toolchain 锁 17（app/build.gradle），配 21 会因找不到 17 而红
+          java-version: '17'
+          cache: gradle
+
+      - name: 跑框架契约测试（不拉起 headless Chrome，快且稳）
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:verifyFramework --no-daemon --console=plain
+
+  doc-gate:
+    name: 文档契约（API-REFERENCE 与 agent-api.json 不漂）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: product/.nvmrc
+
+      # ApiCatalog.test.ts 钉「代码路由 ↔ JSON」，这里钉「JSON ↔ 人读的文档」。
+      # 少了这一步，改了端点忘了重跑生成器，文档就静默说一套、接口做一套。
+      - name: 核对 API-REFERENCE 是最新生成结果
+        run: node scripts/gen-api-reference.mjs --check
+
+  structure-gate:
+    name: 目录深度（后端域包平铺 / 前端限深）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: product/.nvmrc
+
+      # 把「不要太深」钉成红线：后端 io/legado 域包不建子子包、前端 web/src 不再往下嵌。
+      # 阈值按当前实测结构标定（见 tools/verify/depth-check.mjs 顶部），只有新增更深文件才红。
+      - name: 目录深度门禁
+        run: node tools/verify/depth-check.mjs

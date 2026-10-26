@@ -1,0 +1,74 @@
+// 示例插件的独立构建脚本 —— 它不属于主工程（主工程 settings.gradle 只 include ':app'）。
+//
+// 用法（在本目录）：
+//   ../../gradlew.bat jar          Windows
+//   ../../gradlew jar              Linux / macOS
+//
+// 产物：build/libs/hello-plugin.jar —— 丢进 <安装根>/plugins/ 后重启青阅即可被装载。
+//
+// 为什么单独一个工程而不是主工程的一个子模块：
+// 插件是**外部**代码，不该和框架一起编译。共用一个 Gradle 工程会让
+// "插件能不能脱离源码树独立构建"这个最基本的问题永远测不出来。
+
+plugins {
+    // 必须与主工程一致的 Kotlin 版本（见 gradle/libs.versions.toml 的 `kotlin`）。
+    // 版本对不上会报 "Module was compiled with an incompatible version of Kotlin" ——
+    // 那不是说插件写错了，只是编译器和主程序产物不是同一代。
+    id 'org.jetbrains.kotlin.jvm' version '2.4.10'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // 编译期依赖主程序产物里已经存在的类（Plugin / Tool / AgentResult …）。
+    // compileOnly：运行期这些类由青阅自己的类加载器提供，插件 jar 不该把它们再打包一份，
+    // 否则同一个类会被两个 ClassLoader 各加载一次，`instanceof` 直接判假。
+    compileOnly files(frameworkJar())
+
+    // kotlin-stdlib 也必须 compileOnly：主程序已经带了，重复打包会让插件体积翻倍。
+    compileOnly "org.jetbrains.kotlin:kotlin-stdlib:2.4.10"
+}
+
+/**
+ * 找主程序的 jar。
+ *
+ * 优先用 `legado-<version>.jar`（普通 jar，类齐全、体积小）；
+ * 只有 fatJar 在时退回 `legado-*-all.jar`（也能编译，只是慢一点）。
+ */
+def frameworkJar() {
+    def libs = file('../../app/build/libs')
+    if (!libs.exists()) {
+        throw new GradleException(
+            "找不到主程序产物目录：${libs}\n" +
+            "先在仓库根跑一次：gradlew :app:jar"
+        )
+    }
+    def plain = (libs.listFiles() ?: [] as File[]).findAll { it.name ==~ /legado-\d[\d.]*\.jar/ }
+    if (!plain.isEmpty()) return plain.sort { it.name }.last()
+    def fat = (libs.listFiles() ?: [] as File[]).findAll { it.name ==~ /legado-.*-all\.jar/ }
+    if (!fat.isEmpty()) return fat.sort { it.name }.last()
+    throw new GradleException(
+        "在 ${libs} 里找不到 legado-*.jar\n" +
+        "先在仓库根跑一次：gradlew :app:jar"
+    )
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
+jar {
+    archiveBaseName = 'hello-plugin'
+    // 只要一个普通 jar：META-INF/services 里的声明就是插件被发现的方式。
+    manifest {
+        attributes(
+            'Implementation-Title': 'QingYue Hello Plugin',
+            'Implementation-Version': project.version,
+        )
+    }
+}

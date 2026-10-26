@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  // 判据要直接测 scripts/*.mjs 里的纯逻辑（changelog-lib）。手写一份 .d.mts 等于再造一个
+  // 会漂移的签名，本项目在版本号与端点数上栽过太多次；allowJs 让 TS 从实现里推断。
+  // 只开在这份 test 配置里：构建用的 tsconfig.json 不含 scripts、也不含 test，不受影响。
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "allowJs": true
+  },
+  "include": ["src", "test"]
+}

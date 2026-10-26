@@ -1,0 +1,47 @@
+ApiRoutesHttpTest > adding book to bookshelf returns immediately without blocking and caches cover asynchronously
+ApiRoutesHttpTest > adding book to bookshelf uses locally cached cover immediately
+ApiRoutesHttpTest > batch source operations and health check endpoint
+ApiRoutesHttpTest > bookshelf crud, reading progress, status and source switch routes
+ApiRoutesHttpTest > healthz endpoint returns ok status
+ApiRoutesHttpTest > search, debug, book details, chapters and content routes
+ApiRoutesHttpTest > source management endpoints full crud, validate, export and import
+ApiRoutesHttpTest > subscriptions crud and update endpoints
+BookCacheServiceTest > book with 100 percent pre-cached chapters immediately transitions to ready
+BookCacheServiceTest > bounded chapter downloads run concurrently within the configured 4 to 8 worker window
+BookCacheServiceTest > breakpoint resume preserves existing cached chapters and completes remaining chapters
+BookCacheServiceTest > caches all chapters and sets shelf cache state to ready
+BookCacheServiceTest > cancels active cache job cleanly
+BookCacheServiceTest > deduplicates enqueue calls for already caching books
+BookCacheServiceTest > handles non-existent source gracefully with failed status
+BookCacheServiceTest > handles partial chapter download failures without aborting the batch
+BookCacheServiceTest > rejects oversized chapters exceeding 2 MiB limit
+BookCacheServiceTest > reports intermediate throttled cache progress while batch is still caching
+BookCacheServiceTest > start method automatically enqueues all shelf cache requests
+CrossFeatureBackendTest > cancelling active cache job during concurrent reading does not corrupt database
+CrossFeatureBackendTest > concurrent search and background chapter caching execute without SQLite lock contention
+CrossFeatureBackendTest > high concurrency SQLite connection pool stress under mixed read write operations
+CrossFeatureBackendTest > multi-source switching preserves reading progress across sources and purges old cache
+CrossFeatureBackendTest > removing book from shelf during active cache cleanly purges records without leaking locks
+CrossFeatureBackendTest > sequential multi-source switching across three sources maintains bookshelf integrity
+CrossFeatureBackendTest > source import and update during active concurrent search queries
+DatabaseLifecycleTest > bookshelf switch cleans orphan covers and cache entries
+DatabaseLifecycleTest > bookshelf switch retains existing cover when target source has no cover
+DatabaseLifecycleTest > case-insensitive NOCASE sorting orders mixed-case source names predictably
+DatabaseLifecycleTest > concurrent multi-threaded reads and writes execute without lock contention
+DatabaseLifecycleTest > database initializes with WAL mode and creates required tables and indices
+DatabaseLifecycleTest > listSources filters sources by name and url with case-insensitive ordering
+DatabaseLifecycleTest > listSources projection query returns summaries without loading JSON payloads into memory
+DatabaseLifecycleTest > saveSource prevents version conflicts and increments version
+DatabaseLifecycleTest > subscription lifecycle tracks successes failures and deletions
+E2EScenariosTest > scenario 1 - multi-source streaming search and instant book open
+E2EScenariosTest > scenario 2 - offline caching 2000 chapters with concurrent reading and progress updates
+E2EScenariosTest > scenario 3 - cache interruption and instant breakpoint resume
+E2EScenariosTest > scenario 4 - large book 5000 chapters TOC virtual browsing and chapter retrieval
+E2EScenariosTest > scenario 5 - high concurrency source management and query
+EdgeTtsTest > tts routes provide voice list and reject empty speak requests
+ReplaceRuleE2EIntegrationTest > full end-to-end integration test for replace rules API and reading content purification
+SearchRoutesTest > search filters records by sourceIds parameter
+SearchRoutesTest > search returns candidates immediately without deep 3-tier validation
+SearchRoutesTest > streaming search emits results per source immediately with accurate counters
+SubscriptionServiceHttpTest > subscription service start and stop lifecycle
+SubscriptionServiceHttpTest > subscription service validates and blocks loopback and private ip addresses

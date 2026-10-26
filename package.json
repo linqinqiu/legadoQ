@@ -1,0 +1,17 @@
+{
+  "name": "qingyue-ai-framework",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "青阅 QingYue - 本地阅读服务（后端与内置 UI 在 legado）",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "npm --prefix product start",
+    "stop": "node product/stop.mjs",
+    "build": "npm --prefix product run build",
+    "test": "npm --prefix product test",
+    "dev": "npm --prefix product run dev"
+  }
+}
