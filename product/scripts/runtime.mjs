@@ -1,5 +1,6 @@
 // 运行时位置解析：start.mjs 与 stop.mjs 共用一份，避免两边端口/路径各写一遍而飘掉。
 // 优先级：.env 文件 > 进程环境变量 > 默认值。默认值全部落在安装目录内，一个字节都不写 C 盘。
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,29 +72,45 @@ export function ensureDirectories(runtime) {
 }
 
 /**
- * 挑出**该跑的那一份** fat jar，返回文件名（没有则 null）。
- *
- * 收口的原因有两层：
- * 1. 重复：`start.mjs`、`tools/make-cds.mjs`、`tools/verify/bundled-ui-check.mjs` 原来各写一遍
- *    `readdirSync(libs).filter(-all.jar).sort().pop()` —— 三处必须挑同一个包，否则门禁绿而
- *    跑的是另一份。
- * 2. 潜伏 bug：字典序在 0.8.x 单数字时代碰巧对，进到 `legado-0.8.10-all.jar` 会把
- *    `legado-0.8.6-all.jar` 当成最新的（字符串比较里 '1' < '6'）。到时候的表现是
- *    "升级到 0.8.10 了，跑起来的还是 0.8.6"，最难查。
- *
- * 版本号相同（同一版重建）时按 mtime 兜底，取最近构建的那一份。
+ * 当前声明的版本号：安装根上一级的 `VERSION` 优先，回落 `app/build.gradle` 的 `version`。
+ * 读不到返回空串（例如只拷走 jar 的部署环境），调用方据此退化。
  */
-export function newestFatJar(libsDir) {
+export function declaredVersion(root = installRoot) {
+  const outer = join(root, '..', 'VERSION');
+  if (existsSync(outer)) {
+    const v = readFileSync(outer, 'utf8').replace(/^v/i, '').trim();
+    if (/^\d+\.\d+\.\d+$/.test(v)) return v;
+  }
+  const gradle = join(root, 'app', 'build.gradle');
+  if (existsSync(gradle)) {
+    const m = /^\s*version\s*=\s*['"](\d+\.\d+\.\d+)['"]/m.exec(readFileSync(gradle, 'utf8'));
+    if (m) return m[1];
+  }
+  return '';
+}
+
+/**
+ * 挑出**该跑的那一份** fat jar，返回文件名；没有则 null。
+ *
+ * 规则是"先对上当前声明版本，同版本再按 mtime 取最近构建的那一份"，不是"取版本号最大的"。
+ * 2026-10-26 归零版本时踩过：`legado-0.0.0-all.jar` 已经打出来了，按最高版本挑却选中
+ * 旧的 `legado-0.8.7-all.jar` —— 于是门禁报"包内前端不是当前那份"、启动的还是旧界面。
+ * 版本回退、跳号、同版本重打这三种情况，都只有"版本 + mtime"能选对。
+ *
+ * 读不到声明版本（只拷 jar 的部署环境）才退回旧行为：最高版本、同版本取 mtime。
+ *
+ * 收口成一处还有第二层原因：`start.mjs`、`tools/make-cds.mjs`、
+ * `tools/verify/bundled-ui-check.mjs` 必须挑同一个包，否则门禁绿而跑的是另一个。
+ */
+export function newestFatJar(libsDir, wantVersion = declaredVersion()) {
   if (!existsSync(libsDir)) return null;
   const names = readdirSync(libsDir).filter((name) => name.endsWith('-all.jar'));
   if (!names.length) return null;
-  const version = (name) => (name.match(/(\d+)\.(\d+)\.(\d+)/) || [, '0', '0', '0']).slice(1).map(Number);
-  names.sort((a, b) => {
-    const [pa, pb] = [version(a), version(b)];
-    for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-    return statSync(join(libsDir, a)).mtimeMs - statSync(join(libsDir, b)).mtimeMs;
-  });
-  return names[names.length - 1];
+  const versionOf = (name) => (name.match(/(\d+)\.(\d+)\.(\d+)/) || [, '0', '0', '0']).slice(1).join('.');
+  const byMtime = (a, b) => statSync(join(libsDir, b)).mtimeMs - statSync(join(libsDir, a)).mtimeMs;
+  if (wantVersion) return names.filter((name) => versionOf(name) === wantVersion).sort(byMtime)[0] ?? null;
+  const highest = names.slice().sort((a, b) => (versionOf(a) > versionOf(b) ? 1 : versionOf(a) < versionOf(b) ? -1 : 0)).pop();
+  return names.filter((name) => versionOf(name) === versionOf(highest)).sort(byMtime)[0] ?? null;
 }
 
 /**
@@ -105,4 +122,29 @@ export function newestFatJar(libsDir) {
  */
 export function bundleAssetName(html) {
   return (html || '').match(/assets\/(index-[A-Za-z0-9_-]+\.js)/)?.[1] ?? '';
+}
+
+/**
+ * 读出 jar（zip）里某个条目的文本；读不到返回 null。
+ *
+ * 不引第三方 zip 库：Windows 走自带的 .NET，类 Unix 走 `unzip`。
+ * 用途是**按内容判新鲜度** —— mtime 会假阳性：Vite 每次重发 `web/dist` 都刷新时间戳，
+ * 而 Gradle 在内容没变时把 `fatJar` 判为 UP-TO-DATE、包时间戳停在上一轮，
+ * 只看 mtime 就会把"内容完全一致的当前包"误判成旧包。
+ */
+export function readJarEntry(jarPath, entry = 'static/index.html') {
+  if (!existsSync(jarPath)) return null;
+  try {
+    if (process.platform === 'win32') {
+      const ps = 'Add-Type -AssemblyName System.IO.Compression.FileSystem;' +
+        `$z=[System.IO.Compression.ZipFile]::OpenRead('${jarPath.replace(/'/g, "''")}');` +
+        `$e=$z.Entries | Where-Object { $_.FullName -replace '\\\\','/' -eq '${entry}' };` +
+        'if ($e) { $s=New-Object System.IO.StreamReader($e.Open()); $s.ReadToEnd(); $s.Close() };' +
+        '$z.Dispose()';
+      return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', maxBuffer: 1 << 24 });
+    }
+    return execFileSync('unzip', ['-p', jarPath, entry], { encoding: 'utf8', maxBuffer: 1 << 24 });
+  } catch {
+    return null;
+  }
 }

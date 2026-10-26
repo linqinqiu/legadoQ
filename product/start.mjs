@@ -2,7 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, openSync, readFileSync, statSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { bundleAssetName, childEnvironment, ensureDirectories, newestFatJar, resolveRuntime } from './scripts/runtime.mjs';
+import { bundleAssetName, childEnvironment, declaredVersion, ensureDirectories, newestFatJar, readJarEntry, resolveRuntime } from './scripts/runtime.mjs';
 
 /**
  * 启动青阅：后台拉起服务，等端口真的能连上了再打开浏览器。
@@ -46,34 +46,48 @@ if (args.port) runtime.port = args.port;
 if (args.host) runtime.host = args.host;
 
 const jar = newestFatJar(runtime.libs);
-if (!jar) { console.error(`没有 ${runtime.libs}\\*-all.jar，先跑 gradle :app:fatJar`); process.exit(1); }
+if (!jar) {
+  const want = declaredVersion();
+  console.error(want
+    ? `没有 legado-${want}-all.jar（当前声明版本 ${want}）。先重建：node stop.mjs && npm run build`
+    : `没有 ${runtime.libs}\\*-all.jar，先跑 gradle :app:fatJar`);
+  process.exit(1);
+}
 
 /**
- * 启动前守卫：**磁盘上有比 fatJar 更新的前端产物，就不起**。
+ * 启动前守卫：**包里的前端必须就是磁盘上刚构建的那一份**，否则不起。
  *
- * 这就是 2026-10-26 那次"重启了但界面还是旧的"的真实成因：那次只重建了普通 jar（`fatJar`
- * 没跑），`-all.jar` 停在三个小时前，而 `start.mjs` 只看文件名、不看新鲜度，于是旧界面
- * 又"成功启动"了一次。（顺带修正一个容易误判的点：Windows 上 JVM 并不会锁死运行中的 jar，
- * 实测 `fatJar` 能就地覆盖，所以问题不在文件锁，在**没人调用 fatJar**。）
+ * 判据用**内容指纹**（jar 内 `static/index.html` 的主 bundle 名 vs `web/dist/index.html`），
+ * 不用 mtime —— Vite 每次重发 `web/dist` 都会刷新时间戳，而 Gradle 在内容没变时把
+ * `fatJar` 判为 UP-TO-DATE、包的时间戳停在上一轮，只看 mtime 会把"内容完全一致的当前包"
+ * 误判成旧包（2026-10-26 归零版本后第一次重建就撞上了）。
+ *
+ * 要拦的是 2026-10-26 那次真实事故：只重建了普通 jar、`fatJar` 没跑，`-all.jar` 停在三小时前，
+ * `start.mjs` 只看文件名不看内容，于是旧界面又"成功启动"了一次。
+ * （顺带修正一个容易误判的点：Windows 上 JVM 并不会锁死运行中的 jar，实测 `fatJar` 能就地覆盖，
+ * 所以问题不在文件锁，在**没人调用 fatJar**。）
  *
  * 逃生口 `LEGADO_ALLOW_STALE_JAR=1`：故意跑旧包做回滚验证时用。
  */
 const distIndex = path.join(runtime.root, 'web', 'dist', 'index.html');
-if (existsSync(distIndex) && !process.env.LEGADO_ALLOW_STALE_JAR) {
+if (existsSync(distIndex)) {
   const jarPath = path.join(runtime.libs, jar);
-  const jarMtime = statSync(jarPath).mtimeMs;
-  const distMtime = statSync(distIndex).mtimeMs;
-  if (distMtime > jarMtime + 1000) {
-    console.error(`前端产物比 fatJar 新 —— 这个 jar 里没有当前界面，拒绝启动。`);
-    console.error(`  jar   ${jar}  ${new Date(jarMtime).toISOString()}`);
-    console.error(`  dist  web/dist/index.html  ${new Date(distMtime).toISOString()}`);
+  const distAsset = bundleAssetName(readFileSync(distIndex, 'utf8'));
+  const jarAsset = bundleAssetName(readJarEntry(jarPath) || '');
+  const stale = !jarAsset
+    // 读不到包内条目（没有 PowerShell/unzip，或包里没有 index.html）→ 退回旧的 mtime 判断
+    ? statSync(distIndex).mtimeMs > statSync(jarPath).mtimeMs + 1000
+    : distAsset !== jarAsset;
+  if (stale && !process.env.LEGADO_ALLOW_STALE_JAR) {
+    console.error(`这个 jar 里没有当前界面，拒绝启动。`);
+    console.error(`  jar   ${jar}  包内前端 ${jarAsset || '(读不到，退回按时间判断)'}`);
+    console.error(`  dist  web/dist  ${distAsset || '(读不到)'}`);
     console.error(`先重建（顺序不能反，运行中的进程加载的是旧包）：`);
     console.error(`  node stop.mjs && npm run build && node start.mjs`);
     console.error(`确实要跑这个旧包（回滚验证）：LEGADO_ALLOW_STALE_JAR=1 node start.mjs`);
     process.exit(1);
   }
-  const distAsset = bundleAssetName(readFileSync(distIndex, 'utf8'));
-  if (distAsset) console.log(`界面指纹 ${distAsset}`);
+  if (distAsset) console.log(`界面指纹 ${distAsset}${jarAsset && jarAsset !== distAsset ? `（jar 内是 ${jarAsset}，靠 LEGADO_ALLOW_STALE_JAR 放行）` : ''}`);
 }
 const env = childEnvironment(runtime);
 ensureDirectories(runtime);

@@ -8,11 +8,10 @@
 // 只读，不写任何文件。跑法：node tools/verify/bundled-ui-check.mjs
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { ROOT } from './env.mjs'
-// 与 start.mjs / make-cds.mjs 共用同一份"该跑哪个包、构建指纹是什么"的判断：
-// 三处各写一遍的话，门禁绿而实际跑的是另一个包。
-import { bundleAssetName, newestFatJar } from '../../scripts/runtime.mjs'
+// 与 start.mjs / make-cds.mjs 共用同一份"该跑哪个包、构建指纹是什么、怎么读包内条目"的判断：
+// 各写一遍的话，门禁绿而实际跑的是另一个包。
+import { bundleAssetName, declaredVersion, newestFatJar, readJarEntry } from '../../scripts/runtime.mjs'
 
 const DIST_INDEX = path.join(ROOT, 'web/dist/index.html')
 const RESOURCES_INDEX = path.join(ROOT, 'app/build/resources/main/static/index.html')
@@ -24,27 +23,6 @@ const record = (name, state, detail = '') => results.push({ name, state, detail 
 
 /** Vite 给主 bundle 起的名字就是内容哈希，取它当指纹。 */
 const fingerprint = bundleAssetName
-
-/**
- * 读出 jar 里的 `static/index.html`。
- *
- * 不引第三方 zip 库：Windows 走自带的 .NET，类 Unix 走 `unzip`，两条都不在就跳过这一格
- * （跳过会打印出来，不会假装通过）。
- */
-function indexFromJar(jarPath) {
-  if (process.platform === 'win32') {
-    const ps = `Add-Type -AssemblyName System.IO.Compression.FileSystem;` +
-      `$z=[System.IO.Compression.ZipFile]::OpenRead('${jarPath.replace(/'/g, "''")}');` +
-      `$e=$z.Entries | Where-Object { $_.FullName -replace '\\\\','/' -eq 'static/index.html' };` +
-      `$s=New-Object System.IO.StreamReader($e.Open());$s.ReadToEnd();$s.Close();$z.Dispose()`
-    return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', maxBuffer: 1 << 24 })
-  }
-  try {
-    return execFileSync('unzip', ['-p', jarPath, 'static/index.html'], { encoding: 'utf8', maxBuffer: 1 << 24 })
-  } catch {
-    return null
-  }
-}
 
 if (!fs.existsSync(DIST_INDEX)) {
   console.log('bundled-ui-check: 前置不满足 —— 没有 web/dist/index.html（先跑 npm --prefix web run build），跳过断言')
@@ -63,11 +41,15 @@ if (fs.existsSync(RESOURCES_INDEX)) {
 
 const jar = newestFatJar(LIBS)
 if (!jar) {
-  record('fatJar', 'skip', 'app/build/libs 里没有 *-all.jar（还没打过分发包）')
+  const want = declaredVersion()
+  const have = fs.existsSync(LIBS) ? fs.readdirSync(LIBS).filter((n) => n.endsWith('-all.jar')).join(', ') : '(目录不存在)'
+  record('fatJar', 'skip', want
+    ? `没有 legado-${want}-all.jar；libs 里现有：${have || '（空）'} —— 版本改过就要重跑 npm run build`
+    : 'app/build/libs 里没有 *-all.jar（还没打过分发包）')
 } else {
   let inside = null
   try {
-    inside = fingerprint(indexFromJar(path.join(LIBS, jar)) || '')
+    inside = fingerprint(readJarEntry(path.join(LIBS, jar)) || '')
   } catch (error) {
     record('fatJar 内前端', 'skip', `读不出包内 static/index.html：${error instanceof Error ? error.message.split('\n')[0] : error}`)
     inside = ''
