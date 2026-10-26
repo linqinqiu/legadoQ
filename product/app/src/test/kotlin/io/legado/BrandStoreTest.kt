@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.nio.file.Files
 
@@ -25,6 +26,17 @@ class BrandStoreTest {
     )
 
     private fun tempHome() = Files.createTempDirectory("legado-brand")
+
+    /**
+     * 随包 manifest 是**前端构建产物**（`web/public` → `dist` → processResources 拷进 `static/`），
+     * 只跑后端测试、没跑过 web 构建时它压根不在 classpath 上。这时该报的是"前置条件没满足"，
+     * 而不是让人以为打包环节坏了。CI 的后端 job 会先构建前端，所以那两条在 CI 上是真跑。
+     */
+    private fun packagedManifest(): String {
+        val text = BrandManifest.packagedText()
+        assumeTrue("包里没有随包 manifest：先跑 npm --prefix web run build", !text.isNullOrBlank())
+        return text!!
+    }
 
     @Test
     fun `没配品牌时是空品牌且显示名回落内置`() {
@@ -131,14 +143,14 @@ class BrandStoreTest {
 
     @Test
     fun `清单改写 没配品牌时一个字节都不动`() {
-        val packaged = BrandManifest.packagedText()
-        assertTrue("随包 manifest 必须读得到（jar 里没有它说明打包环节坏了）", !packaged.isNullOrBlank())
+        val packaged = packagedManifest()
         val same = BrandManifest.render(Brand(), null, null)
         assertEquals("没设品牌就该原样发内置那份", packaged, same)
     }
 
     @Test
     fun `清单改写 名称与主题色替换而内置图标全部留着`() {
+        packagedManifest() // 只确认前置条件：没有随包 manifest，下面这些"保留了什么"就无从判起
         val rendered = BrandManifest.render(
             Brand(name = "我的书斋", themeColor = "#123456"),
             iconUrl = "/brand/icon",

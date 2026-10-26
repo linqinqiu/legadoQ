@@ -96,17 +96,37 @@ private object BundledAssets {
     suspend fun respondAsset(call: ApplicationCall, name: String): Boolean = respond(call, name, withBody = true)
 
     suspend fun respondAssetHead(call: ApplicationCall, name: String): Boolean = respond(call, name, withBody = false)
+
+    /** 某个随包资源在不在。缺了只有一个原因：打这个 jar 时 `web/dist` 不存在。 */
+    fun has(resource: String): Boolean =
+        BundledAssets::class.java.classLoader.getResource(resource) != null
 }
+
+/**
+ * 包里没前端时入口回的那句话。以前这些路由照样 `respondResource`，资源缺失被 Ktor 抛成
+ * 一句 500 Internal Server Error：浏览器什么线索都没有，而真正的原因（构建时没生成前端）
+ * 离这条响应很远。补救命令直接写进响应，状态用 503 —— 服务本身是好的，缺的是产物。
+ */
+private const val MISSING_UI_HINT =
+    "这个包里没有前端资源（打包时 web/dist 不存在）。在 product/ 下执行 `npm --prefix web run build`，再重新打包启动。"
 
 fun Route.staticWeb(homeDirectory: Path = Path.of(".")) {
     val respondNoCache: suspend (ApplicationCall, String, ContentType?) -> Unit = { call, resource, contentType ->
         call.response.header(HttpHeaders.CacheControl, "no-cache, no-store, must-revalidate")
         call.response.header(HttpHeaders.Pragma, "no-cache")
         call.response.header(HttpHeaders.Expires, "0")
-        if (contentType != null) {
-            call.response.header(HttpHeaders.ContentType, contentType.toString())
+        if (!BundledAssets.has(resource)) {
+            call.respondText(
+                MISSING_UI_HINT,
+                ContentType.Text.Plain.withCharset(Charsets.UTF_8),
+                HttpStatusCode.ServiceUnavailable
+            )
+        } else {
+            if (contentType != null) {
+                call.response.header(HttpHeaders.ContentType, contentType.toString())
+            }
+            call.respondResource(resource)
         }
-        call.respondResource(resource)
     }
 
     val respondIndex: suspend (ApplicationCall) -> Unit = { call ->

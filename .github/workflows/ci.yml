@@ -48,8 +48,13 @@ jobs:
 
       - name: Run Server Tests
         env:
-          # 测试库建在 java.io.tmpdir；指到 runner 的临时目录，避开沙箱/杀软对系统临时目录上锁
+          # 测试库建在 java.io.tmpdir；指到 runner 的临时目录，避开沙箱/杀软对系统临时目录上锁。
+          # 目录不存在时 build.gradle 会自己建、建不出来就回落系统默认 —— 之前直接透传一个
+          # 没人创建的路径，Files.createTempFile 抛 NoSuchFileException，一轮红了 270 条。
           LEGADO_TEST_TMP: ${{ runner.temp }}/legado-test
+        # 这个 job **故意不构建前端**：它是纯后端的快反馈通道。判"随包产物"的那两个类
+        # （StaticAssetsHttpTest / BrandStoreTest）在前端缺失时会声明前置条件不成立而跳过，
+        # 它们在 build-jar.yml 里跟着真实产物一起跑，那边还有 ui-tests-ran-check 兜着不许跳。
         run: |
           chmod +x gradlew
           ./gradlew :app:test --no-daemon --console=plain

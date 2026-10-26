@@ -72,6 +72,13 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:test --no-daemon --console=plain
 
+      - name: 确认随包产物那批用例是真跑的
+        # 上一步之前已经构建了前端，所以 StaticAssetsHttpTest / BrandStoreTest 的前置条件成立、
+        # 必须真跑。它们在前端缺失时会 assumeTrue 跳过 —— 在 ci.yml 那条只跑后端的流水线里
+        # 那是诚实的，在这里就等于"产物没人验、灯还是绿的"。构建顺序哪天被挪到测试之后，
+        # 这一步会红，而不是静默少跑十几条。
+        run: node tools/verify/ui-tests-ran-check.mjs
+
       - name: Build Standalone Fat JAR & Distribution
         run: ./gradlew :app:fatJar :app:distZip --no-daemon --console=plain
 

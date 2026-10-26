@@ -124,11 +124,20 @@ class StaticAssetsHttpTest {
             testApplication {
                 application { legadoApplication(tempConfig()) }
                 val index = client.get("/")
-                assertEquals(HttpStatusCode.OK, index.status)
-                assertTrue(
-                    "入口必须 no-store：否则换了新 bundle 也永远拿不到",
-                    index.headers[HttpHeaders.CacheControl]?.contains("no-store") == true
-                )
+                if (bundledIndexHtml().isEmpty()) {
+                    // 包里没前端（这台机器没跑过 `npm --prefix web run build`）。
+                    // 这条不许退化成 500：500 只说"服务端炸了"，而真正的原因是构建产物缺失，
+                    // 所以响应里要带上补救命令 —— 见 StaticWeb.MISSING_UI_HINT。
+                    assertEquals(HttpStatusCode.ServiceUnavailable, index.status)
+                    val hint = index.bodyAsText()
+                    assertTrue("要说清该跑什么：$hint", hint.contains("npm --prefix web run build"))
+                } else {
+                    assertEquals(HttpStatusCode.OK, index.status)
+                    assertTrue(
+                        "入口必须 no-store：否则换了新 bundle 也永远拿不到",
+                        index.headers[HttpHeaders.CacheControl]?.contains("no-store") == true
+                    )
+                }
                 assertEquals(HttpStatusCode.NotFound, client.get("/assets/index-definitely-not-here.js").status)
                 // 穿越尝试：编码过的斜杠不该把请求变成"往上跳一层读文件"
                 val traversal = client.get("/assets/..%2Fstatic%2Findex.html")
