@@ -9,16 +9,27 @@ jacoco {
     toolVersion = "0.8.12"
 }
 
+// 测试临时目录：测试库全靠 `Files.createTempFile` 建，落在 java.io.tmpdir 上。
+// 某些开发环境（沙箱/杀软）会对系统临时目录里的 sqlite 文件上锁，表现为大面积
+// 「另一个程序正在使用此文件」假失败，用 LEGADO_TEST_TMP 把它挪到普通目录即可。
+// 这里必须先把目录建出来：指到一个不存在的路径时，createTempFile 直接抛
+// NoSuchFileException，CI 上就是这样一轮红了 270 条（runner.temp 下并没有 legado-test/）。
+def legadoTestTmp = System.getenv("LEGADO_TEST_TMP") ?: System.getProperty("java.io.tmpdir")
+if (legadoTestTmp) {
+    def tmpRoot = file(legadoTestTmp)
+    if (!tmpRoot.exists() && !tmpRoot.mkdirs()) {
+        logger.warn("测试临时目录建不出来，回落系统默认：${tmpRoot}")
+        legadoTestTmp = System.getProperty("java.io.tmpdir")
+    }
+}
+
 test {
     // 测试工作进程的堆上限。不写就按物理内存的一档去要（本机 24GB → 要 6GB 提交空间），
     // 而这台机器同时跑着服务本体 + 门禁的 headless Chrome，提交内存常常只剩几百 MB，
     // 表现是 `insufficient memory for the Java Runtime Environment … mmap failed to map 400556032 bytes`
     // —— 红的是 JVM 起不来，不是任何一条用例失败（实测过一次，崩溃日志落在 app/ 下）。
     maxHeapSize = '768m'
-    // 测试库都是 `Files.createTempFile` 建的（落在 java.io.tmpdir）。某些开发环境（沙箱/杀软）
-    // 会对系统临时目录里的 sqlite 文件上锁，表现为大面积「另一个程序正在使用此文件」假失败；
-    // 用 LEGADO_TEST_TMP 把测试临时文件挪到普通目录即可。CI 不设它，行为不变。
-    systemProperty "java.io.tmpdir", System.getenv("LEGADO_TEST_TMP") ?: System.getProperty("java.io.tmpdir")
+    systemProperty "java.io.tmpdir", legadoTestTmp
     // 失败时打全量异常（默认 SHORT 只有类名和行号，跨平台差异排查要消息与栈）。
     testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
     finalizedBy jacocoTestReport
@@ -31,7 +42,7 @@ tasks.register('verifyFramework', Test) {
     group = 'verification'
     description = '钉死框架不夹带内容 + 端点计数契约（141 端点 / 19 组 / AI 自定义接入 8 条）。'
     maxHeapSize = '768m'
-    systemProperty "java.io.tmpdir", System.getenv("LEGADO_TEST_TMP") ?: System.getProperty("java.io.tmpdir")
+    systemProperty "java.io.tmpdir", legadoTestTmp
     testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
     // 本仓库的测试统一是 JUnit 4（`junit:junit:4.13.2`），没有 JUnit 5 依赖，
     // 所以这里**不能**写 useJUnitPlatform / includeTags —— 那会让任务找不到任何用例。
@@ -77,7 +88,7 @@ tasks.register('testCoverage', Test) {
     useJUnit()
     // 与 test 任务同一套环境设置
     maxHeapSize = '768m'
-    systemProperty "java.io.tmpdir", System.getenv("LEGADO_TEST_TMP") ?: System.getProperty("java.io.tmpdir")
+    systemProperty "java.io.tmpdir", legadoTestTmp
     testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
     // 关键：测试失败不中断任务，执行数据仍会写进 jacoco 的 .exec
     ignoreFailures = true

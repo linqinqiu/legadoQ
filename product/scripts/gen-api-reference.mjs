@@ -116,10 +116,13 @@ for (const name of groups) {
   lines.push('');
 }
 
-// 目标文件沿用仓库既有的 CRLF 行尾（这份文档在父仓库里是 CRLF），
-// 否则每次生成都会把全文行尾翻一遍，diff 里看不出真正的改动。
-const output = lines.join('\r\n') + '\r\n';
-const existing = fs.existsSync(TARGET) ? fs.readFileSync(TARGET, 'utf8') : null;
+// 行尾按仓库标准走 LF：`.gitattributes` 里 `*.md … eol=lf`，committed blob 就是 LF。
+// 上一版硬写 CRLF 再逐字节比对，结果是**只在 CI 红**——Linux runner 检出的是 LF，
+// 生成的却是 CRLF；Windows 本地那份工作副本本来就是 CRLF，所以本地一直是绿的。
+// 现在两边先归一到 LF 再比，写出也用 LF，跨平台同一结论。
+const toLf = (text) => text.replaceAll('\r\n', '\n');
+const output = toLf(lines.join('\n') + '\n');
+const existing = fs.existsSync(TARGET) ? toLf(fs.readFileSync(TARGET, 'utf8')) : null;
 
 if (checkOnly) {
   if (normalizeGeneratedAt(existing ?? '') !== normalizeGeneratedAt(output)) {
