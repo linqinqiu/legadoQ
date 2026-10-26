@@ -730,10 +730,20 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             // 音频 / EPUB 直链：正文 JS 给 `yp_url` 赋了媒体地址 —— 这一章的"正文"就是那个地址。
             // 必须**先**判它：Rhino 会把赋值表达式的值当成脚本返回值（`yp_url = $.data.path` 的结果
             // 就是那串地址），于是 `pageText` 非空、根本走不到"文本为空"分支，mediaUrl 就丢了。
-            val media = execContext.mediaUrl
-            if (!media.isNullOrBlank()) {
+            val media = execContext.mediaUrl?.substringBefore(",{")?.trim()?.takeIf { it.isNotBlank() }
+            if (media != null) {
                 return@withSourceContext ChapterContent(
                     root.value(rule.string("title"), jsSandbox, firstBody, chapterUrl), media, media,
+                )
+            }
+            // 视频源大量用 `java.startBrowser(播放页)`（本机库 15 个视频源里 12 个）：正文不是直链，
+            // 而是一个播放页。把脚本请求打开的地址透出去，前端用 iframe / 外链兜底；
+            // 不透的话这些源只会显示一句「【刷新正文】播放」的文字。
+            val openUrl = execContext.openUrl?.trim()?.takeIf { it.isNotBlank() }
+            val sourceType = source.sourceType()
+            if (openUrl != null && sourceType != 0 && sourceType != 2) {
+                return@withSourceContext ChapterContent(
+                    root.value(rule.string("title"), jsSandbox, firstBody, chapterUrl), openUrl, openUrl,
                 )
             }
             var text = pageTexts.filter { it.isNotBlank() }.joinToString("\n\n")
@@ -759,7 +769,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             // 音频 / 视频源的正文常常**就是那条直链**（`ruleContent` 取回 `https://…/1.m4a`）。
             // 上游是 App 侧自己嗅的，我们以前只认 `yp_url` 那一个约定，于是没写 yp_url 的那批
             // 音频 / 视频源把地址当一段文字排出来，播放器根本不出来（本机库里音频 115、视频 15、文件 60 个源）。
-            val sniffed = sniffMediaUrl(text)
+            val sniffed = sniffMediaUrl(text, source.sourceType())
             if (sniffed != null) ChapterContent(title, sniffed, sniffed) else ChapterContent(title, text)
         }
     }
@@ -782,14 +792,23 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
      * 从我们这儿嗅出去会留下半截 JSON）；多行或夹着文字的也不当 —— 「本章完 https://…」这类
      * 正常正文被误判成播放器，比播放器出不来更糟。
      */
-    private fun sniffMediaUrl(text: String): String? {
+    private fun sniffMediaUrl(text: String, sourceType: Int = 0): String? {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || trimmed.length > 600 || '\n' in trimmed) return null
-        if (' ' in trimmed || trimmed.contains(",{")) return null
-        if (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true)) return null
-        val path = runCatching { URI(trimmed).path }.getOrNull()?.lowercase().orEmpty()
-        if (path.isEmpty()) return null
-        return if (MEDIA_URL_SUFFIXES.any { path.endsWith(it) }) trimmed else null
+        if (trimmed.isEmpty() || trimmed.length > 600) return null
+        fun isMedia(url: String): Boolean {
+            if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) return false
+            val path = runCatching { URI(url).path }.getOrNull()?.lowercase().orEmpty()
+            return path.isNotEmpty() && MEDIA_URL_SUFFIXES.any { path.endsWith(it) }
+        }
+        // 整段就是一条地址：原有行为，所有类型都认。
+        if ('\n' !in trimmed && ' ' !in trimmed && !trimmed.contains(",{") && isMedia(trimmed)) return trimmed
+        // 多行短文本里恰好一条媒体直链：视频源常写「刷新正文 / ✅直链：」再跟地址。
+        // 只在媒体类型（音频 / 文件 / 视频）上做，避免把文本站正文里的单条链接误当播放器。
+        if (sourceType != 0 && sourceType != 2) {
+            val urls = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE).findAll(trimmed).map { it.value }.toList()
+            if (urls.size == 1 && isMedia(urls[0])) return urls[0]
+        }
+        return null
     }
 
     fun parseLoginUi(sourceJson: String): List<SourceLoginUiItem> {

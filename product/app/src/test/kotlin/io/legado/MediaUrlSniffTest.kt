@@ -21,6 +21,10 @@ class MediaUrlSniffTest {
         "https://m.example/c/1",
     )
 
+    private fun contentWithSource(sourceJson: String) = RuleRunner { url ->
+        if (url == "https://m.example/c/1") """<html><body><div id="u">x</div></body></html>""" else error("unexpected URL: $url")
+    }.content(sourceJson, "https://m.example/c/1")
+
     @Test
     fun `a chapter whose body is only an audio URL becomes the player address`() {
         val content = contentOf("https://cdn.example/ep/12.m4a?token=a")
@@ -44,5 +48,31 @@ class MediaUrlSniffTest {
         assertNull(contentOf("https://cdn.example/page.html").mediaUrl)
         // 多行：第一行是地址也不算媒体
         assertNull(contentOf("https://cdn.example/a.mp3\n第二段").mediaUrl)
+    }
+
+    @Test
+    fun `视频源用 startBrowser 打开的播放页要透出来，而不是只剩一句文字`() {
+        val source = """{"bookSourceUrl":"https://m.example","bookSourceType":4,"ruleContent":{"content":"<js>java.startBrowser('https://player.example/p/1'); '刷新正文'</js>"}}"""
+        assertEquals("https://player.example/p/1", contentWithSource(source).mediaUrl)
+    }
+
+    @Test
+    fun `多行短文本里恰好一条媒体直链时也要认（视频源常见“刷新正文、直链：”）`() {
+        val js = "<js>result = '刷新正文' + String.fromCharCode(10) + '直链：' + String.fromCharCode(10) + 'https://cdn.example/v/1.mp4'; result</js>"
+        val source = """{"bookSourceUrl":"https://m.example","bookSourceType":4,"ruleContent":{"content":"$js"}}"""
+        assertEquals("https://cdn.example/v/1.mp4", contentWithSource(source).mediaUrl)
+    }
+
+    @Test
+    fun `同样的多行文本在文本源里不许被误判成播放器`() {
+        val js = "<js>result = '刷新正文' + String.fromCharCode(10) + '直链：' + String.fromCharCode(10) + 'https://cdn.example/v/1.mp4'; result</js>"
+        val source = """{"bookSourceUrl":"https://m.example","bookSourceType":0,"ruleContent":{"content":"$js"}}"""
+        assertNull(contentWithSource(source).mediaUrl)
+    }
+
+    @Test
+    fun `yp_url 带请求选项时只取地址部分`() {
+        val source = """{"bookSourceUrl":"https://m.example","bookSourceType":1,"ruleContent":{"content":"<js>yp_url='https://cdn.example/a.mp3,{x:1}'; ''</js>"}}"""
+        assertEquals("https://cdn.example/a.mp3", contentWithSource(source).mediaUrl)
     }
 }

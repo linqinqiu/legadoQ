@@ -3,7 +3,8 @@
 ## 当前产品
 
 - [架构示意](ARCHITECTURE.md) — 全景、分层、开书链路、数据布局、启动与安全边界（已并入原 `ARCHITECTURE-DETAILED.md` 与 `product/docs/architecture.md` 的内容）
-- [API 参考](API-REFERENCE.md) — 142 条端点、同源写门、错误格式（由 `/api/catalog` 生成，`node scripts/gen-api-reference.mjs`）
+- [API 参考](API-REFERENCE.md) — 141 条端点、同源写门、错误格式（由 `/api/catalog` 生成，`node scripts/gen-api-reference.mjs`）
+- [书源媒体链路](BOOK-SOURCE-MEDIA.md) — 文本 / 图片 / 音频 / 视频 / 文件的解析、代理、HLS 与已知限制
 - [目录规划](STRUCTURE.md) — 目录职责、文件放置规则、仓库外资产
 - [变更日志](../CHANGELOG.md) — 指向 `product/CHANGELOG.md`
 

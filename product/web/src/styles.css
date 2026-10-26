@@ -2246,6 +2246,7 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .reader-media { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 32px 0; text-indent: 0; }
 .reader-media audio { width: min(560px, 100%); }
 .reader-media video { width: min(720px, 100%); max-height: 70vh; background: #000; border-radius: 6px; }
+.reader-media-embed { width: min(960px, 100%); aspect-ratio: 16 / 9; border: 0; border-radius: 6px; background: #000; }
 .reader-media-download { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border: 1px solid var(--line); border-radius: var(--r-pill); color: var(--accent); font-size: var(--t-md); text-decoration: none; }
 .reader-media-download:hover { background: var(--accent-soft); }
 

@@ -178,44 +178,196 @@ fun Route.mediaRoutes(
          * 这里由服务端代取并流式回传：注入 Referer 与该域已登录的 Cookie、原样转发/回传 Range。媒体文件可能很大，
          * 不落盘缓存（与 5MiB 上限的封面缓存不同），只在传输途中于内存里中转。
          */
-        get("/book/media") {
-            val url = call.request.queryParameters["url"].orEmpty()
-            if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
-                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_media", "媒体地址无效")); return@get
+        get("/book/media") { respondMedia(call, database, headOnly = false) }
+        head("/book/media") { respondMedia(call, database, headOnly = true) }
+}
+
+/**
+ * 媒体代理的公共实现：GET 与 HEAD 共用。HEAD 只回头部、不推流（部分播放器/浏览器先探 HEAD 再决定拉不拉）。
+ *
+ * 与拆出前逐字一致的部分：注入 Referer 与该域 Cookie、原样转发 Range。新增的几层都是"不改协议、只补洞"：
+ * - `Content-Type` 上游没给或只给 `application/octet-stream` 时按后缀补一个能播的类型，否则 `<video>` 可能不认；
+ * - 上游回 416（拖动越过文件尾）原样回 416，不再当成 502；
+ * - `download=1` 时补 `Content-Disposition`，文件源的下载链接才有正常文件名；
+ * - m3u8 播放列表改写成"每一段都走本代理"的地址，配合前端的 hls.js 才能真正播放 HLS。
+ */
+private suspend fun respondMedia(call: ApplicationCall, database: Database, headOnly: Boolean) {
+    val url = call.request.queryParameters["url"].orEmpty()
+    if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
+        call.respond(HttpStatusCode.BadRequest, ApiError("invalid_media", "媒体地址无效")); return
+    }
+    // `referer` 用这一章的地址：媒体站按防盗链判来源，不带就回 403。
+    val referer = call.request.queryParameters["referer"]?.takeIf { it.startsWith("http", ignoreCase = true) }
+    val range = call.request.headers["Range"]
+    val download = call.request.queryParameters["download"] == "1"
+    withContext(Dispatchers.IO) {
+        try {
+            val media = fetchMediaStream(url, referer, range) { database.getCookieForUrl(it) }
+            if (isHlsPlaylist(url, media.contentType)) {
+                if (headOnly) {
+                    media.stream.close()
+                    call.response.headers.append("Content-Type", "application/vnd.apple.mpegurl")
+                    call.response.headers.append("Cache-Control", "no-store")
+                    call.respond(HttpStatusCode.OK)
+                    return@withContext
+                }
+                val text = readBoundedText(media.stream, media.contentEncoding, HLS_PLAYLIST_LIMIT)
+                val rewritten = rewriteHlsPlaylist(text, media.finalUrl, referer)
+                call.response.headers.append("Cache-Control", "no-store")
+                call.response.headers.append("X-Content-Type-Options", "nosniff")
+                call.respondText(rewritten, ContentType.parse("application/vnd.apple.mpegurl"))
+                return@withContext
             }
-            // `referer` 用这一章的地址：媒体站按防盗链判来源，不带就回 403。
-            val referer = call.request.queryParameters["referer"]?.takeIf { it.startsWith("http", ignoreCase = true) }
-            val range = call.request.headers["Range"]
-            withContext(Dispatchers.IO) {
-                try {
-                    val media = fetchMediaStream(url, referer, range) { database.getCookieForUrl(it) }
-                    val status = when {
-                        range != null && media.statusCode == 206 -> HttpStatusCode.PartialContent
-                        else -> HttpStatusCode.OK
-                    }
-                    call.response.headers.apply {
-                        append("Accept-Ranges", "bytes")
-                        append("Cache-Control", "private, max-age=300")
-                        media.contentType?.let { append("Content-Type", it) }
-                        media.contentLength?.let { append("Content-Length", it) }
-                        media.contentRange?.let { append("Content-Range", it) }
-                    }
-                    call.respondOutputStream(status = status) {
-                        media.stream.use { input -> input.copyTo(this) }
-                    }
-                } catch (error: Exception) {
-                    Unit.logNetwork(
-                        "媒体代理失败",
-                        mapOf(
-                            "host" to (runCatching { java.net.URI(url.trim()).host }.getOrNull() ?: "未知"),
-                            "原因" to (error.message ?: error.javaClass.simpleName),
-                            "url" to url.take(120),
-                        ),
-                    )
-                    call.respond(HttpStatusCode.BadGateway, ApiError("media_failed", error.message ?: "媒体抓取失败"))
+            // 视频源的「播放页」：正文脚本只给了一个 HTML 地址（本机库 12/15 个视频源）。
+            // 直接流回去，iframe 里的相对资源会以 `/api/book/media?...` 为基准解析，全走错；
+            // 注入 `<base href="最终地址">` 后，页面自己的脚本/样式/图片才会回到原站加载。
+            if (!download && media.contentType?.trim()?.startsWith("text/html", ignoreCase = true) == true) {
+                if (headOnly) {
+                    media.stream.close()
+                    call.response.headers.append("Content-Type", "text/html; charset=utf-8")
+                    call.respond(HttpStatusCode.OK)
+                    return@withContext
+                }
+                val html = readBoundedText(media.stream, media.contentEncoding, HTML_PAGE_LIMIT)
+                call.response.headers.append("Cache-Control", "no-store")
+                call.response.headers.append("X-Content-Type-Options", "nosniff")
+                call.respondText(injectBaseHref(html, media.finalUrl), ContentType.Text.Html.withCharset(Charsets.UTF_8))
+                return@withContext
+            }
+            val status = when {
+                media.statusCode == 416 -> HttpStatusCode.RequestedRangeNotSatisfiable
+                range != null && media.statusCode == 206 -> HttpStatusCode.PartialContent
+                else -> HttpStatusCode.OK
+            }
+            call.response.headers.apply {
+                append("Accept-Ranges", "bytes")
+                append("Cache-Control", "private, max-age=300")
+                mediaContentType(url, media.contentType)?.let { append("Content-Type", it) }
+                media.contentLength?.let { append("Content-Length", it) }
+                media.contentRange?.let { append("Content-Range", it) }
+                if (download) append("Content-Disposition", attachmentDisposition(url))
+            }
+            if (headOnly || status == HttpStatusCode.RequestedRangeNotSatisfiable) {
+                media.stream.close()
+                call.respond(status)
+            } else {
+                call.respondOutputStream(status = status) {
+                    media.stream.use { input -> input.copyTo(this) }
                 }
             }
+        } catch (error: Exception) {
+            Unit.logNetwork(
+                "媒体代理失败",
+                mapOf(
+                    "host" to (runCatching { java.net.URI(url.trim()).host }.getOrNull() ?: "未知"),
+                    "原因" to (error.message ?: error.javaClass.simpleName),
+                    "url" to url.take(120),
+                ),
+            )
+            call.respond(HttpStatusCode.BadGateway, ApiError("media_failed", error.message ?: "媒体抓取失败"))
         }
+    }
+}
+
+private const val HLS_PLAYLIST_LIMIT = 4 * 1024 * 1024
+private const val HTML_PAGE_LIMIT = 4 * 1024 * 1024
+
+/**
+ * 给播放页 HTML 注入 `<base href="原始地址">`：页面自己的相对资源才会回到原站解析。
+ * 已有 `<base>` 的不动；找不到 `<head>` 就放最前面（浏览器仍认）。
+ */
+internal fun injectBaseHref(html: String, base: URI): String {
+    if (Regex("(?i)<base\\b").containsMatchIn(html)) return html
+    val href = base.toString().replace("&", "&amp;").replace("\"", "%22")
+    val tag = "<base href=\"$href\">"
+    val head = Regex("(?i)<head[^>]*>").find(html)
+    return if (head != null) html.substring(0, head.range.last + 1) + tag + html.substring(head.range.last + 1) else tag + html
+}
+
+/** 上游没给或只给 `application/octet-stream` 时按后缀补一个能播的类型。 */
+internal fun mediaContentType(url: String, upstream: String?): String? {
+    val type = upstream?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+    if (type.isNotEmpty() && type != "application/octet-stream" && type != "binary/octet-stream") return type
+    val path = runCatching { URI(url).path }.getOrNull()?.lowercase().orEmpty()
+    return when {
+        path.endsWith(".mp3") -> "audio/mpeg"
+        path.endsWith(".m4a") || path.endsWith(".aac") -> "audio/mp4"
+        path.endsWith(".ogg") || path.endsWith(".oga") -> "audio/ogg"
+        path.endsWith(".wav") -> "audio/wav"
+        path.endsWith(".flac") -> "audio/flac"
+        path.endsWith(".mp4") || path.endsWith(".m4v") -> "video/mp4"
+        path.endsWith(".webm") -> "video/webm"
+        path.endsWith(".mkv") -> "video/x-matroska"
+        path.endsWith(".mov") -> "video/quicktime"
+        path.endsWith(".ts") -> "video/mp2t"
+        path.endsWith(".m3u8") || path.endsWith(".m3u") -> "application/vnd.apple.mpegurl"
+        else -> type.takeIf { it.isNotEmpty() }
+    }
+}
+
+/** 按扩展名或上游 Content-Type 判断是不是 HLS 播放列表。 */
+internal fun isHlsPlaylist(url: String, contentType: String?): Boolean {
+    val type = contentType?.lowercase().orEmpty()
+    if (type.contains("mpegurl")) return true
+    val path = runCatching { URI(url).path }.getOrNull()?.lowercase().orEmpty()
+    return path.endsWith(".m3u8") || path.endsWith(".m3u")
+}
+
+/**
+ * 把 m3u8 里的每一段、以及 `URI="…"` 形式的密钥/初始化段，改写成走本代理的绝对地址。
+ * 相对地址按播放列表的**最终**地址解析（重定向后不能拿原始地址当基准）。注释行原样保留。
+ */
+internal fun rewriteHlsPlaylist(playlist: String, base: URI, referer: String?): String {
+    val uriAttr = Regex("""URI="([^"]+)"""", RegexOption.IGNORE_CASE)
+    fun proxied(raw: String): String {
+        val target = runCatching { base.resolve(raw.trim()).toString() }.getOrDefault(raw.trim())
+        return proxyMediaUrl(target, referer)
+    }
+    return playlist.lineSequence().joinToString("\n") { raw ->
+        val line = raw.trim()
+        when {
+            line.isEmpty() -> ""
+            line.startsWith("#") -> uriAttr.replace(raw) { match -> "URI=\"${proxied(match.groupValues[1])}\"" }
+            else -> proxied(line)
+        }
+    }
+}
+
+private fun proxyMediaUrl(target: String, referer: String?): String =
+    "/api/book/media?url=${encodeQuery(target)}" + (referer?.let { "&referer=${encodeQuery(it)}" } ?: "")
+
+private fun encodeQuery(value: String): String =
+    java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+private fun attachmentDisposition(url: String): String {
+    val name = runCatching { URI(url).path.substringAfterLast('/') }.getOrNull()?.takeIf { it.isNotBlank() } ?: "download"
+    val encoded = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+    return "attachment; filename=\"download\"; filename*=UTF-8''$encoded"
+}
+
+private fun readBoundedText(stream: java.io.InputStream, contentEncoding: String?, limit: Int): String {
+    val raw = stream.use { input ->
+        val out = java.io.ByteArrayOutputStream()
+        val chunk = ByteArray(16 * 1024)
+        var total = 0
+        while (true) {
+            val n = input.read(chunk)
+            if (n < 0) break
+            total += n
+            require(total <= limit) { "播放列表超过 ${limit / 1024 / 1024} MiB 限制" }
+            out.write(chunk, 0, n)
+        }
+        out.toByteArray()
+    }
+    val bytes = when {
+        contentEncoding?.contains("gzip", true) == true ->
+            java.util.zip.GZIPInputStream(raw.inputStream()).use { it.readBytes() }
+        contentEncoding?.contains("deflate", true) == true ->
+            java.util.zip.InflaterInputStream(raw.inputStream()).use { it.readBytes() }
+        else -> raw
+    }
+    require(bytes.size <= limit) { "播放列表超过 ${limit / 1024 / 1024} MiB 限制" }
+    return bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF")
 }
 
 /**
@@ -273,6 +425,9 @@ private data class FetchedMedia(
     val contentType: String?,
     val contentLength: String?,
     val contentRange: String?,
+    val contentEncoding: String?,
+    /** 跟完重定向后的最终地址：HLS 播放列表里的相对地址要以它为基准解析。 */
+    val finalUrl: URI,
     val stream: java.io.InputStream,
 )
 
@@ -296,11 +451,12 @@ private fun fetchMediaStream(url: String, referer: String?, range: String?, cook
             NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, "媒体")
             return@repeat
         }
-        require(status in 200..299 || status == 206) { "媒体上游返回 HTTP $status" }
+        require(status in 200..299 || status == 206 || status == 416) { "媒体上游返回 HTTP $status" }
         val cType = resp.headers().firstValue("content-type").orElse(null)
         val cLen = resp.headers().firstValue("content-length").orElse(null)
         val cRange = resp.headers().firstValue("content-range").orElse(null)
-        return FetchedMedia(status, cType, cLen, cRange, resp.body())
+        val cEnc = resp.headers().firstValue("content-encoding").orElse(null)
+        return FetchedMedia(status, cType, cLen, cRange, cEnc, uri, resp.body())
     }
     throw IllegalArgumentException("媒体重定向次数超过限制")
 }

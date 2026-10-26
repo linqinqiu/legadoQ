@@ -98,7 +98,7 @@ class CoverCache(
         val key = sha256(url)
         val stored = directory.resolve(key)
         if (Files.exists(stored)) return CachedCover(key, sniffContentType(stored))
-        return fetchAndStore(url, referer, key)
+        return fetchAndStore(url, referer, key, MAX_CONTENT_BYTES)
     }
 
     /**
@@ -107,15 +107,16 @@ class CoverCache(
      * 浏览器那两份副本（HTTP 7 天 `max-age` 与 SW 的 `legado-covers`）由取图地址上的代次参数绕开，
      * 见 `web/src/reader/readerImage.ts`。
      */
-    fun refetchContentImage(url: String, referer: String?): CachedCover = fetchAndStore(url, referer, sha256(url))
+    fun refetchContentImage(url: String, referer: String?): CachedCover =
+        fetchAndStore(url, referer, sha256(url), MAX_CONTENT_BYTES)
 
-    private fun fetchAndStore(url: String, referer: String?, key: String): CachedCover {
+    private fun fetchAndStore(url: String, referer: String?, key: String, limit: Int): CachedCover {
         val stored = directory.resolve(key)
         // `fetcher` 只在测试里注入（生产为 null）；正文图片也走它，单元测试才能不联网地钉住"图被缓存了"。
-        val (rawType, body) = fetcher?.invoke(url) ?: download(url, referer)
+        val (rawType, body) = fetcher?.invoke(url) ?: download(url, referer, limit)
         val type = rawType.substringBefore(';').trim().lowercase()
         require(type.startsWith("image/") && type != "image/svg+xml") { "正文图片类型不被允许：${type.ifBlank { "未知" }}" }
-        require(body.size <= MAX_BYTES) { "正文图片超过 5 MiB 限制" }
+        require(body.size <= limit) { "正文图片超过 ${limit / 1024 / 1024} MiB 限制" }
         writeAtomic(key, body)
         return CachedCover(key, sniffContentType(stored))
     }
@@ -146,7 +147,7 @@ class CoverCache(
         return key
     }
 
-    private fun download(url: String, referer: String? = null): Pair<String, ByteArray> {
+    private fun download(url: String, referer: String? = null, limit: Int = MAX_BYTES): Pair<String, ByteArray> {
         var uri = URI(url); validate(uri)
         repeat(4) {
             val builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).GET()
@@ -157,7 +158,7 @@ class CoverCache(
                 uri = uri.resolve(response.headers().firstValue("location").orElseThrow { IllegalArgumentException("封面重定向缺少地址") }); validate(uri); return@repeat
             }
             require(response.statusCode() in 200..299) { "封面上游返回 HTTP ${response.statusCode()}" }
-            val body = response.body().use { readBounded(it) }
+            val body = response.body().use { readBounded(it, limit) }
             return response.headers().firstValue("content-type").orElse("") to decode(response.headers().firstValue("content-encoding").orElse(""), body)
         }
         throw IllegalArgumentException("封面重定向次数超过限制")
@@ -167,7 +168,7 @@ class CoverCache(
      * 边读边限：恶意上游可以回一个巨大的响应体 —— 原来用 ofByteArray 整包读进内存
      * 之后才检查 5 MiB 上限，等于先挨打后验伤。超限在读的过程中就抛。
      */
-    private fun readBounded(stream: InputStream): ByteArray {
+    private fun readBounded(stream: InputStream, limit: Int): ByteArray {
         val buffer = ByteArrayOutputStream()
         val chunk = ByteArray(16 * 1024)
         var total = 0
@@ -175,7 +176,7 @@ class CoverCache(
             val n = stream.read(chunk)
             if (n < 0) break
             total += n
-            require(total <= MAX_BYTES) { "封面超过 5 MiB 限制" }
+            require(total <= limit) { "图片超过 ${limit / 1024 / 1024} MiB 限制" }
             buffer.write(chunk, 0, n)
         }
         return buffer.toByteArray()
@@ -212,5 +213,9 @@ class CoverCache(
     }
     private fun sha256(value: String) = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
     private fun sha256Bytes(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-    private companion object { const val MAX_BYTES = 5 * 1024 * 1024 }
+    private companion object {
+        const val MAX_BYTES = 5 * 1024 * 1024
+        /** 正文配图（尤其漫画长图）比封面大得多：5 MiB 会把正常页直接拒掉。 */
+        const val MAX_CONTENT_BYTES = 20 * 1024 * 1024
+    }
 }
