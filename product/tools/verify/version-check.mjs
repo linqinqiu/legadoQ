@@ -20,6 +20,7 @@ import path from 'node:path'
 import zlib from 'node:zlib'
 import { createRequire } from 'node:module'
 import { ROOT, BASE, launchOptions, requireService } from './env.mjs'
+import { newestFatJar } from '../../scripts/runtime.mjs'
 
 const require = createRequire(path.join(ROOT, 'web/package.json'))
 const puppeteer = require('puppeteer-core')
@@ -73,10 +74,11 @@ check('app/build.gradle 里写了版本号（它是唯一的书写处）', /^\d+
 
 // ── ② fatJar 清单 ────────────────────────────────────────
 const jarDir = path.join(ROOT, 'app/build/libs')
-// 与 start.mjs 同一条挑选规则（字典序取最后一个 *-all.jar）：验的必须真是被启动的那只，
-// 而不是版本升上去之后留在 build/libs 里的旧包。
-const jars = (fs.existsSync(jarDir) ? fs.readdirSync(jarDir).filter(name => name.endsWith('-all.jar')) : []).sort()
-const jar = jars.pop() ?? ''
+// 与 start.mjs / bundled-ui-check 同一条挑选规则：复用 runtime.mjs 的 newestFatJar
+// （先对上声明版本，同版本再按 mtime）。此前这里是“字典序取最后一个”，版本归零后
+// 会挑中残留的 0.8.7，于是门禁报“清单 0.8.7 / gradle 0.0.0”的假红。
+const jars = fs.existsSync(jarDir) ? fs.readdirSync(jarDir).filter(name => name.endsWith('-all.jar')) : []
+const jar = newestFatJar(jarDir, gradleVersion) ?? ''
 let jarVersion = ''
 if (jar) {
   try { jarVersion = manifestOf(path.join(jarDir, jar)) } catch { jarVersion = '' }
