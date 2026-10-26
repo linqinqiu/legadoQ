@@ -5623,6 +5623,17 @@ input[type="checkbox"] {
 .ai-fab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .ai-fab-open { background: var(--surface); color: var(--ink); border-color: var(--line); }
 
+/* 让位：球是"常驻入口"，不是用户此刻正在操作的那一层。
+   底部抽屉 `.overlay-backdrop.is-sheet`（z 38）与阅读器抽屉 `.reader-drawer.open`（z 30）
+   都压在球的 60 之下 —— 不让位，球就正好盖住抽屉里的按钮。
+   只收起来（不摘节点），浮层一关就回来；面板自己开着时不算（那颗球此刻是"收起"的把手）。 */
+body:has(.overlay-backdrop.is-sheet) .ai-fab:not(.ai-fab-open),
+body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(.86);
+}
+
 .ai-fab-panel {
   position: fixed;
   right: 24px;
@@ -5735,7 +5746,7 @@ input[type="checkbox"] {
 .ai-fab-compose textarea { flex: 1; min-width: 0; resize: vertical; font-size: 13px; }
 .ai-fab-compose .primary-button { flex: 0 0 auto; height: 36px; }
 
-/* 窄屏：面板铺满，球稍微收进来，避免挡住底部操作条 */
+/* 窄屏：面板铺满，球稍微收进来 */
 @media (max-width: 720px) {
   .ai-fab { right: 14px; bottom: 14px; width: 46px; height: 46px; }
   .ai-fab-panel {
@@ -5747,6 +5758,20 @@ input[type="checkbox"] {
     width: auto;
     max-width: none;
     max-height: calc(100vh - 110px);
+  }
+
+  /* 阅读器底部那条导航（58px + 安全区、五颗键）在屏上时，球停在 bottom:14px 正好压在
+     最右边那颗上 —— 抬到它上面，面板与 PWA 安装条跟着抬，三者互不相压。
+     条件里带上 `:not(.toolbars-hidden)`：沉浸态下导航是收起来的，那时球回到贴底的位置。 */
+  body:has(.reader-workspace:not(.toolbars-hidden) .mobile-reader-nav) .ai-fab {
+    bottom: calc(66px + var(--safe-bottom));
+  }
+  body:has(.reader-workspace:not(.toolbars-hidden) .mobile-reader-nav) .ai-fab-panel {
+    bottom: calc(120px + var(--safe-bottom));
+    max-height: calc(100vh - 170px);
+  }
+  body:has(.reader-workspace:not(.toolbars-hidden) .mobile-reader-nav) .pwa-install-banner {
+    bottom: calc(74px + var(--safe-bottom));
   }
 }
 .ai-chat { display: grid; gap: 12px; }
@@ -6247,98 +6272,6 @@ input[type="checkbox"] {
   }
 }
 
-/* ———— 实验室（Lab）：悬浮式框架容器 ———— */
-/* 它本身不含功能，只提供"可悬浮的壳 + 实验条目登记位"。
-   几何全部沿用 .dialog-shell 那一档（UiContract 判据要求），这里只加定位与分栏。 */
-
-/* 悬浮时不铺满全屏的挡片：实验室是"浮在上面"的工具，不是模态遮罩，
-   但仍然接 Esc 关闭、点击空白处关闭（与其它浮层同一套语义）。 */
-.lab-overlay {
-  position: fixed; inset: 0; z-index: 100;
-  background: transparent;
-}
-.lab-shell {
-  /* 位置由 inline style 给（可拖拽、可记忆），这里只约束尺寸与内部结构 */
-  max-width: min(var(--dw-l), 94vw);
-  max-height: min(70vh, 720px);
-}
-.lab-head { cursor: move; user-select: none; }
-.lab-head-actions { display: flex; align-items: center; gap: var(--s-1); }
-
-.lab-body {
-  display: grid; grid-template-columns: 168px minmax(0, 1fr);
-  min-height: 0; flex: 1;
-}
-.lab-nav {
-  display: flex; flex-direction: column; gap: 2px;
-  padding: var(--s-3); border-right: 1px solid var(--line);
-  overflow-y: auto; min-height: 0;
-}
-.lab-nav-item {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
-  padding: 8px 10px; border: 0; border-radius: var(--r-1);
-  background: transparent; color: var(--ink); cursor: pointer;
-  font-size: var(--t-sm); text-align: left;
-}
-.lab-nav-item:hover { background: var(--surface-muted); }
-.lab-nav-item.active { background: var(--surface-muted); font-weight: 600; }
-.lab-nav-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 导航分区：实验室自带的功能 与 用户自定义的插件 分两组，组标题带一句来源说明。
-   分区是为了让"哪些是产品给的、哪些是我自己装的"一眼分得清。 */
-.lab-nav-group { display: flex; flex-direction: column; gap: 2px; }
-.lab-nav-group + .lab-nav-group { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
-.lab-nav-group-title {
-  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2);
-  margin: 0 0 2px; padding: 0 10px;
-  font-size: var(--t-xs); font-weight: 600; color: var(--muted);
-}
-.lab-nav-group-hint { font-size: var(--t-xs); font-weight: 400; color: var(--muted); opacity: 0.75; }
-.lab-nav-badge {
-  flex: none; padding: 1px 6px; border-radius: var(--r-1);
-  background: var(--surface-muted); color: var(--muted); font-size: var(--t-xs);
-}
-.lab-content {
-  padding: var(--s-4) var(--s-5); overflow-y: auto; min-height: 0;
-}
-.lab-desc { margin: 0 0 var(--s-3); color: var(--muted); font-size: var(--t-sm); }
-.lab-empty { margin: 0; color: var(--muted); font-size: var(--t-sm); }
-
-/* 最小化后的悬浮按钮：贴在哪由 inline style 决定 */
-.lab-fab {
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px;
-  background: var(--surface); color: var(--ink); box-shadow: var(--elev-2);
-  cursor: pointer; font-size: var(--t-sm);
-}
-.lab-fab:hover { background: var(--surface-muted); }
-.lab-fab svg { width: 16px; height: 16px; }
-
-@media (max-width: 640px) {
-  .lab-shell { max-width: 94vw; max-height: 76vh; }
-  .lab-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .lab-nav {
-    flex-direction: row; overflow-x: auto; border-right: 0;
-    border-bottom: 1px solid var(--line); padding: var(--s-2);
-  }
-  .lab-nav-item { white-space: nowrap; }
-}
-
-/* 实验室 · 插件介绍面板 */
-.lab-plugin-intro { display: flex; flex-direction: column; gap: var(--s-3); }
-.lab-plugin-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s-2); }
-.lab-plugin-item {
-  padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-2);
-  background: var(--surface-muted);
-}
-.lab-plugin-item strong { display: block; font-size: var(--t-sm); }
-.lab-plugin-meta { display: block; margin-top: 2px; color: var(--muted); font-size: var(--t-xs); }
-.lab-plugin-item p { margin: var(--s-2) 0 0; font-size: var(--t-sm); color: var(--muted); }
-.lab-plugin-failures {
-  padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-2);
-  font-size: var(--t-sm);
-}
-.lab-plugin-failures ul { margin: var(--s-2) 0 0; padding-left: 1.2em; color: var(--muted); }
-
 /* AI 对话气泡里的工具调用记录：让用户看到 AI 真的执行了哪些能力 */
 .ai-bubble-tools { margin-top: var(--s-2); padding-top: var(--s-2); border-top: 1px dashed var(--line); }
 .ai-bubble-tools-label { display: block; color: var(--muted); font-size: var(--t-xs); }
@@ -6347,83 +6280,3 @@ input[type="checkbox"] {
   padding: 1px 6px; border-radius: var(--r-1);
   background: var(--surface-muted); color: var(--muted); font-size: var(--t-xs);
 }
-
-/* ———— 浮动窗口框架（FloatingWindow）：位置/尺寸/钉住/最小化都可自定义 ———— */
-/* 它是"窗口怎么摆"的框架，与"窗口里装什么"无关。几何由 inline style 给（可拖动/可缩放），
-   这里只管外观与交互反馈。 */
-
-.fw-backdrop {
-  position: fixed; inset: 0; z-index: 100;
-  background: transparent;
-}
-.fw-shell {
-  display: flex; flex-direction: column;
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--r-3); box-shadow: var(--elev-3);
-  overflow: hidden; min-width: 0; min-height: 0;
-}
-/* 钉住时给一圈强调边，让人一眼看出"这个窗被固定了" */
-.fw-shell.is-pinned { box-shadow: var(--elev-3), 0 0 0 2px var(--accent, var(--line)); }
-
-.fw-head {
-  flex: none; display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s-2); padding: 10px 12px;
-  border-bottom: 1px solid var(--line);
-  cursor: move; user-select: none;
-}
-.fw-shell.is-pinned .fw-head { cursor: default; }
-.fw-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: 600; }
-.fw-head-actions { display: flex; align-items: center; gap: var(--s-1); flex: none; }
-
-.fw-btn {
-  min-width: 28px; height: 26px; padding: 0 6px;
-  display: grid; place-items: center;
-  border: 1px solid transparent; border-radius: var(--r-1);
-  background: transparent; color: var(--muted); cursor: pointer;
-  font-size: var(--t-xs);
-}
-.fw-btn:hover { background: var(--surface-muted); color: var(--ink); }
-.fw-btn.is-on { background: var(--surface-muted); color: var(--ink); border-color: var(--line); }
-
-.fw-body { flex: 1; min-height: 0; overflow: auto; padding: var(--s-3); }
-
-/* 右下角缩放把手：三条斜线，纯 CSS，不用图形字符 */
-.fw-resize {
-  position: absolute; right: 0; bottom: 0; width: 16px; height: 16px;
-  cursor: nwse-resize;
-  background:
-    linear-gradient(135deg, transparent 45%, var(--line) 45%, var(--line) 55%, transparent 55%),
-    linear-gradient(135deg, transparent 70%, var(--line) 70%, var(--line) 80%, transparent 80%);
-}
-
-/* 最小化后的悬浮按钮 */
-.fw-fab {
-  z-index: 101;
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px;
-  background: var(--surface); color: var(--ink); box-shadow: var(--elev-2);
-  cursor: pointer; font-size: var(--t-sm);
-}
-.fw-fab:hover { background: var(--surface-muted); }
-.fw-fab-title { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* 插件介绍面板的分节标题 */
-.lab-section-title {
-  margin: var(--s-4) 0 var(--s-2); padding-top: var(--s-3);
-  border-top: 1px solid var(--line);
-  font-size: var(--t-sm); font-weight: 600;
-}
-.lab-section-title:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
-
-/* 插件贡献的设置分区：与内置分区同形摆放，但内容是插件自己渲染的 */
-.settings-section-plugin { margin-top: var(--s-5); }
-.settings-plugin-desc { margin: 0 0 var(--s-3); color: var(--muted); font-size: var(--t-sm); }
-.settings-plugin-body { display: flex; flex-direction: column; gap: var(--s-3); }
-
-/* 插件设置分区里的开关行 */
-.settings-plugin-row {
-  display: flex; align-items: center; gap: var(--s-2);
-  font-size: var(--t-sm); cursor: pointer;
-}
-.settings-plugin-row input { flex: none; }
-.settings-plugin-note { margin: 0; color: var(--muted); font-size: var(--t-xs); }

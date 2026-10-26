@@ -259,7 +259,7 @@ export const SourceEditor: React.FC<{
     <section className="source-editor empty-editor">
       <Icon name="book" />
       <h2>选择一个书源</h2>
-      <p>从左侧列表挑选书源，新建一条，或导入一个 JSON 文件。</p>
+      <p>从书源列表里挑一条，或新建一条、导入一个 JSON 文件。</p>
       {summary && (
         <dl className="source-summary">
           <div><dt>书源</dt><dd>{summary.total}</dd></div>
