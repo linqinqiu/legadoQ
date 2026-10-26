@@ -120,7 +120,7 @@ git push origin feature/add-reader-theme
 
 ### Bug Report 模板
 
-请使用 [GitHub Issues](https://github.com/linqinqiu/qingyue/issues/new)
+请使用 [GitHub Issues](https://github.com/linqinqiu/qingyue-server/issues/new)
 
 **标题格式**: `[Bug] 简短描述问题`
 
@@ -209,7 +209,7 @@ git push origin feature/add-reader-theme
 
 如果你有任何问题，可以通过以下方式联系我们：
 
-- **GitHub Discussions**: [提问或分享想法](https://github.com/linqinqiu/qingyue/discussions)
+- **GitHub Discussions**: [提问或分享想法](https://github.com/linqinqiu/qingyue-server/discussions)
 - **Email**: linqinqiu@example.com
 
 ---

@@ -1,6 +1,6 @@
 # 当前结构与成果
 
-> 版本 **0.8.6** ｜ 分支 `main` ｜ 工作区干净 ｜ 后端 **643** 项测试 / Web **738** 项测试，全绿
+> 版本 **0.0.0** ｜ 分支 `main` ｜ 远端 `linqinqiu/qingyue-server`（私有，2026-10-26 重建，旧历史不推送） ｜ 后端 **618** 项测试 / Web **735** 项测试，全绿
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -107,12 +107,12 @@
 
 | 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **643 项 / 0 失败** |
-| Web 测试 | `web: npm test` | **738 项 / 0 失败** |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **618 项 / 0 失败** |
+| Web 测试 | `web: npm test` | **735 项 / 0 失败** |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过 |
-| 端点文档一致 | `npm run docs:api-check` | 142 条 / 19 组，一致 |
+| 端点文档一致 | `npm run docs:api-check` | 141 条 / 19 组，一致 |
 | 更新日志 | `npm run changelog:check` | 无待记录（提交后钩子自动起草） |
-| 版本单一来源 | `npm run version:check` | 4 处一致，0.8.6 |
+| 版本单一来源 | `npm run version:check` | 4 处一致，0.0.0 |
 | 真浏览器门禁 | `tools/verify/*.mjs` | 阅读排版、笔记、备份、缓存等多条 |
 
 CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约）。
