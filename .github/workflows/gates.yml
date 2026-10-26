@@ -104,7 +104,7 @@ jobs:
 
       - name: 上传截图（失败时排查用）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gate-shots
           path: product/tools/verify/out/shots
@@ -173,7 +173,7 @@ jobs:
 
       - name: 上传截图
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gate-shots-full
           path: product/tools/verify/out/shots

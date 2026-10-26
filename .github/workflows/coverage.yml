@@ -80,7 +80,7 @@ jobs:
 
       - name: 上传报告（HTML 可直接下载打开）
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
