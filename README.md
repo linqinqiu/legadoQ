@@ -1,4 +1,4 @@
-# 青阅
+# legadoQ
 
 本地小说 / 漫画阅读服务：Kotlin + Ktor 后端、SQLite、内置 Web UI，默认只监听 `127.0.0.1:1234`。
 

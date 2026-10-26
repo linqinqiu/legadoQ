@@ -1,6 +1,6 @@
 # 当前结构与成果
 
-> 版本 **0.0.0** ｜ 分支 `main` ｜ 远端 `linqinqiu/qingyue-server`（私有，2026-10-26 重建，旧历史不推送） ｜ 后端 **618** 项测试 / Web **735** 项测试，全绿
+> 版本 **0.0.0** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有，2026-10-26 重建，旧历史不推送） ｜ 后端 **618** 项测试 / Web **735** 项测试，全绿
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -10,7 +10,7 @@
 | 层 | 路径 | 是什么 |
 |---|---|---|
 | 外层 | `E:\legado` | 文档壳：总览、API 参考、目录规划、研究笔记、版本号。无 remote。 |
-| 内层 | `E:\legado\legado` | **唯一能跑的产品**：Kotlin/Ktor 后端 + 内置 Web UI。origin = `linqinqiu/qingyue` |
+| 内层 | `E:\legado\legado` | **唯一能跑的产品**：Kotlin/Ktor 后端 + 内置 Web UI。origin = `linqinqiu/legadoQ` |
 
 外层只做「说明书 + 版本封条」，所有代码与测试都在内层。版本号真源是内层 `app/build.gradle`，外层 `VERSION` / `package.json` 是抄本，由 `npm run version:check` 钉住一致。
 

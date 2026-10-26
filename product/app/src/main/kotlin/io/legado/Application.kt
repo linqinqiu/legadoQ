@@ -36,7 +36,7 @@ import io.legado.tts.TtsSessionService
 import io.legado.model.ApiError
 
 /**
- * 构建并（按需）启动青阅服务引擎。抽出来是为了让 `main`（裸跑 jar / CDS 归档）和
+ * 构建并（按需）启动 legadoQ 服务引擎。抽出来是为了让 `main`（裸跑 jar / CDS 归档）和
  * 桌面壳（`DesktopLauncher`）共用同一份启动代码 —— 桌面壳用 `start(wait = false)` 拿到引擎，
  * 自己管生命周期（开浏览器、托盘退出、优雅关闭），而不是把引擎堵在 main 线程上。
  *
@@ -79,7 +79,7 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     ServerIdentity.init(config.host, config.port)
     // 初始化结构化日志系统
     LogService.initialize(config.databasePath)
-    logSystem("青阅服务器启动", mapOf("version" to BuildInfo.version, "host" to config.host, "port" to config.port.toString()))
+    logSystem("legadoQ 服务器启动", mapOf("version" to BuildInfo.version, "host" to config.host, "port" to config.port.toString()))
     if (externalBind) {
         // 放行不等于安全：把"边界已经交给部署方"这句话写进日志，而不是静默运行。
         logSystem(

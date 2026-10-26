@@ -154,10 +154,10 @@ class AgentRoutesHttpTest {
         try {
             application { legadoApplication(serverConfig(dbPath, home)) }
             val c = makeClient()
-            val text = "QingYue is a single-machine reader. It uses SQLite. It supports source rules."
+            val text = "legadoQ is a single-machine reader. It uses SQLite. It supports source rules."
             val resp = c.post("/api/agent/comprehend") {
                 contentType(ContentType.Application.Json)
-                setBody("""{"text":"$text","question":"What is QingYue?"}""")
+                setBody("""{"text":"$text","question":"What is legadoQ?"}""")
             }
             assertEquals("comprehend should be 409: ${resp.status}", HttpStatusCode.Conflict, resp.status)
             val body = readJson(resp).jsonObject

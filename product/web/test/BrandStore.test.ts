@@ -5,10 +5,10 @@ import fs from 'node:fs'
 /**
  * 品牌（应用名称与图标）的前端单一来源（用户 2026-10-23：「允许自定义图标和名称」）。
  *
- * 这里真正要钉的不是"能不能 set 一个值"，而是**不许再有第二处写死「青阅」**：
- * 「青阅」此前硬编码在顶栏品牌字、阅读器的 `document.title`（设置一次、卸载重置一次）、
+ * 这里真正要钉的不是"能不能 set 一个值"，而是**不许再有第二处写死「legadoQ」**：
+ * 「legadoQ」此前硬编码在顶栏品牌字、阅读器的 `document.title`（设置一次、卸载重置一次）、
  * index.html 三处 —— 用户改了名，那三处照旧，等于"改了个寂寞"，而且没有任何报错。
- * 所以判据是**反向扫源码**：出现裸的「青阅」字面量当显示值，就必须红。
+ * 所以判据是**反向扫源码**：出现裸的「legadoQ」字面量当显示值，就必须红。
  */
 // 源码带扩展名（组件是 .tsx、lib 与纯逻辑是 .ts），拼路径时两种都试一次。
 const read = (relative: string): string => {
@@ -58,18 +58,18 @@ test('品牌 store：默认回落内置名，写入后同步标签页标题', as
   }
 })
 
-/** 「青阅」不许再作为**显示值**硬编码回来（顶栏与阅读器标题都读品牌 store）。 */
+/** 「legadoQ」不许再作为**显示值**硬编码回来（顶栏与阅读器标题都读品牌 store）。 */
 test('顶栏与阅读器标题读品牌 store，不写死应用名', () => {
   const header = read('components/AppHeader')
   assert.match(header, /getBrand|useSyncExternalStore\(subscribeBrand/, '顶栏品牌字要读单一来源')
-  assert.doesNotMatch(header, /<strong>青阅<\/strong>|aria-label="青阅"/, '顶栏不许留硬编码的「青阅」')
+  assert.doesNotMatch(header, /<strong>legadoQ<\/strong>|aria-label="legadoQ"/, '顶栏不许留硬编码的「legadoQ」')
 
   const reader = read('reader/ReaderScreen')
   // 切片从"取品牌名"那行起：标题模板用的是上一行取出的局部变量，从 `const shown` 起截会漏掉它。
   const titleBlock = /const brandName = getBrand\(\)\.displayName[\s\S]{0,220}/.exec(reader)?.[0] ?? ''
   assert.ok(titleBlock.length > 0, '要能定位到设标签页标题那一段（且它得先读品牌 store）')
   assert.match(titleBlock, /\$\{brandName\}/, '阅读器标题后缀要用读出来的品牌名')
-  assert.doesNotMatch(titleBlock, /\| 青阅/, '阅读器不许把名字写死（改名后一进书就被冲回去）')
+  assert.doesNotMatch(titleBlock, /\| legadoQ/, '阅读器不许把名字写死（改名后一进书就被冲回去）')
   assert.match(reader, /document\.title = getBrand\(\)\.displayName/, '卸载时的重置也要读 store，不能回落成写死的名字')
 })
 

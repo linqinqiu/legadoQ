@@ -1,6 +1,6 @@
 # 更新日志
 
-本文件记录「青阅」自身的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
+本文件记录「legadoQ」自身的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 版本号只有一个来源：`app/build.gradle` 里的 `version`。打 jar 时由 Gradle 写进清单的
@@ -37,6 +37,7 @@
 
 - **版本号从 0.0.0 重新计数。** 0.8.6 及以前的日志移到 `docs/archive/CHANGELOG-0.8.6及以前.md`，只作历史留档，不再作为对账依据。
 - **构建顺序写死为"先停、再建、再起"。** 跑着的服务加载的是磁盘上那份 fatJar，构建前后各有一道校验，包内前端与磁盘不一致时直接拒绝启动。
+- **仓库与品牌更名为 legadoQ。** 远端仓库、界面标题与 `/healthz` 统一改用 legadoQ，不再以旧名作为产品名。
 
 ### 修复
 

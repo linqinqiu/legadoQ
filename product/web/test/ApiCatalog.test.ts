@@ -147,7 +147,7 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   assert.ok(Array.isArray(catalog.endpoints) && catalog.endpoints.length === routes.length,
     `目录有 ${catalog.endpoints?.length ?? 0} 条，代码里注册了 ${routes.length} 条 —— 这两个数必须相等，全量覆盖是这份契约的全部意义`)
   assert.deepEqual(auditCatalog(routes, catalog), [], '端点目录与代码对不上')
-  // 绝对计数钉死：141 条 / 19 组 / 系统组 7 条是当前青阅的权威契约（见 docs/RESEARCH-NOTES §7）。
+  // 绝对计数钉死：141 条 / 19 组 / 系统组 7 条是当前 legadoQ 的权威契约（见 docs/RESEARCH-NOTES §7）。
   // 双向相等只防「漂移」，不防「两边一起错」——重排架构时若这两个数真要变，
   // 必须同步改这里并说明，而不是让漂移悄悄发生。
   // 2026-10：新增「搜索本书」GET /api/book-search（进度与笔记组，只读）→ 139 → 140；

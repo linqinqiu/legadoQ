@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Legado Server Cookie Sync",
+  "name": "legadoQ Cookie Sync",
   "version": "1.0.0",
-  "description": "一键读取当前网站全量 Cookie (含 HttpOnly) 并安全同步到 Legado 阅读服务器",
+  "description": "一键读取当前网站全量 Cookie (含 HttpOnly) 并安全同步到 legadoQ",
   "permissions": [
     "cookies",
     "activeTab",
@@ -13,6 +13,6 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "同步 Cookie 到阅读服务器"
+    "default_title": "同步 Cookie 到 legadoQ"
   }
 }

@@ -133,7 +133,7 @@ const searchFixture = [
   {
     title: '服务',
     rows: [
-      { title: '服务端口', hint: '青阅跑在哪个端口。', action: '改端口', onClick: () => undefined },
+      { title: '服务端口', hint: 'legadoQ 跑在哪个端口。', action: '改端口', onClick: () => undefined },
       { title: '运行日志', hint: '这台服务写了什么：级别、失败原因。', action: '看日志', onClick: () => undefined },
     ],
   },

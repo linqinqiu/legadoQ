@@ -1,4 +1,4 @@
-# Legado Server（`app/`）
+# legadoQ（`app/`）
 
 Ktor + Kotlin JVM 的无头书源引擎与 HTTP 服务：解析并执行 Legado 书源规则（Jsoup / JSONPath / XPath / Rhino JS 沙箱）、
 多书源并发搜索、离线缓存、封面缓存、RSS 与订阅同步，数据落在一个 SQLite 文件里。

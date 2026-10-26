@@ -42,7 +42,7 @@ export function AppHeader({
   const [menuOpen, setMenuOpen] = useState(false)
   const [canInstall, setCanInstall] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  // 品牌名单一来源（lib/brandStore）：此前这里硬编码「青阅」，
+  // 品牌名单一来源（lib/brandStore）：此前这里硬编码「legadoQ」，
   // 用户改了名（设置 → 应用名称与图标）之后顶栏照旧，等于"改了个寂寞"。
   const brand = useSyncExternalStore(subscribeBrand, getBrand, getBrand)
 

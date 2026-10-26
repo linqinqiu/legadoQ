@@ -14,7 +14,7 @@ object BuildInfo {
         BuildInfo::class.java.`package`?.implementationVersion?.takeIf { it.isNotBlank() && it != "unknown" }
             ?: "dev"
 
-    val title: String = "青阅"
+    val title: String = "legadoQ"
 
     /**
      * 当前这个包里前端主 bundle 的文件名（`static/index.html` 里那串内容哈希）。

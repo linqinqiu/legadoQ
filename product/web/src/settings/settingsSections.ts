@@ -90,7 +90,7 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       title: '数据',
       rows: [{
         title: '备份包',
-        hint: '导入手机青阅的备份包，或把这台机器上的书源 / 书架 / 规则导成一份。',
+        hint: '导入手机 legadoQ 的备份包，或把这台机器上的书源 / 书架 / 规则导成一份。',
         action: '打开备份',
         onClick: actions.openBackup,
       }],
@@ -109,12 +109,12 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       rows: [
         {
           title: '服务端口',
-          hint: '青阅跑在哪个端口；改完要重启青阅才生效。',
+          hint: 'legadoQ 跑在哪个端口；改完要重启 legadoQ 才生效。',
           action: '改端口',
           onClick: actions.openServerPort,
         },
         {
-          // 与端口同一族：改的都是「这台机器上的青阅长什么样」，都写安装根、都本机生效。
+          // 与端口同一族：改的都是「这台机器上的 legadoQ 长什么样」，都写安装根、都本机生效。
           title: '应用名称与图标',
           hint: '把这台服务的名字与图标改成自己的（写安装根的 brand.json）；本机所有浏览器与装出去的桌面应用都跟着变。',
           action: '去改',

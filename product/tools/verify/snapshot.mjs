@@ -11,7 +11,7 @@ import { execSync } from 'node:child_process';
 // 仓库根从脚本自己的位置算，快照落点用环境变量覆盖 —— 这两行原来写死成某个人机器上的
 // 盘符路径，所以这个脚本一直进不了版本库；它要随仓库分发，就不能含任何人的目录。
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const DEST_ROOT = process.env.LEGADO_SNAPSHOT_DIR ?? path.join(path.dirname(ROOT), 'legado-server_版本备份');
+const DEST_ROOT = process.env.LEGADO_SNAPSHOT_DIR ?? path.join(path.dirname(ROOT), 'legadoQ_版本备份');
 const KEEP = 5;
 /**
  * 文件清单**必须问 git**，不能手抄。

@@ -25,7 +25,7 @@ fun proxyRequestHeaders(
 ): Map<String, String> {
     val headers = LinkedHashMap<String, String>()
     // 有些站对默认的 `Java/17` UA 直接 403，给一个稳定的自有 UA。
-    headers["User-Agent"] = "LegadoServer/0.1"
+    headers["User-Agent"] = "legadoQ/0.1"
     referer?.let { headers["Referer"] = it }
     range?.let { headers["Range"] = it }
     cookieFor(uri.toString())?.takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it }

@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await resp.json()
       if (resp.ok && data.ok) {
         statusEl.className = 'success'
-        statusEl.textContent = `✅ 成功同步 ${cookies.length} 个 Cookie (含 HttpOnly) 到阅读服务器！`
+        statusEl.textContent = `✅ 成功同步 ${cookies.length} 个 Cookie (含 HttpOnly) 到 legadoQ！`
       } else {
         statusEl.className = 'error'
         statusEl.textContent = `❌ 同步失败: ${data.message || resp.statusText}`

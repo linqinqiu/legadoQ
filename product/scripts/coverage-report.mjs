@@ -264,7 +264,7 @@ function writeHtml(backend, frontend, combined) {
 
   const html = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
-<title>青阅 · 覆盖率总报告</title>
+<title>legadoQ · 覆盖率总报告</title>
 <style>
   :root { --fg:#1a1a1a; --dim:#666; --line:#e5e5e5; --good:#137333; --mid:#b06000; --bad:#c5221f; }
   body { font: 14px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color:var(--fg); max-width: 980px; margin: 40px auto; padding: 0 24px; }
@@ -283,7 +283,7 @@ function writeHtml(backend, frontend, combined) {
   a { color: #1a73e8; }
   .note { background:#f8f9fa; border-left: 3px solid #dadce0; padding: 10px 14px; margin: 20px 0; font-size: 13px; color:#444; }
 </style></head><body>
-<h1>青阅 · 覆盖率总报告</h1>
+<h1>legadoQ · 覆盖率总报告</h1>
 <div class="meta">生成时间 ${new Date().toLocaleString('zh-CN')} · 版本 ${appVersion()}</div>
 
 ${combined ? `<div class="big">

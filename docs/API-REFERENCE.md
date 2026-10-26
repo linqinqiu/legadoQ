@@ -1,4 +1,4 @@
-# 青阅 API 参考
+# legadoQ API 参考
 
 > 版本：0.0.0 · 端点数：141 · 生成时间：2026-10-26
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；

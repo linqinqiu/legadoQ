@@ -16,7 +16,7 @@ export type ServerPortResult = { port: number; restartRequired: boolean }
 
 /**
  * 自定义品牌（用户 2026-10-23：「允许自定义图标和名称」）。
- * `displayName` 是服务端算好的实际显示名（没设过就等于内置的「青阅」），
+ * `displayName` 是服务端算好的实际显示名（没设过就等于内置的「legadoQ」），
  * `builtinName` 一起回，界面才能区分"这是默认"与"这是你改过的"。
  */
 export type BrandInfo = {
@@ -437,7 +437,7 @@ export const api = {
   about: () => request<AboutInfo>('/api/about'),
   /** 服务自身：当前绑的地址与端口。 */
   serverInfo: () => request<ServerInfo>('/api/server'),
-  /** 改端口：只写安装根的 `port.txt`，重启青阅后生效。 */
+  /** 改端口：只写安装根的 `port.txt`，重启 legadoQ 后生效。 */
   setServerPort: (port: number) => request<ServerPortResult>('/api/server/port', { method: 'PUT', body: JSON.stringify({ port }) }),
   checkUpdate: () => request<UpdateCheckResult>('/api/about/update-check', { method: 'POST' }),
   /**

@@ -57,20 +57,20 @@ fun main(args: Array<String>) {
     System.setProperty("java.io.tmpdir", tmpDir.toString())
 
     // 端口策略（决策必须在 ServerConfig/url 构造之前完成）：
-    //  - 端口上已经是青阅自己（/healthz 报青阅）→ 已在运行：只开界面然后退出，不留第二个进程；
+    //  - 端口上已经是 legadoQ 自己（/healthz 报 legadoQ）→ 已在运行：只开界面然后退出，不留第二个进程；
     //  - 端口被**别的程序**占用 → 不再拒绝启动（用户 2026-10-10：「可以自定义端口，不要固定」）：
     //    从下一个端口起顺延找空闲的，用上后写回 port.txt 记住 —— 下次启动稳定在这个端口，
     //    界面里"服务端口"那一栏看到的也是它。20 个端口内都占满才认输。
     if (isPortOpen(host, port)) {
-        if (isQingyueOn(host, port)) {
+        if (isLegadoQOn(host, port)) {
             val runningUrl = "http://${if (host == "0.0.0.0" || host == "::") "127.0.0.1" else host}:$port"
-            logDesktop("青阅已在运行 $runningUrl")
+            logDesktop("legadoQ 已在运行 $runningUrl")
             // 已经有一个实例在跑：这一份壳开完窗口就退，所以不装「关窗口收服务」的看门狗。
             if (!noOpen) openBrowser(runningUrl, imageRoot, env, watchExit = false)
             exitProcess(0)
         }
         val shifted = shiftToFreePort(host, port, imageRoot) ?: run {
-            val msg = "端口 $port–${port + 20} 全被别的程序占用，青阅无法启动。请腾出一个或在 .env 里设 LEGADO_PORT。"
+            val msg = "端口 $port–${port + 20} 全被别的程序占用，legadoQ 无法启动。请腾出一个或在 .env 里设 LEGADO_PORT。"
             logDesktop(msg); showError(msg); exitProcess(1)
         }
         port = shifted
@@ -96,7 +96,7 @@ fun main(args: Array<String>) {
     val browseHost = if (host == "0.0.0.0" || host == "::") "127.0.0.1" else host
     val url = "http://$browseHost:$port"
 
-    logDesktop("青阅 ${BuildInfo.version} 启动中 $url")
+    logDesktop("legadoQ ${BuildInfo.version} 启动中 $url")
     logDesktop("安装目录 $imageRoot")
     logDesktop("数据目录 $dataDir")
     logDesktop("日志     ${imageRoot.resolve("server.log")}")
@@ -118,7 +118,7 @@ fun main(args: Array<String>) {
     }
     logDesktop("服务已就绪 $url")
     if (!noOpen) openBrowser(url, imageRoot, env)
-    showTray("青阅", url, imageRoot, noOpen, env)
+    showTray("legadoQ", url, imageRoot, noOpen, env)
     CountDownLatch(1).await() // 守住主线程，靠托盘"退出"或外部信号结束
 }
 
@@ -172,15 +172,15 @@ private fun shiftToFreePort(host: String, occupied: Int, imageRoot: Path): Int? 
     return shifted
 }
 
-/** 端口上跑的是不是青阅自己：/healthz 的应答体里有应用名才算（别的程序占着端口不算）。 */
-private fun isQingyueOn(host: String, port: Int): Boolean {
+/** 端口上跑的是不是 legadoQ 自己：/healthz 的应答体里有应用名才算（别的程序占着端口不算）。 */
+private fun isLegadoQOn(host: String, port: Int): Boolean {
     return try {
         val client = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(1200)).build()
         val res = client.send(
             HttpRequest.newBuilder(URI("http://$host:$port/healthz")).timeout(Duration.ofMillis(1200)).GET().build(),
             HttpResponse.BodyHandlers.ofString(),
         )
-        res.body().contains("青阅")
+        res.body().contains("legadoQ")
     } catch (_: Throwable) { false }
 }
 
@@ -262,7 +262,7 @@ private fun browserExecutable(env: Map<String, String>): File? {
 }
 
 private fun logDesktop(message: String) {
-    println("[青阅] $message")
+    println("[legadoQ] $message")
 }
 
 private fun loadIcon(imageRoot: Path): java.awt.Image? {
@@ -277,7 +277,7 @@ private fun showTray(title: String, url: String, imageRoot: Path, noOpen: Boolea
     runCatching {
         val tray = SystemTray.getSystemTray()
         val popup = PopupMenu()
-        val openItem = MenuItem("打开青阅").also { it.addActionListener(ActionListener { openBrowser(url, imageRoot, env, watchExit = false) }) }
+        val openItem = MenuItem("打开 legadoQ").also { it.addActionListener(ActionListener { openBrowser(url, imageRoot, env, watchExit = false) }) }
         val exitItem = MenuItem("退出").also { it.addActionListener(ActionListener { exitProcess(0) }) }
         popup.add(openItem)
         popup.add(exitItem)
@@ -297,7 +297,7 @@ private fun showError(message: String) {
         val exitItem = MenuItem("退出").also { it.addActionListener(ActionListener { exitProcess(1) }) }
         popup.add(MenuItem(message))
         popup.add(exitItem)
-        val icon = TrayIcon(loadIcon(Path.of(System.getProperty("user.dir"))), "青阅", popup).also { it.isImageAutoSize = true }
+        val icon = TrayIcon(loadIcon(Path.of(System.getProperty("user.dir"))), "legadoQ", popup).also { it.isImageAutoSize = true }
         tray.add(icon)
         Thread.sleep(8000) // 错误托盘停留几秒，给用户看到提示
     }

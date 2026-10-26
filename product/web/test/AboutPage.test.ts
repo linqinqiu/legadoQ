@@ -86,7 +86,7 @@ test('开发者那一格不许兜底成别人的仓库，也不把配置项说�
   const server = withoutComments(read('../../app/src/main/kotlin/io/legado/ops/UpdateCheck.kt'))
   assert.doesNotMatch(server, /lukelzlz\/legado/)
   // 默认回本项目自己的仓库 —— 于是「检查更新」出厂就能用，不再永远回 not_configured
-  assert.match(server, /DEFAULT_REPOSITORY\s*=\s*"linqinqiu\/qingyue"/)
+  assert.match(server, /DEFAULT_REPOSITORY\s*=\s*"linqinqiu\/legadoQ"/)
 })
 
 test('路由与样式都接上了', () => {

@@ -67,7 +67,7 @@ class AgentErrorClassHttpTest {
     private suspend fun comprehend(c: HttpClient): HttpResponse {
         // 正文要在 Kotlin 侧拼好再塞进 JSON 字面量：把 `.repeat(20)` 写进字符串模板里
         // 只会发出一个非法请求体，于是测到的永远是"请求体不是合法的"，根本没走到闸门。
-        val text = "青阅是一款本地阅读服务。".repeat(20)
+        val text = "legadoQ 是一款本地阅读服务。".repeat(20)
         return c.post("/api/agent/comprehend") {
             contentType(ContentType.Application.Json)
             setBody(Json.encodeToString(

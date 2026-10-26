@@ -88,7 +88,7 @@ object BrandManifest {
         put("themeColor", JsonPrimitive(brand.themeColor))
         put("hasIcon", JsonPrimitive(!iconUrl.isNullOrBlank()))
         if (iconUrl != null) put("iconUrl", JsonPrimitive(iconUrl))
-        // 内置名报出去：界面要能区分"这是青阅的默认"与"这是用户改过的"。
+        // 内置名报出去：界面要能区分"这是 legadoQ 的默认"与"这是用户改过的"。
         put("builtinName", JsonPrimitive(BuildInfo.title))
     }
 }

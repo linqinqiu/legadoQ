@@ -61,7 +61,7 @@ const GENERATED_AT_DATE = /生成时间：\d{4}-\d{2}-\d{2}/;
 const normalizeGeneratedAt = (text) => text.replace(GENERATED_AT_DATE, '生成时间：<日期>');
 
 const lines = [];
-lines.push('# 青阅 API 参考');
+lines.push('# legadoQ API 参考');
 lines.push('');
 lines.push(`> 版本：${doc.version ?? 'dev'} · 端点数：${endpoints.length} · 生成时间：${new Date().toISOString().slice(0, 10)}`);
 lines.push('> 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；');

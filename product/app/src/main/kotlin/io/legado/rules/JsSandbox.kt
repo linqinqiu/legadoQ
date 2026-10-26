@@ -78,7 +78,7 @@ data class JsExecutionContext(
 /**
  * `Reload(url)` 真正交给抓取通道的地址。
  *
- * 外站规则脚本托管（qyyuapi.com 等）会**按 User-Agent 拦**默认抓取的 `LegadoServer/0.1`，
+ * 外站规则脚本托管（qyyuapi.com 等）会**按 User-Agent 拦**默认抓取的 `legadoQ/0.1`，
  * 直接回 403。所以不能朴素抓取，必须在 URL 尾巴挂上浏览器级 UA / Referer / Accept。
  * `RuleRunner.splitUrlOptions` 已支持 `,<json headers>` 这种写法，所以这里只拼字符串，
  * 不去改 `buildRequest`（那会影响普通书源抓取的 UA 策略）。

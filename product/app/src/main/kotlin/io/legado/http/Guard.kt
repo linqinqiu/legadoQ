@@ -93,7 +93,7 @@ val SameOriginWriteGate = createApplicationPlugin("SameOriginWriteGate") {
                 "path" to path,
             ),
         )
-        call.respond(HttpStatusCode.Forbidden, ApiError("cross_origin", "这个页面不是青阅界面，已拒绝它代替你改动数据"))
+        call.respond(HttpStatusCode.Forbidden, ApiError("cross_origin", "这个页面不是 legadoQ 界面，已拒绝它代替你改动数据"))
         // ★ 关键：Ktor 的 onCall 不阻断后续 pipeline，路由处理器仍会跑到底。
         // 所以"挡在处理器之前"真正靠的是路由处理器第一行的 requireSameOriginWrite()：
         // 它第一件事就是看 response.status() 是不是已经被本插件设成了 403，是就直接 false 退出、
@@ -123,7 +123,7 @@ suspend fun ApplicationCall.requireSameOriginWrite(extraAllowed: (ApplicationCal
             "path" to request.local.uri.substringBefore('?'),
         ),
     )
-    respond(HttpStatusCode.Forbidden, ApiError("cross_origin", "这个页面不是青阅界面，已拒绝它代替你改动数据"))
+    respond(HttpStatusCode.Forbidden, ApiError("cross_origin", "这个页面不是 legadoQ 界面，已拒绝它代替你改动数据"))
     return false
 }
 

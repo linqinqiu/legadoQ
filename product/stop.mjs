@@ -39,7 +39,7 @@ if (!pids.length) {
   pids = projectPids();
   if (pids.length) console.log(`端口 ${port} 上没有服务；按 jar 找到 ${pids.length} 个本项目进程`);
 }
-if (!pids.length) { console.log('没有在跑的青阅服务'); process.exit(0); }
+if (!pids.length) { console.log('没有在跑的 legadoQ 服务'); process.exit(0); }
 
 for (const pid of pids) {
   // 只认命令行里确实是本项目 jar 的进程：按 PID 盲杀过一次，教训写在这儿。

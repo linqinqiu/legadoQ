@@ -5,7 +5,7 @@ import path from 'node:path';
 import { bundleAssetName, childEnvironment, declaredVersion, ensureDirectories, newestFatJar, readJarEntry, resolveRuntime } from './scripts/runtime.mjs';
 
 /**
- * 启动青阅：后台拉起服务，等端口真的能连上了再打开浏览器。
+ * 启动 legadoQ：后台拉起服务，等端口真的能连上了再打开浏览器。
  *
  * 命令行（借鉴 workbuddy-switch 的 `serve --port N --no-open`）：
  *   node start.mjs                 # 默认端口（.env / LEGADO_PORT / 1234），起来后自动开浏览器
@@ -198,7 +198,7 @@ function staleRunningPids(target, jarPath) {
 if (await isReady(url)) {
   const stale = staleRunningPids(runtime.port, path.join(runtime.libs, jar));
   if (!stale.length) {
-    console.log(`青阅已在运行 ${url}`);
+    console.log(`legadoQ 已在运行 ${url}`);
     if (args.open) openBrowser(url);
     process.exit(0);
   }
@@ -216,7 +216,7 @@ if (await isReady(url)) {
 
 const probe = net.createServer();
 probe.once('error', (err) => {
-  console.error(`端口 ${runtime.port} 不可用（${err.code}）：可能已有一个青阅在跑 —— 先 node stop.mjs，或换端口 node start.mjs --port ${runtime.port + 1}。`);
+  console.error(`端口 ${runtime.port} 不可用（${err.code}）：可能已有一个 legadoQ 在跑 —— 先 node stop.mjs，或换端口 node start.mjs --port ${runtime.port + 1}。`);
   process.exit(1);
 });
 probe.listen(runtime.port, runtime.host, () => {

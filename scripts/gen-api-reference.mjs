@@ -6,7 +6,7 @@ const esc = s => String(s ?? '').replace(/\|/g, '\\|')
 const ORDER = catalog.endpoints.map(e => e.group).filter((v, i, a) => a.indexOf(v) === i)
 const counts = Object.fromEntries(ORDER.map(g => [g, catalog.endpoints.filter(e => e.group === g).length]))
 const lines = []
-lines.push(`# 青阅 API 参考`, ``)
+lines.push(`# legadoQ API 参考`, ``)
 lines.push(`> 版本：${catalog.version} · 端点数：${catalog.endpoints.length} · 生成时间：${new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })}`)
 lines.push(`> 本文由运行中的 \`GET /api/catalog\` 实时生成（\`node scripts/gen-api-reference.mjs\`）；以此为准，不再手写端点清单。`, ``)
 lines.push(`## 连接`, ``)

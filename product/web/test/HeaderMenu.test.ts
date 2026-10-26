@@ -33,7 +33,7 @@ test('HeaderMenu - AppHeader static rendering', () => {
   const html = renderToStaticMarkup(element)
 
   // Verify brand title and icon
-  assert.ok(html.includes('青阅'), 'Header should contain brand title')
+  assert.ok(html.includes('legadoQ'), 'Header should contain brand title')
   assert.ok(html.includes('app-brand'), 'Header should have app-brand class')
   
   // 一级导航（用户 2026-10-08 定框架，2026-10-09 把「书源」放回顶栏）：书库·书架·书源·发现·订阅·设置。

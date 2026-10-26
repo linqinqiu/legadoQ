@@ -36,7 +36,7 @@ class UpdateCheckTest {
 
     @Test
     fun `请求头前缀只能是 ASCII（中文应用名当头像值会把接口炸成 500）`() {
-        // 实测：`User-Agent: 青阅/0.6.3` 让 JDK 在建请求时抛 `invalid header value`，
+        // 实测：把非 ASCII 的显示名拼进 `User-Agent`，JDK 在建请求时抛 `invalid header value`；
         // 而那段代码在 runCatching 之外 → 异常冲出路由 → 接口 500，界面把它念成「检查请求没有发出去」。
         assertTrue(UpdateCheck.userAgentPrefix.matches(Regex("^[\\x21-\\x7E]+$")))
         assertFalse("显示名不能进请求头", UpdateCheck.userAgentPrefix.contains(BuildInfo.title))
@@ -49,7 +49,7 @@ class UpdateCheckTest {
         // 用户 2026-10-05 明确不许把仓库放到别人手里。
         assertTrue("默认仓库不能是空的，否则检查更新出厂即死", UpdateCheck.repository.isNotBlank())
         assertFalse("默认仓库不许是 clone 来的别人家仓库", UpdateCheck.repository.contains("lukelzlz"))
-        assertEquals("linqinqiu/qingyue", UpdateCheck.DEFAULT_REPOSITORY)
+        assertEquals("linqinqiu/legadoQ", UpdateCheck.DEFAULT_REPOSITORY)
     }
 
     @Test

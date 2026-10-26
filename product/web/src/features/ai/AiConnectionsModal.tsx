@@ -116,7 +116,7 @@ function ChatPanel({
   uiContext?: UiContext
 }) {
   const [messages, setMessages] = useState<ChatLine[]>([])
-  const [systemPrompt, setSystemPrompt] = useState('你是青阅的阅读助手，帮助用户理解文章、管理书源、解答阅读相关的问题。')
+  const [systemPrompt, setSystemPrompt] = useState('你是 legadoQ 的阅读助手，帮助用户理解文章、管理书源、解答阅读相关的问题。')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')

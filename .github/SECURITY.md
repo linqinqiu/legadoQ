@@ -14,7 +14,7 @@ We actively maintain security updates for the following versions:
 
 **Please do NOT file public issues for security vulnerabilities.**
 
-If you discover a security vulnerability in QingYue, please report it privately:
+If you discover a security vulnerability in legadoQ, please report it privately:
 
 ### Contact Methods
 
@@ -40,7 +40,7 @@ We commit to:
 
 ## Our Security Model
 
-QingYue's default security boundaries:
+legadoQ's default security boundaries:
 
 1. **Local-Only Binding**: Defaults to `127.0.0.1:1234`, no external exposure
 2. **No Authentication**: Designed as a local service (no accounts/passwords)
@@ -48,7 +48,7 @@ QingYue's default security boundaries:
 4. **SSRF Guard**: Outbound requests filtered to public internet only
 5. **Optional LAN Exposure**: Setting `LEGADO_HOST=0.0.0.0` exposes write access to LAN
 
-⚠️ **Important**: Never expose QingYue to the public internet without additional authentication/proxies!
+⚠️ **Important**: Never expose legadoQ to the public internet without additional authentication/proxies!
 
 ## Security Best Practices
 

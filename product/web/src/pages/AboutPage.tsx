@@ -89,7 +89,7 @@ export function AboutPage({
   return (
     <section className="about-page">
       <header className="about-hero">
-        <h1>{info?.title ?? '青阅'}</h1>
+        <h1>{info?.title ?? 'legadoQ'}</h1>
         <p>把 Legado 书源规则跑在服务端的本地阅读库：书架、发现、订阅、朗读与离线缓存都在自己的机器上。</p>
         <dl className="about-facts">
           {/* 取失败时不能一直挂着「载入中…」：那行字会永远停在屏幕上（notice 在旁边，但版本这一格在说谎） */}
@@ -97,7 +97,7 @@ export function AboutPage({
           <div><dt>运行位置</dt><dd>{window.location.host}</dd></div>
           {/* 「开发者」这一格原来印的是仓库 slug，而 slug 的兜底值硬写着别人家的仓库
               （`lukelzlz/legado`，这份代码 clone 来的地方，不是本项目的归属）。
-              现在服务端默认回本项目自己的仓库（`linqinqiu/qingyue`），没取到才说没取到。 */}
+              现在服务端默认回本项目自己的仓库（`linqinqiu/legadoQ`），没取到才说没取到。 */}
           <div><dt>开发者</dt><dd>{repository || '未配置'}</dd></div>
         </dl>
         <div className="about-actions">

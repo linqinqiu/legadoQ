@@ -62,7 +62,7 @@ const MAX_LINES = 200
 /** 会话数量上限：太多标签页也点不过来，还挤占存储。 */
 const MAX_SESSIONS = 20
 
-export const DEFAULT_SYSTEM_PROMPT = '你是青阅的阅读助手，帮助用户理解文章、管理书源、解答阅读相关的问题。'
+export const DEFAULT_SYSTEM_PROMPT = '你是 legadoQ 的阅读助手，帮助用户理解文章、管理书源、解答阅读相关的问题。'
 
 /**
  * 系统提示词模板：用户点一下就把人设换成对应方向，不用每次手打。
@@ -82,7 +82,7 @@ export const SYSTEM_PROMPT_TEMPLATES: SystemPromptTemplate[] = [
   {
     id: 'source-debug',
     name: '书源调试',
-    prompt: '你是书源调试助手，熟悉青阅/legado 书源规则（搜索、发现、详情、目录、正文的 CSS/XPath/JSONPath 规则与 JS 变量）。帮用户定位"搜不到、目录空、正文错"的原因，给出可粘贴的规则片段。',
+    prompt: '你是书源调试助手，熟悉 legadoQ/legado 书源规则（搜索、发现、详情、目录、正文的 CSS/XPath/JSONPath 规则与 JS 变量）。帮用户定位"搜不到、目录空、正文错"的原因，给出可粘贴的规则片段。',
   },
   {
     id: 'code',

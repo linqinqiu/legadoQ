@@ -92,7 +92,7 @@ const startBat = [
   'if exist "%~dp0port.txt" for /f "usebackq delims=" %%p in ("%~dp0port.txt") do set LEGADO_PORT=%%p',
   'set LEGADO_DATA_DIR=data',
   'if not exist "%~dp0tmp" mkdir "%~dp0tmp"', 'echo.',
-  `echo  QingYue ${version}  (bundled runtime, no JDK needed)`,
+  `echo  legadoQ ${version}  (bundled runtime, no JDK needed)`,
   'echo  UI        http://127.0.0.1:%LEGADO_PORT%/',
   ...(hasNext ? ['echo  New shell http://127.0.0.1:%LEGADO_PORT%/next/'] : []),
   'echo  Stop with Ctrl+C.  Data stays in .\\data',

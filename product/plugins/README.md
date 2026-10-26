@@ -1,6 +1,6 @@
 # plugins/ —— 外部插件目录
 
-把实现了 `io.legado.plugin.Plugin` 的 jar 放进这里，青阅启动时可以扫描装载。
+把实现了 `io.legado.plugin.Plugin` 的 jar 放进这里，legadoQ 启动时可以扫描装载。
 **本目录默认是空的**：框架不含任何插件，装什么完全由你决定。
 
 ## 一个插件 jar 需要什么

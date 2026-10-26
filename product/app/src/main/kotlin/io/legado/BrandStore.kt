@@ -12,14 +12,14 @@ import java.nio.file.Path
  * `brand/` 子目录里。选"安装根的文件"而不是数据库：这台服务可以整体搬盘、改名，
  * 品牌属于"这一台机器长什么样"，与 `agent-profiles.json` 同一类，不进库才跟着目录走。
  *
- * 刻意**不改** [BuildInfo.title]：`/healthz` 的 title 恒为「青阅」。
- * 桌面壳（`DesktopLauncher`）用"响应里含青阅"判断端口上是不是自己那个实例
- * （`isQingyueOn`），改 title 会让改名后的壳认为端口上是别人的服务、再起第二个进程。
+ * 刻意**不改** [BuildInfo.title]：`/healthz` 的 title 恒为「legadoQ」。
+ * 桌面壳（`DesktopLauncher`）用"响应里含 legadoQ"判断端口上是不是自己那个实例
+ * （`isLegadoQOn`），改 title 会让改名后的壳认为端口上是别人的服务、再起第二个进程。
  * 品牌名只影响 PWA 的安装名、标签页标题与应用内显示。
  */
 @Serializable
 data class Brand(
-    /** PWA 安装名与界面标题；空 = 用内置的「青阅」。 */
+    /** PWA 安装名与界面标题；空 = 用内置的「legadoQ」。 */
     val name: String = "",
     /** 桌面/手机主屏幕上那格空间不够时用的短名；空 = 回落 [name]。 */
     val shortName: String = "",

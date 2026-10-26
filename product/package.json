@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "GPL-3.0-or-later",
-  "description": "Legado (开源阅读) Headless Server & Modern Web Reader",
+  "description": "legadoQ — 本地阅读服务（Kotlin/Ktor 后端 + 内置 Web UI）",
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
@@ -41,10 +41,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/linqinqiu/qingyue.git"
+    "url": "git+https://github.com/linqinqiu/legadoQ.git"
   },
   "bugs": {
-    "url": "https://github.com/linqinqiu/qingyue/issues"
+    "url": "https://github.com/linqinqiu/legadoQ/issues"
   },
-  "homepage": "https://github.com/linqinqiu/qingyue#readme"
+  "homepage": "https://github.com/linqinqiu/legadoQ#readme"
 }

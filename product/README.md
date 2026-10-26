@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="./web/public/favicon.svg" width="96" height="96" alt="青阅 Logo" />
+<img src="./web/public/favicon.svg" width="96" height="96" alt="legadoQ Logo" />
 
-# 青阅
+# legadoQ
 
 把 [Legado（开源阅读）](https://github.com/gedoor/legado) 的书源规则搬到服务端跑：一个 JVM 进程 + 一个浏览器界面，书架、发现、订阅、朗读、离线缓存都在自己机器上。
 
@@ -31,12 +31,12 @@ node scripts/package-desktop.mjs   # 需要 JAVA_HOME 指向带 jpackage/jlink �
 产出 `dist/qingyue-desktop-<版本>.zip`，解压后双击 `qingyue.exe`：
 
 - 自带精简 JRE，**不要求装 Java**；
-- 起来后开一个**独立的应用窗口**（无地址栏、无标签页，任务栏里是青阅自己的图标），地址仍是 `http://127.0.0.1:<端口>`；
-  找不到可用的 Edge / Chrome 时才退回系统默认浏览器开标签页。**关掉这个窗口就是退出青阅**（服务干净停止、端口释放）；
+- 起来后开一个**独立的应用窗口**（无地址栏、无标签页，任务栏里是 legadoQ 自己的图标），地址仍是 `http://127.0.0.1:<端口>`；
+  找不到可用的 Edge / Chrome 时才退回系统默认浏览器开标签页。**关掉这个窗口就是退出 legadoQ**（服务干净停止、端口释放）；
   想让服务常驻而不要窗口，用 `qingyue.exe --no-open` 起，托盘里的「打开 / 退出」照常在；
   浏览器可执行文件不按机器默认找的顺序时，用 `.env` 写 `LEGADO_BROWSER_PATH=<路径>` 指定；
 - 数据默认放在 exe 旁边的 `data/`；想用已有的书架，在 exe 旁放一个 `.env` 写 `LEGADO_DATA_DIR=<你的数据目录>`；
-- 端口上已经是青阅在跑 → 不再起第二个进程，只把界面打开；端口被**别的程序**占了 → 从下一个端口起顺延找一个空闲的（往后 20 个内），并用它写回 `port.txt`，下次启动仍稳定在那个端口（界面上「设置 → 服务 → 服务端口」看到的也是它）。
+- 端口上已经是 legadoQ 在跑 → 不再起第二个进程，只把界面打开；端口被**别的程序**占了 → 从下一个端口起顺延找一个空闲的（往后 20 个内），并用它写回 `port.txt`，下次启动仍稳定在那个端口（界面上「设置 → 服务 → 服务端口」看到的也是它）。
 
 ## 技术栈
 
@@ -164,7 +164,7 @@ cd web && npm install && npm run dev     # 前端开发服务器（热重载）
 | `LEGADO_LOG_FILE` | `<安装根>/server.log` | 运行日志 |
 | `LEGADO_TMP_DIR` | `<安装根>/tmp` | JVM 临时目录。不指定的话 SQLite 的原生库每次启动都往系统盘 `Temp` 解一份 |
 | `LEGADO_HOME` | 当前目录 | 安装根：`port.txt`、`server.log`、`tmp/` 都从它下面派生。由启动器传入（`scripts/runtime.mjs`），裸跑 jar 一般不用管 |
-| `LEGADO_REPO` | `linqinqiu/qingyue` | `owner/repo` 形状，供「关于」页检查更新；默认本项目自己的仓库，换 fork 时改它 |
+| `LEGADO_REPO` | `linqinqiu/legadoQ` | `owner/repo` 形状，供「关于」页检查更新；默认本项目自己的仓库，换 fork 时改它 |
 
 `start.mjs` / `stop.mjs` 是可选封装（后台拉起、按端口停进程），以脚本自己所在目录为安装根，整个文件夹可以改名或搬盘。`start.mjs` 支持 `--port 1235` 换端口、`--host 0.0.0.0` 换绑定地址、`--no-open` 只起服务不开浏览器（默认起来后自动打开浏览器）。端口也可以**在界面上改**（设置 → 服务 → 服务端口，重启后生效，写的是安装根下的 `port.txt`）；优先级 `--port` > `port.txt` > `.env` / 环境变量 > 1234。同目录的 `start.cmd` 是给双击用的门面：服务没跑就起、等就绪再开界面；已经在跑就直接开界面。
 
@@ -270,7 +270,7 @@ npm run docs:api-check            # 接口文档与 agent-api.json 是否一致�
 
 `tools/verify/` 下还有按功能划分的门禁（`toc-rule-check`、`source-health-check`、`shelf-layout-check`、`reader-flow-check`、`version-check` 等），都是开真浏览器量，不打桩。判据口径以 `web/test/` 与 `tools/verify/` 的现有实现为准。
 
-## 青阅到底是什么
+## legadoQ 到底是什么
 
 三句话：
 

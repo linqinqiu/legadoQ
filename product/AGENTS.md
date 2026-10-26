@@ -1,6 +1,6 @@
-# AGENTS — 青阅（QingYue）自定义接入面 `/api/agent/*`
+# AGENTS — legadoQ 自定义接入面 `/api/agent/*`
 
-本文件给需要把青阅接入外部系统 / AI 客户端的开发者与智能体看。它描述的是**真实已在 127.0.0.1:1234 跑起来的 HTTP 接口**，不是设计稿。
+本文件给需要把 legadoQ 接入外部系统 / AI 客户端的开发者与智能体看。它描述的是**真实已在 127.0.0.1:1234 跑起来的 HTTP 接口**，不是设计稿。
 
 > 安全模型：本服务没有账号、没有 token。写操作（登记/删除连接、新建书源）受**同源写门**保护：`POST/PUT/DELETE` **只有在带了 `Origin` 头**时才检查它是否指向服务自己（`ServerIdentity` 的绑定 host+port），带了跨站 Origin 就 403；**不带 Origin 的请求直接放行**（本机 curl / 脚本 / AI 客户端都属于这一类）。`GET/HEAD/OPTIONS` 无论带什么都放行。唯一反向例外是 WebSocket：那条把「没有 Origin」当作跨站拒掉。服务**仅绑定 127.0.0.1，绝不绑定 0.0.0.0**。所有外部 HTTP 调用走 JDK `java.net.http.HttpClient`。
 
@@ -18,7 +18,7 @@
 
 ## 1. 这组接口解决了什么
 
-「自定义接入」是青阅给用户预留的**可插拔扩展点**。基础框架只立下稳固钩子，真正接哪种模型、连哪个地址，完全交给用户：
+「自定义接入」是 legadoQ 给用户预留的**可插拔扩展点**。基础框架只立下稳固钩子，真正接哪种模型、连哪个地址，完全交给用户：
 
 - 在 `agent-profiles.json` 里配（**配置文件预设**）
 - 或在运行时 `POST /api/agent/connections` 注册（**运行时注册**）
@@ -175,7 +175,7 @@ npx tsx test/ApiCatalog.test.ts   # 期望 3/3 PASS
 
 - 1234 服务：`gradlew :app:run`，环境变量 `LEGADO_HOST=127.0.0.1 LEGADO_PORT=1234 LEGADO_DATA_DIR=<数据目录> LEGADO_HOME=<dir>`，并加 `-Dai.debug`（或环境变量 `JAVA_OPTS=-Dai.debug`）启用外部网关句柄。
 - **交互入口（已改版）**：设置 → 「AI 接入」→ 打开「AI 接入 · 对话助手」面板。主形态就是**对话**：在输入框说话，消息走 `POST /api/agent/chat`；**必须先登记外部模型（openai-compatible）**，没有连接时输入框禁用、状态显示「未连接外部模型，AI 不可用」。连接登记与书源只读校验收进同面板底部的「连接与工具」折叠区。**没有也不再有独立的 `agent.html` 页面**（已删除，仅保留 SPA 设置入口）。
-- 注意：根路径 `http://127.0.0.1:1234/` 是青阅**阅读器主应用**（书架/书源/阅读），与 `/api/agent/*` 这套 AI 接入无关；AI 接入的对话入口是上面设置面板里的「AI 接入」。
+- 注意：根路径 `http://127.0.0.1:1234/` 是 legadoQ**阅读器主应用**（书架/书源/阅读），与 `/api/agent/*` 这套 AI 接入无关；AI 接入的对话入口是上面设置面板里的「AI 接入」。
 - 端到端（0.8.6 重测，四条路径各自都验过状态码与文案）：
   1. **没有连接（chat）**：删光外部连接 → `409 no_connection`，不再有本地说明冒充回答。
   2. **地址被闸门拒（chat / comprehend）**：登记 `baseUrl=http://127.0.0.1:5591/v1`（默认配置不放回环）
@@ -223,7 +223,7 @@ tasks.named('jar', Jar) {
     manifest {
         attributes(
             'Main-Class': 'io.legado.ApplicationKt',
-            'Implementation-Title': 'Legado Server',
+            'Implementation-Title': 'legadoQ',
             'Implementation-Version': project.version
         )
     }
@@ -279,7 +279,7 @@ qingyue-dist-v0.8.2/
 
 ```jsonc
 {
-  "service": "青阅",
+  "service": "legadoQ",
   "version": "0.8.6",          // 当前真正在跑的构建号，由服务端在响应时盖上
   "scope": "全量：代码里注册的每一条端点都在这里，按 group 归面",
   "howToConnect": { "baseUrl": "…", "auth": "…", "errors": "…", "response": "…" },
@@ -346,7 +346,7 @@ qingyue-dist-v0.8.2/
   校验（`NetworkSecurity.resolveAndValidateSafeHttpTarget`，环回与私网地址一律拒），iframe 不开 `allow-same-origin`。
   其中 `page`、`res`（同一路径上的 GET/POST/PUT/PATCH/DELETE 五条）、`submit` 这几条**不看 `Origin`** —— 它们的门是
   `POST /browser/session` 发的那张一次性令牌（`?t=…`，1800 秒过期），因为提交表单那一下是代理里的页面在发，带不出本站的 `Origin`。
-  没有有效令牌就失败，所以先开会话、再用同一个 `t`。这几条回的是**目标站的响应原文**，不是青阅的 JSON 信封，
+  没有有效令牌就失败，所以先开会话、再用同一个 `t`。这几条回的是**目标站的响应原文**，不是 legadoQ 的 JSON 信封，
   所以别拿 `JSON.parse` 去接 `browser/page`。
   `GET /browser/submit` 容易读错：它不是"读表单字段"，而是**以 GET 提交表单** —— 除 `t`、`u` 之外的 query 参数会被当成字段值拼上去。
 
@@ -664,7 +664,7 @@ val conn = AgentModule.connect(database, runner, coverCache, subscriptions, regi
 
 ## 0. 一句话
 
-青阅的 AI 是**进程内网关**，不是外挂服务：它和界面、脚本用的是同一批服务对象，
+legadoQ 的 AI 是**进程内网关**，不是外挂服务：它和界面、脚本用的是同一批服务对象，
 所以它知道你在看什么，也能调程序自己的 54 个能力。
 入口是 `/api/agent/*`（8 个端点），核心实现在 `app/src/main/kotlin/io/legado/ai/`。
 

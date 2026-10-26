@@ -156,8 +156,8 @@ async function runPwaAndManifestSuite() {
       })('${manifestHref}')
     `)
 
-    assert.equal(manifestJson.name, '青阅', 'Manifest name should match')
-    assert.equal(manifestJson.short_name, '青阅', 'Manifest short_name should match')
+    assert.equal(manifestJson.name, 'legadoQ', 'Manifest name should match')
+    assert.equal(manifestJson.short_name, 'legadoQ', 'Manifest short_name should match')
     assert.equal(manifestJson.display, 'standalone', 'Manifest display mode should be standalone')
     assert.ok(Array.isArray(manifestJson.icons) && manifestJson.icons.length >= 2, 'Manifest should provide icon assets')
 

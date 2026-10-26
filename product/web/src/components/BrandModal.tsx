@@ -16,11 +16,11 @@ import { useEscapeClose } from '../lib/useEscapeClose'
  * - 名称与主题色：manifest 那条路由带 no-cache，**刷新即生效**；
  * - 已装到桌面/主屏幕的 PWA：名称与图标由浏览器自己存一份清单，要等浏览器同步
  *   （通常重启浏览器；有的平台要卸载重装）才会变 —— 这不是这里能控制的；
- * - 桌面的 `青阅.exe` 文件名与快捷方式名：打包期（jpackage）就定死了，运行时改不动。
+ * - 桌面的 `legadoQ.exe` 文件名与快捷方式名：打包期（jpackage）就定死了，运行时改不动。
  */
 /**
  * 服务端那份品牌写进前端的单一来源（`lib/brandStore`）。
- * 界面标题与顶栏品牌字都读那里 —— 此前「青阅」硬编码在三处（顶栏、阅读器的
+ * 界面标题与顶栏品牌字都读那里 —— 此前「legadoQ」硬编码在三处（顶栏、阅读器的
  * `document.title` 两处、index.html），改名后那三处照旧，等于"改了个寂寞"。
  */
 function publishBrand(info: BrandInfo): void {
@@ -50,7 +50,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
         setName(info.name)
         setShortName(info.shortName)
         setThemeColor(info.themeColor)
-        // 打开这一屏就把当前品牌灌进单一来源：之前它还是默认的「青阅」，
+        // 打开这一屏就把当前品牌灌进单一来源：之前它还是默认的「legadoQ」，
         // 而顶栏与标签页要读的是同一个值。
         publishBrand(info)
       })
@@ -136,8 +136,8 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
           </p>
 
           <label className="customize-field">
-            <span>应用名称（留空 = 内置的「{brand?.builtinName ?? '青阅'}」）</span>
-            <input type="text" value={name} maxLength={40} placeholder={brand?.builtinName ?? '青阅'}
+            <span>应用名称（留空 = 内置的「{brand?.builtinName ?? 'legadoQ'}」）</span>
+            <input type="text" value={name} maxLength={40} placeholder={brand?.builtinName ?? 'legadoQ'}
               onChange={event => setName(event.target.value)} />
           </label>
           <label className="customize-field">

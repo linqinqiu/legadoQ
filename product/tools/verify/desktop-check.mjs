@@ -28,7 +28,7 @@ const arg = (f, d = null) => { const i = process.argv.indexOf(f); return i > 0 &
 const hasFlag = (f) => process.argv.includes(f)
 const SMOKE = hasFlag('--smoke')
 
-// 门禁端口刻意避开 1234：本机开发服务（start.mjs）常驻 1234，起壳会命中"青阅已在运行"
+// 门禁端口刻意避开 1234：本机开发服务（start.mjs）常驻 1234，起壳会命中"legadoQ 已在运行"
 // 分支秒退，所有判据就都打到开发服务上了（实测一次假红）。--port 给的是基址，实际用基址+40。
 const port = Number(arg('--port', '1234')) + 40
 

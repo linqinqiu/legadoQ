@@ -60,7 +60,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
     // 界面只给一句人话，完整堆栈留在这儿：没有这条，用户报"点了没反应"时我们什么都没有
-    console.error(`[青阅] ${this.props.region}渲染失败`, error, info.componentStack)
+    console.error(`[legadoQ] ${this.props.region}渲染失败`, error, info.componentStack)
   }
 
   private retry = () => { this.setState({ message: null }) }

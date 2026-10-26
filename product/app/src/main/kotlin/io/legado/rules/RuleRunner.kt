@@ -1155,7 +1155,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         // 两个 UA 会一起发出去，站点按第一个判 —— 懒人听书的详情接口因此返回空数据
         // （45 字节 `{"data":{}}`，搜索却照常出结果，极易误判成"书源坏了"）。
         if (headers.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
-            builder.header("User-Agent", "LegadoServer/0.1")
+            builder.header("User-Agent", "legadoQ/0.1")
         }
         // Java HttpClient 禁止设置这几个头，书源里 `"Connection": "keep-alive"` 极常见 ——
         // 原样传进去直接抛 `IllegalArgumentException：restricted header name`，整个搜索/正文全废

@@ -6,9 +6,9 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 /**
- * PROPOSAL-017 / ADR-017 一期：把青阅打成能双击的 Windows 程序（`青阅.exe`）。
+ * PROPOSAL-017 / ADR-017 一期：把 legadoQ 打成能双击的 Windows 程序（`qingyue.exe`）。
  *
- * 形态：jlink 裁过的运行时 + 我们的 fat jar，由 jpackage 包成 app-image；`青阅.exe` 起来后
+ * 形态：jlink 裁过的运行时 + 我们的 fat jar，由 jpackage 包成 app-image；`qingyue.exe` 起来后
  * 由 `DesktopLauncher` 探端口、开浏览器、挂托盘、退出时优雅关服务。壳只当进程管家 + 窗口，
  * 界面永远开在 `http://127.0.0.1:<port>`（同源闸门一行不改）。
  *
@@ -110,14 +110,14 @@ if (dataDir) {
   console.log(`NOTE  数据目录指向 ${dataDir}（镜像根 .env）`)
 }
 
-// 7) 校验产物布局（ADR-017 §5）：青阅.exe / app/legado-*-all.jar / runtime/bin/java.exe。
+// 7) 校验产物布局（ADR-017 §5）：qingyue.exe / app/legado-*-all.jar / runtime/bin/java.exe。
 const appJar = fs.readdirSync(path.join(imageRoot, 'app')).find(n => n.endsWith('-all.jar'))
 if (!appJar) fail('app/ 里没有 fat jar —— stop.mjs 的 CommandLine 匹配会静默跳过它')
 if (!fs.existsSync(path.join(imageRoot, 'runtime', 'bin', 'java.exe'))) fail('runtime/bin/java.exe 缺失')
 console.log(`OK  ${path.relative(ROOT, imageRoot)}/qingyue.exe`)
 console.log(`    运行时：${runtimeNote}；数据默认 ${dataDir ? dataDir : '<镜像>/data'}`)
 
-// 8) zip（顶层目录 = 青阅）。
+// 8) zip（顶层目录 = legadoQ）。
 if (!hasFlag('--no-zip')) {
   const zipName = `qingyue-desktop-${version}.zip`
   const zipPath = path.join(ROOT, 'dist', zipName)

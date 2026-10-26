@@ -832,7 +832,7 @@ class RuleRunnerTest {
 
     @Test
     fun `Reload 抓外站规则脚本时必须挂浏览器 UA`() {
-        // 外站规则脚本托管（qyyuapi.com 等）**按 User-Agent 拦**默认抓取的 `LegadoServer/0.1`，直接 403。
+        // 外站规则脚本托管（qyyuapi.com 等）**按 User-Agent 拦**默认抓取的 `legadoQ/0.1`，直接 403。
         // 所以 Reload 不能朴素抓取，必须在 URL 尾巴挂浏览器级 UA / Referer。
         //
         // 为什么不在打桩通道上断言：`RuleRunner.fetch` 会先 `splitUrlOptions` 把 headers 拆走，
@@ -846,7 +846,7 @@ class RuleRunnerTest {
             composed.contains("\"headers\""),
         )
         assertTrue(
-            "Reload 必须挂浏览器级 UA（qyyuapi 等按 UA 拦 LegadoServer/0.1，会 403）；实际=$composed",
+            "Reload 必须挂浏览器级 UA（qyyuapi 等按 UA 拦 legadoQ/0.1，会 403）；实际=$composed",
             composed.contains("Mozilla/5.0"),
         )
         assertTrue("Reload 要带 Referer（部分站点校验来源）；实际=$composed", composed.contains("Referer"))

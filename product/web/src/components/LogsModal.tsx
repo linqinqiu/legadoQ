@@ -121,7 +121,7 @@ export function LogsModal({ onClose }: { onClose: () => void }) {
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = `青阅运行日志-${new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')}.log`
+    link.download = `legadoQ运行日志-${new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')}.log`
     link.click()
     URL.revokeObjectURL(link.href)
     toast.success(`已导出 ${entries.length} 条（合并前共 ${merged} 条）`)

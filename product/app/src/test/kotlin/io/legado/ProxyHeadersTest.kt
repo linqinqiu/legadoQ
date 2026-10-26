@@ -49,6 +49,6 @@ class ProxyHeadersTest {
         assertEquals("bytes=0-1023", withRange["Range"])
         assertFalse(withRange.containsKey("Cookie"))
         assertTrue(proxyRequestHeaders(URI("https://m.example/1.m4a"), referer = null, cookieFor = { "   " }).let { !it.containsKey("Cookie") })
-        assertEquals("LegadoServer/0.1", withRange["User-Agent"])
+        assertEquals("legadoQ/0.1", withRange["User-Agent"])
     }
 }

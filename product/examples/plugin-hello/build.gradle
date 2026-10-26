@@ -4,7 +4,7 @@
 //   ../../gradlew.bat jar          Windows
 //   ../../gradlew jar              Linux / macOS
 //
-// 产物：build/libs/hello-plugin.jar —— 丢进 <安装根>/plugins/ 后重启青阅即可被装载。
+// 产物：build/libs/hello-plugin.jar —— 丢进 <安装根>/plugins/ 后重启 legadoQ 即可被装载。
 //
 // 为什么单独一个工程而不是主工程的一个子模块：
 // 插件是**外部**代码，不该和框架一起编译。共用一个 Gradle 工程会让
@@ -26,7 +26,7 @@ repositories {
 
 dependencies {
     // 编译期依赖主程序产物里已经存在的类（Plugin / Tool / AgentResult …）。
-    // compileOnly：运行期这些类由青阅自己的类加载器提供，插件 jar 不该把它们再打包一份，
+    // compileOnly：运行期这些类由 legadoQ 自己的类加载器提供，插件 jar 不该把它们再打包一份，
     // 否则同一个类会被两个 ClassLoader 各加载一次，`instanceof` 直接判假。
     compileOnly files(frameworkJar())
 
@@ -67,7 +67,7 @@ jar {
     // 只要一个普通 jar：META-INF/services 里的声明就是插件被发现的方式。
     manifest {
         attributes(
-            'Implementation-Title': 'QingYue Hello Plugin',
+            'Implementation-Title': 'legadoQ Hello Plugin',
             'Implementation-Version': project.version,
         )
     }

@@ -125,7 +125,7 @@ class OpenAiCompatibleProvider(
         val port = if (uri.port > 0) uri.port else if (uri.scheme == "https") 443 else 80
         if (sameHost && port == ServerIdentity.port) {
             throw NetworkSecurity.BlockedAddressException(
-                "AI 连接的地址不能指向青阅服务自己（端口 ${ServerIdentity.port}）：那会绕过这台服务唯一的写保护。",
+                "AI 连接的地址不能指向 legadoQ 服务自己（端口 ${ServerIdentity.port}）：那会绕过这台服务唯一的写保护。",
             )
         }
     }

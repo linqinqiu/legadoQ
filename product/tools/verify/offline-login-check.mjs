@@ -53,8 +53,8 @@ const online = await page.evaluate(() => ({
   text: document.body.innerText.slice(0, 80).replace(/\s+/g, ' '),
 }))
 ok('在线时正常进应用（不是登录页）', !online.hasLoginForm, online.text)
-ok('这台 profile 里跑的已是当前版本（顶栏品牌「青阅」，旧名字已消失）',
-  online.brand === '青阅' && !online.oldName, `品牌=${online.brand || '(没读到)'} 旧名=${online.oldName}`)
+ok('这台 profile 里跑的已是当前版本（顶栏品牌「legadoQ」，旧名字已消失）',
+  online.brand === 'legadoQ' && !online.oldName, `品牌=${online.brand || '(没读到)'} 旧名=${online.oldName}`)
 
 // 必须等 SW 真的**接管**（controller 非空），否则离线后显示的是 Chrome 的断网页，
 // "没有密码框"就成了空判假绿。registerType 是 prompt，首装不接管，需要重载几轮。
@@ -81,7 +81,7 @@ const offline = await page.evaluate(() => ({
   // 用户 2026-10-08 明确要求删掉「连不上本机服务 / 不是你的密码」那张整屏页：服务没起来时
   // 该**自动重试**，不该把人挡在一张会让人以为要登录的死胡同页前（见 main.tsx 的启动探活）。
   // 所以这里不再找那句已被删掉的文案 —— 判"离线时不是死路、也不是密码框"。
-  shellRendered: document.body.innerText.includes('青阅') || /书架|书库|正在打开阅读空间|正在等待本机服务/.test(document.body.innerText),
+  shellRendered: document.body.innerText.includes('legadoQ') || /书架|书库|正在打开阅读空间|正在等待本机服务/.test(document.body.innerText),
   chromeErrorPage: /ERR_INTERNET_DISCONNECTED|按空格键即可开始游戏/.test(document.body.innerText),
   hasLoginForm: !!document.querySelector('input[type="password"]'),
   loginText: /请输入密码|输入管理员密码/.test(document.body.innerText),
@@ -100,7 +100,7 @@ await page.reload({ waitUntil: 'domcontentloaded' })
 await sleep(3500)
 const back = await page.evaluate(() => ({
   login: !!document.querySelector('input[type="password"]'),
-  shell: document.body.innerText.includes('青阅') || /书架|书库/.test(document.body.innerText),
+  shell: document.body.innerText.includes('legadoQ') || /书架|书库/.test(document.body.innerText),
 }))
 ok('服务恢复后能回到正常界面（且没有密码框）', !back.login && back.shell, `login=${back.login} shell=${back.shell}`)
 

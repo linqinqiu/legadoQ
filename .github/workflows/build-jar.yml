@@ -1,4 +1,4 @@
-name: Build Legado Server JAR
+name: Build legadoQ JAR
 
 # 出可运行产物：内嵌前端的 fatJar + 标准分发包，PR 只跑测试不发布。
 #
@@ -113,10 +113,10 @@ jobs:
           echo "build_time=${BUILD_TIME}" >> "$GITHUB_OUTPUT"
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-            echo "release_name=青阅 Legado Server ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "release_name=legadoQ ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
             echo "tag_name=latest" >> "$GITHUB_OUTPUT"
-            echo "release_name=青阅 Legado Server Continuous Build (latest)" >> "$GITHUB_OUTPUT"
+            echo "release_name=legadoQ Continuous Build (latest)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Recreate latest release & tag

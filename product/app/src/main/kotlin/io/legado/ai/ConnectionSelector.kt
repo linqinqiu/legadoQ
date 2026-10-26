@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 真正"连第一个 / 按健康度 failover / 按地域挑"这种业务策略，完全交给默认实现或插件。
  *
  * 默认实现 [FirstProfileSelector] 取 `agent-profiles.json` 里**第一个**连接，
- * 保持青阅既有的「已确认的正确行为」：只走第一个，它不可达就不自动顺延（见 AGENTS.md §4）。
+ * 保持 legadoQ 既有的「已确认的正确行为」：只走第一个，它不可达就不自动顺延（见 AGENTS.md §4）。
  * 想要 failover / 加权 / 按负载分流？写个自定义 [ConnectionSelector] 注册进
  * [ConnectionSelectorRegistry] 即可，**不必改框架源码**——这是"基础框架只立钩子"的落点。
  *
@@ -30,7 +30,7 @@ interface ConnectionSelector {
 /**
  * 默认策略：取第一个连接。
  *
- * 这是青阅长期以来的行为，[Agent.hasConnection] / [Agent.callLlm] / [Agent.comprehend] /
+ * 这是 legadoQ 长期以来的行为，[Agent.hasConnection] / [Agent.callLlm] / [Agent.comprehend] /
  * [Agent.chat] 历史上都是这么做的。抽到接口后默认仍是它，**行为零变化**——
  * AGENTS.md §4 关于「第一个连接、不自动顺延」的描述继续成立。
  */

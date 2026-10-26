@@ -301,7 +301,7 @@ try {
   check('④导出的是当前这一份，一行一条、带合并次数与上下文',
     !!exported && missing.length === 0,
     exported ? `${exported.name} · ${lines} 行${missing.length ? ` · 缺：${missing.join('、')}` : ''}` : '(没抓到 Blob)')
-  check('④导出的文件名说的是这个应用', /^青阅运行日志-\d{8}-?\d{4}\.log$/.test(exported?.name ?? ''), exported?.name ?? '(没抓到)')
+  check('④导出的文件名说的是这个应用', /^legadoQ运行日志-\d{8}-?\d{4}\.log$/.test(exported?.name ?? ''), exported?.name ?? '(没抓到)')
 
   // ─────────────────── ⑤ 取失败 ≠ 确实没有（同一条列表位） ───────────────────
   await page.setRequestInterception(true)

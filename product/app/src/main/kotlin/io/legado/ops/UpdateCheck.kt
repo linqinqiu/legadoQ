@@ -35,7 +35,7 @@ object UpdateCheck {
      * "没有配置环境变量 LEGADO_REPO" —— 那是把开发者的配置项说给使用者听。没配就用自己的，
      * 这才是"检查更新"该有的默认行为。`LEGADO_REPO` 仍然可覆盖（换成别的 fork 时用）。
      */
-    const val DEFAULT_REPOSITORY = "linqinqiu/qingyue"
+    const val DEFAULT_REPOSITORY = "linqinqiu/legadoQ"
 
     val repository: String = System.getenv("LEGADO_REPO")?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_REPOSITORY
 
@@ -46,7 +46,7 @@ object UpdateCheck {
 
     /**
      * 请求头前缀，**只能是 ASCII**：JDK 的 HttpClient 在建请求时就拒掉非 ISO-8859-1 的头值。
-     * 原来这里拼的是 `${BuildInfo.title}/版本`（「青阅/0.6.3」），于是「检查更新」每次抛
+     * 原来这里拼的是 `${BuildInfo.title}/版本`（应用名当时含中文），于是「检查更新」每次抛
      * `invalid header value`，而那几行写在 runCatching 外面 → 接口 500 → 界面念成「检查请求没有发出去」。
      */
     val userAgentPrefix: String = "legado/"

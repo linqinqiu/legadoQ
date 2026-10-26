@@ -1,4 +1,4 @@
-// Top-level build file for standalone Legado Server.
+// Top-level build file for standalone legadoQ.
 
 plugins {
     alias libs.plugins.kotlin.jvm apply false

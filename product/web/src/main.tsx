@@ -250,8 +250,8 @@ function App() {
       attempts += 1
       if (attempts === 4) setBootHint('正在等待本机服务启动…（它可能正在重启，稍等片刻）')
       // 等了十几秒还没来，多半是服务压根没在跑 —— 给一句能照着做的。
-      // 桌面那个青阅是 PWA 快捷方式，不会启动本机服务；真正能起服务的是同目录的 start.cmd。
-      if (attempts === 12) setBootHint('本机服务还没起来。请双击桌面上的「青阅」启动它 —— 起来后会自动打开这一页。')
+      // 桌面那个 legadoQ 是 PWA 快捷方式，不会启动本机服务；真正能起服务的是同目录的 start.cmd。
+      if (attempts === 12) setBootHint('本机服务还没起来。请双击桌面上的「legadoQ」启动它 —— 起来后会自动打开这一页。')
       const controller = new AbortController()
       const probeTimeout = window.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
       try {
@@ -280,7 +280,7 @@ function App() {
   }, [])
 
   // 品牌（应用名称与图标）在启动时拉一次，写进单一来源 lib/brandStore：
-  // 顶栏品牌字、标签页标题都读那里。取不到就保持内置的「青阅」，不把界面弄成空名字。
+  // 顶栏品牌字、标签页标题都读那里。取不到就保持内置的「legadoQ」，不把界面弄成空名字。
   useEffect(() => {
     void api.brand()
       .then(info => reportBrand({

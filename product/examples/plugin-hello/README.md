@@ -34,7 +34,7 @@ cd examples/plugin-hello
 
 产物：`build/libs/hello-plugin-1.0.0.jar`（约 8 KB）。
 
-## 3. 装进青阅
+## 3. 装进 legadoQ
 
 ```bash
 # 仓库根

@@ -28,8 +28,8 @@ class HelloPlugin : Plugin {
         name = "示例：问候与书架统计",
         version = "1.0.0",
         description = "演示插件的最小形态：给 AI 加两个只读工具（问候、书架统计）。",
-        author = "青阅示例",
-        homepage = "https://github.com/linqinqiu/qingyue",
+        author = "legadoQ 示例",
+        homepage = "https://github.com/linqinqiu/legadoQ",
         capabilities = listOf("tools"),
     )
 

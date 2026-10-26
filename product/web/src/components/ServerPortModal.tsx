@@ -6,7 +6,7 @@ import { useEscapeClose } from '../lib/useEscapeClose'
 /**
  * 「服务端口」（用户 2026-10-09：「用户可以自定义端口……重启生效」）。
  *
- * 改的是安装根下的 `port.txt`（启动器下次从它读）—— **重启青阅之后才生效**：
+ * 改的是安装根下的 `port.txt`（启动器下次从它读）—— **重启 legadoQ 之后才生效**：
  * 正在跑的这个进程没法把自己挪到另一个端口上，所以这里只写文件、如实说"重启后生效"。
  */
 export function ServerPortModal({ onClose }: { onClose: () => void }) {
@@ -65,7 +65,7 @@ export function ServerPortModal({ onClose }: { onClose: () => void }) {
           {!!error && <p className="customize-error" role="alert">{error}</p>}
           {saved !== null && (
             <p className="customize-note">
-              已记下 <b>{saved}</b>：重启青阅后生效，之后用 <code>http://127.0.0.1:{saved}/</code> 打开。
+              已记下 <b>{saved}</b>：重启 legadoQ 后生效，之后用 <code>http://127.0.0.1:{saved}/</code> 打开。
             </p>
           )}
           <div className="customize-actions">

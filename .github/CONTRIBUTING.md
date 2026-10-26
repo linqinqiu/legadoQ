@@ -1,6 +1,6 @@
-# Contributing to QingYue AI Framework
+# Contributing to legadoQ AI Framework
 
-欢迎为青阅贡献代码！这是一个**完全由人类控制、零自动化 Bot**的开源项目。
+欢迎为 legadoQ 贡献代码！这是一个**完全由人类控制、零自动化 Bot**的开源项目。
 
 ## 🤝 我们想要什么样的贡献者
 
@@ -26,8 +26,8 @@
 
 ```bash
 # 在 GitHub 上 fork 这个仓库到你的账号
-git clone https://github.com/YOUR_USERNAME/qingyue.git
-cd qingyue
+git clone https://github.com/YOUR_USERNAME/legadoQ.git
+cd legadoQ
 ```
 
 ### 2. 安装依赖（前端）
@@ -120,7 +120,7 @@ git push origin feature/add-reader-theme
 
 ### Bug Report 模板
 
-请使用 [GitHub Issues](https://github.com/linqinqiu/qingyue-server/issues/new)
+请使用 [GitHub Issues](https://github.com/linqinqiu/legadoQ/issues/new)
 
 **标题格式**: `[Bug] 简短描述问题`
 
@@ -209,7 +209,7 @@ git push origin feature/add-reader-theme
 
 如果你有任何问题，可以通过以下方式联系我们：
 
-- **GitHub Discussions**: [提问或分享想法](https://github.com/linqinqiu/qingyue-server/discussions)
+- **GitHub Discussions**: [提问或分享想法](https://github.com/linqinqiu/legadoQ/discussions)
 - **Email**: linqinqiu@example.com
 
 ---
@@ -218,7 +218,7 @@ git push origin feature/add-reader-theme
 
 感谢所有为我们的项目做出贡献的人！
 
-没有您的参与，青阅就无法成为今天的样子。让我们一起打造最好的阅读体验！
+没有您的参与，legadoQ 就无法成为今天的样子。让我们一起打造最好的阅读体验！
 
 ---
 

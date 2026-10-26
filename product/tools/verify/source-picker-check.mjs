@@ -4,7 +4,7 @@
 // 实测下来控件本身点得开、能过滤、能选中 —— 坏在**内容**：这台库 5,574 个源里只有几百个启用，
 // 旧下拉把停用的也按名字混在一起，选到一个停用源就必然搜出 0 本，看上去等于"功能坏了"。
 // 所以这一轮断言的是"界面在说什么"，不是"代码写了什么"：
-// ① 品牌统一成「青阅」，页面上不许再出现「阅读服务器」；
+// ① 品牌统一成「legadoQ」，页面上不许再出现「阅读服务器」；
 // ② 选源默认只列启用中的，停用源要显式勾「含已停用」才出现，且出现时直说"搜不到"；
 // ③ 发现页把"从两千多个配了发现页的源里挑到一个"做成搜索口（上一版的源内搜书名已按用户要求删掉）；
 // ④ 目录预览的展开条看得出价、点得动，一次按千章推进；
@@ -92,8 +92,8 @@ try {
     header: document.querySelector('.app-brand strong')?.textContent?.trim() ?? '',
     bodyHasOldName: document.body.innerText.includes('阅读服务器'),
   }))
-  check('标签页标题是「青阅」', brand.title.includes('青阅'), brand.title)
-  check('顶栏品牌位是「青阅」', brand.header === '青阅', brand.header)
+  check('标签页标题是「legadoQ」', brand.title.includes('legadoQ'), brand.title)
+  check('顶栏品牌位是「legadoQ」', brand.header === 'legadoQ', brand.header)
   check('页面上不再有「阅读服务器」字样', !brand.bodyHasOldName)
 
   // ── ② 书库「指定书源」：默认只列启用中的 ──────────────────

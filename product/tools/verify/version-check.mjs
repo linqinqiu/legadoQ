@@ -99,7 +99,7 @@ try {
 if (health) {
   check('/healthz 报出 title、version、status 三项', Boolean(health.title) && /^\d+\.\d+\.\d+$/.test(String(health.version ?? '')) && health.status === 'ok', JSON.stringify(health))
   check('/healthz 的版本与 gradle 一致', health.version === gradleVersion, `接口 ${health.version} / gradle ${gradleVersion}`)
-  check('应用名报的是「青阅」', health.title === '青阅', health.title)
+  check('应用名报的是「legadoQ」', health.title === 'legadoQ', health.title)
 }
 
 // ── ④⑤ 界面显示 + 更新日志 ────────────────────────────────
@@ -107,7 +107,7 @@ const changelog = read(path.join(ROOT, 'CHANGELOG.md'))
 const loggedVersion = /^## \[(\d+\.\d+\.\d+)\]/m.exec(changelog)?.[1] ?? ''
 check('CHANGELOG.md 顶部有一条本次构建的版本', /^\d+\.\d+\.\d+$/.test(loggedVersion), loggedVersion || '第一处 ## [x.y.z] 都没找到')
 check('更新日志的版本与 gradle 一致（发了版但日志还停在旧号时这里红）', loggedVersion === gradleVersion, `日志 ${loggedVersion} / gradle ${gradleVersion}`)
-check('更新日志是本项目的，不是抄来的上游片段', changelog.includes('青阅') && !/「阅读」App|Legado 更新说明|版本 2\.0/.test(changelog.slice(0, 600)))
+check('更新日志是本项目的，不是抄来的上游片段', changelog.includes('legadoQ') && !/「阅读」App|Legado 更新说明|版本 2\.0/.test(changelog.slice(0, 600)))
 
 const browser = await puppeteer.launch(launchOptions())
 try {

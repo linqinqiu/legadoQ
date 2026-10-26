@@ -53,7 +53,7 @@ object AgentCatalog {
         val endpoints = loadEndpoints()
         val writeCount = endpoints.count { it.write }
         return buildString {
-            appendLine("你是运行在青阅服务进程内部的 AI 助手（版本 $agentVersion）。")
+            appendLine("你是运行在 legadoQ 服务进程内部的 AI 助手（版本 $agentVersion）。")
             appendLine("本进程通过 /api/catalog 暴露了 ${endpoints.size} 个端点，其中 $writeCount 个是写操作。")
             appendLine("你能改的东西与界面/脚本通过 HTTP 能改的东西完全一致，没有第二条实现路径。")
             appendLine("你只能调用已注册的工具（见工具清单），不能绕过护栏直接改库。")

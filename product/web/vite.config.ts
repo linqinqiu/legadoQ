@@ -38,8 +38,8 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ['favicon.svg', 'pwa-192x192.svg', 'pwa-512x512.svg', 'maskable-icon-512x512.svg'],
       manifest: {
-        name: '青阅',
-        short_name: '青阅',
+        name: 'legadoQ',
+        short_name: 'legadoQ',
         description: 'Legado 现代化 Web 阅读器与服务端',
         lang: 'zh-CN',
         theme_color: '#247a58',

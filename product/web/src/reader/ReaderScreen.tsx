@@ -490,7 +490,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [cacheStatus.state, syncCacheStatus])
 
   useEffect(() => {
-    // 名字读单一来源而不是写死「青阅」：用户改了应用名之后，
+    // 名字读单一来源而不是写死「legadoQ」：用户改了应用名之后，
     // 这里若照旧硬编码，一进阅读器标签页就把新名字冲回去（"改了又变回去"最难查）。
     const brandName = getBrand().displayName
     const shown = chapter?.title ? convert(chapter.title) : ''

@@ -79,7 +79,7 @@ class SubscriptionService(private val database: Database, private val log: (Stri
         validate(uri)
         repeat(MAX_REDIRECTS + 1) {
             val response = client.send(
-                HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).header("User-Agent", "LegadoServer/0.1").GET().build(),
+                HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).header("User-Agent", "legadoQ/0.1").GET().build(),
                 HttpResponse.BodyHandlers.ofInputStream(),
             )
             response.body().use { body ->
