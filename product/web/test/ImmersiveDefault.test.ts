@@ -101,3 +101,21 @@ test('P1-T3 顶/底栏为 overlay 不挤占正文，正文有顶部留白避开'
     '.reading-content 顶部应保留约 64–88px 留白，避开顶栏渐隐区',
   )
 })
+
+/**
+ * 纯阅读的**样式**必须存在。
+ *
+ * 这条判据补的是上面几条漏掉的一环：入口、把手、Esc 都在，但 `.pure-reading` /
+ * `.reader-immersive-handle` 的样式一度完全缺失 —— 按了「沉浸」画面不变，
+ * 用户 2026-10-27 直接反馈「纯阅读功能好像没有用」。只有 JSX 没有样式等于功能不存在。
+ */
+test('P1-T3 纯阅读真的收起控件：样式里定义了隐藏规则与退出把手', () => {
+  const hide = stylesSrc.match(/\.reader-workspace\.pure-reading[^{]*\{[^}]*display:\s*none/s)
+  assert.ok(hide !== null, 'styles.css 应定义 .reader-workspace.pure-reading 的 display:none 隐藏规则')
+  assert.ok(/\.reader-workspace\.pure-reading \.md3-topbar/.test(stylesSrc), '纯阅读应隐藏 MD3 顶栏')
+  assert.ok(/\.reader-workspace\.pure-reading \.md3-bottombar/.test(stylesSrc), '纯阅读应隐藏 MD3 底栏')
+  assert.ok(/body\.reader-pure \.ai-fab/.test(stylesSrc), '纯阅读应隐藏全局 AI 悬浮球')
+  const handle = ruleBlock(stylesSrc, '.reader-immersive-handle')
+  assert.ok(handle !== null, '应定义退出把手 .reader-immersive-handle 的样式')
+  assert.ok(/position:\s*fixed/.test(handle ?? ''), '退出把手应贴在视口边缘（position: fixed）')
+})
