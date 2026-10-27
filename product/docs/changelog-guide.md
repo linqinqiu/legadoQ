@@ -49,6 +49,9 @@ Changelog: 已缓存的章节不再误显示未缓存
 - `Changelog: none` = 同 `[no-changelog]`。
 - 带 `!` 或 `BREAKING CHANGE:` 的，脚本会提示"该进档"，但**不擅自改版本号**：
   版本号的唯一书写处是 `app/build.gradle`，进档是人的决定。
+- **每次用户可见的变化都要发一版**：按小更新计数把第三段 +1，并同步 `VERSION`、根 / `product` / `web`
+  的 `package.json`、`README`「当前版本」与 `agent-api.json`；同一批多项改动共用一个号。
+  抄本一致由 `scripts/version-check.mjs` 与 `web/test/Changelog.test.ts` 钉住。
 
 ## 边界与幂等（为什么不需要一份"进度文件"）
 
