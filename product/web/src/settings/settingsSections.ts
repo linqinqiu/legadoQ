@@ -53,10 +53,10 @@ export type SettingsActions = {
    */
   renderWallpaper?: () => ReactNode
   /**
-   * 「Cookie」分区的控件本体（全局登录凭据的列表 / 搜索 / 批量删除 / 编辑）。
-   * 与壁纸同一套接法：宿主不接就不生成那一档，判据喂假动作时不会多出空标题。
+   * 「Cookie」管理：打开全局凭据弹窗（与应用里其它 `AppModal` 浮层同一套外壳）。
+   * 凭据按注册域共享，删书源不清桶，所以必须有这一处能看见全部、能逐个撤掉。
    */
-  renderCookies?: () => ReactNode
+  openCookies: () => void
 }
 
 export function buildSettingsSections(actions: SettingsActions): SettingsSection[] {
@@ -94,14 +94,16 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       rows: [],
       content: actions.renderWallpaper,
     }] : []),
-    // 「Cookie」也不是一行按钮：列表、搜索、批量删除、编辑都在这一档里直接改
-    // （实现见 settings/CookieSection.tsx）。凭据按注册域共享，删书源不清桶，
-    // 所以必须有这一处能看见全部、能逐个撤掉。
-    ...(actions.renderCookies ? [{
+    // 「Cookie」是一行入口：点开走全局弹窗，列表/搜索/批量删除/编辑都在弹窗里。
+    {
       title: 'Cookie',
-      rows: [],
-      content: actions.renderCookies,
-    }] : []),
+      rows: [{
+        title: 'Cookie 管理',
+        hint: '查看、搜索、批量删除与编辑已保存的登录凭据；凭据按域名共享，删书源不会连带清掉。',
+        action: '打开',
+        onClick: actions.openCookies,
+      }],
+    },
     {
       title: '规则',
       rows: [{

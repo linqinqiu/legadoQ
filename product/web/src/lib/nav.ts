@@ -29,3 +29,5 @@ export type AppModal =
   | 'source-health'
   /** AI 接入：程序内部的 AI 网关（**独立一类**，不是实验室） */
   | 'ai'
+  /** 全局登录凭据：按域查看 / 批量删除 / 编辑 */
+  | 'cookies'

@@ -37,7 +37,7 @@ import { loadAllFonts } from './lib/fontLibrary'
 import { toast, ToastContainer } from './components/Toast'
 import { WallpaperLayer } from './components/WallpaperLayer'
 import { WallpaperSection } from './settings/WallpaperSection'
-import { CookieSection } from './settings/CookieSection'
+import { CookieModal } from './settings/CookieSection'
 import './styles.css'
 import { AppModal, Page, PageDialogKind } from './lib/nav'
 import { BookDetailModal } from './components/BookDetailModal'
@@ -559,7 +559,7 @@ function App() {
       openBrand: () => openModalDirect('brand'),
       openAiConnections: () => openModalDirect('ai'),
       renderWallpaper: () => <WallpaperSection />,
-      renderCookies: () => <CookieSection />,
+      openCookies: () => openModalDirect('cookies'),
     }),
     tocRulesSignal,
     onSelectSource: setSelected,
@@ -626,6 +626,7 @@ function App() {
       )}
       {openModal === 'server-port' && <ServerPortModal onClose={closeModal} />}
       {openModal === 'brand' && <BrandModal onClose={closeModal} />}
+      {openModal === 'cookies' && <CookieModal onClose={closeModal} />}
 
       {/* —— 成熟功能浮层（已定型、低频、不占导航）。它们**不是**实验室条目。 —— */}
       {openModal === 'changelog' && (

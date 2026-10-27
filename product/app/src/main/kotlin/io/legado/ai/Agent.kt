@@ -249,7 +249,9 @@ class Agent(
             // 没有 provider 是配置状态，不是网络问题 —— 一句"连不上"会让人去查网络。
             errorDetail = "没有能处理「${ext.kind.name}」这种连接的 provider",
         )
-        val tools = registry.manifest()
+        // 只下发与这一轮相关的工具组：55 个全量塞进每次请求会白烧 token、也让模型更容易挑错工具。
+        val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
+        val tools = ToolSelection.select(registry.manifest(), lastUserText)
         val toolRounds = mutableListOf<String>()
         val convo = norm.toMutableList()
 

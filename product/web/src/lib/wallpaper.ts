@@ -39,6 +39,8 @@ export type WallpaperSettings = {
   glassBlur: number
   /** 填充方式。 */
   fill: WallpaperFill
+  /** 阅读器也使用这张壁纸（关掉时阅读器保留自己的阅读背景，即「分开用」）。 */
+  readerFollow: boolean
 }
 
 /** 默认设置：关闭、未选图、不透明度满、遮罩 25%（与参考实现同一档观感）、无模糊、面板半透明、铺满裁剪。 */
@@ -50,8 +52,9 @@ export const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
   mask: 0.25,
   blur: 0,
   panelOpacity: 0.72,
-  glassBlur: 12,
+  glassBlur: 8,
   fill: 'cover',
+  readerFollow: false,
 }
 
 /** 设置存 localStorage 的键。改键名等于丢掉用户已经调好的值，非必要不动。 */
@@ -92,6 +95,7 @@ export function parseWallpaperSettings(raw: unknown): WallpaperSettings {
     panelOpacity: clamp(finiteNumber(record.panelOpacity, DEFAULT_WALLPAPER_SETTINGS.panelOpacity), 0, 1),
     glassBlur: Math.round(clamp(finiteNumber(record.glassBlur, DEFAULT_WALLPAPER_SETTINGS.glassBlur), 0, 40)),
     fill,
+    readerFollow: record.readerFollow === true,
   }
 }
 
@@ -172,6 +176,7 @@ function sameSettings(a: WallpaperSettings, b: WallpaperSettings): boolean {
     && a.panelOpacity === b.panelOpacity
     && a.glassBlur === b.glassBlur
     && a.fill === b.fill
+    && a.readerFollow === b.readerFollow
 }
 
 /**

@@ -95,11 +95,15 @@ export function WallpaperLayer() {
       root.setAttribute('data-wallpaper', 'on')
       root.style.setProperty('--wallpaper-panel-opacity', String(settings.panelOpacity))
       root.style.setProperty('--wallpaper-glass-blur', `${settings.glassBlur}px`)
+      // 阅读器是否跟着用这张壁纸（关掉 = 阅读器保留自己的阅读背景）
+      if (settings.readerFollow) root.setAttribute('data-wallpaper-reader', 'on')
+      else root.removeAttribute('data-wallpaper-reader')
     } else {
       root.removeAttribute('data-wallpaper')
+      root.removeAttribute('data-wallpaper-reader')
     }
-    return () => root.removeAttribute('data-wallpaper')
-  }, [visible, settings.panelOpacity, settings.glassBlur])
+    return () => { root.removeAttribute('data-wallpaper'); root.removeAttribute('data-wallpaper-reader') }
+  }, [visible, settings.panelOpacity, settings.glassBlur, settings.readerFollow])
 
   if (!visible || !imageUrl) return null
 

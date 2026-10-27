@@ -36,6 +36,7 @@ function fakeActions(): { actions: SettingsActions; called: string[] } {
     openServerPort: make('openServerPort'),
     openBrand: make('openBrand'),
     openAiConnections: make('openAiConnections'),
+    openCookies: make('openCookies'),
   }
   return { actions, called }
 }
@@ -151,18 +152,18 @@ test('反向对照：把搜索改成"只搜标题"必须被这条判据逮住', 
     `「${hintOnly}」只出现在 hint 里，若搜索只看标题这里就会是空 —— 说明搜索范围退化了`)
 })
 
-test('Cookie 分区：宿主接了才出现，且排在「规则」之前', () => {
-  const { actions } = fakeActions()
-  // 没接 renderCookies 时不该多出一个空标题（与壁纸同一套判据）
-  assert.ok(!buildSettingsSections(actions).map(section => section.title).includes('Cookie'),
-    '没接 renderCookies 却生成了「Cookie」档 —— 那会是一个只有标题的空档')
-
-  const withCookies = buildSettingsSections({ ...actions, renderCookies: () => null })
-  const titles = withCookies.map(section => section.title)
-  assert.ok(titles.includes('Cookie'), '接了 renderCookies 应生成「Cookie」档')
+test('Cookie 分区：一行入口，排在「规则」之前，点开走全局弹窗', () => {
+  const { actions, called } = fakeActions()
+  const sections = buildSettingsSections(actions)
+  const titles = sections.map(section => section.title)
+  assert.ok(titles.includes('Cookie'), '应生成「Cookie」档')
   assert.ok(titles.indexOf('Cookie') < titles.indexOf('规则'),
     `「Cookie」应排在「规则」之前，实际顺序：${titles.join(' / ')}`)
-  const section = withCookies.find(item => item.title === 'Cookie')!
-  assert.equal(typeof section.content, 'function', '「Cookie」的控件要挂在 content 上，不是一行按钮')
-  assert.equal(section.rows.length, 0, '它不该同时长出一行按钮（同一目的地的第二套入口）')
+  const section = sections.find(item => item.title === 'Cookie')!
+  assert.equal(section.content, undefined, '「Cookie」不再内联渲染，入口是一行按钮')
+  assert.equal(section.rows.length, 1, '只留一行入口')
+  const row = section.rows[0]
+  assert.equal(row.action, '打开', '入口动作名要说清是「打开」弹窗')
+  row.onClick()
+  assert.ok(called.includes('openCookies'), '这一行必须真的去开 Cookie 弹窗')
 })

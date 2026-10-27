@@ -6276,7 +6276,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   --wallpaper-scale: 1;
   --wallpaper-fill: cover;
   --wallpaper-panel-opacity: .72;
-  --wallpaper-glass-blur: 12px;
+  --wallpaper-glass-blur: 8px;
   position: fixed; inset: 0; z-index: -2;
   overflow: hidden; pointer-events: none;
 }
@@ -6316,7 +6316,25 @@ html[data-wallpaper="on"] .shelf-card {
 html[data-wallpaper="on"] .dialog-shell,
 html[data-wallpaper="on"] .page-dialog,
 html[data-wallpaper="on"] .header-menu-dropdown {
-  background: color-mix(in srgb, var(--canvas) calc(min(1, var(--wallpaper-panel-opacity, .72) + .18) * 100%), transparent);
-  -webkit-backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.1);
-  backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.1);
+  /* 浮层比常驻面板更需要可读性：底色更实、模糊减半，避免"雾里看字"。 */
+  background: color-mix(in srgb, var(--canvas) calc(min(1, var(--wallpaper-panel-opacity, .72) + .3) * 100%), transparent);
+  -webkit-backdrop-filter: blur(calc(var(--wallpaper-glass-blur, 8px) * .5)) saturate(1.05);
+  backdrop-filter: blur(calc(var(--wallpaper-glass-blur, 8px) * .5)) saturate(1.05);
 }
+/* Cookie 弹窗内容区：与其它弹窗的正文区同一套内边距与滚动。 */
+.cookie-modal-body { padding: 16px 18px 20px; max-height: min(68vh, 620px); overflow: auto; }
+
+/* 阅读器也使用壁纸：让阅读器自己的底色与阅读背景都让位，壁纸直接透上来。 */
+html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-workspace { background: transparent; }
+html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-color: transparent; background-image: none; }
+
+/* 壁纸设置默认折叠：展开后的内容整块收起，不占设置页长度。 */
+.wallpaper-settings-body[hidden] { display: none; }
+
+/* 壁纸地址输入：与设置页其它输入框同一套边界，撑满这一行的正文宽度而不是缩成一小截。 */
+.wallpaper-settings-body .settings-search { max-width: none; width: 100%; }
+
+/* 悬停时底色加深一点：可点/可读的块统一给一个轻微反馈（用户：鼠标指向的内容颜色加深变化一点）。 */
+.settings-row:hover { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); }
+.source-item:hover,
+.shelf-card:hover { background: color-mix(in srgb, var(--ink) 5%, var(--surface)); }
