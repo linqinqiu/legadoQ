@@ -6076,12 +6076,6 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 .reader-note-item-excerpt { font-size: var(--t-md); line-height: 1.6; }
 .reader-note-item-text { color: var(--accent); font-size: var(--t-sm); }
 .reader-note-item-meta { color: var(--muted); font-size: var(--t-xs); }
-/* 书签徽标（与「划线 / 笔记」并列的只读位置标记）。复用既有着色，不新增令牌。 */
-.reader-note-badge { display: inline-block; margin-right: 6px; padding: 1px 7px; border: 1px solid var(--accent); border-radius: 999px; color: var(--accent); font-size: var(--t-xs); vertical-align: middle; }
-/* 笔记面板里的「全部 / 书签」过滤：纯前端，不加端点。 */
-.reader-notes-filter { display: flex; gap: var(--s-1); padding: 6px 10px 0; flex: 0 0 auto; }
-.reader-notes-filter-btn { padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: var(--t-sm); cursor: pointer; }
-.reader-notes-filter-btn.is-active { border-color: var(--accent); color: var(--ink); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 /* 正文引导语：替代原来的整页大标题（标题已由 .dialog-head 给，正文不再重复一遍 h1） */
 .page-dialog .page-lead { margin: 0 0 var(--s-4); color: var(--muted); font-size: var(--t-lg); line-height: 1.7; }
 

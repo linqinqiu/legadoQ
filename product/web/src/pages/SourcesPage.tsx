@@ -12,6 +12,7 @@ import { SourceLoginModal } from '../sources/SourceLoginModal'
 import { SourceShareModal } from '../sources/SourceShareModal'
 import { SourceSummary, api } from '../lib/api'
 import { parseSourceJsonText } from '../sources/sourceImport'
+import { fetchImportText } from '../lib/importFromUrl'
 import { showContextMenu } from '../components/ContextMenu'
 import { toast } from '../components/Toast'
 import { useDragSort } from '../shelf/dragSort'
@@ -32,6 +33,8 @@ export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected:
   const [groupFilter, setGroupFilter] = useState('')
   const [notice, setNotice] = useState('')
   const [importing, setImporting] = useState(false)
+  /** 「从地址导入」的地址输入；与文件选择是两条并存的入口。 */
+  const [importUrl, setImportUrl] = useState('')
   const [isBatchMode, setIsBatchMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showHealthModal, setShowHealthModal] = useState(false)
@@ -315,43 +318,61 @@ export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected:
     }
   }
 
+  /** 导入核心：拿到文本后统一解析、入库并刷新列表；文件选择与地址导入共用这一条。 */
+  const applySourceImport = async (rawText: string) => {
+    const rawList = parseSourceJsonText(rawText)
+    if (rawList.length === 0) {
+      toast.error('未在文件中识别到有效的书源配置')
+      setNotice('导入失败：未在文件中识别到有效的书源配置')
+      return
+    }
+    const serialized = rawList
+      .filter(item => item && typeof item === 'object')
+      .map(item => JSON.stringify(item))
+    if (serialized.length === 0) {
+      toast.error('书源格式无效')
+      setNotice('导入失败：书源格式无效')
+      return
+    }
+    const result = await api.import(serialized)
+    const importedCount = result.imported || 0
+    const updatedCount = result.updated || 0
+    const skippedCount = result.skipped || 0
+    const parts = [`新增 ${importedCount} 个`, `更新 ${updatedCount} 个`]
+    if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 个`)
+    let msg = `导入完成：${parts.join('，')}`
+    if (result.errors && result.errors.length > 0) {
+      const errorSummary = result.errors.slice(0, 3).join('；') + (result.errors.length > 3 ? ` 等共 ${result.errors.length} 项错误` : '')
+      msg += ` (${errorSummary})`
+    }
+    setNotice(msg)
+    if (importedCount > 0 || updatedCount > 0) {
+      toast.success(`已导入/更新 ${importedCount + updatedCount} 个书源`)
+    } else if (skippedCount > 0) {
+      toast.error(result.errors?.[0] || '书源未能导入，请检查格式')
+    }
+    await load()
+  }
+
   const importSources = async (file: File | undefined) => {
     if (!file) return
     setImporting(true)
     try {
-      const rawText = await file.text()
-      const rawList = parseSourceJsonText(rawText)
-      if (rawList.length === 0) {
-        toast.error('未在文件中识别到有效的书源配置')
-        setNotice('导入失败：未在文件中识别到有效的书源配置')
-        return
-      }
-      const serialized = rawList
-        .filter(item => item && typeof item === 'object')
-        .map(item => JSON.stringify(item))
-      if (serialized.length === 0) {
-        toast.error('书源格式无效')
-        setNotice('导入失败：书源格式无效')
-        return
-      }
-      const result = await api.import(serialized)
-      const importedCount = result.imported || 0
-      const updatedCount = result.updated || 0
-      const skippedCount = result.skipped || 0
-      const parts = [`新增 ${importedCount} 个`, `更新 ${updatedCount} 个`]
-      if (skippedCount > 0) parts.push(`跳过 ${skippedCount} 个`)
-      let msg = `导入完成：${parts.join('，')}`
-      if (result.errors && result.errors.length > 0) {
-        const errorSummary = result.errors.slice(0, 3).join('；') + (result.errors.length > 3 ? ` 等共 ${result.errors.length} 项错误` : '')
-        msg += ` (${errorSummary})`
-      }
-      setNotice(msg)
-      if (importedCount > 0 || updatedCount > 0) {
-        toast.success(`已导入/更新 ${importedCount + updatedCount} 个书源`)
-      } else if (skippedCount > 0) {
-        toast.error(result.errors?.[0] || '书源未能导入，请检查格式')
-      }
-      await load()
+      await applySourceImport(await file.text())
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : '导入失败'
+      toast.error(errMsg)
+      setNotice(`导入失败：${errMsg}`)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  /** 从地址导入：走同源代理取回文本，再交给上面同一条解析/入库逻辑。 */
+  const importSourcesFromUrl = async () => {
+    setImporting(true)
+    try {
+      await applySourceImport(await fetchImportText(importUrl))
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : '导入失败'
       toast.error(errMsg)
@@ -459,6 +480,26 @@ export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected:
             }}
           />
         </label>
+
+        {/* 与「导入 JSON」并存：文件在管理器里选，或直接填一个能返回书源 JSON 的地址 */}
+        <form
+          className="source-filter"
+          aria-label="从地址导入书源"
+          onSubmit={event => { event.preventDefault(); void importSourcesFromUrl() }}
+        >
+          <Icon name="globe" />
+          <input
+            value={importUrl}
+            onChange={event => setImportUrl(event.target.value)}
+            placeholder="书源 JSON 地址"
+            inputMode="url"
+            aria-label="书源 JSON 地址"
+            disabled={importing}
+          />
+          <button type="submit" className="subtle-button" disabled={importing}>
+            {importing ? '导入中…' : '从地址导入'}
+          </button>
+        </form>
 
         {notice && <p className="sidebar-notice">{notice}</p>}
 

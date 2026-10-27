@@ -1,7 +1,7 @@
 /**
  * 标记快捷条（MD3 MarkingSelectionMenu 形态，PROPOSAL 阅读器增强）：
- * 选中正文后先摆这一条，而不是立刻弹笔记输入框。五个动作：
- *   划线（仅高亮，不写备注）/ 书签（只标位置不写想法）/ 笔记（展开 NoteToolbar 编辑器）/ 复制 / 发给 AI。
+ * 选中正文后先摆这一条，而不是立刻弹笔记输入框。四个动作：
+ *   划线（仅高亮，不写备注）/ 笔记（展开 NoteToolbar 编辑器）/ 复制 / 发给 AI。
  *
  * 挂在 `<section class="reader-main">` **之外** —— 它自己的点击不该再触发 onReaderMouseUp，
  * 所以和 NoteToolbar 一样是独立的一块，只跟选区坐标与回调打交道。
@@ -12,14 +12,13 @@ export type MarkingMenuProps = {
   /** 选区顶部 y（视口坐标）。 */
   y: number
   onHighlight: () => void
-  onBookmark: () => void
   onNote: () => void
   onCopy: () => void
   onAi: () => void
   onDismiss: () => void
 }
 
-export function MarkingMenu({ x, y, onHighlight, onBookmark, onNote, onCopy, onAi, onDismiss }: MarkingMenuProps) {
+export function MarkingMenu({ x, y, onHighlight, onNote, onCopy, onAi, onDismiss }: MarkingMenuProps) {
   return (
     <div
       className="reader-marking-menu"
@@ -29,9 +28,6 @@ export function MarkingMenu({ x, y, onHighlight, onBookmark, onNote, onCopy, onA
     >
       <button type="button" className="reader-marking-btn" title="划线（仅高亮）" aria-label="划线" onClick={onHighlight}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-      </button>
-      <button type="button" className="reader-marking-btn" title="加书签（只标位置）" aria-label="书签" onClick={onBookmark}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z" /></svg>
       </button>
       <button type="button" className="reader-marking-btn" title="写笔记" aria-label="笔记" onClick={onNote}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3v5h5" /><path d="M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-4-5Z" /></svg>

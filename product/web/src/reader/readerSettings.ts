@@ -114,9 +114,10 @@ export type ReaderSettings = {
    */
   txtTocRule: string
   /**
-   * 自定义字体名（本机已装的字体，如「霞鹜文楷 / LXGW WenKai」）。`font === 'custom'` 时生效，
-   * 直接作为 `--reader-font-family`。原样是用户的输入，存取都要过 `parseCustomFont` 滤掉
-   * 能拼坏 CSS 的字符。上传字体文件的通道是另一回事（要服务端存取），这里只认本机字体名。
+   * 自定义字体名（`font === 'custom'` 时生效，直接作为 `--reader-font-family`）。
+   * 可以填本机已装字体的名字，也可以由设置面板导入字体文件/地址后自动填入族名
+   * （文件存在浏览器 IndexedDB 里，见 `lib/fontLibrary.ts`）。原样是用户的输入，
+   * 存取都要过 `parseCustomFont` 滤掉能拼坏 CSS 的字符。
    */
   customFont: string
   /**

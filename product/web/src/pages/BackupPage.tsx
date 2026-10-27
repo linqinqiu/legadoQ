@@ -4,6 +4,7 @@ import { toast } from '../components/Toast'
 import { Icon } from '../icons'
 import { loadReaderSettings, saveReaderSettings } from '../reader/readerSettings'
 import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../lib/backupPreferences'
+import { fetchImportUrl, fileNameFromUrl } from '../lib/importFromUrl'
 
 /**
  * 「备份」页：把 Legado 导出的 zip 选进来就恢复，全程只在本机与这台服务之间传输。
@@ -60,6 +61,8 @@ export function reportImportSummary(summary: BackupImportSummary) {
 
 export function BackupPage() {
   const [backupPassword, setBackupPassword] = useState('')
+  /** 「从地址导入」的地址输入；与「选择备份包导入」并存。 */
+  const [importUrl, setImportUrl] = useState('')
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [kept, setKept] = useState<KeptBackupEntry[]>([])
@@ -90,6 +93,23 @@ export function BackupPage() {
       // 它不是导入的前置条件，以前摆在主操作行上，看着像必填。
       if (summary.cookiesNote && !summary.cookies) setPasswordOpen(true)
       await loadKept()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '备份导入失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 从地址导入：经同源代理把 zip 取回来，再转成 File 交给上面同一条 handleImport
+   * （确认框、密码、结果播报都复用，不另写一套恢复逻辑）。
+   */
+  const importFromUrl = async () => {
+    setBusy(true)
+    try {
+      const { blob } = await fetchImportUrl(importUrl)
+      const file = new File([blob], fileNameFromUrl(importUrl), { type: blob.type || 'application/zip' })
+      await handleImport(file)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '备份导入失败')
     } finally {
@@ -151,6 +171,20 @@ export function BackupPage() {
           <button type="button" className="primary-button" onClick={() => backupInputRef.current?.click()} disabled={busy}>
             <Icon name="importFile" />
             <span>{busy ? '导入中…' : '选择备份包导入'}</span>
+          </button>
+          <input
+            className="backup-password"
+            type="url"
+            value={importUrl}
+            onChange={event => setImportUrl(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void importFromUrl() } }}
+            placeholder="或粘贴备份包地址（http/https）"
+            aria-label="备份包地址"
+            autoComplete="off"
+            disabled={busy}
+          />
+          <button type="button" className="subtle-button" onClick={() => void importFromUrl()} disabled={busy}>
+            从地址导入
           </button>
           <button type="button" className="link-button" onClick={() => setPasswordOpen(open => !open)}>
             {passwordOpen ? '收起凭据解密密码' : '需要解开包里的登录凭据？'}

@@ -33,6 +33,7 @@ import { GLOBAL_SHORTCUTS, isTypingTarget, normalizeKey, PRIMARY_PAGES, shortcut
 import { buildSettingsSections } from './settings/settingsSections'
 import { PwaManager } from './components/PwaManager'
 import { flushOfflineProgress } from './lib/offlineStorage'
+import { loadAllFonts } from './lib/fontLibrary'
 import { toast, ToastContainer } from './components/Toast'
 import './styles.css'
 import { AppModal, Page, PageDialogKind } from './lib/nav'
@@ -656,6 +657,11 @@ function App() {
     </div>
   )
 }
+
+// 启动时把 IndexedDB 里存过的自定义字体全部注册回 document.fonts：设置里只存字体族名，
+// 字体数据在本地库，不注册回来刷新后 CSS 的 font-family 就命中不到。
+// 失败（隐私模式 / 无 IndexedDB / 单条字体损坏）不阻塞应用启动。
+void loadAllFonts().catch(() => undefined)
 
 // 根上这一层是最后兜底：连页面外壳自己抛错时，也不能剩一片白屏让人以为程序没了
 createRoot(document.getElementById('root')!).render(

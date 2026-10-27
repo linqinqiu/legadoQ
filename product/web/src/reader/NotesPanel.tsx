@@ -1,15 +1,15 @@
-import { useState } from 'react'
 import type { BookNote } from '../lib/api'
 import { downloadMarkdown, notesExportFileName, notesToMarkdown, type NoteExportMeta } from './noteExport'
 
 /**
- * 「笔记」面板（PROPOSAL-019 E）：这本书的全部划线 / 备注 / 书签，点一条跳到那一章。
+ * 「笔记」面板（PROPOSAL-019 E）：这本书的全部划线 / 备注，点一条跳到那一章。
  *
  * 从 `ReaderScreen` 抽出来（PROPOSAL-019 F）—— 只跟笔记清单与「跳到那条」打交道，
  * 与翻页 / 进度 / 缓存无关。
  *
- * 书签（2026-10 加）：`bookmark=true` 的条目只标位置、不写想法，和「划线 / 笔记」并列；
- * 这里给一颗「书签」徽标，并提供一个「全部 / 书签」过滤，方便只看标记过的那一页。
+ * 书签不再从界面进入（功能未做完，已移出主功能，见 product/docs/待定功能.md）；
+ * 面板只列划线 / 备注。历史数据里 `bookmark=true` 的条目仍会出现在清单里，
+ * 只是不再单独打徽标或提供过滤。
  *
  * 导出（2026-10-22 加）：划线攒在库里只能一条条看，想拿走（写读后感、整理书摘、
  * 丢进别的笔记软件）没有出路。现在可以导成一份 Markdown —— 那是「能记下来却带不走」
@@ -23,10 +23,7 @@ export function NotesPanel({ notes, onJump, meta, chapterTitles }: {
   /** 章号 → 章名；缺了导出会退回「第 N 章」，不编标题。 */
   chapterTitles?: Record<number, string>
 }) {
-  const [onlyBookmark, setOnlyBookmark] = useState(false)
   const exportable = !!meta && notes.length > 0
-  const bookmarkCount = notes.filter(note => note.bookmark).length
-  const shown = onlyBookmark ? notes.filter(note => note.bookmark) : notes
   return (
     <>
       {exportable && (
@@ -45,29 +42,14 @@ export function NotesPanel({ notes, onJump, meta, chapterTitles }: {
           <span className="reader-notes-count">共 {notes.length} 条</span>
         </div>
       )}
-      {bookmarkCount > 0 && (
-        <div className="reader-notes-filter">
-          <button
-            type="button"
-            className={`reader-notes-filter-btn${!onlyBookmark ? ' is-active' : ''}`}
-            onClick={() => setOnlyBookmark(false)}
-          >全部</button>
-          <button
-            type="button"
-            className={`reader-notes-filter-btn${onlyBookmark ? ' is-active' : ''}`}
-            onClick={() => setOnlyBookmark(true)}
-          >书签 {bookmarkCount}</button>
-        </div>
-      )}
       <ul className="reader-notes-list">
-        {shown.length === 0 && <li className="reader-notes-empty">这本书还没有笔记。选中正文可以划线、写备注、加书签。</li>}
-        {shown.map(note => (
+        {notes.length === 0 && <li className="reader-notes-empty">这本书还没有笔记。选中正文可以划线、写备注。</li>}
+        {notes.map(note => (
           <li key={note.id} className="reader-note-item">
             <button type="button" className="reader-note-item-main" onClick={() => onJump(note)}>
               <span className="reader-note-item-excerpt">{note.excerpt}</span>
               {note.note && <span className="reader-note-item-text">{note.note}</span>}
               <span className="reader-note-item-meta">
-                {note.bookmark && <span className="reader-note-badge">书签</span>}
                 第 {note.chapterIndex + 1} 章
               </span>
             </button>

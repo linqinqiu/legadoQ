@@ -704,24 +704,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
 
   /** 标记快捷条：划线（仅高亮，不写备注）。 */
   const highlightFromMenu = () => { void saveNote() }
-  /** 标记快捷条：加书签（只标位置，不写想法）。 */
-  const bookmarkFromMenu = async () => {
-    const draft = noteDraft
-    if (!draft) return
-    const created = await api.addNote({
-      sourceId: currentBook.details.sourceId, bookUrl: currentBook.bookUrl, bookName,
-      chapterUrl: draft.chapterUrl, chapterIndex: draft.chapterIndex,
-      startOffset: draft.startOffset, endOffset: draft.endOffset, excerpt: draft.excerpt, note: '', bookmark: true,
-    }).catch(() => null)
-    if (created) {
-      setNotes(list => [...list, created])
-      toast.success('已加书签')
-    }
-    setNoteDraft(null)
-    setNoteEditorOpen(false)
-    setSelection(null)
-    window.getSelection()?.removeAllRanges()
-  }
   /** 标记快捷条：展开笔记编辑器。 */
   const openNoteEditor = () => setNoteEditorOpen(true)
   /** 标记快捷条：复制选中原文。 */
@@ -2156,7 +2138,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }
 
   /**
-   * 正文上的右键（用户 2026-10-04：「书签加载章节目录，选定段落，右击功能你还没有添加」）。
+   * 正文上的右键（用户 2026-10-04：「选定段落，右击功能你还没有添加」）。
    *
    * 上游在手机上是"长按选句 → 一条菜单"（复制/朗读/替换/站内搜索…），桌面这边对应物就是右键。
    * 第一条永远是**手上正选着的那几段** —— 人右键的时候多半刚选好，让他再去别处找那颗按钮，
@@ -2202,20 +2184,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
             }).then(
               created => { if (created) { setNotes(list => [...list, created]); toast.success('已划线') } },
               () => toast.warning('划线失败'),
-            )
-          },
-        })
-        items.push({
-          label: '书签',
-          icon: 'bookmark',
-          onSelect: () => {
-            void api.addNote({
-              sourceId: currentBook.details.sourceId, bookUrl: currentBook.bookUrl, bookName,
-              chapterUrl: draft.chapterUrl, chapterIndex: draft.chapterIndex,
-              startOffset: draft.startOffset, endOffset: draft.endOffset, excerpt: draft.excerpt, note: '', bookmark: true,
-            }).then(
-              created => { if (created) { setNotes(list => [...list, created]); toast.success('已加书签') } },
-              () => toast.warning('书签失败'),
             )
           },
         })
@@ -2781,7 +2749,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     )}
     {/*
       选中正文后的浮层（PROPOSAL-019 E 笔记编辑器 + 标记快捷条）：
-      先摆「标记快捷条」（划线 / 书签 / 笔记 / 复制 / AI），点「笔记」才展开 NoteToolbar 编辑器。
+      先摆「标记快捷条」（划线 / 笔记 / 复制 / AI），点「笔记」才展开 NoteToolbar 编辑器。
       两者都挂在 `<section class="reader-main">` **之外**，自己的点击不该再触发 onReaderMouseUp。
     */}
     {noteDraft && !noteEditorOpen && (
@@ -2789,7 +2757,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         x={noteDraft.x}
         y={noteDraft.y}
         onHighlight={highlightFromMenu}
-        onBookmark={bookmarkFromMenu}
         onNote={openNoteEditor}
         onCopy={copySelection}
         onAi={sendSelectionToAi}
