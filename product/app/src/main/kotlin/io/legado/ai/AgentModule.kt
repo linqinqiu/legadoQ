@@ -68,6 +68,32 @@ object AgentModule {
             edgeTts = edgeTts,
             backupStore = backupStore,
         )
+        // 两段式工具发现：模型先用 tool.search 查有哪些工具，再用 tool.call 调它。
+        // 两个都属于 program 组，ToolSelection 永远下发 —— 分组过滤之后仍有"按需够到任意工具"的逃生口。
+        if (registry.find("tool.search") == null) {
+            registry.register(Tool(
+                ToolMeta("tool.search", "program", "按关键词搜索可用工具，返回 id / 分组 / 说明；找到后用 tool.call 调用。", writes = false),
+            ) { _, args ->
+                val q = (args["q"] as? String).orEmpty().trim().lowercase()
+                val hits = registry.manifest().filter {
+                    q.isBlank() || it.id.lowercase().contains(q) || it.group.lowercase().contains(q) || it.description.lowercase().contains(q)
+                }.take(20)
+                AgentResult("ok", data = mapOf(
+                    "total" to hits.size,
+                    "items" to hits.map { mapOf("id" to it.id, "group" to it.group, "writes" to it.writes, "description" to it.description) },
+                ))
+            })
+        }
+        if (registry.find("tool.call") == null) {
+            registry.register(Tool(
+                ToolMeta("tool.call", "program", "调用任意已注册工具：args = { id, args }，id 用 tool.search 查。写操作照常过护栏。", writes = true),
+            ) { callCtx, args ->
+                val id = (args["id"] as? String)?.trim().orEmpty()
+                val target = registry.find(id) ?: return@Tool callCtx.error("not_found", "工具 $id 不存在，先用 tool.search 查")
+                val inner = (args["args"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+                target.handler(callCtx, inner)
+            })
+        }
         // 网关需要 homeDirectory 才能读写 agent-profiles.json，从而真正支持外部模型阅读理解。
         return AgentConnection(
             Agent(

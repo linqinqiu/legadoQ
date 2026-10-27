@@ -114,7 +114,7 @@ tasks.register('testCoverageReport', JacocoReport) {
 
 
 group = 'io.legado'
-version = '0.1.0'
+version = '0.1.1'
 
 base {
     // plain jar 与发行版统一叫 legado：Docker 构建层 `jar uf …/lib/legado-*.jar`

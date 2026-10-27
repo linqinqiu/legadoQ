@@ -6328,11 +6328,23 @@ html[data-wallpaper="on"] .header-menu-dropdown {
 html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-workspace { background: transparent; }
 html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-color: transparent; background-image: none; }
 
-/* 壁纸设置默认折叠：展开后的内容整块收起，不占设置页长度。 */
+/* 壁纸设置默认折叠：展开后的内容整块收起，不占设置页长度。
+   展开体必须自己也是一张同样的网格：.settings-rows 靠 gap:1px + 底色画发丝线，
+   把行包进普通 div 后这些线和圆角都会消失（就是"小框边界有问题"的来源）。 */
+.wallpaper-settings-body { display: grid; gap: 1px; background: var(--line); grid-column: 1 / -1; }
 .wallpaper-settings-body[hidden] { display: none; }
+.wallpaper-settings-body > .settings-row { background: var(--surface); }
 
-/* 壁纸地址输入：与设置页其它输入框同一套边界，撑满这一行的正文宽度而不是缩成一小截。 */
-.wallpaper-settings-body .settings-search { max-width: none; width: 100%; }
+/* 首尾行的圆角跟容器对齐：壁纸模式下行带半透明 + backdrop-filter，
+   部分浏览器不会替父级的 overflow:hidden 裁圆角，这里显式补上。
+   用 :first-of-type 而不是 :first-child —— 壁纸分区的第一个子节点是隐藏的 file input。 */
+.settings-rows > .settings-row:first-of-type { border-top-left-radius: var(--r-2); border-top-right-radius: var(--r-2); }
+.settings-rows > .settings-row:last-of-type { border-bottom-left-radius: var(--r-2); border-bottom-right-radius: var(--r-2); }
+.wallpaper-settings-body > .settings-row:first-of-type { border-top-left-radius: 0; border-top-right-radius: 0; }
+.wallpaper-settings-body > .settings-row:last-of-type { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+/* 壁纸地址输入：与设置页其它输入框同宽同边界，不再单独拉满。 */
+.wallpaper-settings-body .settings-search { max-width: 460px; width: 100%; }
 
 /* 悬停时底色加深一点：可点/可读的块统一给一个轻微反馈（用户：鼠标指向的内容颜色加深变化一点）。 */
 .settings-row:hover { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); }
