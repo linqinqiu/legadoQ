@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { WallpaperSection } from '../settings/WallpaperSection'
 import {
   activeCustomSkin,
   availableSkins,
@@ -110,13 +111,15 @@ export function CustomizeModal({
 
   return (
     <div className="overlay-backdrop" onClick={onClose}>
-      <div className="dialog-shell size-s customize-dialog" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="自定义">
+      <div className="dialog-shell size-l customize-dialog" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="自定义">
         <header className="dialog-head customize-header">
           <h2><Icon name="sliders" /> 自定义</h2>
           <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
         </header>
 
         <div className="customize-body">
+          <div className="customize-columns">
+            <div className="customize-col">
           <section className="customize-section">
             <h3>皮肤</h3>
             <p className="customize-hint">
@@ -282,6 +285,18 @@ export function CustomizeModal({
               </div>
             </div>
           </section>
+          </div>
+          <div className="customize-col">
+            {/* 壁纸与皮肤同一处改，但分左右两栏：左边调外观（皮肤/皮肤库），右边调背景图。 */}
+            <section className="customize-section customize-wallpaper">
+              <h3>壁纸</h3>
+              <p className="customize-hint">
+                整站背景图：从这台电脑选一张、或填图片地址，再调不透明度与模糊。只存在这台浏览器，不进备份包。
+              </p>
+              <WallpaperSection />
+            </section>
+          </div>
+        </div>
         </div>
       </div>
     </div>

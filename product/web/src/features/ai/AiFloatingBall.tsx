@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AgentChatMessage, type AgentConnection } from '../../lib/api'
 import { Icon } from '../../icons'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
-import { loadAiToolGroups } from '../../lib/aiToolGroups'
+import { loadAiToolGroups, rememberToolIndex, toolRoundGroups } from '../../lib/aiToolGroups'
 import {
   activeSession,
   appendAiLine,
@@ -90,6 +90,13 @@ export function AiFloatingBall({ uiContext }: { uiContext?: UiContext }) {
     api.listAgentConnections()
       .then(list => setConnected(list.length > 0))
       .catch(() => setConnected(false))
+  }, [])
+  // 工具 id → 组：气泡里只显示"用了哪些能力"，得先知道每个 id 属于哪一组。
+  // 读不到清单就回落成 id 本身，不让气泡空着。
+  useEffect(() => {
+    api.agentManifest()
+      .then(manifest => rememberToolIndex(manifest.tools ?? []))
+      .catch(() => undefined)
   }, [])
 
   // 视口变化时把球拉回来（否则缩放窗口后球可能停在外面）
@@ -361,9 +368,11 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
             <div className="ai-bubble-content">{m.content || '思考中…'}</div>
             {m.role === 'assistant' && m.toolRounds && m.toolRounds.length > 0 && (
               <div className="ai-bubble-tools">
-                <span className="ai-bubble-tools-label">用了 {m.toolRounds.length} 个能力</span>
+                <span className="ai-bubble-tools-label">用了 {m.toolRounds.length} 次能力</span>
                 <ul className="ai-tool-list">
-                  {m.toolRounds.map((r, k) => <li key={k} className="ai-tool-item">{r.replace(':', ' · ')}</li>)}
+                  {toolRoundGroups(m.toolRounds).map(item => (
+                    <li key={item.label} className="ai-tool-item" title={item.ids}>{item.label}</li>
+                  ))}
                 </ul>
               </div>
             )}

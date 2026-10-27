@@ -8,7 +8,7 @@ import { VitePWA } from 'vite-plugin-pwa'
  * 显示上一版图形。改这一个常量等于给所有图标 URL 换指纹，客户端必然重取。
  * 每次动 `web/public` 下的图标就 +1。
  */
-const ICON_VERSION = '3'
+const ICON_VERSION = '4'
 /**
  * dev server 把 `/api` 转给谁。默认打在**本机日常那个实例**（`start.mjs` 起的 1234）——
  * 先前这里写死 8081，那是双 AI 三棵工作树时代 AI-1 后端端口，那棵树 2026-10-14 实测已不存在，
@@ -36,7 +36,7 @@ export default defineConfig({
       // 不让插件再注入一份 /registerSW.js —— 同一 scope 会去重，但两个注册入口、
       // 两条更新检查路径并存只会让人误判"到底谁在管更新"。
       injectRegister: null,
-      includeAssets: ['favicon.svg', 'pwa-192x192.svg', 'pwa-512x512.svg', 'maskable-icon-512x512.svg'],
+      includeAssets: ['brand-icon.png'],
       manifest: {
         name: 'legadoQ',
         short_name: 'legadoQ',
@@ -54,9 +54,6 @@ export default defineConfig({
           icon('/pwa-192x192.png', '192x192', 'image/png'),
           icon('/pwa-512x512.png', '512x512', 'image/png'),
           icon('/maskable-icon-512x512.png', '512x512', 'image/png', 'maskable'),
-          icon('/pwa-192x192.svg', '192x192', 'image/svg+xml'),
-          icon('/pwa-512x512.svg', '512x512', 'image/svg+xml'),
-          icon('/maskable-icon-512x512.svg', '512x512', 'image/svg+xml', 'maskable'),
         ],
         shortcuts: [
           {

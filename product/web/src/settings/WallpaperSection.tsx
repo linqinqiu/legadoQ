@@ -21,6 +21,9 @@ const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
  *
  * 控件复用设置页与阅读设置里已有的类名（`.settings-rows` / `.settings-row` /
  * `.setting-range` / `.page-modes`），所以这个分区不需要新的布局样式。
+ *
+ * 2026-10-27：从设置页搬进「自定义」浮窗，和皮肤放在一起。浮窗里本来就是要改的那几项，
+ * 再套一层"壁纸设置 展开/收起"只是让用户多点一次 —— 所以这里的折叠头撤掉了，直接铺开。
  */
 export function WallpaperSection() {
   const { settings } = useSyncExternalStore(subscribeWallpaper, getWallpaperSnapshot, getWallpaperSnapshot)
@@ -28,8 +31,6 @@ export function WallpaperSection() {
   /** 地址输入框的草稿：边打字边存会把半截 URL 当成图片地址去加载，提交放在回车 / 失焦时。 */
   const [urlDraft, setUrlDraft] = useState(settings.url)
   const [saving, setSaving] = useState(false)
-  /** 壁纸设置项较多，默认折叠；展开状态只活在这个组件里，不进持久化。 */
-  const [expanded, setExpanded] = useState(false)
 
   // 外部清除 / 重置后把输入框同步回真实值
   useEffect(() => { setUrlDraft(settings.url) }, [settings.url])
@@ -104,18 +105,6 @@ export function WallpaperSection() {
         onChange={event => void onFileChange(event)}
       />
 
-      {/* 折叠头：壁纸设置项不少，默认收起，只留开关与一行摘要，需要时再展开。 */}
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <strong>壁纸设置</strong>
-          <small>{settings.enabled ? '已开启 · 可展开调图片与透明度' : '已关闭 · 展开可上传图片或填地址'}</small>
-        </div>
-        <button type="button" className="subtle-button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
-          {expanded ? '收起' : '展开'}
-        </button>
-      </div>
-
-      <div className="wallpaper-settings-body" hidden={!expanded}>
       <div className="settings-row">
         <div className="settings-row-main">
           <strong>启用壁纸</strong>
@@ -284,7 +273,6 @@ export function WallpaperSection() {
           <small>删掉本地图片与地址，并关掉壁纸，恢复默认外观。</small>
         </div>
         <button type="button" className="subtle-button" onClick={() => void clear()}>清除</button>
-      </div>
       </div>
     </div>
   )

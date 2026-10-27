@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.1.3 · 端点数：141 · 生成时间：2026-10-27
+> 版本：0.1.4 · 端点数：144 · 生成时间：2026-10-27
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -18,7 +18,7 @@
 | 目录 | 1 |
 | 系统 | 7 |
 | 书源 | 12 |
-| 登录与凭据 | 11 |
+| 登录与凭据 | 13 |
 | 发现页 | 3 |
 | 内置浏览器 | 17 |
 | 搜索 | 2 |
@@ -33,8 +33,8 @@
 | 图片与媒体 | 6 |
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
-| AI 自定义接入 | 8 |
-| **合计** | **141** |
+| AI 自定义接入 | 9 |
+| **合计** | **144** |
 
 ## 目录（1）
 
@@ -71,12 +71,14 @@
 | POST | `/api/sources/{id}/validate` | 是 | 结构校验，不落库：可带草稿 json 校验编辑器里未保存的内容；请求体：json=可选；不给就校验库里那一份 |
 | GET | `/api/sources/{id}/debug` | 否 | SSE 逐阶段调试（结构 / 搜索 / 详情 / 目录 / 正文），每步给取到什么、为什么失败；query：keyword=默认「测试」，bookUrl=可指定从哪本书往下走，chapterIndex=从第几章取正文 |
 
-## 登录与凭据（11）
+## 登录与凭据（13）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
 | GET | `/api/cookies` | 否 | 全部登录凭据的域名清单（只回域名与键名，不回值） |
+| GET | `/api/cookies/detail` | 否 | 读某一个域的凭据原文（编辑前回填用；列表接口故意不回值）；query：u=要读的那个地址或域 |
 | DELETE | `/api/cookies` | 是 | 撤掉某个域的全部凭据；query：url=要清的那个地址或域 |
+| POST | `/api/cookies` | 是 | 写入某个域的凭据（按注册域归桶，同名键覆盖、其余保留，与书源登录弹层同一条落库路径）；请求体：url=站点地址或裸域名，cookie=k=v; k2=v2（也接受 Cookie-Editor 的 JSON 导出） |
 | GET | `/api/sources/{id}/login-ui` | 否 | 这本书源要求的登录表单（上游 loginUi 那套动态项） |
 | POST | `/api/sources/{id}/login-info` | 是 | 存登录填写项 / 请求头 / 书源变量；请求体：loginInfo={"键":"值"}，loginHeader=可选整串，sourceVariable=可选 |
 | DELETE | `/api/sources/{id}/login-info` | 是 | 清掉这本书源存的登录填写项 |
@@ -259,7 +261,7 @@
 | POST | `/api/tts/speak` | 是 | 一次性把一段文本合成完整音频（整章文本走会话那条更好）；请求体：text=要念的文本，不许空，voice=音色，rate=语速，pitch=音高，engine=引擎，customUrl=自建引擎才填，customHeader=可选，customMethod=可选 |
 | GET | `/api/tts/speak` | 否 | 同样的一次性合成，参数走查询串（给 audio 标签这种没法发 POST 的地方用）；query：text=文本（必填），voice=音色，rate=语速，pitch=音高 |
 
-## AI 自定义接入（8）
+## AI 自定义接入（9）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
@@ -271,4 +273,5 @@
 | POST | `/api/agent/sources/validate` | 否 | 只校验书源合法性不落库（AI 接入前的探针）：结构能解析就 valid=true；请求体：json=整份书源 JSON 字符串 |
 | POST | `/api/agent/comprehend` | 否 | 文章阅读理解：必须有外部模型连接，不落库；请求体：text=文章正文（必填），question=可选问题，给出则返回答案句，summarySentences=默认 3，topKeywords=默认 8 |
 | POST | `/api/agent/chat` | 否 | 自由对话（多轮）：必须有外部模型连接，不落库；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空 |
+| POST | `/api/agent/models` | 否 | 拉取一个 OpenAI 兼容网关可用的模型清单（服务端代发 GET {baseUrl}/v1/models），登记连接时用来自动补全模型名；不落库、不保存 key；请求体：baseUrl=接口地址（必填，带不带 /v1 都行），apiKey=可选，仅本次请求使用，options=可选额外请求头 |
 

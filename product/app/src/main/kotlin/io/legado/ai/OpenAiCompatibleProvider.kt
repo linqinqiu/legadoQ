@@ -7,6 +7,10 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.net.URI
 import io.legado.AppConfig
@@ -255,6 +259,62 @@ class OpenAiCompatibleProvider(
         // 表现为"AI 连不上"而不是"baseUrl 没配"，排查会绕远路。
         val base = profile.baseUrl?.trim()?.removeSuffix("/")?.takeIf { it.isNotEmpty() } ?: return null
         return if (base.endsWith("/v1")) base + "/chat/completions" else base + "/v1/chat/completions"
+    }
+
+    /**
+     * 拉取这个连接可用的模型清单：`GET {baseUrl}/models`。
+     *
+     * 与 [post] 共用同一道出站闸门与鉴权：地址先过 [assertPublicBaseUrl]，
+     * key 走 `Authorization: Bearer`，连接自己的额外请求头也带上（中转站常靠自定义头分渠道）。
+     *
+     * 解析 OpenAI 的 `data[].id`；顺带兼容 Ollama 风格的 `models[].name`。
+     * 失败一律抛 [NetworkSecurity.UnreachableTargetException]，不返回空列表 ——
+     * 空列表会被界面读成"这家没有模型"，而真相多半是地址错了、被网关拦了、或 key 没权限。
+     *
+     * @return 去重并按字母排序的模型 id
+     * @throws NetworkSecurity.BlockedAddressException 地址被出站闸门拒绝
+     * @throws NetworkSecurity.UnreachableTargetException 连不上 / 非 2xx / 返回体不是模型清单
+     */
+    fun listModels(profile: AgentProfileStore.Profile): List<String> {
+        // 有人会把整条对话地址粘进来（…/v1/chat/completions）：先把尾巴去掉再拼 /models，
+        // 否则会拼出 …/chat/completions/v1/models 这种必然 404 的地址。
+        val base = profile.baseUrl?.trim()?.removeSuffix("/")
+            ?.removeSuffix("/chat/completions")
+            ?.takeIf { it.isNotEmpty() }
+            ?: throw IllegalArgumentException("接口地址不能为空")
+        val url = if (base.endsWith("/v1")) "$base/models" else "$base/v1/models"
+        assertPublicBaseUrl(url)
+        val builder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofMillis(ProfileOptions.timeoutMs(profile.options) ?: 20_000L))
+            .GET()
+        if (!profile.apiKey.isNullOrBlank()) builder.header("Authorization", "Bearer " + profile.apiKey)
+        ProfileOptions.headers(profile.options).forEach { (name, value) -> builder.header(name, value) }
+        val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
+        val resp = try {
+            client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+        } catch (error: Throwable) {
+            throw NetworkSecurity.UnreachableTargetException(
+                "连不上 ${hostSummary(url)}：${error.message ?: error::class.simpleName}", error,
+            )
+        }
+        if (resp.statusCode() !in 200..299) {
+            throw NetworkSecurity.UnreachableTargetException("上游返回 ${resp.statusCode()}（拿不到模型清单）")
+        }
+        val root = runCatching { json.parseToJsonElement(resp.body()) }.getOrNull() as? JsonObject
+            ?: throw NetworkSecurity.UnreachableTargetException("模型清单不是 JSON（可能被网关或登录页拦了）")
+        val fromData = root["data"]?.jsonArray
+            ?.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.contentOrNull }
+        val fromModels = root["models"]?.jsonArray
+            ?.mapNotNull { item ->
+                item.jsonObject["name"]?.jsonPrimitive?.contentOrNull
+                    ?: item.jsonObject["id"]?.jsonPrimitive?.contentOrNull
+            }
+        val models = (fromData ?: fromModels).orEmpty().filter { it.isNotBlank() }
+        if (models.isEmpty()) {
+            throw NetworkSecurity.UnreachableTargetException("模型清单是空的（服务在，但没有可用模型）")
+        }
+        return models.distinct().sorted()
     }
 
     /** 解析 OpenAI 响应：取 content，以及 tool_calls（如果有）。 */

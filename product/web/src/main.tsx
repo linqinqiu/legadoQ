@@ -36,9 +36,7 @@ import { flushOfflineProgress } from './lib/offlineStorage'
 import { loadAllFonts } from './lib/fontLibrary'
 import { toast, ToastContainer } from './components/Toast'
 import { WallpaperLayer } from './components/WallpaperLayer'
-import { WallpaperSection } from './settings/WallpaperSection'
 import { CookieModal } from './settings/CookieSection'
-import { AiToolsSection } from './settings/AiToolsSection'
 import './styles.css'
 import { AppModal, Page, PageDialogKind } from './lib/nav'
 import { BookDetailModal } from './components/BookDetailModal'
@@ -559,8 +557,6 @@ function App() {
       openServerPort: () => openModalDirect('server-port'),
       openBrand: () => openModalDirect('brand'),
       openAiConnections: () => openModalDirect('ai'),
-      renderWallpaper: () => <WallpaperSection />,
-      renderAiTools: () => <AiToolsSection />,
       openCookies: () => openModalDirect('cookies'),
     }),
     tocRulesSignal,

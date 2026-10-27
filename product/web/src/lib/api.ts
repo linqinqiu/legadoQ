@@ -757,6 +757,9 @@ export const api = {
     request<AgentComprehendResult>('/api/agent/comprehend', { method: 'POST', body: JSON.stringify(req) }),
   agentChat: (messages: AgentChatMessage[], toolGroups?: string[] | null) =>
     request<AgentChatResult>('/api/agent/chat', { method: 'POST', body: JSON.stringify({ messages, ...(toolGroups ? { toolGroups } : {}) }) }),
+  /** 拉取某个 OpenAI 兼容网关的模型清单（服务端代发，避免 CORS 与把 key 交给浏览器直连）。 */
+  listAgentModels: (baseUrl: string, apiKey?: string) =>
+    request<{ models: string[] }>('/api/agent/models', { method: 'POST', body: JSON.stringify({ baseUrl, apiKey }) }),
 }
 
 export function streamSearch(keyword: string, sourceIds: string[] | undefined, onEvent: (event: SearchStreamEvent) => void, onError: (message: string) => void, onClose: () => void): WebSocket {

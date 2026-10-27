@@ -15,6 +15,7 @@ import io.legado.ai.agentCreateConnection
 import io.legado.ai.agentCreateSource
 import io.legado.ai.agentDeleteConnection
 import io.legado.ai.agentListConnections
+import io.legado.ai.agentListModels
 import io.legado.ai.agentManifest
 import io.legado.ai.agentValidateSource
 import io.legado.data.Database
@@ -54,6 +55,11 @@ fun Route.agentApiRoutes(
                 if (!call.requireSameOriginWrite()) return@delete
                 val id = call.parameters["id"] ?: ""
                 call.agentDeleteConnection(id, homeDirectory, profileStore)
+            }
+            post("models") {
+                // 只读探针：拿用户填的 baseUrl / key 去 GET {base}/v1/models，把可选模型名回给界面。
+                // 不写库、不保存 key，与 sources/validate 同一条口径：会外呼，但不改本机状态。
+                call.agentListModels()
             }
             post("sources") {
                 // 写：新建/覆盖书源（落库），需同源写门防 CSRF。

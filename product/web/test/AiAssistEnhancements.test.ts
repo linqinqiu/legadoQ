@@ -59,11 +59,21 @@ test('系统提示词模板可一键切换', () => {
   assert.match(fab, /SYSTEM_PROMPT_TEMPLATES/, '面板要用模板')
 })
 
-test('工具来源在界面可见（复用已有 manifest，不新增端点）', () => {
+test('工具在界面可见：按组列出、注明内置来源（复用已有 manifest，不新增端点）', () => {
   const api = read('../src/lib/api.ts')
   assert.match(api, /origin\?: string \| null/, 'manifest 工具带来源（内置为 builtin / 空）')
   const modal = read('../src/features/ai/AiConnectionsModal.tsx')
-  assert.match(modal, /ToolOriginPanel/, '有工具来源面板')
-  assert.match(modal, /builtin/, '工具一律按内置展示')
+  // 2026-10-27：工具组从设置页搬进「AI 接入」，与连接登记同一处；裸 id 清单换成按组展示。
+  assert.match(modal, /AiToolsSection/, 'AI 接入里能选工具组')
+  assert.match(modal, /内置/, '工具一律按内置展示')
   assert.doesNotMatch(modal, /plugin:/, '插件架构已移除，不该再有插件来源分组')
+})
+
+test('人设只有一份：AI 接入与悬浮球共用活动会话', () => {
+  const modal = read('../src/features/ai/AiConnectionsModal.tsx')
+  // 2026-10-27：两边各存一份 useState 时，在 AI 接入改完去悬浮球聊，用的还是旧人设 ——
+  // 表现就是"人设没作用"。现在读同一份会话、写回同一个 store。
+  assert.match(modal, /useAiChat\(\)/, 'AI 接入要读共用会话，不能自己存一份人设')
+  assert.match(modal, /setAiSystemPrompt\(/, '改人设要写回共用会话')
+  assert.doesNotMatch(modal, /const \[systemPrompt/, '本地再存一份人设会两边不同步')
 })

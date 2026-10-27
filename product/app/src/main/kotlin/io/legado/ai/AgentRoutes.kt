@@ -6,6 +6,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.legado.data.Database
 import io.legado.data.saveSource
+import io.legado.http.NetworkSecurity
 import io.legado.model.ApiError
 import io.legado.model.SourceWriteRequest
 import io.legado.source.SourceCodec
@@ -152,6 +153,48 @@ private fun toConnectionResponse(p: AgentProfileStore.Profile) = ConnectionRespo
     model = p.model,
     baseUrl = p.baseUrl,
 )
+
+// ===== 模型清单 models =====
+// 只读探针：拿用户刚填的 baseUrl / key 去 GET {base}/v1/models，把可选的模型名回给界面。
+// 不写库、不登记连接；key 只在本进程内存里用一次，不落盘、不进日志。
+
+@Serializable
+private data class ModelListRequest(
+    val baseUrl: String? = null,
+    val apiKey: String? = null,
+    val options: Map<String, String>? = null,
+)
+
+@Serializable
+private data class ModelListResponse(val models: List<String>)
+
+suspend fun ApplicationCall.agentListModels() {
+    val req = runCatching { receive<ModelListRequest>() }.getOrElse {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 {baseUrl, apiKey}")); return
+    }
+    val baseUrl = req.baseUrl?.trim().orEmpty()
+    if (baseUrl.isBlank()) {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "接口地址 baseUrl 不能为空")); return
+    }
+    val profile = AgentProfileStore.Profile(
+        id = "model-probe",
+        name = "model-probe",
+        kind = AgentProfileStore.ProfileKind.OPENAI_COMPATIBLE,
+        baseUrl = baseUrl,
+        apiKey = req.apiKey?.takeIf { it.isNotBlank() },
+        options = req.options.orEmpty(),
+    )
+    try {
+        respond(ModelListResponse(OpenAiCompatibleProvider().listModels(profile)))
+    } catch (blocked: NetworkSecurity.BlockedAddressException) {
+        // 与对话同一条闸门：内网 / 本机地址默认拒，用户要能看懂"是你填的地址被拒了"。
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", blocked.message ?: "地址被出站安全闸门拒绝"))
+    } catch (unreachable: NetworkSecurity.UnreachableTargetException) {
+        respond(HttpStatusCode.BadGateway, ApiError("upstream_unreachable", unreachable.message ?: "拿不到模型清单"))
+    } catch (invalid: IllegalArgumentException) {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", invalid.message ?: "地址不合法"))
+    }
+}
 
 // ===== 书源新建 / 校验 =====
 

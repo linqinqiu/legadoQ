@@ -39,11 +39,18 @@ export function SettingsPage({ sections }: {
       </header>
       <div className="settings-search-row">
         {/* type=search 是刻意的：`/` 与 Ctrl/⌘+F 找"这一页的搜索框"就认这个选择器（见 main.tsx 的 focusSearch） */}
+        {/* 关掉浏览器自动填充：Chrome 会把这个孤零零的输入框当成"联系邮箱"，
+            点开设置就被塞进账号邮箱，然后报「没有匹配」。搜索框只该收用户自己敲的字。 */}
         <input
           type="search"
           className="settings-search"
           placeholder="搜设置项"
           aria-label="搜设置项"
+          name="settings-search"
+          autoComplete="off"
+          data-form-type="other"
+          spellCheck={false}
+          enterKeyHint="search"
           value={query}
           onChange={event => setQuery(event.target.value)}
         />

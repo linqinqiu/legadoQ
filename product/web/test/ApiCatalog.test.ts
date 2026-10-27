@@ -154,7 +154,8 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 同月新增「AI 闭环」POST/DELETE /api/books/content-process（阅读组，写，book_content_process 覆盖正文）→ 140 → 142。
   // 2026-10：移除前端/后端插件架构，删掉 GET /api/plugins（系统组）→ 142 → 141，系统组 8 → 7。
   // 2026-10：补全局 Cookie 管理，新增 POST /api/cookies 与 GET /api/cookies/detail（登录与凭据组）→ 141 → 143。
-  assert.equal(catalog.endpoints.length, 143, `端点总数必须为 143，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-10-27：登记连接要能自动补全模型名，新增 POST /api/agent/models（AI 自定义接入组，只读探针）→ 143 → 144。
+  assert.equal(catalog.endpoints.length, 144, `端点总数必须为 144，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')
   assert.equal(systemGroup.length, 7, `系统组必须为 7 条（插件架构已移除），现在是 ${systemGroup.length}`)

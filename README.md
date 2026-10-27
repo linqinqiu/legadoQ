@@ -2,7 +2,7 @@
 
 本地小说 / 漫画阅读服务：Kotlin + Ktor 后端、SQLite、内置 Web UI，默认只监听 `127.0.0.1:1234`。
 
-> 当前版本 **0.1.3**。实际运行版本以 `curl http://127.0.0.1:1234/healthz` 为准。
+> 当前版本 **0.1.4**。实际运行版本以 `curl http://127.0.0.1:1234/healthz` 为准。
 > 整个目录可整体移动或改名：启动脚本、数据目录、日志都按安装根相对解析，不依赖盘符。
 
 ---
@@ -54,7 +54,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 
 ## API
 
-- 端点总数：**142**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
+- 端点总数：**144**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
 - 机器可读目录：`GET http://127.0.0.1:1234/api/catalog`。
 - 接入说明：[`product/AGENTS.md`](product/AGENTS.md)。
 

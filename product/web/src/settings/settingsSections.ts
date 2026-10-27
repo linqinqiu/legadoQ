@@ -48,16 +48,6 @@ export type SettingsActions = {
   /** AI 接入 —— 独立一类 */
   openAiConnections: () => void
   /**
-   * 「壁纸」分区的控件本体。只在宿主真的接了这一项时才生成那一档 ——
-   * 没接的时候设置页不该多出一个空标题（判据喂假动作时也不会多出空档）。
-   */
-  renderWallpaper?: () => ReactNode
-  /**
-   * 「AI 工具」分区的控件本体：按组开关，决定哪些工具下发给模型。
-   * 与壁纸同一套接法：宿主不接就不生成那一档。
-   */
-  renderAiTools?: () => ReactNode
-  /**
    * 「Cookie」管理：打开全局凭据弹窗（与应用里其它 `AppModal` 浮层同一套外壳）。
    * 凭据按注册域共享，删书源不清桶，所以必须有这一处能看见全部、能逐个撤掉。
    */
@@ -86,19 +76,12 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
     {
       title: '界面',
       rows: [{
-        title: '皮肤与配色',
-        hint: '晓白 / 护眼 / 夜读三档，外加一份只存在本机浏览器的自定义 CSS。',
-        action: '打开自定义',
+        title: '皮肤与壁纸',
+        hint: '七套内置皮肤、自定义皮肤库与整站壁纸，都在同一个「自定义」浮窗里改。',
+        action: '打开',
         onClick: actions.openCustomize,
       }],
     },
-    // 「壁纸」不是一行按钮：开关、选图、地址、滑杆、填充方式都在这一档里直接改，
-    // 改动即时生效并自动保存（实现见 settings/WallpaperSection.tsx）。
-    ...(actions.renderWallpaper ? [{
-      title: '壁纸',
-      rows: [],
-      content: actions.renderWallpaper,
-    }] : []),
     // 「Cookie」是一行入口：点开走全局弹窗，列表/搜索/批量删除/编辑都在弹窗里。
     {
       title: 'Cookie',
@@ -169,19 +152,12 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       rows: [
         {
           title: 'AI 接入',
-          hint: '程序内部的 AI 网关（/api/agent）。登记一个 openai-compatible 模型后才能对话；'
-            + '没有连接时 AI 不可用，不做本地兜底。',
+          hint: '登记一个 openai-compatible 模型、勾选 AI 能用哪些工具组；没有连接时 AI 不可用，不做本地兜底。',
           action: '打开 AI 接入',
           onClick: actions.openAiConnections,
         },
       ],
     },
-    // 「AI 工具」：控件就在这一档里（按组开关），宿主没接就不生成这一档。
-    ...(actions.renderAiTools ? [{
-      title: 'AI 工具',
-      rows: [],
-      content: actions.renderAiTools,
-    }] : []),
   ]
 }
 

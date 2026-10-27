@@ -58,15 +58,14 @@ test('HeaderMenu - AppHeader static rendering', () => {
 // tools/verify/portal-theme-check.mjs（三套皮肤 × portal 面，带摘掉 <html> 主题类的反向对照）；
 // "鉴权已删"这条由下面那个静态渲染用例钉（不许再出现「已登录」）。
 
-test('Logo - 品牌位与桌面/标签页图标同一套几何', () => {
+test('Logo - 品牌位与桌面/标签页图标是同一张图', () => {
   const element = React.createElement(Logo, { size: 28 })
   const html = renderToStaticMarkup(element)
   assert.ok(html.includes('app-brand-logo'), 'Logo should have app-brand-logo class')
-  // 旧断言钉的是 `logoTealGrad` / `logoGoldGrad`（青绿书+金色结那套），
-  // 用户已把品牌图形定为 favicon/PWA 那套「绿底白书」，所以这里改钉新几何。
-  assert.ok(html.includes('#2E8B63') && html.includes('#17573F'), 'Logo 应使用与 favicon 相同的绿底渐变')
-  assert.ok(!html.includes('logoGoldGrad'), '金色结那套已经废弃，不该再出现在品牌位里')
-  assert.ok(html.includes('rx="104"'), '圆角方底应与 favicon 一致')
+  // 用户 2026-10-27 把品牌图形换成了自己给的图：品牌位直接引用随包位图，
+  // 不再内联「绿底白书」。这里钉住"引用的就是那张图 + size 照传"。
+  assert.ok(html.includes('src="/brand-icon.png"'), 'Logo 应引用随包的 brand-icon.png')
+  assert.ok(!html.includes('#2E8B63'), '旧的绿底矢量不该再出现在品牌位里')
   assert.ok(html.includes('width="28"'), 'Logo should respect size prop')
 })
 

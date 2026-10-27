@@ -3,7 +3,9 @@ import { api, AgentChatMessage, AgentConnection } from '../../lib/api'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
-import { loadAiToolGroups } from '../../lib/aiToolGroups'
+import { loadAiToolGroups, toolRoundGroups } from '../../lib/aiToolGroups'
+import { activeSession, setAiSystemPrompt, useAiChat } from './aiChatStore'
+import { AiToolsSection } from '../../settings/AiToolsSection'
 
 /**
  * 「AI 接入」（自定义接入面 /api/agent/*）。
@@ -69,7 +71,7 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
     <div className="ai-connections">
       <ChatPanel externalConnected={!!external} externalName={external?.name} uiContext={uiContext} onConnectionsChanged={refresh} />
       <details className="ai-advanced">
-        <summary>连接与工具（登记外部模型、校验书源）</summary>
+        <summary>连接与工具（登记外部模型、选择能力、校验书源）</summary>
         <section className="ai-section">
           <h3>连接</h3>
           <p className="ai-section-hint">
@@ -97,7 +99,13 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
           )}
           <RegisterConnection onRegistered={refresh} />
         </section>
-        <ToolOriginPanel />
+        <section className="ai-section">
+          <h3>工具</h3>
+          <p className="ai-section-hint">
+            这些能力全部由程序内置提供（没有插件注册工具）。勾掉哪一组，模型就看不到那组工具。
+          </p>
+          <AiToolsSection />
+        </section>
         <SourceValidatePanel />
       </details>
     </div>
@@ -117,7 +125,10 @@ function ChatPanel({
   uiContext?: UiContext
 }) {
   const [messages, setMessages] = useState<ChatLine[]>([])
-  const [systemPrompt, setSystemPrompt] = useState('你是 legadoQ 的阅读助手，帮助用户理解文章、管理书源、解答阅读相关的问题。')
+  // 人设与悬浮球共用同一份（aiChatStore 的活动会话）：两个入口各存一份的话，
+  // 在这边改完、去悬浮球聊，用的还是旧人设 —— 看起来就是"人设没作用"。
+  const chat = useAiChat()
+  const systemPrompt = activeSession(chat).systemPrompt
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -229,7 +240,7 @@ function ChatPanel({
         <textarea
           className="ai-chat-system-input"
           value={systemPrompt}
-          onChange={e => setSystemPrompt(e.target.value)}
+          onChange={e => setAiSystemPrompt(e.target.value)}
           rows={2}
           placeholder="例如：你是书源调试助手…"
         />
@@ -247,10 +258,10 @@ function ChatPanel({
             <div className="ai-bubble-content">{m.content || (m.pending ? '思考中…' : '')}</div>
             {m.role === 'assistant' && !m.pending && m.toolRounds && m.toolRounds.length > 0 && (
               <div className="ai-bubble-tools">
-                <span className="ai-bubble-tools-label">用了 {m.toolRounds.length} 个能力</span>
+                <span className="ai-bubble-tools-label">用了 {m.toolRounds.length} 次能力</span>
                 <ul className="ai-tool-list">
-                  {m.toolRounds.map((r, k) => (
-                    <li key={k} className="ai-tool-item">{r.replace(':', ' · ')}</li>
+                  {toolRoundGroups(m.toolRounds).map(item => (
+                    <li key={item.label} className="ai-tool-item" title={item.ids}>{item.label}</li>
                   ))}
                 </ul>
               </div>
@@ -289,44 +300,6 @@ function ChatPanel({
   )
 }
 
-function ToolOriginPanel() {
-  const [manifest, setManifest] = useState<{ tools: { id: string }[] } | null>(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    api.agentManifest()
-      .then(m => setManifest({ tools: m.tools ?? [] }))
-      .catch(err => setError(err instanceof Error ? err.message : '读取能力清单失败'))
-  }, [])
-
-  const tools = manifest?.tools ?? []
-
-  return (
-    <section className="ai-section">
-      <h3>工具与来源</h3>
-      <p className="ai-section-hint">
-        这些能力全部由程序内置提供（来源为 <code>builtin</code> 或空）。
-        没有插件注册工具，端点计数也不随扩展变化。
-      </p>
-      {error ? (
-        <p className="customize-error" role="alert">{error}</p>
-      ) : !manifest ? (
-        <p className="ai-muted">读取中…</p>
-      ) : (
-        <>
-          <p className="ai-muted">共 {tools.length} 个能力：全部为内置工具。</p>
-          {tools.length > 0 && (
-            <div className="ai-tool-origin">
-              <span className="ai-tag ai-tag-ok">builtin</span>
-              <span className="ai-muted">{tools.length} 个：{tools.map(t => t.id).join('、')}</span>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
 function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
   const [name, setName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
@@ -335,6 +308,40 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
+  /** 服务端代拉的模型清单：可以点按钮拉，也可以在填完地址后自动拉一次。 */
+  const [models, setModels] = useState<string[]>([])
+  const [modelsBusy, setModelsBusy] = useState(false)
+  const [modelsNote, setModelsNote] = useState('')
+  /** 已经为哪个地址拉过清单：同一个地址失焦不重复打网关。 */
+  const fetchedFor = useRef('')
+
+  const fetchModels = async () => {
+    const url = baseUrl.trim()
+    if (!url) { setModelsNote('先填接口地址'); return }
+    setModelsBusy(true)
+    setModelsNote('')
+    try {
+      const result = await api.listAgentModels(url, apiKey.trim() || undefined)
+      setModels(result.models)
+      fetchedFor.current = `${url}|${apiKey.trim()}`
+      setModelsNote(`已拿到 ${result.models.length} 个模型；从下拉里挑，或直接填清单外的名字。`)
+    } catch (failure) {
+      setModels([])
+      // 失败不记住"已拉过"：填上密钥后失焦要能自动再试一次（401 多半就是还没填 key）。
+      fetchedFor.current = ''
+      setModelsNote(failure instanceof Error ? failure.message : '拿不到模型清单')
+    } finally {
+      setModelsBusy(false)
+    }
+  }
+
+  /** 地址或密钥填完就自动拉一次 —— 用户不用先知道要按哪个按钮。 */
+  const autoFetch = () => {
+    const url = baseUrl.trim()
+    if (!/^https?:\/\//i.test(url)) return
+    if (fetchedFor.current === `${url}|${apiKey.trim()}`) return
+    void fetchModels()
+  }
 
   const submit = async () => {
     if (!name.trim() || !baseUrl.trim() || !model.trim()) {
@@ -354,6 +361,7 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
       })
       setNote(`已登记「${created.name}」（id: ${created.id}）。注意：有多个外部连接时只走第一条，想让它生效就放在第一条。`)
       setName(''); setBaseUrl(''); setModel(''); setApiKey('')
+      setModels([]); setModelsNote(''); fetchedFor.current = ''
       onRegistered()
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '登记失败')
@@ -372,16 +380,42 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
         </label>
         <label className="customize-field">
           <span>接口地址（到 /v1）</span>
-          <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="http://127.0.0.1:5591/v1" />
+          <input
+            value={baseUrl}
+            onChange={e => setBaseUrl(e.target.value)}
+            onBlur={autoFetch}
+            placeholder="http://127.0.0.1:5591/v1"
+          />
         </label>
         <label className="customize-field">
-          <span>模型名</span>
-          <input value={model} onChange={e => setModel(e.target.value)} placeholder="gpt-4o" />
+          <span>模型名（可挑可自填）</span>
+          <input
+            value={model}
+            onChange={e => setModel(e.target.value)}
+            placeholder="gpt-4o"
+            list="ai-model-options"
+          />
+          <datalist id="ai-model-options">
+            {models.map(id => <option key={id} value={id} />)}
+          </datalist>
         </label>
         <label className="customize-field">
           <span>密钥（可空）</span>
-          <input type="password" autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-…（留空则不带 Authorization）" />
+          <input type="password" autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} onBlur={autoFetch} placeholder="sk-…（留空则不带 Authorization）" />
         </label>
+      </div>
+      <div className="ai-model-fetch">
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => void fetchModels()}
+          disabled={modelsBusy || !baseUrl.trim()}
+        >
+          {modelsBusy ? '正在获取模型…' : '拉取模型清单'}
+        </button>
+        <small className="ai-muted">
+          {modelsNote || '填完接口地址会自动获取一次；也可以直接填清单里没有的模型名。'}
+        </small>
       </div>
       {!!error && <p className="customize-error" role="alert">{error}</p>}
       {!!note && <p className="customize-note">{note}</p>}

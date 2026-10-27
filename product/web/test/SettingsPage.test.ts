@@ -45,6 +45,10 @@ test('这一页只是路由：不读写数据，也不持有设置的值', () =>
   assert.match(page, /const \[query, setQuery\] = useState\(''\)/, '那份状态是搜索词')
   // 搜索框必须是 `type="search"`：`/` 与 Ctrl/⌘+F 找"这一页的搜索框"认的就是它
   assert.match(page, /type="search"/, '不是 type=search，`/` 快捷键在这一页就是哑的')
+  // 2026-10-27 用户实测：Chrome 把这个孤立输入框当"联系邮箱"，自动塞进账号邮箱后报「没有匹配」。
+  // 显式关掉自动填充 + 给固定 name，浏览器不用猜这个框是干什么的。
+  assert.match(page, /autoComplete="off"/, '搜索框没关自动填充：账号邮箱会被塞进来')
+  assert.match(page, /name="settings-search"/, '搜索框没有固定 name，浏览器只能靠猜')
 })
 
 test('一级目的地只在顶栏列一次；规则/备份 收在「设置」页 —— 收放改了，功能一条没少', () => {
