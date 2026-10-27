@@ -755,8 +755,8 @@ export const api = {
     request<{ id: string; version: number; updatedAt: string }>('/api/agent/sources', { method: 'POST', body: JSON.stringify({ json, version }) }),
   agentComprehend: (req: { text: string; question?: string; summarySentences?: number; topKeywords?: number }) =>
     request<AgentComprehendResult>('/api/agent/comprehend', { method: 'POST', body: JSON.stringify(req) }),
-  agentChat: (messages: AgentChatMessage[]) =>
-    request<AgentChatResult>('/api/agent/chat', { method: 'POST', body: JSON.stringify({ messages }) }),
+  agentChat: (messages: AgentChatMessage[], toolGroups?: string[] | null) =>
+    request<AgentChatResult>('/api/agent/chat', { method: 'POST', body: JSON.stringify({ messages, ...(toolGroups ? { toolGroups } : {}) }) }),
 }
 
 export function streamSearch(keyword: string, sourceIds: string[] | undefined, onEvent: (event: SearchStreamEvent) => void, onError: (message: string) => void, onClose: () => void): WebSocket {

@@ -45,10 +45,16 @@ object ToolSelection {
      *
      * @param manifest 当前注册的全部工具元信息
      * @param userText 用户这一轮说的话（只用于关键词匹配）
+     * @param allowedGroups 用户在设置里启用的工具组；null 表示没限制（按关键词选）
      * @returns 要下发的工具；过滤后为空时退回完整清单
      */
-    fun select(manifest: List<ToolMeta>, userText: String): List<ToolMeta> {
+    fun select(manifest: List<ToolMeta>, userText: String, allowedGroups: Set<String>? = null): List<ToolMeta> {
         if (manifest.isEmpty()) return manifest
+        // 用户显式关掉了某些组：只在这些组里选，`program` 仍常驻（否则 tool.search 也没了）。
+        if (allowedGroups != null) {
+            val selected = manifest.filter { it.group in allowedGroups || it.group in ALWAYS }
+            return selected.ifEmpty { manifest }
+        }
         val text = userText.lowercase()
         val groups = LinkedHashSet<String>()
         groups += ALWAYS

@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.1.2 · 端点数：141 · 生成时间：2026-10-27
+> 版本：0.1.3 · 端点数：141 · 生成时间：2026-10-27
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 

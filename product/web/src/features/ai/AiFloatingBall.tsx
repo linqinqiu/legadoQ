@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AgentChatMessage, type AgentConnection } from '../../lib/api'
 import { Icon } from '../../icons'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
+import { loadAiToolGroups } from '../../lib/aiToolGroups'
 import {
   activeSession,
   appendAiLine,
@@ -240,7 +241,7 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
 
     setSending(true)
     try {
-      const res = await api.agentChat(payload)
+      const res = await api.agentChat(payload, loadAiToolGroups())
       resolvePendingAiLine(pendingIndex, {
         role: 'assistant',
         content: res.content,

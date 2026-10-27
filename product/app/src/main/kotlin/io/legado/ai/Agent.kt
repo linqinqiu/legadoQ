@@ -234,7 +234,7 @@ class Agent(
      * - 工具执行走 [runTool]，护栏、钩子、权限全部照常生效
      * - 没有连接或外呼失败都返回 error，不编一段"本地说明"冒充回答
      */
-    suspend fun chat(messages: List<Pair<String, String>>): ChatOutcome {
+    suspend fun chat(messages: List<Pair<String, String>>, allowedToolGroups: Set<String>? = null): ChatOutcome {
         val norm = messages
             .filter { it.second.isNotBlank() }
             .map { LlmMessage(role = it.first.takeIf { r -> r in setOf("system", "user", "assistant") } ?: "user", content = it.second) }
@@ -251,7 +251,7 @@ class Agent(
         )
         // 只下发与这一轮相关的工具组：55 个全量塞进每次请求会白烧 token、也让模型更容易挑错工具。
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
-        val tools = ToolSelection.select(registry.manifest(), lastUserText)
+        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups)
         val toolRounds = mutableListOf<String>()
         val convo = norm.toMutableList()
 

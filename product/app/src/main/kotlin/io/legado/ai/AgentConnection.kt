@@ -106,12 +106,13 @@ class AgentConnection internal constructor(private val agent: Agent) {
      * 缺连接 / 调用失败返回 error。HTTP 层 `POST /api/agent/chat` 直接委派到这里。
      * `messages` 是 (role, content) 对，role 取 system/user/assistant 之一（其它值按 user 处理）。
      */
-    fun chat(messages: List<Pair<String, String>>): Agent.ChatOutcome = runBlocking {
-        agent.chat(messages)
+    fun chat(messages: List<Pair<String, String>>, allowedToolGroups: Set<String>? = null): Agent.ChatOutcome = runBlocking {
+        agent.chat(messages, allowedToolGroups)
     }
 
     /** 同 [chat]，但保留挂起语义。 */
-    suspend fun chatSuspend(messages: List<Pair<String, String>>): Agent.ChatOutcome = agent.chat(messages)
+    suspend fun chatSuspend(messages: List<Pair<String, String>>, allowedToolGroups: Set<String>? = null): Agent.ChatOutcome =
+        agent.chat(messages, allowedToolGroups)
 
     /**
      * 执行一个工具（同步）。内部以 `runBlocking` 把挂起调用摊平，方便非协程的进程内

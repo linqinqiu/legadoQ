@@ -53,6 +53,11 @@ export type SettingsActions = {
    */
   renderWallpaper?: () => ReactNode
   /**
+   * 「AI 工具」分区的控件本体：按组开关，决定哪些工具下发给模型。
+   * 与壁纸同一套接法：宿主不接就不生成那一档。
+   */
+  renderAiTools?: () => ReactNode
+  /**
    * 「Cookie」管理：打开全局凭据弹窗（与应用里其它 `AppModal` 浮层同一套外壳）。
    * 凭据按注册域共享，删书源不清桶，所以必须有这一处能看见全部、能逐个撤掉。
    */
@@ -171,6 +176,12 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
         },
       ],
     },
+    // 「AI 工具」：控件就在这一档里（按组开关），宿主没接就不生成这一档。
+    ...(actions.renderAiTools ? [{
+      title: 'AI 工具',
+      rows: [],
+      content: actions.renderAiTools,
+    }] : []),
   ]
 }
 

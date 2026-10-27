@@ -52,4 +52,16 @@ class ToolSelectionTest {
         val onlyNotes = listOf(meta("notes.list", "notes"))
         assertEquals(onlyNotes, ToolSelection.select(onlyNotes, "帮我搜书"))
     }
+
+    @Test
+    fun `用户只启用朗读组时只下发 program 与 tts`() {
+        val selected = ToolSelection.select(manifest, "随便聊聊", setOf("tts"))
+        assertEquals(setOf("program", "tts"), selected.map { it.group }.toSet())
+    }
+
+    @Test
+    fun `用户把组关光时 program 仍常驻`() {
+        val selected = ToolSelection.select(manifest, "你好", emptySet())
+        assertEquals(setOf("program"), selected.map { it.group }.toSet())
+    }
 }

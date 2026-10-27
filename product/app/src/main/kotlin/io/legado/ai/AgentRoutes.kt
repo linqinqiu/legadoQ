@@ -255,7 +255,11 @@ suspend fun ApplicationCall.agentComprehend(agentConnection: AgentConnection?) {
 private data class ChatMessageDto(val role: String = "user", val content: String)
 
 @Serializable
-private data class ChatRequestDto(val messages: List<ChatMessageDto>)
+private data class ChatRequestDto(
+    val messages: List<ChatMessageDto>,
+    /** 用户启用的工具组；缺省/空表示不限制（按对话关键词选）。 */
+    val toolGroups: List<String>? = null,
+)
 
 @Serializable
 private data class ChatResponseDto(
@@ -280,7 +284,7 @@ suspend fun ApplicationCall.agentChat(agentConnection: AgentConnection?) {
         respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
         return
     }
-    val outcome = conn.chat(req.messages.map { (it.role to it.content) })
+    val outcome = conn.chat(req.messages.map { (it.role to it.content) }, req.toolGroups?.filter { it.isNotBlank() }?.toSet())
     if (outcome.error != null) {
         respond(outcomeStatus(outcome.error), ApiError(outcome.error, outcomeMessage(outcome.error, outcome.errorDetail)))
         return

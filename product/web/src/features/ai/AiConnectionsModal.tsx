@@ -3,6 +3,7 @@ import { api, AgentChatMessage, AgentConnection } from '../../lib/api'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
+import { loadAiToolGroups } from '../../lib/aiToolGroups'
 
 /**
  * 「AI 接入」（自定义接入面 /api/agent/*）。
@@ -171,7 +172,7 @@ function ChatPanel({
 
     setSending(true)
     try {
-      const res = await api.agentChat(payload)
+      const res = await api.agentChat(payload, loadAiToolGroups())
       setMessages(prev => {
         const copy = [...prev]
         const idx = copy.findIndex(m => m.role === 'assistant' && m.pending)
