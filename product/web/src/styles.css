@@ -6157,27 +6157,6 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   .md3-actions-row { display: none; }
 }
 
-/* 纯阅读模式退出把手（P1-T3）：贴右缘的浮层，默认半透明收起、hover/focus 显出，确保「退出可发现」。
-   此前该把手无任何样式，退化成文档流里的原生按钮，定位与可见性都失效。 */
-.reader-immersive-handle {
-  position: fixed;
-  right: max(12px, var(--safe-right));
-  bottom: calc(20px + var(--safe-bottom));
-  z-index: 30;
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 12px;
-  border: none; border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  color: var(--ink);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
-  cursor: pointer;
-  opacity: .35;
-  transition: opacity .2s ease;
-}
-.reader-immersive-handle:hover,
-.reader-immersive-handle:focus-visible { opacity: 1; }
-.reader-immersive-handle-label { font-size: 12px; line-height: 1; }
-
 .md3-topbar-side { display: flex; align-items: center; gap: 4px; flex: none; }
 .md3-topbar-actions { justify-content: flex-end; }
 .md3-topbar-title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: center; }
@@ -6282,35 +6261,31 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   background: var(--surface-muted); color: var(--muted); font-size: var(--t-xs);
 }
 
-/* ---- 纯阅读（沉浸）----
-   进入后收起所有常驻控件，只留正文；退出靠右缘把手或 Esc。
-   这一组类此前只有 JSX 与状态、没有样式，等于按了没反应（用户 2026-10-27：「好像没有用」）。 */
-.reader-workspace.pure-reading .md3-topbar,
-.reader-workspace.pure-reading .md3-bottombar,
-.reader-workspace.pure-reading .reader-header,
-.reader-workspace.pure-reading .mobile-reader-nav,
-.reader-workspace.pure-reading .tts-floating-bar,
-.reader-workspace.pure-reading .reader-drawer,
-.reader-workspace.pure-reading .reader-drawer-backdrop { display: none !important; }
-/* AI 悬浮球挂在 reader-workspace 之外，靠 body 类收掉（与 ReaderScreen 的 effect 对应）。 */
-body.reader-pure .ai-fab,
-body.reader-pure .ai-fab-panel,
-body.reader-pure .pwa-install-banner { display: none !important; }
-
-.reader-immersive-handle {
-  position: fixed; right: 0; top: 50%; transform: translateY(-50%);
-  z-index: 25; display: inline-flex; align-items: center; gap: 6px;
-  padding: 10px 8px; border: 0; border-radius: 10px 0 0 10px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  color: var(--muted); cursor: pointer;
-  opacity: .5; transition: opacity .18s ease, background .18s ease, color .18s ease;
+/* ---- 全局壁纸 ----
+   固定铺满视口的一张图 + 可读性纱帘，位于所有内容之下；动态值由 WallpaperLayer 写成 CSS 变量。
+   遮罩底色随主题明暗由组件内联（浅色白纱 / 深色黑纱），这里只管几何与层级。 */
+.wallpaper-layer {
+  /* 动态值由 WallpaperLayer 内联覆盖；这里是样式表里的默认值，缺了它们上面的 var() 不会生效。 */
+  --wallpaper-opacity: 1;
+  --wallpaper-blur: 0px;
+  --wallpaper-scale: 1;
+  --wallpaper-fill: cover;
+  position: fixed; inset: 0; z-index: -2;
+  overflow: hidden; pointer-events: none;
 }
-.reader-immersive-handle:hover,
-.reader-immersive-handle:focus-visible { opacity: 1; background: var(--surface); color: var(--ink); }
-.reader-immersive-handle svg { width: 16px; height: 16px; }
-.reader-immersive-handle-label {
-  max-width: 0; overflow: hidden; white-space: nowrap;
-  font-size: 12px; opacity: 0; transition: max-width .18s ease, opacity .18s ease;
+.wallpaper-image {
+  display: block; width: 100%; height: 100%;
+  object-fit: var(--wallpaper-fill, cover);
+  opacity: var(--wallpaper-opacity, 1);
+  filter: blur(var(--wallpaper-blur, 0px));
+  transform: scale(var(--wallpaper-scale, 1));
+  transform-origin: center;
 }
-.reader-immersive-handle:hover .reader-immersive-handle-label,
-.reader-immersive-handle:focus-visible .reader-immersive-handle-label { max-width: 140px; opacity: 1; }
+.wallpaper-mask {
+  position: fixed; inset: 0; z-index: -1;
+  pointer-events: none;
+}
+/* 壁纸启用时把画布底色让出来：html / body / .app-shell 任一层不透明都会盖住壁纸。 */
+html[data-wallpaper="on"],
+html[data-wallpaper="on"] body,
+html[data-wallpaper="on"] .app-shell { background: transparent; }

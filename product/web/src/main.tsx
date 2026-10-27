@@ -35,6 +35,8 @@ import { PwaManager } from './components/PwaManager'
 import { flushOfflineProgress } from './lib/offlineStorage'
 import { loadAllFonts } from './lib/fontLibrary'
 import { toast, ToastContainer } from './components/Toast'
+import { WallpaperLayer } from './components/WallpaperLayer'
+import { WallpaperSection } from './settings/WallpaperSection'
 import './styles.css'
 import { AppModal, Page, PageDialogKind } from './lib/nav'
 import { BookDetailModal } from './components/BookDetailModal'
@@ -555,6 +557,7 @@ function App() {
       openServerPort: () => openModalDirect('server-port'),
       openBrand: () => openModalDirect('brand'),
       openAiConnections: () => openModalDirect('ai'),
+      renderWallpaper: () => <WallpaperSection />,
     }),
     tocRulesSignal,
     onSelectSource: setSelected,
@@ -571,6 +574,8 @@ function App() {
 
   return (
     <div className={`app-shell ${skinClasses}`}>
+      {/* 全局壁纸：固定铺满、位于所有内容之下的图片 + 遮罩；只在启用且有图时渲染，不拦截交互 */}
+      <WallpaperLayer />
       <SkinStyle settings={settings} />
       <ToastContainer />
       <ContextMenuLayer />

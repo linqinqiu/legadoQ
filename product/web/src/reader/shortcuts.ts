@@ -69,8 +69,7 @@ export const READER_SHORTCUTS: Shortcut[] = [
   { action: 'settings', keys: ['s'], display: 'S', label: '打开 / 收起阅读设置', group: '面板' },
   { action: 'tts', keys: ['m'], display: 'M', label: '朗读：播放 / 暂停', group: '面板' },
   { action: 'fullscreen', keys: ['f'], display: 'F', label: '全屏 / 退出全屏', group: '面板' },
-  { action: 'pure-reading', keys: ['i'], display: 'I', label: '进入 / 退出纯阅读（隐藏所有控件）', group: '面板' },
-  { action: 'close', keys: ['esc'], display: 'Esc', label: '关掉当前这张抽屉 / 退出纯阅读', group: '面板' },
+  { action: 'close', keys: ['esc'], display: 'Esc', label: '关掉当前这张抽屉', group: '面板' },
   { action: 'font-wheel', keys: [], display: 'Ctrl / ⌘ + 滚轮', label: '直接调字号（不用先开设置）', group: '排版' },
 ]
 

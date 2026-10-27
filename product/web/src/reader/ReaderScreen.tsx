@@ -154,27 +154,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   /** 正在拖「目录 | 正文」那条边界（只为高亮它）。 */
   const [resizingSidebar, setResizingSidebar] = useState(false)
   const [toolbarsVisible, setToolbarsVisible] = useState(false)
-  /**
-   * 「隐藏所有控件」纯阅读模式（P1-T3）：进入后顶/底栏、TTS 条、目录/设置弹层、AI 悬浮球全部收起，
-   * 只剩正文。退出靠**边缘把手**或 **Esc**（都标在把手上，可发现）。
-   * 与 `toolbarsVisible` 正交：沉浸式只是把工具栏平移出屏，纯阅读要彻底收掉所有浮层。
-   */
-  const [pureReading, setPureReading] = useState(false)
-  // 纯阅读要连全局的 AI 悬浮球一起藏掉 —— 它在 reader-workspace 之外（main.tsx 挂载），
-  // 所以借 body 类让 CSS 够得着它；组件卸载时摘掉，避免污染别的页面。
-  useEffect(() => {
-    document.body.classList.toggle('reader-pure', pureReading)
-    return () => document.body.classList.remove('reader-pure')
-  }, [pureReading])
-  /** 进/出纯阅读：进入时顺手关掉抽屉与工具栏，避免纯阅读里还飘着半截控件。 */
-  const togglePureReading = useCallback(() => {
-    const next = !pureReading
-    setPureReading(next)
-    if (next) {
-      setActiveDrawer(null)
-      setToolbarsVisible(false)
-    }
-  }, [pureReading])
   // PROPOSAL-020：MD3 阅读外壳，**默认开启**；`?ui=legacy` 或 localStorage 置 0 时回旧界面（回退用）。
   const [uiV2] = useState(() => {
     try {
@@ -1888,8 +1867,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       try {
       switch (hit.action) {
         case 'close':
-          // 纯阅读模式下 Esc 优先退出纯阅读（可发现性：把手与 Esc 同义）。
-          if (pureReading) { setPureReading(false); break }
           if (!activeDrawer) return
           setActiveDrawer(null)
           break
@@ -1954,10 +1931,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           event.preventDefault()
           toggleFullscreen()
           break
-        case 'pure-reading':
-          event.preventDefault()
-          togglePureReading()
-          break
       }
       } catch (error) {
         // 出了错也要把界面交回来：不能停在"正在加载"那一档让人以为书打不开。
@@ -1967,7 +1940,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeDrawer, changeChapter, chapterIndex, goNextPage, goPrevPage, onSettingsChange, settings, toggleTts, pureReading, togglePureReading])
+  }, [activeDrawer, changeChapter, chapterIndex, goNextPage, goPrevPage, onSettingsChange, settings, toggleTts])
 
   // Ctrl/⌘ + 滚轮直接调字号：不用先开设置抽屉再拖滑杆。必须 passive:false，否则拦不住浏览器的页面缩放。
   useEffect(() => {
@@ -2015,16 +1988,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    */
   const runTapAction = useCallback((action: TapAction) => {
     const paginate = settings.pageMode === 'paginate'
-    // 纯阅读里：翻页区照样翻页（核心阅读不中断），其余任意点击都视为「把控件叫回来」，
-    // 跟边缘把手 / Esc 同一语义 —— 退出操作始终可发现，不会卡在纯阅读里出不来。
-    if (pureReading) {
-      if (action === 'previous' || action === 'next') {
-        // 落到下面的翻页逻辑
-      } else {
-        setPureReading(false)
-        return
-      }
-    }
     if (action === 'previous') {
       if (paginate) {
         goPrevPage()
@@ -2049,7 +2012,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     if (action === 'none') return
     setToolbarsVisible(visible => !visible)
-  }, [chapterIndex, changeChapter, goNextPage, goPrevPage, settings.pageMode, pureReading])
+  }, [chapterIndex, changeChapter, goNextPage, goPrevPage, settings.pageMode])
 
   /**
    * 正文区的视口矩形。
@@ -2270,7 +2233,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     </>
   )
 
-  return <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${pureReading ? 'pure-reading' : ''} ${settings.sidebarPinned ? 'sidebar-pinned' : ''} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
+  return <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${settings.sidebarPinned ? 'sidebar-pinned' : ''} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
     {/* 顶栏：MD3 外壳（PROPOSAL-020）或旧浮动工具栏，由 uiV2 开关切换 */}
     {uiV2 ? <Md3TopBar
       bookName={bookName}
@@ -2305,7 +2268,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onResetTtsBar={resetTtsBarPosition}
       onBookSearch={() => setBookSearchOpen(true)}
       onToggleNotes={() => { setActiveDrawer('toc'); setNotesPanel(true) }}
-      onTogglePureReading={togglePureReading}
       notesCount={notes.length}
     /> : <ReaderHeader
       bookName={bookName}
@@ -2348,7 +2310,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onToggleTts={toggleTts}
       onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
       onBookSearch={() => setBookSearchOpen(true)}
-      onTogglePureReading={togglePureReading}
     />}
 
     {/* TOC Drawer (Left) */}
@@ -2771,24 +2732,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onRemove={() => void removeNote()}
         onDismiss={clearSelection => { setNoteEditorOpen(false); setNoteDraft(null); setSelection(null); if (clearSelection) window.getSelection()?.removeAllRanges() }}
       />
-    )}
-
-    {/*
-      纯阅读沉浸模式（P1-T3）：这是唯一的常驻可见控件，所以必须「可发现」。
-      一条贴右缘的把手，悬停/聚焦显出「退出沉浸 · Esc」字样；点一下退出纯阅读。
-      正文区任意非翻页点击、以及 Esc，都和它同义退出 —— 不会卡在纯阅读里出不来。
-    */}
-    {pureReading && (
-      <button
-        type="button"
-        className="reader-immersive-handle"
-        aria-label="退出纯阅读模式"
-        title="退出纯阅读模式（正文任意处点击或按 Esc 也可退出）"
-        onClick={() => setPureReading(false)}
-      >
-        <Icon name="eye" />
-        <span className="reader-immersive-handle-label">退出沉浸 · Esc</span>
-      </button>
     )}
   </main>
 }

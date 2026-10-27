@@ -4,6 +4,8 @@
  * 表就得反过来 import 页面（而本仓库的依赖方向纪律是「内容 → 框架」单向）。
  * 页面保留同名重导出，`pages.tsx` 等既有引用不受影响。
  */
+import type { ReactNode } from 'react'
+
 export type SettingsRow = {
   title: string
   hint: string
@@ -11,7 +13,14 @@ export type SettingsRow = {
   onClick: () => void
 }
 
-export type SettingsSection = { title: string; rows: SettingsRow[] }
+/**
+ * `content` 是给"控件就在这一档里"的分区留的口子（目前只有「壁纸」用）。
+ *
+ * 普通行只能放一句说明 + 一颗按钮；壁纸要开关、选图、地址框和四根滑杆，
+ * 塞进行模型只会逼出第二套控件。这里只放**渲染入口**，实现仍然只有一份
+ * （`settings/WallpaperSection.tsx`），所以不算开了第二套编辑器。
+ */
+export type SettingsSection = { title: string; rows: SettingsRow[]; content?: () => ReactNode }
 
 /**
  * 「设置」这一页的分区表（PROPOSAL-021 P0.3）。
@@ -38,6 +47,11 @@ export type SettingsActions = {
   openBrand: () => void
   /** AI 接入 —— 独立一类 */
   openAiConnections: () => void
+  /**
+   * 「壁纸」分区的控件本体。只在宿主真的接了这一项时才生成那一档 ——
+   * 没接的时候设置页不该多出一个空标题（判据喂假动作时也不会多出空档）。
+   */
+  renderWallpaper?: () => ReactNode
 }
 
 export function buildSettingsSections(actions: SettingsActions): SettingsSection[] {
@@ -68,6 +82,13 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
         onClick: actions.openCustomize,
       }],
     },
+    // 「壁纸」不是一行按钮：开关、选图、地址、滑杆、填充方式都在这一档里直接改，
+    // 改动即时生效并自动保存（实现见 settings/WallpaperSection.tsx）。
+    ...(actions.renderWallpaper ? [{
+      title: '壁纸',
+      rows: [],
+      content: actions.renderWallpaper,
+    }] : []),
     {
       title: '规则',
       rows: [{

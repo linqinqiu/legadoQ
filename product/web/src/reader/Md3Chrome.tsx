@@ -49,7 +49,7 @@ function TopAction({ id, ...props }: { id: ReaderMenuAction } & ActionProps) {
   }
 }
 
-export function Md3TopBar({ bookName, chapterTitle, chapterIndex, totalChapters, menuItems, onBack, onToggleToc, onPrevChapter, onNextChapter, onBookSearch, onToggleNotes, notesCount, onTogglePureReading, ...action }: {
+export function Md3TopBar({ bookName, chapterTitle, chapterIndex, totalChapters, menuItems, onBack, onToggleToc, onPrevChapter, onNextChapter, onBookSearch, onToggleNotes, notesCount, ...action }: {
   bookName: string
   chapterTitle: string | null
   chapterIndex: number
@@ -62,7 +62,6 @@ export function Md3TopBar({ bookName, chapterTitle, chapterIndex, totalChapters,
   onBookSearch: () => void
   onToggleNotes: () => void
   notesCount: number
-  onTogglePureReading: () => void
 } & ActionProps) {
   // 首章没有上一章、末章没有下一章：禁用态与旧底栏同一判据（chapterIndex 口径）。
   const atStart = chapterIndex <= 0
@@ -93,28 +92,19 @@ export function Md3TopBar({ bookName, chapterTitle, chapterIndex, totalChapters,
         title="笔记与划线"
         onClick={onToggleNotes}
       ><Icon name="bookmark" /></button>
-      {/* 纯阅读开关放顶栏：桌面端底部那排 pill 不渲染（见 styles.css 的 min-width:961px），
-          而它原本只存在于底栏 —— 不放这儿，宽屏用户就没有入口了。 */}
-      <button
-        type="button"
-        className="md3-icon-btn"
-        aria-label="纯阅读：隐藏所有控件"
-        title="纯阅读（隐藏所有控件，Esc 或边缘把手退出）"
-        onClick={onTogglePureReading}
-      ><Icon name="eyeOff" /></button>
       {menuItems.map(id => <TopAction key={id} id={id} {...action} />)}
     </div>
   </header>
 }
 
 /**
- * 底栏只剩窄屏那一排动作 pill（目录 / 搜书 / 笔记 / 朗读 / 设置 / 沉浸）。
+ * 底栏只剩窄屏那一排动作 pill（目录 / 搜书 / 笔记 / 朗读 / 设置）。
  *
  * 原来的「上一章 · 章节进度滑杆 · 下一章」整行已删除：进度滑杆与百分比既占正文高度，
  * 又和顶栏的章节导航重复；章节导航现在只在顶栏（`Md3TopBar`）。宽屏连这条 pill 行也不渲染
  * （styles.css 的 min-width:960px），所以宽屏不会留下一条空底栏。
  */
-export function Md3BottomBar({ notesCount, ttsActive, onToggleToc, onToggleNotes, onToggleTts, onToggleSettings, onBookSearch, onTogglePureReading }: {
+export function Md3BottomBar({ notesCount, ttsActive, onToggleToc, onToggleNotes, onToggleTts, onToggleSettings, onBookSearch }: {
   notesCount: number
   ttsActive: boolean
   onToggleToc: () => void
@@ -122,7 +112,6 @@ export function Md3BottomBar({ notesCount, ttsActive, onToggleToc, onToggleNotes
   onToggleTts: () => void
   onToggleSettings: () => void
   onBookSearch: () => void
-  onTogglePureReading: () => void
 }) {
   return <footer className="md3-bottombar" data-testid="reader-bottombar">
     <div className="md3-actions-row">
@@ -131,7 +120,6 @@ export function Md3BottomBar({ notesCount, ttsActive, onToggleToc, onToggleNotes
       <button className="md3-pill" aria-label={`笔记（${notesCount}）`} onClick={onToggleNotes}><Icon name="bookmark" /><span>笔记{notesCount > 0 ? ` ${notesCount}` : ''}</span></button>
       <button className={`md3-pill${ttsActive ? ' is-active' : ''}`} aria-label="朗读" onClick={onToggleTts}><Icon name="volume2" /><span>朗读</span></button>
       <button className="md3-pill" aria-label="阅读设置" onClick={onToggleSettings}><Icon name="settings" /><span>设置</span></button>
-      <button className="md3-pill" aria-label="纯阅读：隐藏所有控件" title="纯阅读（隐藏所有控件，Esc 或边缘把手退出）" onClick={onTogglePureReading}><Icon name="eyeOff" /><span>沉浸</span></button>
     </div>
   </footer>
 }

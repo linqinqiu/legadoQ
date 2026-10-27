@@ -26,7 +26,7 @@ test('底栏那行进度条彻底删除：DOM 与样式都不许再出现', () =
   assert.doesNotMatch(styles, /\.md3-progress\b/, '进度条的样式要清零')
   // 反向对照：动作 pill 那一排**不在**本次删除范围（宽屏隐藏、窄屏可见）。
   assert.match(chrome, /md3-actions-row/, '底栏那排动作 pill 必须保留')
-  assert.match(chrome, /沉浸/, '沉浸 pill 仍在')
+  assert.match(chrome, /className="md3-pill"/, '动作 pill 仍在')
 })
 
 test('上一章/下一章挪到 MD3 顶栏，且禁用态按 chapterIndex 判', () => {
