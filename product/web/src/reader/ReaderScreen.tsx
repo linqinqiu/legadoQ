@@ -34,7 +34,7 @@ import { stepFontSize } from './fontSizeControl'
 import { ReaderMenuAction } from './readerMenu'
 import { IDENTITY_CONVERTER, loadScriptConverter, type ScriptConverter } from './scriptConvert'
 import { coverDirection, pageTurnAnim, planNextPage, planPrevPage } from './pageTurn'
-import { flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, resolveMeasuredPage, sectionAtPage, sectionProgress } from './readerFlow'
+import { flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, prependLandingPage, resolveMeasuredPage, sectionAtPage, sectionProgress } from './readerFlow'
 import { SourceSwitchModal } from '../sources/SourceSwitchModal'
 import { cleanAuthor, cleanTitle } from '../lib/searchFilters'
 import { toast } from '../components/Toast'
@@ -1057,6 +1057,21 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   // 把最新那份 changeChapter 交给朗读 hook（它要用 ref 打破循环依赖）。
   changeChapterRef.current = changeChapter
 
+  /**
+   * 顶栏的「上一章 / 下一章」：沿用旧底栏进度行那套动作（先落进度、再切章），
+   * 判据只看 chapterIndex —— 首章禁用上一章、末章禁用下一章。
+   */
+  const goPrevChapter = useCallback(() => {
+    if (chapterIndex <= 0) return
+    persist()
+    changeChapter(chapterIndex - 1)
+  }, [chapterIndex, changeChapter, persist])
+  const goNextChapter = useCallback(() => {
+    if (chapterIndex >= currentBook.chapters.length - 1) return
+    persist()
+    changeChapter(chapterIndex + 1)
+  }, [chapterIndex, changeChapter, currentBook.chapters.length, persist])
+
   // 滚动模式的"滚到底再往下推一下就进下一章"。判据必须是"已经触底 + 继续向下滚"，
   // 只按位置阈值会在正常阅读途中翻章；1.2 秒冷却挡住一次惯性滚动连跳多章。
   // 监听挂在 window 上而不是正文元素上：版心两侧那段空白同样会滚轮，挂在正文里等于
@@ -1414,6 +1429,10 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (targetIndex <= chapterIndexRef.current) return
     pendingPageRef.current = shift.pageIndex
     setChapterIndex(targetIndex)
+    // 新锚点之前的章不再属于这个窗口：往回翻接在窗口前面的 flowHead 必须一起摘掉。
+    // 留着它们，`shift.pageIndex` 是按"新锚点从第 0 页开始"算的，页码会指到这些旧章上 ——
+    // 画面跳回已经读过的章，垫栏空白也会被当成一页翻出来。尾章由续接 effect 按新锚点重算。
+    if (flowHeadRef.current.length > 0) setFlowHead([])
   }, [pageIndex, settings.pageMode, currentBook.chapters])
 
   // Pagination measurement
@@ -1436,13 +1455,13 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     setColumnWidth(layout.columnWidth)
     setStride(layout.stride)
     setIsDoubleColumn(layout.isDoubleColumn)
-    setPageCount(layout.pageCount)
 
     // 每一章在窗口里占哪几页。
     // 关键：**先算每一章占几栏（精确整数），再累加出起始栏号**，最后才除以"一屏几栏"。
     // 原来直接 (矩形左边缘 - body 左边缘) / stride 取整，等于把章节起始列的奇偶丢掉 ——
     // 下一章落在奇数列时，它的第一栏是上一页的右半格（用户已经看过），窗口一挪页码归零，
     // 那一栏又挪回左半格。用户 2026-10-03 的两句"不要这样的跳转"就是这么来的。
+    let effectivePageCount = layout.pageCount
     const sections = [...body.querySelectorAll<HTMLElement>('.reader-page-chapter')]
     if (sections.length > 0) {
       const columnsPerPage = layout.isDoubleColumn ? 2 : 1
@@ -1483,16 +1502,22 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       columnsPerPageRef.current = columnsPerPage
       setPageFillers(current => (current.length === nextFillers.length
         && current.every((value, index) => value === nextFillers[index]) ? current : nextFillers))
+      // 最后一章末尾那一栏垫白不该被算成一页：`layout.pageCount` 是按 DOM 总宽量的，
+      // 若它比"最后一节正文落在的页"还多，多出来的页里只有垫栏 —— 翻过去就是一整页空白。
+      // 只收紧、不放宽：正常对齐时两者相等，这一条是兜底（章末不再出现空白页）。
+      const contentEndColumn = starts[starts.length - 1] + columnCounts[columnCounts.length - 1]
+      effectivePageCount = Math.max(1, Math.min(layout.pageCount, Math.ceil(contentEndColumn / columnsPerPage)))
+      setPageCount(effectivePageCount)
       pageSpansRef.current = starts.map((start, index) => ({
         start: Math.round(start / columnsPerPage),
         end: index + 1 < starts.length
           ? Math.round(starts[index + 1] / columnsPerPage)
-          : layout.pageCount,
+          : effectivePageCount,
       }))
       // 刚往前接了一章：页码由下面那个专门的 layout effect 补（它同步量、同步补，不靠这里的时机）
       // 刚把窗口往前挪过：页码要落到"摘掉前面那几章之后"的那一页上，否则画面跳回窗口开头
       if (pendingPageRef.current !== null) {
-        const next = Math.min(layout.pageCount - 1, Math.max(0, pendingPageRef.current))
+        const next = Math.min(effectivePageCount - 1, Math.max(0, pendingPageRef.current))
         pendingPageRef.current = null
         setPageIndex(next)
         return
@@ -1500,6 +1525,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     } else {
       pageSpansRef.current = []
       measuredStartsRef.current = []
+      setPageCount(effectivePageCount)
     }
 
     const pageTarget = targetInitialPageRef.current
@@ -1508,10 +1534,10 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     initialPagePositionRef.current = null
     if (pageTarget === null && restoredPosition === null) {
       // 同一个锚点内重量一次（改字号、拖窗口、续接挂章）：原地不动，只做夹取
-      setPageIndex(curr => resolveMeasuredPage(null, null, curr, layout.pageCount))
+      setPageIndex(curr => resolveMeasuredPage(null, null, curr, effectivePageCount))
       return
     }
-    setPageIndex(resolveMeasuredPage(pageTarget, restoredPosition, 0, layout.pageCount))
+    setPageIndex(resolveMeasuredPage(pageTarget, restoredPosition, 0, effectivePageCount))
   }, [columnGap, content, loading, settings.columnMode])
 
   useLayoutEffect(() => {
@@ -1552,39 +1578,41 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   ])
 
   /**
-   * 往前接进来的那一章挂上之后，立刻把页码补到"眼前这一栏一个字不动"。
+   * 往前接进来的那一章挂上之后，把页码落到**上一章的最后一页**。
    *
-   * 补偿按**量得的起始栏**落页：接章前窗口的第 0 节（无论它当时是锚点还是之前的头章）
-   * 在接完之后排到第 1 节，它的实测起始栏除以每页栏数就是页码该在的那一页 ——
-   * 目标只有一个：这一栏字必须还在原地。
+   * 落点按**量得的起始栏**算：接章前窗口的第 0 节（无论它当时是锚点还是之前的头章）
+   * 接完后排第 1 节，它第一页的前一页就是接进来那一章的最后一页（`prependLandingPage`）。
+   * 这就是「往回翻一页」，与前进对称：前进从本章末页进下一章首页。
    *
    * 原来按"接进来的那章占几页"（`pageSpans` 的算术推算）补，实测（双栏、探针书）
    * 页码补了、眼前那栏字却滑到几段之外（paginate-flow-check ④「接之前第 2 段落 vs
    * 之后第 5 段落」）—— 算术与 DOM 在垫栏/强制分栏上有一处出入，这里就错半页；
-   * 量出来的不会错。单独一个 layout effect、并且自己调 `measurePagination()`：
-   * 原来这段写在 measurePagination 里面，依赖"别的那个 effect 会因 flowHead 变了而重跑"，
-   * 实测（双栏、书「像素游戏成真了…」）接进来的那一章确实挂上了（62 段、文档宽度从
-   * ~14.4k 涨到 17510px），页码却一动不动 —— 时机不该由两个 effect 互相指望。
-   * 这里同步量、同步补，量不到就下一帧再试，不静默吞掉。
+   * 量出来的不会错。
+   *
+   * **必须等垫栏真的落进 DOM**：接章首帧用的还是旧窗口的 `pageFillers` 数组，
+   * 新接进来那一章的垫栏要等这一轮 `measurePagination` 写回状态后才渲染。
+   * 对齐之前补页码会差半页；更要紧的是，若只补一次就放弃，页码会停在 0 ——
+   * 那正好是接进来那章的**第一页**，也就是「往回翻落到上一章开头」。
+   * 所以 `pageFillers` 也在依赖里：垫栏落地后这里会再跑一次。
    */
-  useLayoutEffect(() => {
+  const settlePrependedPage = useCallback(() => {
     const url = pendingPrependRef.current
     if (!url || settings.pageMode !== 'paginate' || loading || !content) return
     // 这一章还没成为窗口最上面那一节（React 还没提交，或提交到一半）：等它成为再说
     if (windowChaptersRef.current[0]?.url !== url) return
-    measurePagination()
     const sections = windowChaptersRef.current.length
     const starts = measuredStartsRef.current
     if (starts.length !== sections || sections < 2) return
-    // 章末垫的那一栏是"量完再渲染"的：没对齐之前这一章的起始页还会挪半栏，
-    // 这时候补页码就会差半页（实测：接上之后眼前那一栏字变成了往后一栏）。
-    // 不对齐就留着标记，等 pageFillers 落地后那一轮重量再来 —— 与前进侧"只在真对齐时挪窗口"同一条闸门。
     if (!pageAlignedRef.current) return
-    // 接章前窗口的第 0 节，接完后排第 1：它的实测起始栏就是眼前这一页的新页码。
-    const keptColumn = starts[1]
     pendingPrependRef.current = null
-    setPageIndex(Math.round(keptColumn / columnsPerPageRef.current))
-  }, [content, loading, measurePagination, settings.pageMode, windowChapters])
+    setPageIndex(prependLandingPage(starts[1], columnsPerPageRef.current))
+  }, [content, loading, settings.pageMode])
+
+  useLayoutEffect(() => {
+    if (!pendingPrependRef.current) return
+    measurePagination()
+    settlePrependedPage()
+  }, [content, loading, measurePagination, pageFillers, settings.pageMode, settlePrependedPage, windowChapters])
 
   const goNextPage = useCallback(() => {
     const plan = planNextPage(pageIndex, pageCount)
@@ -2279,6 +2307,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     {uiV2 ? <Md3TopBar
       bookName={bookName}
       chapterTitle={chapter?.title ? convert(chapter.title) : null}
+      chapterIndex={chapterIndex}
+      totalChapters={currentBook.chapters.length}
       menuItems={settings.menuItems}
       isFullscreen={isFullscreen}
       mediaDisabled={!!mediaSrc}
@@ -2298,6 +2328,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           setActiveDrawer(d => d === 'toc' ? null : 'toc')
         }
       }}
+      onPrevChapter={goPrevChapter}
+      onNextChapter={goNextChapter}
       onOpenSourceSwitch={() => setShowSourceSwitch(true)}
       onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
       onToggleFullscreen={toggleFullscreen}
@@ -2309,6 +2341,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       notesCount={notes.length}
     /> : <ReaderHeader
       bookName={bookName}
+      chapterIndex={chapterIndex}
+      totalChapters={currentBook.chapters.length}
       menuItems={settings.menuItems}
       isFullscreen={isFullscreen}
       mediaDisabled={!!mediaSrc}
@@ -2328,6 +2362,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           setActiveDrawer(d => d === 'toc' ? null : 'toc')
         }
       }}
+      onPrevChapter={goPrevChapter}
+      onNextChapter={goNextChapter}
       onOpenSourceSwitch={() => setShowSourceSwitch(true)}
       onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
       onToggleFullscreen={toggleFullscreen}
@@ -2335,16 +2371,10 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onResetTtsBar={resetTtsBarPosition}
     />}
 
-    {/* MD3 底栏（PROPOSAL-020 P1）：上一章 · 章节进度 · 下一章 + 目录/笔记/朗读/界面 */}
+    {/* MD3 底栏：只剩窄屏那一排动作 pill（宽屏整条不渲染）。章节导航已在顶栏。 */}
     {uiV2 && <Md3BottomBar
-      chapterIndex={chapterIndex}
-      totalChapters={currentBook.chapters.length}
-      chapterTitle={chapter?.title ? convert(chapter.title) : null}
       notesCount={notes.length}
       ttsActive={ttsActive}
-      onSeekChapter={index => { if (index !== chapterIndex) changeChapter(index, 'first') }}
-      onPrev={() => { if (chapterIndex > 0) { persist(); changeChapter(chapterIndex - 1) } }}
-      onNext={() => { if (chapterIndex < currentBook.chapters.length - 1) { persist(); changeChapter(chapterIndex + 1) } }}
       onToggleToc={() => setActiveDrawer(d => d === 'toc' ? null : 'toc')}
       onToggleNotes={() => { setActiveDrawer('toc'); setNotesPanel(true) }}
       onToggleTts={toggleTts}

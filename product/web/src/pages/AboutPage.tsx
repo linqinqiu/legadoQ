@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api, type AboutInfo, type UpdateCheckResult } from '../lib/api'
 import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../lib/agreement'
+import guideMarkdown from '../../../docs/功能说明.md?raw'
 
 /**
  * 「关于」（用户 2026-10-02：「加入关于（名称，开发者，更新日志，检查更新，用户协议，开源许可，免责声明）」）。
@@ -57,6 +58,60 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+type GuideSection = { title: string; lines: string[] }
+
+/** 把「功能说明」的 Markdown 拆成「## 一节 + 正文行」；文档的 `#` 大标题由本页入口承担。 */
+function parseGuide(markdown: string): GuideSection[] {
+  const sections: GuideSection[] = []
+  let current: GuideSection | null = null
+  for (const raw of markdown.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('# ')) continue
+    if (line.startsWith('## ')) {
+      current = { title: line.slice(3).trim(), lines: [] }
+      sections.push(current)
+      continue
+    }
+    if (!current) {
+      current = { title: '', lines: [] }
+      sections.push(current)
+    }
+    current.lines.push(line)
+  }
+  return sections
+}
+
+const GUIDE_SECTIONS = parseGuide(guideMarkdown)
+/** 第一个 `##` 之前的段落是整份说明的总述。 */
+const GUIDE_INTRO = GUIDE_SECTIONS.find(section => !section.title)?.lines ?? []
+const GUIDE_GROUPS = GUIDE_SECTIONS.filter(section => section.title)
+
+/** 按行渲染说明正文：`###` 作小标题、`- ` 聚成列表，其余作段落。 */
+function GuideBody({ lines }: { lines: string[] }) {
+  const nodes: React.ReactNode[] = []
+  let bullets: string[] = []
+  const flushBullets = (key: string) => {
+    if (bullets.length === 0) return
+    nodes.push(
+      <ul key={key} style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: 'var(--t-sm)', lineHeight: 1.85 }}>
+        {bullets.map((item, index) => <li key={index}>{item}</li>)}
+      </ul>,
+    )
+    bullets = []
+  }
+  lines.forEach((line, index) => {
+    if (line.startsWith('- ')) {
+      bullets.push(line.slice(2))
+      return
+    }
+    flushBullets(`guide-list-${index}`)
+    if (line.startsWith('### ')) nodes.push(<h3 key={index}>{line.slice(4)}</h3>)
+    else nodes.push(<p key={index}>{line}</p>)
+  })
+  flushBullets('guide-list-end')
+  return <>{nodes}</>
+}
+
 export function AboutPage({
   onOpenChangelog,
   onOpenShortcuts,
@@ -68,6 +123,7 @@ export function AboutPage({
   const [check, setCheck] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
   const [notice, setNotice] = useState('')
+  const [showGuide, setShowGuide] = useState(false)
 
   useEffect(() => {
     void api.about().then(setInfo).catch(() => setNotice('关于信息没能从服务端读到'))
@@ -109,6 +165,7 @@ export function AboutPage({
           {/* 「更新日志」「快捷键」从「我的」下拉里收进来：那一栏原来堆了 9 项，
               用户 2026-10-03 拍板「顶栏『我的』菜单堆太多」。版本芯片本身也能进日志。 */}
           <button type="button" className="ghost-button" onClick={onOpenShortcuts}>快捷键</button>
+          <button type="button" className="ghost-button" onClick={() => setShowGuide(value => !value)} aria-expanded={showGuide}>功能说明</button>
           {homepage && <a className="ghost-button" href={homepage} target="_blank" rel="noreferrer">项目主页</a>}
         </div>
         {notice && <p className="about-check is-unreachable">{notice}</p>}
@@ -136,6 +193,19 @@ export function AboutPage({
       <Section title="产品介绍">
         <p>{PRODUCT_INTRO}</p>
       </Section>
+
+      {showGuide && (
+        <>
+          <Section title="功能说明">
+            {GUIDE_INTRO.map((line, index) => <p key={index}>{line}</p>)}
+          </Section>
+          {GUIDE_GROUPS.map(section => (
+            <Section key={section.title} title={section.title}>
+              <GuideBody lines={section.lines} />
+            </Section>
+          ))}
+        </>
+      )}
 
       <Section title="用户协议">
         <p>{TERMS_TEXT}</p>

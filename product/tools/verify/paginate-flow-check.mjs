@@ -266,9 +266,11 @@ try {
 
   // ④ 往回翻（用户 2026-10-04：「你只是在两章之间起作用了，往回怎么办」）。
   // 前进那一侧②已经盯住了，这一侧原来没人管：走到窗口第一页再按上一页，正确做法是把上一章
-  // **接到窗口前面**、页码整体后移它的页数 —— 眼前那一页一个字都不该动。
+  // **接到窗口前面**、页码整体后移它的页数，并落到上一章的最后一页 —— 与前进对称
+  // （前进从本章末页进下一章首页）。
   // 旧实现是"换锚点 + 跳到最后一页"，而页数是当时量的（尾章还没挂上来），实测落到 `4/15`，
-  // 也就是上一章的中间：往回翻一次，位置就丢了。
+  // 也就是上一章的中间：往回翻一次，位置就丢了。接章补偿没跑成时页码停在 0，会显示接进来
+  // 那章的**第一页**（「往回翻落到上一章开头」），这一条同时盯住这两种错法。
   const backward = await page.evaluate(async () => {
     const read = () => {
       const spans = [...document.querySelectorAll('.reader-paginated-footer span')].map(node => node.textContent?.trim())
@@ -329,12 +331,13 @@ try {
       && backward.afterPrepend.total >= backward.atStart.total,
     `${backward.atStart.page}/${backward.atStart.total} ${backward.atStart.sections} 章 → `
     + `${backward.afterPrepend.page}/${backward.afterPrepend.total} ${backward.afterPrepend.sections} 章`)
-  check('④接上之后眼前这一页不许动（页码后移了，看到的还是同一栏字）',
-    backward.afterPrepend.text !== '' && backward.afterPrepend.text === backward.atStart.text,
+  check('④接上之后直接落到上一章的最后一页（与前进对称，不再停在窗口第一页）',
+    backward.afterPrepend.page > 1
+      && backward.afterPrepend.text !== backward.atStart.text,
     `接之前「${backward.atStart.text}」 vs 之后「${backward.afterPrepend.text}」`
     + ` · 接前${JSON.stringify(backward.atStart.geometry)}垫${backward.atStart.fillers}位移${backward.atStart.transformCol}栏`
     + ` · 接后${JSON.stringify(backward.afterPrepend.geometry)}垫${backward.afterPrepend.fillers}位移${backward.afterPrepend.transformCol}栏`)
-  check('④再按一次就真的往回一页：页码减一、字往前退了一栏',
+  check('④再按一次继续往回一页：页码再减一、字往前退',
     backward.afterStepBack.page === backward.afterPrepend.page - 1
       && backward.afterStepBack.text !== backward.afterPrepend.text,
     `${backward.afterPrepend.page} → ${backward.afterStepBack.page}，「${backward.afterPrepend.text}」→「${backward.afterStepBack.text}」`)

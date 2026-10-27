@@ -6080,7 +6080,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 
 /* ============================================================
  * MD3 阅读外壳（PROPOSAL-020 P1）—— 参照 legado-with-MD3 的阅读界面：
- * 顶栏（章名 + 可配置动作）/ 底栏（上一章·进度条·下一章 + 目录/笔记/朗读/界面）。
+ * 顶栏（章节导航 + 章名 + 可配置动作）/ 底栏（仅窄屏的目录/笔记/朗读/界面 pill）。
  * 由 `reader-ui-v2` 开关切换，与旧 `reader-header` 并列存在、互不影响。
  * 背景走「顶/底渐隐」（不透明→透明），玻璃质感留到 P5 用 @supports 增强。
  * ============================================================ */
@@ -6114,7 +6114,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 /* 桌面端不要手机那条底部 pill 导航。
    这一排（目录 / 搜书 / 笔记 / 朗读 / 设置 / 沉浸）顶栏全都有，而且顶栏那排还能按
    `settings.menuItems` 自定义 —— 同一组动作在上下各放一份，在宽屏上就是一条手机味的横条，
-   还会把正文的可读宽度和视觉重心往下拽。宽屏只留「上一章 / 进度 / 下一章」那一行；
+   还会把正文的可读宽度和视觉重心往下拽。宽屏整条底栏都不渲染（见下方 min-width:960px）；
    窄屏（手机、半屏小窗）整条都保留，因为那时顶栏放不下。 */
 @media (min-width: 961px) {
   .md3-actions-row { display: none; }
@@ -6166,17 +6166,6 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 .md3-icon-btn:hover { background: var(--accent-soft); color: var(--accent-ink); }
 .md3-icon-btn.is-active { background: var(--accent-soft); color: var(--accent-ink); }
 
-.md3-progress-row { display: flex; align-items: center; gap: 6px; }
-.md3-progress { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.md3-progress-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted); }
-.md3-progress-chapter { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.md3-progress-count { flex: none; font-variant-numeric: tabular-nums; }
-.md3-progress input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; margin: 0; background: transparent; cursor: pointer; }
-.md3-progress input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 16%, transparent); }
-.md3-progress input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--accent-solid); }
-.md3-progress input[type=range]::-moz-range-track { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 16%, transparent); }
-.md3-progress input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--accent-solid); }
-
 .md3-actions-row { display: flex; justify-content: center; gap: 4px; }
 .md3-pill {
   display: inline-flex; flex-direction: column; align-items: center; gap: 3px;
@@ -6220,32 +6209,12 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   }
 }
 
-/* ---- 桌面端（≥960px）：把手机式的「底部竖排药丸 + 贴底抽屉」改回电脑阅读器形态 ----
- * 底部栏：从「竖排大药丸」变成一行纤细底部状态条（左=章进度/翻章，右=紧凑 图标+文字 按钮）；
+/* ---- 桌面端（≥960px）：底栏整条不渲染 ----
+ * 底栏只剩窄屏那排动作 pill；宽屏的动作与章节导航都已收进顶栏，留着只会是一条空白固定条。
  * 「界面 / 设置」：从贴底上滑的抽屉变成居中对话框（复用 .dialog-shell 几何，与书架其它弹层同形态）。
- * 窄屏（<960px）维持原来的移动端形态不变，保证手机/小窗仍然好用。 */
+ * 窄屏（<960px）维持移动端形态不变，保证手机/小窗仍然好用。 */
 @media (min-width: 960px) {
-  .md3-bottombar {
-    flex-direction: row;
-    align-items: center;
-    gap: 16px;
-    padding: 8px max(16px, var(--safe-right)) calc(8px + var(--safe-bottom)) max(16px, var(--safe-left));
-  }
-  .md3-bottombar .md3-progress-row { flex: 1 1 auto; min-width: 0; }
-  .md3-bottombar .md3-actions-row { justify-content: flex-end; flex: none; gap: 2px; }
-  .md3-bottombar .md3-pill {
-    flex-direction: row;
-    align-items: center;
-    min-width: 0;
-    padding: 6px 10px;
-    border-radius: 10px;
-    font-size: 12px;
-    gap: 6px;
-  }
-  .md3-bottombar .md3-pill svg { width: 16px; height: 16px; }
-  /* 桌面端不再需要底部那一排动作（目录/搜书/笔记/朗读/界面/设置）—— 它们都已收到顶栏，
-   * 底部只留一行进度状态条，彻底去掉手机式的「底部动作栏」。窄屏仍保留原样。 */
-  .md3-bottombar .md3-actions-row { display: none; }
+  .md3-bottombar { display: none; }
 
   .overlay-backdrop.is-sheet { place-items: center; padding: var(--s-4); }
   .dialog-shell.is-sheet {
@@ -6257,19 +6226,13 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   }
   .md3-sheet-handle { display: none; }
 
-  /* 桌面端把顶/底栏做成固定「应用框架」：实底 + 发丝边，而不是手机式渐隐浮层；
+  /* 桌面端把顶栏做成固定「应用框架」：实底 + 发丝边，而不是手机式渐隐浮层；
    * 顶栏不再留 22px 渐隐留白，压紧成一条工具栏，更像桌面阅读器的 chrome。 */
   .md3-topbar {
     background: var(--surface);
     border-bottom: 1px solid var(--line);
     padding-top: calc(12px + var(--safe-top));
     padding-bottom: 8px;
-  }
-  .md3-bottombar {
-    background: var(--surface);
-    border-top: 1px solid var(--line);
-    padding-top: 8px;
-    padding-bottom: calc(8px + var(--safe-bottom));
   }
 }
 

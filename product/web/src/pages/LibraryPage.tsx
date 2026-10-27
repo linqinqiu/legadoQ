@@ -267,15 +267,12 @@ export function LibraryPage({ sources, onSourcesChanged, onOpen }: { sources: So
         <section className="library-idle" aria-label="快速入口">
           <a href="#shelf">
             <strong><Icon name="bookmark" /> 书架</strong>
-            <small>接着上次没读完的地方读，也可以拖入本地 TXT / EPUB。</small>
           </a>
           <a href="#explore">
             <strong><Icon name="activity" /> 发现</strong>
-            <small>读读书源自带的榜单与分类分栏，挑一本新的。</small>
           </a>
           <a href="#sources">
             <strong><Icon name="list" /> 书源</strong>
-            <small>当前接入 {sources.length} 个书源，可导入、体检和逐阶段调试。</small>
           </a>
         </section>
       )}

@@ -101,6 +101,22 @@ export function pageWindowShift(spans: PageSpan[], page: number): { lead: number
 }
 
 /**
+ * 往回接上一章之后，页码该落在哪一页。
+ *
+ * `keptColumn` 是接章前窗口第 0 节（接完后排第 1 节）的**实测起始栏**：它除以每页栏数
+ * 就是那一节第一页的页码；**再减一页**才是「上一页」—— 也就是接进来那一章的最后一页。
+ *
+ * 不减这一页的话，按「上一页」只是把上一章挂到窗口前面、画面原地不动（读者要按两次才退回去，
+ * 第一次像是没反应）；而补偿一旦没跑成，页码会停在 0，直接显示接进来那章的**第一页** ——
+ * 那正是「往回翻落到上一章开头」的症状。减一页后与前进方向对称：前进从本章末页进下一章首页，
+ * 后退从本章首页退上一章末页。
+ */
+export function prependLandingPage(keptColumn: number, columnsPerPage: number): number {
+  if (columnsPerPage <= 0) return 0
+  return Math.max(0, Math.round(keptColumn / columnsPerPage) - 1)
+}
+
+/**
  * 双栏时把每一章**补齐到整页**（章末可能垫一整栏空白）。
  *
  * 为什么必须垫：一章占几栏由内容决定，下一章若落在奇数列，它的第一栏正好是上一页的右半格 ——

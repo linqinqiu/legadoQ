@@ -123,9 +123,11 @@ export default defineConfig({
       },
     }),
   ],
+  // `?raw` 引入仓库里的 product/docs/功能说明.md（单一来源，不在 web 下复制第二份）；
+  // dev server 默认只允许 web 根，这里把上一级 product 一并放行。生产构建把内容打进 bundle，不受影响。
   // 显式绑 127.0.0.1（IPv4 回环）：否则默认绑 ::1，127.0.0.1:5174 不通。
   // 代理目标也用 127.0.0.1：后端 LEGADO_HOST=127.0.0.1 只听 IPv4，用 localhost 会解析到 ::1 而超时。
   // 钉死 5174 + strictPort：避免端口被占时静默漂到 5175，导致代理/同源判定失真（AI-2 隔离约定 P0）。
-  server: { host: '127.0.0.1', port: 5174, strictPort: true, proxy: { '/api': PROXY_TARGET } },
+  server: { host: '127.0.0.1', port: 5174, strictPort: true, fs: { allow: ['.', '..'] }, proxy: { '/api': PROXY_TARGET } },
 })
 

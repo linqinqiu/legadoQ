@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { chapterConsumed, flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, SectionBox, sectionAtPage, sectionProgress } from '../src/reader/readerFlow'
+import { chapterConsumed, flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, prependLandingPage, SectionBox, sectionAtPage, sectionProgress } from '../src/reader/readerFlow'
 
 /**
  * 连续滚动的算术（用户 2026-10-02：「章节间的连接还是不对，怎么能跳转呢，不是一体的吗」）。
@@ -144,6 +144,20 @@ test('pageAlignmentPads 的不变量：窗口往前挪（摘掉整章）之后�
     // 否则 `页码 - 被摘章的页数` 就不指向原来那一栏了
     assert.deepEqual(shifted, full.slice(lead).map(start => start - full[lead]))
   }
+})
+
+test('prependLandingPage - 往回接上一章后落到上一章的最后一页（与前进对称）', () => {
+  // 接章前窗口的第 0 节接完后排第 1 节：它第一页是第 4 页（起始栏 8 / 每页 2 栏）。
+  // 「往回翻一页」就是第 3 页 —— 接进来那一章的最后一页。
+  assert.equal(prependLandingPage(8, 2), 3)
+  assert.equal(prependLandingPage(6, 2), 2, '起始栏 6 → 第 3 页 → 往回一页是第 2 页')
+  assert.equal(prependLandingPage(2, 2), 0, '刚接进来就只剩一页时夹到第 0 页')
+  assert.equal(prependLandingPage(0, 2), 0, '窗口最开头不许出现负页码')
+  assert.equal(prependLandingPage(6, 1), 5, '单栏时起始栏就是页码，减一页')
+  assert.equal(prependLandingPage(3, 0), 0, '每页栏数非法时退回第 0 页，不产生 NaN')
+  // 反向对照：不减这一页，就停在接进来那章的**第一页** —— 那正是「往回翻落到上一章开头」。
+  assert.notEqual(prependLandingPage(8, 2), 4)
+  assert.equal(Math.round(8 / 2), 4, '旧写法（只除以每页栏数）落在第 4 页 = 上一章第一页')
 })
 
 test('pageAlignmentPads 与 pageWindowShift 接起来：跨章那一步页码归零但绝不重复一栏', () => {

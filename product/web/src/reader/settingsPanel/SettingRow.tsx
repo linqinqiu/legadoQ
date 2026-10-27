@@ -24,13 +24,12 @@ export function SettingChoices<T extends string | number>({ label, value, option
   )
 }
 
-/** 小节标题 + 可选说明。三标签页里的每一组都用它，保持同一节奏。 */
-export function SettingGroup({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
+/** 小节标题。三标签页里的每一组都用它，保持同一节奏。 */
+export function SettingGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="setting-section">
       <span className="setting-label">{title}</span>
       {children}
-      {hint != null && <small className="setting-hint">{hint}</small>}
     </section>
   )
 }

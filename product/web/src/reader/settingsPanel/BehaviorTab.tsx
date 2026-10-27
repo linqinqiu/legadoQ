@@ -16,7 +16,6 @@ export function BehaviorTab({ settings, onChange }: { settings: ReaderSettings; 
         <button className={settings.pageMode === 'scroll' ? 'selected' : ''} onClick={() => update({ pageMode: 'scroll' })}>连续滚动</button>
         <button className={settings.pageMode === 'paginate' ? 'selected' : ''} onClick={() => update({ pageMode: 'paginate' })}>平移分页</button>
       </div>
-      <small className="setting-hint">{settings.pageMode === 'paginate' ? '左右轻扫或点击屏幕两侧平滑翻页' : '垂直滚动阅读，点击上下可快速翻滚'}</small>
     </SettingGroup>
     {settings.pageMode === 'paginate' && (
       <SettingGroup title="翻页动画">
@@ -26,7 +25,6 @@ export function BehaviorTab({ settings, onChange }: { settings: ReaderSettings; 
           <button className={settings.pageAnim === 'fade' ? 'selected' : ''} onClick={() => update({ pageAnim: 'fade' })}>淡化</button>
           <button className={settings.pageAnim === 'none' ? 'selected' : ''} onClick={() => update({ pageAnim: 'none' })}>无动画</button>
         </div>
-        <small className="setting-hint">翻页时怎么过渡。连续滚动模式没有页，用不上这一项。</small>
       </SettingGroup>
     )}
   </>

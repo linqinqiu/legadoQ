@@ -119,9 +119,6 @@ export function CustomizeModal({
         <div className="customize-body">
           <section className="customize-section">
             <h3>皮肤</h3>
-            <p className="customize-hint">
-              皮肤改的是配色与标题栏，不改布局；下面皮肤库里存过的自定义皮肤也会出现在这里，点一下就换。
-            </p>
             <div className="customize-skin-row" role="radiogroup" aria-label="皮肤">
               {skins.map(skin => {
                 const selected = settings.theme === skin.id
@@ -148,7 +145,7 @@ export function CustomizeModal({
               <button type="button" className="subtle-button" onClick={startNew}>＋ 新建皮肤</button>
             </div>
             <p className="customize-hint">
-              存过多少套就有多少条，可**新增 / 编辑 / 删除 / 切换**。全部只存在这台浏览器的 localStorage，
+              存过多少套就有多少条，可新增 / 编辑 / 删除 / 切换。全部只存在这台浏览器的 localStorage，
               <strong>不上传服务端、也不进备份包</strong>。CSS 要自己写完整选择器，例如
               <code>.theme-midnight &#123; --canvas: #0f1213; --surface: #171c1e; &#125;</code>。
             </p>
@@ -246,11 +243,6 @@ export function CustomizeModal({
                     <span>叠在某一档之上</span>
                   </button>
                 </div>
-                <small className="customize-note">
-                  {formMode === 'standalone'
-                    ? '只用自己的 CSS；没写的变量走一份与皮肤无关的中性基线，不跟随任何预设配色。'
-                    : '沿用所选那一档预设里没写到的变量；切换内置皮肤时，这一套的观感会跟着变。'}
-                </small>
               </div>
               {formMode === 'overlay' && (
               <div className="customize-field">

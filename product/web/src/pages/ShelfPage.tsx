@@ -146,7 +146,6 @@ export function BookInfoEditModal({
                       onChange={e => setCoverUrl(e.target.value)}
                     />
                   </div>
-                  <small>可粘贴图片网络地址，保存时将自动拉取并缓存到服务器</small>
                 </label>
 
                 {candidateCovers.length > 0 && (
@@ -268,7 +267,6 @@ export function BookManageModal({
             <div className="action-icon"><Icon name="edit" /></div>
             <div className="action-text">
               <strong>编辑书籍信息</strong>
-              <small>修改书名、作者或更换封面</small>
             </div>
             <Icon name="arrowRight" />
           </button>
@@ -304,7 +302,7 @@ export function BookManageModal({
               <div className="action-icon"><Icon name="sliders" /></div>
               <div className="action-text">
                 <strong>切换书源</strong>
-                <small>{item.alternateSources?.length ? `已有 ${item.alternateSources.length} 个备选书源，可全网检索` : '在其他书源中搜索匹配并无缝替换'}</small>
+                {!!item.alternateSources?.length && <small>已有 {item.alternateSources.length} 个备选书源，可全网检索</small>}
               </div>
               <Icon name="arrowRight" />
             </button>
@@ -329,7 +327,8 @@ export function BookManageModal({
               <div className="action-icon"><Icon name="download" /></div>
               <div className="action-text">
                 <strong>{isReady ? '重新缓存 / 校验全本' : isFailed ? '重试离线缓存' : '离线缓存全本'}</strong>
-                <small>{isReady ? `已离线缓存 ${item.cachedChapters} 章` : isFailed ? (item.cacheError || '部分章节未缓存，点击重试') : '预先下载全书正文以供离线阅读'}</small>
+                {isReady && <small>已离线缓存 {item.cachedChapters} 章</small>}
+                {isFailed && <small>{item.cacheError || '部分章节未缓存，点击重试'}</small>}
               </div>
               <Icon name="arrowRight" />
             </button>

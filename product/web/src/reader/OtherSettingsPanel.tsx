@@ -5,7 +5,6 @@ import type { TocRuleOption } from '../lib/api'
 import { type ReaderSettings } from './readerSettings'
 import { SCRIPT_MODE_OPTIONS } from './scriptConvert'
 import { moveReaderMenu, READER_MENU_ITEMS, toggleReaderMenu } from './readerMenu'
-import { mapCells } from './tapZones'
 import { SettingGroup } from './settingsPanel/SettingRow'
 
 /**
@@ -56,13 +55,9 @@ export function OtherSettingsPanel({
           <button key={option.id} type="button" className={settings.scriptMode === option.id ? 'selected' : ''} onClick={() => update({ scriptMode: option.id })}>{option.label}</button>
         ))}
       </div>
-      <small className="setting-hint">{settings.scriptMode === 'off' ? '按原样显示书里的字。' : `正文、章名、目录一起转${settings.scriptMode === 's2t' ? '，繁体按台港排版习惯（因为 → 因為）' : ''}；第一次打开要取一次词表，稍等一下。`}</small>
     </SettingGroup>
     {/* 点击区域改到正文上编辑：这里只留一颗入口。 */}
-    <SettingGroup
-      title="点击区域"
-      hint={`当前「${settings.pageMode === 'paginate' ? '平移分页' : '连续滚动'}」分 ${mapCells(settings.pageMode === 'paginate' ? settings.tapZones.paginate : settings.tapZones.scroll)} 区；进去在正文上拖横竖虚线改分区，改完立刻生效，不用重开这本书。`}
-    >
+    <SettingGroup title="点击区域">
       <button type="button" className="rules-setting-btn is-wide" onClick={onEditTapZones}>
         <span className="rules-setting-btn-label"><Icon name="sliders" />在正文上编辑点击区域</span>
         <Icon name="arrowRight" />
@@ -94,7 +89,6 @@ export function OtherSettingsPanel({
           )
         })}
       </div>
-      <small className="setting-hint">右上角显示哪些按钮、按什么顺序。至少留一个。</small>
     </SettingGroup>
     {/* 这一档只管手上这一本（用户 2026-10-03）。 */}
     {!!localBook && (tocRuleOptions?.length ?? 0) > 0 && (
@@ -131,7 +125,6 @@ export function OtherSettingsPanel({
           <span className="rules-setting-btn-label"><Icon name="edit" />替换净化规则管理</span>
           <Icon name="arrowRight" />
         </button>
-        <small className="setting-hint">针对当前书籍/书源过滤广告与特定字符</small>
       </SettingGroup>
     )}
   </>

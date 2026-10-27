@@ -446,10 +446,7 @@ export const ReplaceRulesModal: React.FC<Props> = ({
         </div>
 
         {/* Footer */}
-        <footer style={{ padding: '10px 16px max(10px, var(--safe-bottom))', borderTop: '1px solid var(--line)', background: 'var(--surface-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <small style={{ color: 'var(--muted)', fontSize: '11px' }}>
-            规则在抓取、离线下载与朗读时自动生效
-          </small>
+        <footer style={{ padding: '10px 16px max(10px, var(--safe-bottom))', borderTop: '1px solid var(--line)', background: 'var(--surface-muted)', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
           <button
             type="button"
             onClick={onClose}

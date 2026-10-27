@@ -71,10 +71,6 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
         <summary>连接与工具（登记外部模型、校验书源）</summary>
         <section className="ai-section">
           <h3>连接</h3>
-          <p className="ai-section-hint">
-            连接会写入 <code>agent-profiles.json</code>，重启后保留。多个连接时只走第一条；
-            没有连接时 AI 不可用，不会用本地抽取冒充模型结果。
-          </p>
           {loadError ? (
             <p className="customize-error" role="alert">{loadError}</p>
           ) : (
@@ -280,10 +276,6 @@ function ChatPanel({
           {sending ? '发送中…' : '发送'}
         </button>
       </div>
-      <p className="ai-muted ai-chat-hint">
-        快捷键：Enter 发送，Shift+Enter 换行。对话走 <code>POST /api/agent/chat</code>，不落库。
-        {!externalConnected && ' 没有连接时不会用本地抽取代替模型回答。'}
-      </p>
     </section>
   )
 }
@@ -303,10 +295,6 @@ function ToolOriginPanel() {
   return (
     <section className="ai-section">
       <h3>工具与来源</h3>
-      <p className="ai-section-hint">
-        这些能力全部由程序内置提供（来源为 <code>builtin</code> 或空）。
-        没有插件注册工具，端点计数也不随扩展变化。
-      </p>
       {error ? (
         <p className="customize-error" role="alert">{error}</p>
       ) : !manifest ? (
@@ -413,7 +401,6 @@ function SourceValidatePanel() {
   return (
     <section className="ai-section">
       <h3>书源校验</h3>
-      <p className="ai-section-hint">只读校验书源 JSON 结构，不写入数据库。</p>
       <label className="customize-field">
         <span>书源 JSON</span>
         <textarea value={json} onChange={e => setJson(e.target.value)} rows={5} placeholder='{"bookSourceUrl":"https://x.com","bookSourceName":"demo"}' />
