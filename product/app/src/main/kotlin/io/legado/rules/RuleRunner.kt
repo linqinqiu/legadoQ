@@ -497,6 +497,8 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             wordCount = value("wordCount")?.trim()?.takeIf { it.isNotBlank() },
             lastChapter = value("lastChapter")?.trim()?.takeIf { it.isNotBlank() },
             sourceType = source.sourceType(),
+            // 正文图片是否铺满：Legado 的 `ruleContent.imageStyle = FULL`，缺省按版心宽度。
+            imageStyle = source.string("ruleContent")?.objectValue()?.string("imageStyle")?.trim()?.takeIf { it.isNotBlank() },
         )
     }
 

@@ -11,6 +11,7 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.testing.*
 import io.ktor.websocket.*
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -25,6 +26,7 @@ import io.legado.model.BookshelfSourceSwitchRequest
 import io.legado.model.BookshelfStatusRequest
 import io.legado.model.BookshelfWriteRequest
 import io.legado.model.ContentRequest
+import io.legado.model.GlobalCookieListResponse
 import io.legado.model.ImportRequest
 import io.legado.model.ImportResponse
 import io.legado.model.ReadingProgress
@@ -649,6 +651,96 @@ class ApiRoutesHttpTest {
             runCatching { tempDir.toFile().deleteRecursively() }
         }
     }
+
+    @Test
+    fun `global cookie management list, write, detail and delete`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-cookies", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-cookies-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false }) }
+            }
+
+            // 1. 空库：一条凭据都没有
+            val empty = client.get("/api/cookies").body<GlobalCookieListResponse>()
+            assertEquals(0, empty.count)
+
+            // 2. 写入：按注册域归桶（www 与裸域同一桶），回合并后的键数
+            val write = client.post("/api/cookies") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"url":"https://www.example.com/login","cookie":"sid=1; token=2"}""")
+            }
+            assertEquals(HttpStatusCode.OK, write.status)
+            val written = write.body<CookieWriteResponse>()
+            assertTrue(written.ok)
+            assertEquals("example.com", written.domain)
+            assertEquals(2, written.count)
+
+            // 3. 列表只回域名与键名，不回值
+            val listed = client.get("/api/cookies").body<GlobalCookieListResponse>()
+            assertEquals(1, listed.count)
+            assertEquals("example.com", listed.cookies[0].domain)
+            assertEquals(listOf("sid", "token"), listed.cookies[0].keys)
+
+            // 4. 详情回原文（编辑前回填那条路）
+            val detail = client.get("/api/cookies/detail?u=example.com")
+            assertEquals(HttpStatusCode.OK, detail.status)
+            assertEquals("sid=1; token=2", detail.body<CookieDetailResponse>().cookie)
+
+            // 5. 再写一次：同名覆盖、其余保留
+            val merge = client.post("/api/cookies") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"url":"example.com","cookie":"token=9; extra=3"}""")
+            }
+            assertEquals(HttpStatusCode.OK, merge.status)
+            assertEquals(3, merge.body<CookieWriteResponse>().count)
+            assertEquals(
+                "sid=1; token=9; extra=3",
+                client.get("/api/cookies/detail?u=example.com").body<CookieDetailResponse>().cookie,
+            )
+
+            // 6. 缺参数 / 解析不出键值对：400
+            assertEquals(HttpStatusCode.BadRequest, client.post("/api/cookies") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"url":"example.com","cookie":"   "}""")
+            }.status)
+            assertEquals(HttpStatusCode.BadRequest, client.post("/api/cookies") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"url":"","cookie":"a=1"}""")
+            }.status)
+
+            // 7. 删除整桶后：列表清空、详情 404
+            val deleted = client.delete("/api/cookies?u=example.com")
+            assertEquals(HttpStatusCode.OK, deleted.status)
+            assertTrue(deleted.body<CookieDeleteResponse>().removed)
+            assertEquals(0, client.get("/api/cookies").body<GlobalCookieListResponse>().count)
+            assertEquals(HttpStatusCode.NotFound, client.get("/api/cookies/detail?u=example.com").status)
+        } finally {
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
 }
+
+/** 只服务这条判据的回包形状；产品模型里没有它们（写入/删除走的是 Map 回包）。 */
+@Serializable
+private data class CookieWriteResponse(val ok: Boolean, val domain: String, val count: Int)
+
+@Serializable
+private data class CookieDetailResponse(val domain: String, val cookie: String)
+
+@Serializable
+private data class CookieDeleteResponse(val ok: Boolean, val removed: Boolean)
 
 

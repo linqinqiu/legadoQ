@@ -27,5 +27,11 @@ export function BehaviorTab({ settings, onChange }: { settings: ReaderSettings; 
         </div>
       </SettingGroup>
     )}
+    <SettingGroup title="漫画单图" hint="漫画源（bookSourceType = 2）一屏一张图、按图翻页；关掉则按普通图文混排。">
+      <div className="page-modes">
+        <button className={settings.mangaSinglePage ? 'selected' : ''} onClick={() => update({ mangaSinglePage: true })}>开</button>
+        <button className={!settings.mangaSinglePage ? 'selected' : ''} onClick={() => update({ mangaSinglePage: false })}>关</button>
+      </div>
+    </SettingGroup>
   </>
 }

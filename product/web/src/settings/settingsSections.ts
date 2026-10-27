@@ -18,7 +18,7 @@ export type SettingsRow = {
  *
  * 普通行只能放一句说明 + 一颗按钮；壁纸要开关、选图、地址框和四根滑杆，
  * 塞进行模型只会逼出第二套控件。这里只放**渲染入口**，实现仍然只有一份
- * （`settings/WallpaperSection.tsx`），所以不算开了第二套编辑器。
+ * （`settings/WallpaperSection.tsx`、`settings/CookieSection.tsx`），所以不算开了第二套编辑器。
  */
 export type SettingsSection = { title: string; rows: SettingsRow[]; content?: () => ReactNode }
 
@@ -52,6 +52,11 @@ export type SettingsActions = {
    * 没接的时候设置页不该多出一个空标题（判据喂假动作时也不会多出空档）。
    */
   renderWallpaper?: () => ReactNode
+  /**
+   * 「Cookie」分区的控件本体（全局登录凭据的列表 / 搜索 / 批量删除 / 编辑）。
+   * 与壁纸同一套接法：宿主不接就不生成那一档，判据喂假动作时不会多出空标题。
+   */
+  renderCookies?: () => ReactNode
 }
 
 export function buildSettingsSections(actions: SettingsActions): SettingsSection[] {
@@ -88,6 +93,14 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       title: '壁纸',
       rows: [],
       content: actions.renderWallpaper,
+    }] : []),
+    // 「Cookie」也不是一行按钮：列表、搜索、批量删除、编辑都在这一档里直接改
+    // （实现见 settings/CookieSection.tsx）。凭据按注册域共享，删书源不清桶，
+    // 所以必须有这一处能看见全部、能逐个撤掉。
+    ...(actions.renderCookies ? [{
+      title: 'Cookie',
+      rows: [],
+      content: actions.renderCookies,
     }] : []),
     {
       title: '规则',

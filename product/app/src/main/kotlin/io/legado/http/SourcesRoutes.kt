@@ -79,11 +79,42 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * `POST /api/cookies` 的请求体：这份凭据属于哪个站点 + 要写入的 Cookie 串。
+ * 定在这里而不是 `Models.kt`：它只服务这一条路由，不是对外共享的模型。
+ */
+@Serializable
+data class GlobalCookieWriteRequest(
+    /** 站点地址或裸域名；按注册域归桶，与书源请求时 `getCookieForUrl` 的口径一致。 */
+    val url: String = "",
+    /** `k=v; k2=v2`（也接受 Cookie-Editor 的 JSON 导出，解析器与登录弹层共用）。 */
+    val cookie: String = "",
+)
+
+/**
+ * `POST /api/cookies` 的回包：写进哪个桶、合并后该桶有几个键。
+ * 用带类型的模型而不是 `mapOf`：混合类型的 Map 在 kotlinx 序列化里没有可用序列化器。
+ */
+@Serializable
+data class GlobalCookieWriteResponse(
+    val ok: Boolean,
+    val domain: String,
+    val count: Int,
+)
+
+/** `GET /api/cookies/detail` 的回包：某个域的凭据原文（编辑前回填用）。 */
+@Serializable
+data class GlobalCookieDetailResponse(
+    val domain: String,
+    val cookie: String,
+)
 
 /**
  * 从 `Routes.kt` 拆出（0.8.2 结构重排）：书源列表与批量整理、单源读写校验调试、登录与凭据、内置浏览器代理。
@@ -125,6 +156,59 @@ fun Route.sourcesRoutes(
             }
             val removed = withContext(Dispatchers.IO) { database.removeCookieBucket(target) }
             call.respond(mapOf("ok" to true, "removed" to removed))
+        }
+        // 单桶的**值**：列表接口刻意只回键名（值不进列表），但「编辑」得先把现有串摆出来，
+        // 否则用户只能盲填。只按域读一个桶，不扫描全表。
+        get("/cookies/detail") {
+            val target = call.request.queryParameters["u"]?.trim()
+            if (target.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("missing_parameter", "缺少 u 参数（要读哪个域的凭据）"))
+                return@get
+            }
+            val value = withContext(Dispatchers.IO) { database.getCookieForUrl(target) }
+            if (value.isNullOrBlank()) {
+                call.respond(HttpStatusCode.NotFound, ApiError("cookie_not_found", "这个域还没有凭据"))
+                return@get
+            }
+            call.respond(GlobalCookieDetailResponse(domain = database.cookieBucket(target), cookie = value))
+        }
+        // 写入一个域的凭据：按注册域归桶，沿用 setCookieForUrl 的**按键合并**（同名覆盖、其余保留）。
+        // 与书源登录弹层里的「粘贴 Cookie」是同一条落库路径，这里只是把入口开到全局管理页。
+        post("/cookies") {
+            if (!call.requireSameOriginWrite()) return@post
+            val req = runCatching { call.receive<GlobalCookieWriteRequest>() }.getOrElse {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 JSON"))
+                return@post
+            }
+            val url = req.url.trim()
+            val cookie = req.cookie.trim()
+            if (url.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("missing_parameter", "缺少 url（这份凭据属于哪个站点）"))
+                return@post
+            }
+            if (cookie.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("missing_parameter", "缺少 cookie（要写入的凭据串）"))
+                return@post
+            }
+            val domain = database.cookieBucket(url)
+            if (domain.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_url", "从 $url 认不出注册域，请填完整地址或裸域名"))
+                return@post
+            }
+            if (database.parseCookieString(cookie).isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_cookie", "这份凭据解析不出任何键值对，应当形如 k=v; k2=v2"))
+                return@post
+            }
+            val saved = withContext(Dispatchers.IO) { database.setCookieForUrl(url, cookie) }
+            if (!saved) {
+                call.respond(HttpStatusCode.InternalServerError, ApiError("write_failed", "凭据没有写进库里，请重试"))
+                return@post
+            }
+            // 回合并之后这个桶的键数：界面据此更新「共几条」，不用再拉一遍全表。
+            val count = withContext(Dispatchers.IO) {
+                database.getCookieForUrl(url)?.let { database.parseCookieString(it).size } ?: 0
+            }
+            call.respond(GlobalCookieWriteResponse(ok = true, domain = domain, count = count))
         }
         post("/sources/batch") {
             if (!call.requireSameOriginWrite()) return@post

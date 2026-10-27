@@ -147,13 +147,14 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   assert.ok(Array.isArray(catalog.endpoints) && catalog.endpoints.length === routes.length,
     `目录有 ${catalog.endpoints?.length ?? 0} 条，代码里注册了 ${routes.length} 条 —— 这两个数必须相等，全量覆盖是这份契约的全部意义`)
   assert.deepEqual(auditCatalog(routes, catalog), [], '端点目录与代码对不上')
-  // 绝对计数钉死：141 条 / 19 组 / 系统组 7 条是当前 legadoQ 的权威契约（见 docs/RESEARCH-NOTES §7）。
+  // 绝对计数钉死：143 条 / 19 组 / 系统组 7 条是当前 legadoQ 的权威契约（见 docs/RESEARCH-NOTES §7）。
   // 双向相等只防「漂移」，不防「两边一起错」——重排架构时若这两个数真要变，
   // 必须同步改这里并说明，而不是让漂移悄悄发生。
   // 2026-10：新增「搜索本书」GET /api/book-search（进度与笔记组，只读）→ 139 → 140；
   // 同月新增「AI 闭环」POST/DELETE /api/books/content-process（阅读组，写，book_content_process 覆盖正文）→ 140 → 142。
   // 2026-10：移除前端/后端插件架构，删掉 GET /api/plugins（系统组）→ 142 → 141，系统组 8 → 7。
-  assert.equal(catalog.endpoints.length, 141, `端点总数必须为 141，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-10：补全局 Cookie 管理，新增 POST /api/cookies 与 GET /api/cookies/detail（登录与凭据组）→ 141 → 143。
+  assert.equal(catalog.endpoints.length, 143, `端点总数必须为 143，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')
   assert.equal(systemGroup.length, 7, `系统组必须为 7 条（插件架构已移除），现在是 ${systemGroup.length}`)

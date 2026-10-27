@@ -542,6 +542,31 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const paragraphs = useMemo(() => (content ? splitBody(content) : []), [content, splitBody])
 
   /**
+   * 漫画单图模式。
+   *
+   * 漫画源（`bookSourceType === 2`）的一章正文就是一串 `![图片](地址)` 占位行。默认把它们
+   * 一屏一张地铺开、按图翻页：长图不会被文本分页从中间切开，跨页衔接也更接近漫画阅读器。
+   * 关掉（`settings.mangaSinglePage === false`）就退回普通图文混排。
+   */
+  const mangaImages = useMemo(
+    () => paragraphs.map(line => contentImageUrl(line)).filter((url): url is string => Boolean(url)),
+    [paragraphs],
+  )
+  const isMangaMode = currentBook.details.sourceType === 2 && settings.mangaSinglePage && mangaImages.length > 0
+  const [mangaIndex, setMangaIndex] = useState(0)
+  // 换章回到第一张；同一章内容刷新（重取正文）也从头开始，避免下标越界。
+  useEffect(() => { setMangaIndex(0) }, [chapter?.url, mangaImages.length])
+  // 预取下一张：翻页时直接命中服务端 7 天缓存，不等网络。
+  useEffect(() => {
+    if (!isMangaMode) return
+    const next = mangaImages[mangaIndex + 1]
+    if (!next) return
+    const image = new Image()
+    image.decoding = 'async'
+    image.src = readerImageSrc(next, chapter?.url, imageGeneration[next] ?? 0)
+  }, [isMangaMode, mangaIndex, mangaImages, chapter?.url, imageGeneration])
+
+  /**
    * 笔记 / 划线（PROPOSAL-019 E）。
    *
    * 偏移是**章节内字符偏移**（段落在章里的起点 + 段内偏移），不用像素 / 列号 ——
@@ -903,6 +928,17 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     return rawLine
   }
 
+  /**
+   * 取图失败的那一行：说清失败了、为什么，并给一条「重取这一张」的出路。
+   * 正文配图与漫画单图共用这一处，避免两套文案与两条重取路径。
+   */
+  const renderImageFailure = (image: string, referer: string | undefined, key?: number) => (
+    <p key={key} className="reader-image-failed">
+      <span>{failedImages[image] ?? '这张图没取到'}</span>
+      <button type="button" className="link-button" onClick={event => { event.stopPropagation(); void refetchChapterImage(image, referer) }}>重取这一张</button>
+    </p>
+  )
+
   /** 正文块渲染：`![图片](url)` 占位行还原成走代理的 `<img>`，其余仍是段落。 */
   const renderContentBlock = (line: string, index: number, owner?: Chapter) => {
     const image = contentImageUrl(line)
@@ -914,15 +950,11 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       const failure = failedImages[image]
       if (failure) {
         // 取失败不当成"没有图"藏起来：这一行说清失败了、为什么，并给一条出路。
-        return (
-          <p key={index} className="reader-image-failed">
-            <span>{failure}</span>
-            <button type="button" className="link-button" onClick={event => { event.stopPropagation(); void refetchChapterImage(image, referer) }}>重取这一张</button>
-          </p>
-        )
+        return renderImageFailure(image, referer, index)
       }
+      const isFullImage = currentBook.details.imageStyle?.toUpperCase() === 'FULL'
       return (
-        <figure key={index} className="reader-paragraph-image">
+        <figure key={index} className={`reader-paragraph-image${isFullImage ? ' is-full' : ''}`}>
           <img
             src={src}
             alt=""
@@ -930,8 +962,15 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
             decoding="async"
             role="button"
             tabIndex={0}
-            style={{ cursor: 'zoom-in' }}
+            // 图没加载出来之前按 3:4 预留高度：否则分页量的时候图片高度是 0，量完图一进来页面就错位。
+            // 加载完把比例交还给图片本身（真实宽高比），并在分页模式下重新量一次。
+            style={{ cursor: 'zoom-in', aspectRatio: '3 / 4' }}
             onClick={event => { event.stopPropagation(); setLightboxSrc(src) }}
+            onLoad={event => {
+              const element = event.currentTarget
+              element.style.aspectRatio = 'auto'
+              if (settings.pageMode === 'paginate') window.requestAnimationFrame(() => measurePagination())
+            }}
             onError={event => {
               event.currentTarget.hidden = true
               setFailedImages(current => (current[image] ? current : { ...current, [image]: '这张图没取到' }))
@@ -952,8 +991,37 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     )
   }
 
-  const showBoundaryNotice = useCallback((msg: string) => {
-    setBoundaryMessage(msg)
+  /**
+   * 漫画单图：只渲染当前这一张，翻页交给 `goNextPage` / `goPrevPage`（它们已经接上按图翻）。
+   * 失败仍复用「重取这一张」的出路；页码角标让读者知道这一章还有几张。
+   */
+  const renderMangaContent = () => {
+    const image = mangaImages[Math.min(mangaIndex, mangaImages.length - 1)]
+    if (!image) return null
+    const referer = chapter?.url
+    const src = readerImageSrc(image, referer, imageGeneration[image] ?? 0)
+    const failure = failedImages[image]
+    return (
+      <div className="manga-page" data-manga-index={mangaIndex}>
+        {failure ? renderImageFailure(image, referer) : (
+          <img
+            className="manga-page-image"
+            src={src}
+            alt=""
+            decoding="async"
+            onClick={event => { event.stopPropagation(); setLightboxSrc(src) }}
+            onError={event => {
+              event.currentTarget.hidden = true
+              setFailedImages(current => (current[image] ? current : { ...current, [image]: '这张图没取到' }))
+            }}
+          />
+        )}
+        <span className="manga-page-count">{mangaIndex + 1} / {mangaImages.length}</span>
+      </div>
+    )
+  }
+
+  const showBoundaryNotice = useCallback((msg: string) => {    setBoundaryMessage(msg)
     if (boundaryTimerRef.current !== null) window.clearTimeout(boundaryTimerRef.current)
     boundaryTimerRef.current = window.setTimeout(() => {
       boundaryTimerRef.current = null
@@ -1576,6 +1644,12 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [content, loading, measurePagination, pageFillers, settings.pageMode, settlePrependedPage, windowChapters])
 
   const goNextPage = useCallback(() => {
+    // 漫画单图：章内按图翻，翻到最后一张再进下一章（与文本分页同一套入口）。
+    if (isMangaMode) {
+      if (mangaIndex < mangaImages.length - 1) setMangaIndex(mangaIndex + 1)
+      else changeChapter(chapterIndex + 1, 'first')
+      return
+    }
     const plan = planNextPage(pageIndex, pageCount)
     if (plan.kind === 'step') {
       // 覆盖档要先把"新页"演出来，动画收尾才真翻页；其余档当场翻。
@@ -1585,7 +1659,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     // 已到本章最后一页：翻页模式下这是"下一页"而不是"跳一章"（不换容器 key，不重挂）
     changeChapter(chapterIndex + 1, 'first', settings.pageMode === 'paginate')
-  }, [chapterIndex, changeChapter, pageCount, pageIndex, pageAnim, settings.pageMode])
+  }, [chapterIndex, changeChapter, isMangaMode, mangaImages.length, mangaIndex, pageCount, pageIndex, pageAnim, settings.pageMode])
 
   /**
    * 往回翻到窗口开头时，把**上一章接到窗口最前面**。
@@ -1618,6 +1692,12 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [chapter, currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId])
 
   const goPrevPage = useCallback(() => {
+    // 漫画单图：章内退一张，退到第一张再回上一章的末图。
+    if (isMangaMode) {
+      if (mangaIndex > 0) setMangaIndex(mangaIndex - 1)
+      else changeChapter(chapterIndex - 1, 'last')
+      return
+    }
     const plan = planPrevPage(pageIndex)
     if (plan.kind === 'step') {
       if (pageAnim === 'cover') setCoverTurn({ to: plan.page, direction: -1 })
@@ -1639,7 +1719,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         showBoundaryNotice('已是第一章')
       }
     })
-  }, [pageIndex, pageAnim, prependPreviousChapter, showBoundaryNotice])
+  }, [chapterIndex, changeChapter, isMangaMode, mangaIndex, pageIndex, pageAnim, prependPreviousChapter, showBoundaryNotice])
 
   // Sync scroll / page progress
   useEffect(() => {
@@ -2219,7 +2299,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         {isStaleContent && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingChapterTitle)}</p>}
         {loading && !content && <ReaderContentSkeleton />}
         {message && <p className="reader-error">{message}</p>}
-        {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : paragraphs.map((line, index) => renderContentBlock(line, index))}
+        {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : isMangaMode ? renderMangaContent() : paragraphs.map((line, index) => renderContentBlock(line, index))}
       </section>
       {flowTail.map((item, tailIndex) => (
         <Fragment key={item.chapter.url}>
@@ -2523,7 +2603,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
             {isStaleContent && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingChapterTitle)}</p>}
             {loading && !content && <ReaderContentSkeleton />}
             {message && <p className="reader-error">{message}</p>}
-            {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : paragraphs.map((line, index) => renderContentBlock(line, index))}
+            {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : isMangaMode ? renderMangaContent() : paragraphs.map((line, index) => renderContentBlock(line, index))}
           </section>
           {flowTail.map(item => (
             <section key={item.chapter.url} className="reader-flow-chapter reader-flow-tail" data-chapter-index={item.chapter.index}>

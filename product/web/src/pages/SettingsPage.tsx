@@ -57,7 +57,7 @@ export function SettingsPage({ sections }: {
       ) : shown.map(section => (
         <section key={section.title} className="settings-section">
           <h2>{section.title}</h2>
-          {/* 控件直接长在这一档里的分区（目前只有「壁纸」）：实现只有一份，见 settingsSections 的说明 */}
+          {/* 控件直接长在这一档里的分区（壁纸与 Cookie）：实现只有一份，见 settingsSections 的说明 */}
           {section.content?.()}
           {section.rows.length > 0 && (
             <div className="settings-rows">

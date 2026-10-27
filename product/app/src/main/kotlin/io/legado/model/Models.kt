@@ -331,6 +331,8 @@ data class SourceLoginStateRecord(
     val lastChapter: String? = null,
     /** 书源的 `bookSourceType`：0 文本 / 1 音频 / 2 图片(漫画) / 3 文件 / 4 视频。 */
     val sourceType: Int = 0,
+    /** 书源 `ruleContent.imageStyle`：`FULL` 表示正文图片铺满阅读区；缺省为普通版心宽度。 */
+    val imageStyle: String? = null,
 )
 @Serializable data class Chapter(val index: Int, val title: String, val url: String, val isVolume: Boolean = false)
 @Serializable data class ContentRequest(val sourceId: String, val chapterUrl: String = "", val bookUrl: String? = null)

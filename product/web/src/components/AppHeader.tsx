@@ -170,7 +170,6 @@ export function AppHeader({
           onClick={() => setMenuOpen(prev => !prev)}
         >
           <Icon name="menu" />
-          <span className="header-menu-label">我的</span>
         </button>
 
         {menuOpen && (

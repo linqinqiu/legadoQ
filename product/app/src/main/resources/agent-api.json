@@ -1,6 +1,6 @@
 {
   "service": "legadoQ",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统）。每条按 group 归类。",
   "howToConnect": {
     "baseUrl": "http://127.0.0.1:1234",
@@ -26,7 +26,9 @@
     {"method":"PUT","path":"/api/server/port","write":true,"group":"系统","purpose":"改监听端口：写进包目录下的 port.txt，下次启动生效","body":{"port":"1–65535"},"response":"{port,restartRequired}：restartRequired=true 表示改了但没重启，当前还在旧端口上；越界 400 invalid_port，写不进文件 500 write_failed"},
     {"method":"GET","path":"/api/sources","write":false,"purpose":"书源列表（投影，不载完整规则 JSON）","query":{"q":"可选，按名称或地址子串筛，忽略大小写"},"response":"[{id,name,url,group,enabled,isJsSource,hasLogin,updatedAt,version}]；version 就是 PUT 的乐观锁编号","group":"书源"},
     {"method":"GET","path":"/api/cookies","write":false,"purpose":"全部登录凭据的域名清单（只回域名与键名，不回值）","response":"{count,cookies:[{domain,keys[],mentionedBy}]}","group":"登录与凭据"},
+    {"method":"GET","path":"/api/cookies/detail","write":false,"purpose":"读某一个域的凭据原文（编辑前回填用；列表接口故意不回值）","query":{"u":"要读的那个地址或域"},"response":"{domain,cookie}；缺 u 参数 400 missing_parameter，该域没有凭据 404 cookie_not_found","group":"登录与凭据"},
     {"method":"DELETE","path":"/api/cookies","write":true,"purpose":"撤掉某个域的全部凭据","query":{"url":"要清的那个地址或域"},"response":"{ok,removed}；缺 url 参数 400","group":"登录与凭据"},
+    {"method":"POST","path":"/api/cookies","write":true,"purpose":"写入某个域的凭据（按注册域归桶，同名键覆盖、其余保留，与书源登录弹层同一条落库路径）","body":{"url":"站点地址或裸域名","cookie":"k=v; k2=v2（也接受 Cookie-Editor 的 JSON 导出）"},"response":"{ok,domain,count}；缺 url / cookie 400 missing_parameter，认不出注册域 400 invalid_url，解析不出键值对 400 invalid_cookie","group":"登录与凭据"},
     {"method":"POST","path":"/api/sources/batch","write":true,"purpose":"一批源一起做整理动作（启用 / 停用 / 删除 / 改分组 / 贴分组标签），一次事务","body":{"action":"enable | disable | delete | set_group | tag_group | untag_group","ids":["书源地址"],"group":"分组名（set_group / tag_group 必填）"},"response":"{ok,affected,action,message}；空选择 400 empty_selection，动作名不认 400 invalid_action","group":"书源"},
     {"method":"POST","path":"/api/sources/health-check","write":true,"purpose":"健康体检：阻塞式长任务（并发 16、单个默认 5 秒超时），跑完才回，没有进度流。不给 ids 就只体检启用中的源","body":{"ids":"可选","timeoutMs":"默认 5000，夹在 1000–10000","keyword":"可选，用什么词去搜"},"response":"{total,successCount,slowCount,failedCount,durationMs,results[]}；results 项 {id,name,ok,latencyMs,statusCode,statusCategory,error}","group":"书源"},
     {"method":"GET","path":"/api/sources/export","write":false,"purpose":"导出书源（不给 id 就是全部）","query":{"id":"可选，可重复；只导点名的这几条"},"response":"字符串数组，每个元素是一份书源的 JSON 字符串（可直接喂给 /api/sources/import）","group":"书源"},

@@ -82,6 +82,8 @@ export type ReaderSettings = {
   maxWidth: number
   columnMode: ReaderColumnMode
   textAlign: ReaderTextAlign
+  /** 漫画单图模式：书源 `bookSourceType === 2` 时一屏一图、按图翻页；关掉则按普通图文混排。 */
+  mangaSinglePage: boolean
   sidebarPinned: boolean
   /**
    * 固定目录（`sidebarPinned`）时目录栏的宽度，px。
@@ -163,6 +165,7 @@ export const defaultReaderSettings: ReaderSettings = {
   maxWidth: 860,
   columnMode: 'auto',
   textAlign: 'justify',
+  mangaSinglePage: true,
   sidebarPinned: false,
   sidebarWidth: 300,
   ttsEngine: 'edge',
@@ -439,6 +442,7 @@ export function loadReaderSettings(): ReaderSettings {
   maxWidth: parseMaxWidth(saved.maxWidth),
   columnMode: parseColumnMode(saved.columnMode),
   textAlign: parseTextAlign(saved.textAlign),
+      mangaSinglePage: typeof saved.mangaSinglePage === 'boolean' ? saved.mangaSinglePage : defaultReaderSettings.mangaSinglePage,
       sidebarPinned: typeof saved.sidebarPinned === 'boolean' ? saved.sidebarPinned : defaultReaderSettings.sidebarPinned,
       sidebarWidth: Math.round(clampNumber(saved.sidebarWidth, 220, 560, defaultReaderSettings.sidebarWidth)),
       ttsEngine: parseTtsEngine(saved.ttsEngine),

@@ -44,7 +44,7 @@ export type UpdateCheckResult = {
 }
 export type SearchResult = { sourceId: string; name: string; author?: string; bookUrl: string; coverUrl?: string; intro?: string; kind?: string; wordCount?: string; lastChapter?: string; /** 书源 bookSourceType：0 文本 / 1 音频 / 2 漫画 / 3 文件 / 4 视频 */ sourceType?: number }
 export type ExploreTab = { title: string; url: string; /** 服务端按规则写法判出来的"这一栏吃不吃页码"；缺省按支持（旧数据/别的入口没带这个字段） */ supportsPaging?: boolean }
-export type BookDetails = { sourceId: string; name: string; author?: string; intro?: string; coverUrl?: string; tocUrl: string; kind?: string; wordCount?: string; lastChapter?: string; alternateSources?: SearchResult[]; /** 书源 bookSourceType：0 文本 / 1 音频 / 2 漫画 / 3 文件 / 4 视频 */ sourceType?: number }
+export type BookDetails = { sourceId: string; name: string; author?: string; intro?: string; coverUrl?: string; tocUrl: string; kind?: string; wordCount?: string; lastChapter?: string; alternateSources?: SearchResult[]; /** 书源 bookSourceType：0 文本 / 1 音频 / 2 漫画 / 3 文件 / 4 视频 */ sourceType?: number; /** 书源 ruleContent.imageStyle：FULL 表示正文图片铺满阅读区 */ imageStyle?: string | null }
 export type Chapter = { index: number; title: string; url: string; isVolume?: boolean }
 export type ReadingProgress = {
   sourceId: string; bookUrl: string; chapterUrl: string; chapterIndex: number; scrollPosition: number; updatedAt: number
