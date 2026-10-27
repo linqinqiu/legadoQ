@@ -62,7 +62,20 @@ export function WallpaperSection() {
 
   const commitUrl = () => {
     const url = urlDraft.trim()
-    updateWallpaperSettings({ url, source: 'url', enabled: url !== '' })
+    if (!url) {
+      updateWallpaperSettings({ url: '', enabled: false })
+      return
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error('图片地址要以 http:// 或 https:// 开头')
+      return
+    }
+    // 先让浏览器把图真取一次再启用：地址写错、被防盗链挡住、返回的不是图片，
+    // 都在这里给出结论，而不是切过去之后只剩一块空白让人猜。
+    const probe = new Image()
+    probe.onload = () => updateWallpaperSettings({ url, source: 'url', enabled: true })
+    probe.onerror = () => toast.error('这张图加载失败：地址不可用、被防盗链挡住，或返回的不是图片')
+    probe.src = url
   }
 
   const toggleEnabled = () => {
@@ -177,6 +190,40 @@ export function WallpaperSection() {
               step={2}
               value={settings.blur}
               onChange={event => updateWallpaperSettings({ blur: Number(event.target.value) })}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <div className="settings-row-main">
+          <label className="setting-range">
+            <span>面板不透明度</span>
+            <output>{Math.round(settings.panelOpacity * 100)}%</output>
+            <input
+              type="range"
+              min={20}
+              max={100}
+              step={5}
+              value={Math.round(settings.panelOpacity * 100)}
+              onChange={event => updateWallpaperSettings({ panelOpacity: Number(event.target.value) / 100 })}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <div className="settings-row-main">
+          <label className="setting-range">
+            <span>毛玻璃模糊</span>
+            <output>{settings.glassBlur}px</output>
+            <input
+              type="range"
+              min={0}
+              max={40}
+              step={2}
+              value={settings.glassBlur}
+              onChange={event => updateWallpaperSettings({ glassBlur: Number(event.target.value) })}
             />
           </label>
         </div>

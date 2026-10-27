@@ -6275,6 +6275,8 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   --wallpaper-blur: 0px;
   --wallpaper-scale: 1;
   --wallpaper-fill: cover;
+  --wallpaper-panel-opacity: .72;
+  --wallpaper-glass-blur: 12px;
   position: fixed; inset: 0; z-index: -2;
   overflow: hidden; pointer-events: none;
 }
@@ -6294,3 +6296,27 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 html[data-wallpaper="on"],
 html[data-wallpaper="on"] body,
 html[data-wallpaper="on"] .app-shell { background: transparent; }
+
+/* 壁纸模式下，浮在壁纸上的表面变成半透明玻璃：
+   顶栏/底栏、设置分区、书架卡片、弹层。阅读器正文保持不透明（阅读背景与壁纸各管各的）。 */
+html[data-wallpaper="on"] .app-page-header,
+html[data-wallpaper="on"] .md3-topbar,
+html[data-wallpaper="on"] .md3-bottombar {
+  background: color-mix(in srgb, var(--canvas) calc(var(--wallpaper-panel-opacity, .72) * 100%), transparent);
+  -webkit-backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.15);
+  backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.15);
+}
+html[data-wallpaper="on"] .settings-section,
+html[data-wallpaper="on"] .settings-row,
+html[data-wallpaper="on"] .shelf-card {
+  background: color-mix(in srgb, var(--canvas) calc(var(--wallpaper-panel-opacity, .72) * 100%), transparent);
+  -webkit-backdrop-filter: blur(var(--wallpaper-glass-blur, 12px));
+  backdrop-filter: blur(var(--wallpaper-glass-blur, 12px));
+}
+html[data-wallpaper="on"] .dialog-shell,
+html[data-wallpaper="on"] .page-dialog,
+html[data-wallpaper="on"] .header-menu-dropdown {
+  background: color-mix(in srgb, var(--canvas) calc(min(1, var(--wallpaper-panel-opacity, .72) + .18) * 100%), transparent);
+  -webkit-backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.1);
+  backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.1);
+}

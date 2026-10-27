@@ -33,11 +33,15 @@ export type WallpaperSettings = {
   mask: number
   /** 图片自身的模糊半径，px（0..60）。 */
   blur: number
+  /** 面板不透明度，0..1：顶栏、卡片、设置分区这些「浮在壁纸上的表面」的底色浓度。 */
+  panelOpacity: number
+  /** 毛玻璃模糊，px（0..40）：面板背后的 backdrop-filter 半径。 */
+  glassBlur: number
   /** 填充方式。 */
   fill: WallpaperFill
 }
 
-/** 默认设置：关闭、未选图、不透明度满、遮罩 25%（与参考实现同一档观感）、无模糊、铺满裁剪。 */
+/** 默认设置：关闭、未选图、不透明度满、遮罩 25%（与参考实现同一档观感）、无模糊、面板半透明、铺满裁剪。 */
 export const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
   enabled: false,
   source: 'upload',
@@ -45,6 +49,8 @@ export const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
   opacity: 1,
   mask: 0.25,
   blur: 0,
+  panelOpacity: 0.72,
+  glassBlur: 12,
   fill: 'cover',
 }
 
@@ -83,6 +89,8 @@ export function parseWallpaperSettings(raw: unknown): WallpaperSettings {
     opacity: clamp(finiteNumber(record.opacity, DEFAULT_WALLPAPER_SETTINGS.opacity), 0, 1),
     mask: clamp(finiteNumber(record.mask, DEFAULT_WALLPAPER_SETTINGS.mask), 0, 1),
     blur: Math.round(clamp(finiteNumber(record.blur, DEFAULT_WALLPAPER_SETTINGS.blur), 0, 60)),
+    panelOpacity: clamp(finiteNumber(record.panelOpacity, DEFAULT_WALLPAPER_SETTINGS.panelOpacity), 0, 1),
+    glassBlur: Math.round(clamp(finiteNumber(record.glassBlur, DEFAULT_WALLPAPER_SETTINGS.glassBlur), 0, 40)),
     fill,
   }
 }
@@ -161,6 +169,8 @@ function sameSettings(a: WallpaperSettings, b: WallpaperSettings): boolean {
     && a.opacity === b.opacity
     && a.mask === b.mask
     && a.blur === b.blur
+    && a.panelOpacity === b.panelOpacity
+    && a.glassBlur === b.glassBlur
     && a.fill === b.fill
 }
 

@@ -87,13 +87,19 @@ export function WallpaperLayer() {
   const imageUrl = settings.source === 'url' ? settings.url.trim() : uploadUrl
   const visible = settings.enabled && Boolean(imageUrl)
 
-  // 壁纸真的画出来时才把画布底色让出来；关掉/没图时恢复原外观。
+  // 壁纸真的画出来时才把画布底色让出来，并把「面板不透明度 / 毛玻璃模糊」写成全局变量：
+  // 顶栏、卡片、设置分区这些浮在壁纸上的表面统一读这两个值，拖动滑杆即时生效。
   useEffect(() => {
     const root = document.documentElement
-    if (visible) root.setAttribute('data-wallpaper', 'on')
-    else root.removeAttribute('data-wallpaper')
+    if (visible) {
+      root.setAttribute('data-wallpaper', 'on')
+      root.style.setProperty('--wallpaper-panel-opacity', String(settings.panelOpacity))
+      root.style.setProperty('--wallpaper-glass-blur', `${settings.glassBlur}px`)
+    } else {
+      root.removeAttribute('data-wallpaper')
+    }
     return () => root.removeAttribute('data-wallpaper')
-  }, [visible])
+  }, [visible, settings.panelOpacity, settings.glassBlur])
 
   if (!visible || !imageUrl) return null
 

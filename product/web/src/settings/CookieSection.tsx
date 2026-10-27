@@ -35,7 +35,49 @@ function summarizeDelete(targets: string[], results: PromiseSettledResult<unknow
 /** 值还没展开时显示的占位：键名保留，值一律打码。 */
 const maskKeys = (keys: string[]) => keys.map(key => `${key}=***`).join('；')
 
+/**
+ * 设置页「Cookie」分区的入口：只放一行按钮，点开才是管理面板。
+ *
+ * 凭据是「看一眼、改一条、删一批」的低频操作，不该把整张表和明文键名常年摊在设置页上；
+ * 做成悬浮层之后设置页保持一屏安静，管理面板自己滚动、自己关。
+ */
 export function CookieSection() {
+  const [open, setOpen] = useState(false)
+  useEscapeClose(open ? () => setOpen(false) : () => undefined)
+  return (
+    <div className="settings-rows">
+      <div className="settings-row">
+        <div className="settings-row-main">
+          <strong>Cookie 管理</strong>
+          <small>查看、搜索、批量删除与编辑已保存的登录凭据。</small>
+        </div>
+        <button type="button" className="subtle-button" onClick={() => setOpen(true)}>打开</button>
+      </div>
+      {open && (
+        <div className="overlay-backdrop" onClick={() => setOpen(false)}>
+          <div
+            className="dialog-shell"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cookie 管理"
+            onClick={event => event.stopPropagation()}
+            style={{ width: 'min(760px, 100%)', maxHeight: '82vh', overflow: 'auto' }}
+          >
+            <header className="dialog-head">
+              <strong>Cookie 管理</strong>
+              <button type="button" className="overlay-close" aria-label="关闭 Cookie 管理" onClick={() => setOpen(false)}>
+                <Icon name="close" />
+              </button>
+            </header>
+            <CookieManager />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function CookieManager() {
   const [list, setList] = useState<GlobalCookieList | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
