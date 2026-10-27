@@ -563,7 +563,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (!next) return
     const image = new Image()
     image.decoding = 'async'
-    image.src = readerImageSrc(next, chapter?.url, imageGeneration[next] ?? 0)
+    image.src = readerImageSrc(next, chapter?.url, imageGeneration[next] ?? 0, currentBook.details.sourceId)
   }, [isMangaMode, mangaIndex, mangaImages, chapter?.url, imageGeneration])
 
   /**
@@ -946,7 +946,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       // 本地 EPUB 的插图本来就是站内地址，再过一道图片代理是错的（那一层只收 http(s)）
       // Referer 用**这一段属于哪一章**：续接进来的下一章的图，不能拿锚点章的地址当来源
       const referer = (owner ?? chapter)?.url
-      const src = readerImageSrc(image, referer, imageGeneration[image] ?? 0)
+      const src = readerImageSrc(image, referer, imageGeneration[image] ?? 0, currentBook.details.sourceId)
       const failure = failedImages[image]
       if (failure) {
         // 取失败不当成"没有图"藏起来：这一行说清失败了、为什么，并给一条出路。
@@ -1323,7 +1323,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       }
       // 漫画/图文章节：趁用户看首屏，把正文里的图片提前喂给服务端代理取回落盘缓存，
       // 后面滚动/翻页不必每张都等服务端联网（referer 用本章地址，图站防盗链才放得过去）。
-      warmContentImages(nextContent, chapter.url)
+      warmContentImages(nextContent, chapter.url, currentBook.details.sourceId)
       // 续接推进时 position 给 null：下面那个定位 effect 见到 null 就直接返回，
       // 于是"跨章"不再伴随任何 scrollTo —— 这正是"不是一体的吗"要的答案。
       const advancing = flowAdvanceRef.current
@@ -1385,7 +1385,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         if (!result || cancelled) break
         preloadedContentRef.current.set(candidate.url, result.content)
         // 预载的下一章若含图（漫画常见），趁现在把它的图也预热，翻过去时直接命中缓存。
-        warmContentImages(result.content, candidate.url)
+        warmContentImages(result.content, candidate.url, currentBook.details.sourceId)
         filled.push({ chapter: candidate, content: result.content })
       }
       if (!cancelled) setFlowTail(filled)

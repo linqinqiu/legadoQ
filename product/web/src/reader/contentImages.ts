@@ -10,7 +10,7 @@ import { readerImageSrc } from './readerImage'
  * 这一项直接决定翻页顺不顺。
  * 只预热外域图（站内资产本就在本地）；失败静默 —— 渲染层那一张会自己退化成「这张图没取到 + 重取这一张」。
  */
-export function warmContentImages(text: string, page: string | undefined) {
+export function warmContentImages(text: string, page: string | undefined, sourceId?: string) {
   if (!text) return
   for (const raw of text.split('\n')) {
     const image = contentImageUrl(raw)
@@ -18,6 +18,6 @@ export function warmContentImages(text: string, page: string | undefined) {
     const img = new Image()
     img.decoding = 'async'
     // 与渲染层同一个地址算法（generation 都是 0），否则预热取回来的那张用不上。
-    img.src = readerImageSrc(image, page)
+    img.src = readerImageSrc(image, page, 0, sourceId)
   }
 }

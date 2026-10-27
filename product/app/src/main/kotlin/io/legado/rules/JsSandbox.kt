@@ -766,6 +766,44 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             }
         })
 
+        /**
+         * java.aesDecodeToBase64(base64, key, transformation, iv) —— 与上面那个同族，但**返回 Base64**。
+         *
+         * 为什么另开一个：图片解密要的是**字节**，转成 UTF-8 字符串会把二进制烧掉。
+         * 书源的 `ruleContent.imageDecode` 拿到 `result`（原图 Base64），用这个函数解出
+         * 解密后的 Base64 返回，服务端再还原成图片字节（见 `ImageDecode.parse`）。
+         */
+        ScriptableObject.putProperty(api, "aesDecodeToBase64", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val encoded = args.getOrNull(0)?.toString() ?: return ""
+                val key = args.getOrNull(1)?.toString() ?: return ""
+                val transformation = args.getOrNull(2)?.toString()?.takeIf { it.isNotBlank() }
+                    ?: "AES/CBC/PKCS5Padding"
+                val iv = args.getOrNull(3)?.toString()
+                return runCatching {
+                    val cipher = javax.crypto.Cipher.getInstance(transformation)
+                    val secretKey = javax.crypto.spec.SecretKeySpec(key.toByteArray(Charsets.UTF_8), "AES")
+                    if (iv.isNullOrEmpty()) {
+                        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey)
+                    } else {
+                        cipher.init(
+                            javax.crypto.Cipher.DECRYPT_MODE,
+                            secretKey,
+                            javax.crypto.spec.IvParameterSpec(iv.toByteArray(Charsets.UTF_8)),
+                        )
+                    }
+                    val raw = encoded.trim().let { text ->
+                        try {
+                            Base64.getDecoder().decode(text)
+                        } catch (_: Exception) {
+                            Base64.getUrlDecoder().decode(text)
+                        }
+                    }
+                    Base64.getEncoder().encodeToString(cipher.doFinal(raw))
+                }.getOrDefault("")
+            }
+        })
+
         // java.hexDecodeToString(hex) / java.hexEncodeToString(str)
         // 聚合类书源用 data:;hex,... 之类的载荷在搜索→详情→目录→正文之间传递参数
         ScriptableObject.putProperty(api, "hexDecodeToString", object : BaseFunction() {

@@ -12,6 +12,7 @@ import io.legado.cache.CoverCache
 import io.legado.data.Database
 import io.legado.data.coverContentType
 import io.legado.data.getCookieForUrl
+import io.legado.data.getSource
 import io.legado.model.ApiError
 import io.legado.model.RefreshedImage
 import io.legado.ops.LogService
@@ -31,6 +32,8 @@ fun Route.mediaRoutes(
     database: Database,
     coverCache: CoverCache,
     localBooksDirectory: Path,
+    /** 书源图片解密（`ruleContent.imageDecode`）用；不传就退化成"只代理不解密"。 */
+    runner: io.legado.rules.RuleRunner? = null,
 ) {
         get("/covers/{key}") {
             val key = call.parameters["key"] ?: return@get call.respond(HttpStatusCode.NotFound)
@@ -121,8 +124,15 @@ fun Route.mediaRoutes(
             }
             // `page` 是图片所在的那一页，拿来当 Referer —— 图站按防盗链判来源，不带就回 403 占位图。
             val referer = call.request.queryParameters["page"]?.takeIf { it.startsWith("http", ignoreCase = true) }
+            // `sourceId`：这个图属于哪个书源。只有带上它、且该书源配了 ruleContent.imageDecode，
+            // 才会在落盘前跑一次解密；解密结果单独缓存（key 带源与解密标记）。
+            val sourceId = call.request.queryParameters["sourceId"]?.trim()?.takeIf { it.isNotBlank() }
+            val decoder = sourceId?.let { id ->
+                database.getSource(id)?.json?.let { json -> runner?.imageDecoder(json) }
+            }
+            val decodeSuffix = if (decoder != null) "#decode:${sourceId}" else ""
             try {
-                val cached = coverCache.cacheContentImage(url, referer)
+                val cached = coverCache.cacheContentImage(url, referer, decoder, decodeSuffix)
                 val file = coverCache.file(cached.key) ?: return@get call.respond(HttpStatusCode.NotFound)
                 call.response.cacheControl(CacheControl.MaxAge(maxAgeSeconds = 7 * 24 * 60 * 60, visibility = CacheControl.Visibility.Private))
                 call.respond(LocalFileContent(file.toFile(), ContentType.parse(cached.contentType)))
@@ -157,8 +167,13 @@ fun Route.mediaRoutes(
                 call.respond(HttpStatusCode.BadRequest, ApiError("invalid_image", "图片地址无效")); return@post
             }
             val referer = call.request.queryParameters["page"]?.takeIf { it.startsWith("http", ignoreCase = true) }
+            val sourceId = call.request.queryParameters["sourceId"]?.trim()?.takeIf { it.isNotBlank() }
+            val decoder = sourceId?.let { id ->
+                database.getSource(id)?.json?.let { json -> runner?.imageDecoder(json) }
+            }
+            val decodeSuffix = if (decoder != null) "#decode:${sourceId}" else ""
             try {
-                val cached = coverCache.refetchContentImage(url, referer)
+                val cached = coverCache.refetchContentImage(url, referer, decoder, decodeSuffix)
                 call.respond(RefreshedImage(cached.key, cached.contentType))
             } catch (error: Exception) {
                 Unit.logNetwork(

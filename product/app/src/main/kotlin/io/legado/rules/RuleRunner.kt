@@ -503,6 +503,29 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
     }
 
     /**
+     * 书源的图片解密器：`ruleContent.imageDecode` 是一段 JS，输入原图、输出解密后的图。
+     *
+     * 二进制不进 JS：绑定 `result` 是**原图字节的 Base64**，脚本返回纯 Base64 或 data URL
+     * （解析在 [ImageDecode.parse]）。这样沙箱只需要字符串，不用给脚本开字节数组通道。
+     *
+     * @param sourceJson 书源 JSON
+     * @returns 解密函数；书源没写 imageDecode 时返回 null
+     */
+    fun imageDecoder(sourceJson: String): ((ByteArray) -> ByteArray?)? {
+        val source = runCatching { Json.parseToJsonElement(sourceJson).jsonObject }.getOrNull() ?: return null
+        val script = source.string("ruleContent")?.objectValue()?.string("imageDecode")?.trim().orEmpty()
+        if (script.isBlank()) return null
+        val sourceUrl = source.string("bookSourceUrl") ?: ""
+        return { bytes ->
+            runCatching {
+                val encoded = java.util.Base64.getEncoder().encodeToString(bytes)
+                val output = jsSandbox.eval(script, mapOf("result" to encoded, "baseUrl" to sourceUrl), sourceContext(source, sourceUrl))
+                ImageDecode.parse(output)?.takeIf(ImageDecode::looksLikeImage)
+            }.getOrNull()
+        }
+    }
+
+    /**
      * 调试专用：跑一遍详情规则，同时把「字段 → 规则原文 → 取到的值/失败原因」逐条带出来。
      * 只在 `/debug` 链路上用，正常取值走的是无 trace 的那条路径，不给热路径加开销。
      */

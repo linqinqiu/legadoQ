@@ -681,7 +681,7 @@ export const api = {
    * 正文配图/条目配图的代取地址。`version` 是"这张被重取过几次"的代次：只改浏览器侧的缓存键，
    * 服务端那份仍按原图地址落盘（见 `web/src/reader/readerImage.ts`）。
    */
-  bookImage: (url: string, page?: string, version?: string) => `/api/book/image?url=${encodeURIComponent(url)}${page ? `&page=${encodeURIComponent(page)}` : ''}${version ? `&v=${encodeURIComponent(version)}` : ''}`,
+  bookImage: (url: string, page?: string, version?: string, sourceId?: string) => `/api/book/image?url=${encodeURIComponent(url)}${page ? `&page=${encodeURIComponent(page)}` : ''}${version ? `&v=${encodeURIComponent(version)}` : ''}${sourceId ? `&sourceId=${encodeURIComponent(sourceId)}` : ''}`,
   /** 让服务端绕开盘上那份、重新向上游走一次并原子覆盖。取不到会 502 + 原因，界面把那句话显示给用户。 */
   refreshBookImage: (url: string, page?: string) => request<RefreshedImage>(`/api/book/image/refresh?url=${encodeURIComponent(url)}${page ? `&page=${encodeURIComponent(page)}` : ''}`, { method: 'POST' }),
   /**

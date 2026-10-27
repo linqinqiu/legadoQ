@@ -161,7 +161,7 @@ fun Route.apiRoutes(
         replaceRulesRoutes(database, runner)
         shelfRoutes(database, bookCache, coverCache, localBooksDirectory)
         tocRulesRoutes(database, backupKeep, localBooksDirectory)
-        mediaRoutes(database, coverCache, localBooksDirectory)
+        mediaRoutes(database, coverCache, localBooksDirectory, runner)
         readerRoutes(database)
         ttsRoutes(edgeTts, ttsSessions)
         agentApiRoutes(database, homeDirectory, agentConnection, profileStore)

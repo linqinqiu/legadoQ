@@ -9,8 +9,8 @@ import { isSameSiteAsset } from './readerInteractions'
  * **不进服务端的落盘键**（那边按 `sha256(原图地址)`），所以换代次不会让磁盘多存一份图，
  * 只是让浏览器重新发一次请求 —— 盘上那份由 `POST /api/book/image/refresh` 去覆盖。
  */
-export function readerImageSrc(image: string | null | undefined, referer: string | undefined, generation = 0): string {
+export function readerImageSrc(image: string | null | undefined, referer: string | undefined, generation = 0, sourceId?: string): string {
   if (!image) return ''
   if (isSameSiteAsset(image)) return image
-  return api.bookImage(image, referer, generation > 0 ? String(generation) : undefined)
+  return api.bookImage(image, referer, generation > 0 ? String(generation) : undefined, sourceId)
 }

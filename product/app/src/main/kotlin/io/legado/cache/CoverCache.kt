@@ -94,11 +94,12 @@ class CoverCache(
      * ① 必须带 Referer（图站普遍防盗链，直连拿回来是 403 占位图）；
      * ② 拒 `image/svg+xml`：代理后与主应用同源，SVG 里可以带脚本，等于给自己开个 XSS 执行面。
      */
-    fun cacheContentImage(url: String, referer: String?): CachedCover {
-        val key = sha256(url)
+    fun cacheContentImage(url: String, referer: String?, decode: ((ByteArray) -> ByteArray?)? = null, keySuffix: String = ""): CachedCover {
+        // 解密后的图与原图内容不同，必须分开缓存；keySuffix 由调用方带上「源 + 解密」的口径。
+        val key = sha256(url + keySuffix)
         val stored = directory.resolve(key)
         if (Files.exists(stored)) return CachedCover(key, sniffContentType(stored))
-        return fetchAndStore(url, referer, key, MAX_CONTENT_BYTES)
+        return fetchAndStore(url, referer, key, MAX_CONTENT_BYTES, decode)
     }
 
     /**
@@ -107,17 +108,20 @@ class CoverCache(
      * 浏览器那两份副本（HTTP 7 天 `max-age` 与 SW 的 `legado-covers`）由取图地址上的代次参数绕开，
      * 见 `web/src/reader/readerImage.ts`。
      */
-    fun refetchContentImage(url: String, referer: String?): CachedCover =
-        fetchAndStore(url, referer, sha256(url), MAX_CONTENT_BYTES)
+    fun refetchContentImage(url: String, referer: String?, decode: ((ByteArray) -> ByteArray?)? = null, keySuffix: String = ""): CachedCover =
+        fetchAndStore(url, referer, sha256(url + keySuffix), MAX_CONTENT_BYTES, decode)
 
-    private fun fetchAndStore(url: String, referer: String?, key: String, limit: Int): CachedCover {
+    private fun fetchAndStore(url: String, referer: String?, key: String, limit: Int, decode: ((ByteArray) -> ByteArray?)? = null): CachedCover {
         val stored = directory.resolve(key)
         // `fetcher` 只在测试里注入（生产为 null）；正文图片也走它，单元测试才能不联网地钉住"图被缓存了"。
         val (rawType, body) = fetcher?.invoke(url) ?: download(url, referer, limit)
         val type = rawType.substringBefore(';').trim().lowercase()
         require(type.startsWith("image/") && type != "image/svg+xml") { "正文图片类型不被允许：${type.ifBlank { "未知" }}" }
-        require(body.size <= limit) { "正文图片超过 ${limit / 1024 / 1024} MiB 限制" }
-        writeAtomic(key, body)
+        // 书源配了 imageDecode 就先解密再落盘；解密失败/解出来不像图片则保留原图 ——
+        // 用户宁可看到未解密的图，也不该因为脚本跑挂而整张裂掉。
+        val finalBody = decode?.invoke(body) ?: body
+        require(finalBody.size <= limit) { "正文图片超过 ${limit / 1024 / 1024} MiB 限制" }
+        writeAtomic(key, finalBody)
         return CachedCover(key, sniffContentType(stored))
     }
 
