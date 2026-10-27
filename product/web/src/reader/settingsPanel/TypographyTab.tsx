@@ -10,7 +10,7 @@ import { SettingChoices, SettingGroup, SettingRange } from './SettingRow'
 export function TypographyTab({ settings, onChange }: { settings: ReaderSettings; onChange: (next: ReaderSettings) => void }) {
   const update = (value: Partial<ReaderSettings>) => onChange({ ...settings, ...value })
   return <>
-    <SettingGroup title="字体">
+    <SettingGroup title="字体" hint="填本机已装字体的名字（多个用逗号隔开，先找到的先用）；字体文件需要自己装进系统。">
       <label className="font-select"><select value={settings.font} onChange={event => update({ font: event.target.value as ReaderSettings['font'] })}><option value="song">思源宋体</option><option value="hei">黑体 / 苹方</option><option value="kai">华文楷体</option><option value="fangsong">华文仿宋</option><option value="yuan">圆体</option><option value="mono">等宽字体</option><option value="system">系统字体</option><option value="custom">自定义字体名…</option></select><Icon name="chevronDown" /></label>
       {settings.font === 'custom' && <input type="text" className="reader-text-input" value={settings.customFont} placeholder="本机已装字体，如：霞鹜文楷 / LXGW WenKai" onChange={event => update({ customFont: event.target.value })} />}
     </SettingGroup>
@@ -27,7 +27,7 @@ export function TypographyTab({ settings, onChange }: { settings: ReaderSettings
       <SettingRange label="左右边距" value={settings.contentPadding} min={20} max={120} step={2} display={`${settings.contentPadding}`} onChange={contentPadding => update({ contentPadding })} />
       <SettingRange label="版心宽度" value={settings.maxWidth} min={560} max={1400} step={20} display={`${settings.maxWidth}px`} onChange={maxWidth => update({ maxWidth })} />
       <SettingChoices label="正文对齐" value={settings.textAlign} options={[{ value: 'justify', label: '两端对齐' }, { value: 'left', label: '左对齐' }]} onChange={textAlign => update({ textAlign })} />
-      <SettingChoices label="分栏排版" value={settings.columnMode} options={[{ value: 'auto', label: '自适应' }, { value: 'single', label: '单栏' }, { value: 'double', label: '双栏' }]} onChange={columnMode => update({ columnMode })} />
+      <SettingChoices label="分栏排版" value={settings.columnMode} options={[{ value: 'auto', label: '自适应' }, { value: 'single', label: '单栏' }, { value: 'double', label: '双栏' }]} onChange={columnMode => update({ columnMode })} hint={settings.columnMode === 'auto' ? '宽屏 (≥800px) 自动开启双页分栏' : settings.columnMode === 'double' ? '固定双栏双页排版' : '固定单栏排版'} />
     </SettingGroup>
     <button className="reset-settings" onClick={() => onChange({ ...defaultReaderSettings, theme: settings.theme, customSkins: settings.customSkins })}>恢复默认设置</button>
   </>

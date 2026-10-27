@@ -129,6 +129,12 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
         </header>
 
         <div className="server-port-body">
+          <p className="customize-hint">
+            这台服务的名字与图标。改的是<b>本机安装根</b>下的 <code>brand.json</code>，
+            所以对本机所有浏览器与装到桌面的应用都生效；界面标题与主题色刷新即生效，
+            已经装到桌面的那个应用要等浏览器同步清单（必要时卸载重装）。
+          </p>
+
           <label className="customize-field">
             <span>应用名称（留空 = 内置的「{brand?.builtinName ?? 'legadoQ'}」）</span>
             <input type="text" value={name} maxLength={40} placeholder={brand?.builtinName ?? 'legadoQ'}

@@ -175,6 +175,7 @@ export function TapZoneEditor({
               <span className="tap-zone-row-label">加虚线</span>
               <button type="button" className="tap-zone-mini" disabled={map.x.length >= MAX_CUTS} onClick={() => withCuts('x', addCut(map.x))}>＋竖线</button>
               <button type="button" className="tap-zone-mini" disabled={map.y.length >= MAX_CUTS} onClick={() => withCuts('y', addCut(map.y))}>＋横线</button>
+              <small className="setting-hint">拖动虚线改位置，双击删掉</small>
             </div>
             <div className="tap-zone-row is-actions">
               <span className="tap-zone-row-label">第 {selected + 1} 区</span>

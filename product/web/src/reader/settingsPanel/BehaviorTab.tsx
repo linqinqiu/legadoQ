@@ -11,14 +11,14 @@ import { SettingGroup } from './SettingRow'
 export function BehaviorTab({ settings, onChange }: { settings: ReaderSettings; onChange: (next: ReaderSettings) => void }) {
   const update = (value: Partial<ReaderSettings>) => onChange({ ...settings, ...value })
   return <>
-    <SettingGroup title="翻页方式">
+    <SettingGroup title="翻页方式" hint={settings.pageMode === 'paginate' ? '左右轻扫或点击屏幕两侧平滑翻页' : '垂直滚动阅读，点击上下可快速翻滚'}>
       <div className="page-modes">
         <button className={settings.pageMode === 'scroll' ? 'selected' : ''} onClick={() => update({ pageMode: 'scroll' })}>连续滚动</button>
         <button className={settings.pageMode === 'paginate' ? 'selected' : ''} onClick={() => update({ pageMode: 'paginate' })}>平移分页</button>
       </div>
     </SettingGroup>
     {settings.pageMode === 'paginate' && (
-      <SettingGroup title="翻页动画">
+      <SettingGroup title="翻页动画" hint="翻页时怎么过渡。连续滚动模式没有页，用不上这一项。">
         <div className="page-modes">
           <button className={settings.pageAnim === 'slide' ? 'selected' : ''} onClick={() => update({ pageAnim: 'slide' })}>平移过渡</button>
           <button className={settings.pageAnim === 'cover' ? 'selected' : ''} onClick={() => update({ pageAnim: 'cover' })}>覆盖</button>

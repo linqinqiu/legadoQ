@@ -49,6 +49,7 @@ export function BookSearchDialog({ sourceId, bookUrl, onJump, onClose }: {
       <div className="dialog-shell size-m reader-book-search" onClick={event => event.stopPropagation()}>
         <header className="dialog-head">
           <h2>搜索本书</h2>
+          <small>只在已离线缓存的章节正文里检索；没缓存的章节搜不到。</small>
         </header>
         <div className="reader-book-search-body">
           <div className="reader-book-search-input">

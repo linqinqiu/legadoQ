@@ -167,6 +167,10 @@ export function BackupPage() {
               autoComplete="off"
               aria-label="凭据解密密码"
             />
+            <p className="backup-hint">
+              只有 <code>cookies.json</code> 需要它。
+              不填也照样导入其余全部内容，凭据那一节会单独告诉你没解开。密码只在本次请求内存里用一次，不写日志。
+            </p>
           </div>
         )}
         <p className="backup-hint">服务端把包写到临时文件、读完即删，包本身不会留在磁盘上。</p>

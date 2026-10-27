@@ -103,6 +103,7 @@ export function OfflineCacheModal({ onClose }: OfflineCacheModalProps) {
             <span><Icon name="book" /></span>
             <div>
               <h2>离线缓存</h2>
+              <small>存在这台电脑的浏览器里，断网也能读已下载的部分</small>
             </div>
           </div>
           <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭">
@@ -142,6 +143,7 @@ export function OfflineCacheModal({ onClose }: OfflineCacheModalProps) {
               <div>
                 <div className="offline-books-header">
                   <span>已离线书籍列表</span>
+                  <small>断网时可继续读</small>
                 </div>
                 {view === 'empty' ? (
                   <p className="empty-notice">这台电脑上还没有已下载的章节。在阅读器底部点「下载到本设备」，之后断网也能继续读。</p>

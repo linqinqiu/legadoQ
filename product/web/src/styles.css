@@ -1140,6 +1140,49 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .text-indent-choice { display: grid; gap: 6px; color: var(--ink); font-size: 12px; }
 .text-indent-choice .indent-modes { grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .setting-hint { color: var(--muted); font-size: 11px; }
+/* 设置项解释：平时只留一个问号，鼠标靠近或键盘聚焦时浮出说明（不占正文行）。 */
+.setting-hint-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  border: 1px solid color-mix(in srgb, var(--muted) 55%, transparent);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: help;
+  flex: none;
+}
+.setting-hint-icon::after {
+  content: attr(data-hint);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 240px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 1.65;
+  text-align: left;
+  white-space: normal;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .12s ease;
+  pointer-events: none;
+  z-index: 70;
+}
+.setting-hint-icon:hover::after,
+.setting-hint-icon:focus-visible::after { opacity: 1; visibility: visible; }
 /* 工具栏配置（用户 2026-10-11「阅读菜单可配置」）：一行一项，勾选框 + 上移/下移。 */
 .reader-menu-config { display: grid; gap: 6px; }
 .reader-menu-row { display: flex; align-items: center; gap: 8px; }

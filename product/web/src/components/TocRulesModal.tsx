@@ -253,6 +253,7 @@ export function TocRulesModal({
                       <button type="button" className="subtle-button" disabled={busy} onClick={() => { setDraft(null); setFormError('') }}>
                         取消
                       </button>
+                      <small className="customize-note">正则在本机编不出来时，服务端直接退回原因，不会存进表里。</small>
                     </div>
                   </div>
                 )}

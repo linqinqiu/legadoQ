@@ -49,7 +49,7 @@ export function OtherSettingsPanel({
   }
   return <>
     {/* 简繁转换：只换字形不换词（A–F 的 C 项）。 */}
-    <SettingGroup title="简繁转换">
+    <SettingGroup title="简繁转换" hint={settings.scriptMode === 'off' ? '按原样显示书里的字。' : `正文、章名、目录一起转${settings.scriptMode === 's2t' ? '，繁体按台港排版习惯（因为 → 因為）' : ''}；第一次打开要取一次词表，稍等一下。`}>
       <div className="page-modes">
         {SCRIPT_MODE_OPTIONS.map(option => (
           <button key={option.id} type="button" className={settings.scriptMode === option.id ? 'selected' : ''} onClick={() => update({ scriptMode: option.id })}>{option.label}</button>
@@ -57,14 +57,14 @@ export function OtherSettingsPanel({
       </div>
     </SettingGroup>
     {/* 点击区域改到正文上编辑：这里只留一颗入口。 */}
-    <SettingGroup title="点击区域">
+    <SettingGroup title="点击区域" hint="进去在正文上拖横竖虚线改分区，改完立刻生效，不用重开这本书。">
       <button type="button" className="rules-setting-btn is-wide" onClick={onEditTapZones}>
         <span className="rules-setting-btn-label"><Icon name="sliders" />在正文上编辑点击区域</span>
         <Icon name="arrowRight" />
       </button>
     </SettingGroup>
     {/* 工具栏可配置：清单来自 readerMenu.ts，与顶栏渲染同源。 */}
-    <SettingGroup title="工具栏">
+    <SettingGroup title="工具栏" hint="右上角显示哪些按钮、按什么顺序。至少留一个。">
       <div className="reader-menu-config">
         {READER_MENU_ITEMS.map(item => {
           const shown = settings.menuItems.includes(item.id)
@@ -120,7 +120,7 @@ export function OtherSettingsPanel({
       </SettingGroup>
     )}
     {onOpenReplaceRules && (
-      <SettingGroup title="内容净化">
+      <SettingGroup title="内容净化" hint="针对当前书籍/书源过滤广告与特定字符">
         <button type="button" className="rules-setting-btn is-wide" onClick={onOpenReplaceRules}>
           <span className="rules-setting-btn-label"><Icon name="edit" />替换净化规则管理</span>
           <Icon name="arrowRight" />
