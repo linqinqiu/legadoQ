@@ -19,7 +19,7 @@ import assert from 'node:assert/strict'
 
 /** 造一个最小可用的假 window，用于注入全局。 */
 function withFakeWindow<T>(
-  overrides: { matchMedia?: (q: string) => { matches: boolean }; standalone?: boolean; referrer?: string },
+  overrides: { matchMedia?: (q: string) => { matches: boolean }; standalone?: boolean; referrer?: string; search?: string },
   fn: () => T,
 ): T {
   const originalWindow = (globalThis as any).window
@@ -27,6 +27,7 @@ function withFakeWindow<T>(
   ;(globalThis as any).window = {
     matchMedia: overrides.matchMedia ?? (() => ({ matches: false })),
     navigator: { standalone: overrides.standalone },
+    location: { search: overrides.search ?? '' },
   }
   ;(globalThis as any).document = { referrer: overrides.referrer ?? '' }
   try {
@@ -72,6 +73,22 @@ test('isPwaStandalone：没有 window 时返回 false，不抛（SSR / 测试环
   }
 })
 
+test('isDesktopShell：桌面壳的 ?desktop=1 才算，普通标签页不算', async () => {
+  const { isDesktopShell } = await import('../src/components/PwaManager.tsx')
+  assert.equal(withFakeWindow({ search: '?desktop=1' }, () => isDesktopShell()), true, '桌面壳窗口应被识别')
+  assert.equal(withFakeWindow({ search: '?foo=1&desktop=1' }, () => isDesktopShell()), true, '参数顺序无关')
+  assert.equal(withFakeWindow({ search: '' }, () => isDesktopShell()), false, '普通标签页不是桌面壳')
+  assert.equal(withFakeWindow({ search: '?desktop=0' }, () => isDesktopShell()), false, '只有 desktop=1 才算')
+})
+
+test('subscribePwaInstall：桌面壳里即使有安装事件也说「不能装」', async () => {
+  const { subscribePwaInstall } = await import('../src/components/PwaManager.tsx')
+  const calls: boolean[] = []
+  const unsubscribe = withFakeWindow({ search: '?desktop=1' }, () => subscribePwaInstall(v => calls.push(v)))
+  assert.deepEqual(calls, [false], '桌面壳不该提示安装（安装条只会挡住窗口底部）')
+  unsubscribe()
+})
+
 test('subscribePwaInstall：订阅时立刻回一次当前状态，取消后不再回调', async () => {
   const { subscribePwaInstall } = await import('../src/components/PwaManager.tsx')
   const calls: boolean[] = []
@@ -105,9 +122,10 @@ test('promptPwaInstall：没有待处理的安装事件时返回 false，不抛'
   assert.equal(got, false, '没有安装事件时应返回 false，不是抛异常')
 })
 
-test('三个函数都是具名导出，且 PwaManager 组件也在', async () => {
+test('导出的函数都在，且 PwaManager 组件也在', async () => {
   const mod = await import('../src/components/PwaManager.tsx')
   assert.equal(typeof mod.isPwaStandalone, 'function')
+  assert.equal(typeof mod.isDesktopShell, 'function')
   assert.equal(typeof mod.subscribePwaInstall, 'function')
   assert.equal(typeof mod.promptPwaInstall, 'function')
   assert.equal(typeof mod.PwaManager, 'function', '组件本身也要导出（main.tsx 用它）')

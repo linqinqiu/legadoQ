@@ -69,3 +69,14 @@ test('书源订阅面板不再强制要求 onClose（订阅页里没有"收起�
   // 只在传了 onClose 时才渲染收起按钮
   assert.match(panel, /\{onClose &&/, '收起按钮要按 onClose 是否存在来决定')
 })
+
+test('空订阅时页头不摆一颗按不动的「全部同步」', () => {
+  const panel = read('sources/SourceSubscriptionPanel.tsx')
+  // 动作区只在有订阅（或宿主提供收起）时才渲染 —— 否则窄屏会孤零零掉在说明下面
+  assert.match(panel, /\{\(items\.length > 0 \|\| onClose\) && \(/,
+    '空状态下不该渲染页头动作区')
+  // 「全部同步」本身也只在有订阅时出现，不再靠 disabled 装样子
+  assert.match(panel, /\{items\.length > 0 && \(/, '「全部同步」要按 items.length 决定是否渲染')
+  assert.doesNotMatch(panel, /disabled=\{busy !== null \|\| items\.length === 0\}/,
+    '既然空状态不渲染按钮了，disabled 里就不该再挂 items.length === 0')
+})

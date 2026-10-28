@@ -48,6 +48,7 @@ export function renderPage(page: Page, ctx: PageContext): React.ReactNode {
           selected={ctx.selected}
           onSelect={ctx.onSelectSource}
           onSourcesChange={ctx.onSourcesChange}
+          sources={ctx.sources}
         />
       )
     case 'subscriptions':

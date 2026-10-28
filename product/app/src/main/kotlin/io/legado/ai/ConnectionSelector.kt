@@ -35,8 +35,13 @@ interface ConnectionSelector {
  * AGENTS.md §4 关于「第一个连接、不自动顺延」的描述继续成立。
  */
 class FirstProfileSelector : ConnectionSelector {
+    /**
+     * 先找用户标了「默认」的那条（`options.default=1`），没有才退回第一条。
+     *
+     * 从前一律取第一条：想换连接只能删掉前面的重登，等于没有选择。
+     */
     override fun select(profiles: List<AgentProfileStore.Profile>): AgentProfileStore.Profile? =
-        profiles.firstOrNull()
+        profiles.firstOrNull { ProfileOptions.isDefault(it.options) } ?: profiles.firstOrNull()
 }
 
 /**

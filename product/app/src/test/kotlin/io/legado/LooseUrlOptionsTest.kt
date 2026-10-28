@@ -70,6 +70,21 @@ class LooseUrlOptionsTest {
     }
 
     @Test
+    fun `a nested array inside the body survives brace pairing`() {
+        // 番茄 v3.4.2 的书架规则就是这么写的：body 里再套一层对象数组。
+        // 括号配对只要少吞一层，整个 java.ajax 就会退化成「URL 无效」，书架分栏返回 0 本。
+        val (url, options) = runner.splitUrlOptions(
+            """https://fanqienovel.com/api/bookshelf/multidetail,{"method":"post","body":{"books":[{"book_id":"7677387917601279038"},{"book_id":"7593218493693037592"}]}}"""
+        )
+        assertEquals("https://fanqienovel.com/api/bookshelf/multidetail", url)
+        assertEquals("POST", options?.method)
+        assertEquals(
+            """{"books":[{"book_id":"7677387917601279038"},{"book_id":"7593218493693037592"}]}""",
+            options?.body
+        )
+    }
+
+    @Test
     fun `headers given as a string are parsed again`() {
         val (_, options) = runner.splitUrlOptions("""https://x.dev/s,{"headers": "{Referer:'https://m.x.dev/search'}", "method":"POST"}""")
         assertEquals("https://m.x.dev/search", options?.headers?.get("Referer"))

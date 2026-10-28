@@ -11,8 +11,13 @@ import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../lib/agreement'
  * 「之后不再显示」只承诺给点了同意的人。文案与「关于」页共用 `agreement.ts` 那一份
  * （抄两份迟早漂移）。key 带版本号：将来协议大改时升 v2，老用户会再看一次。
  */
-const STORAGE_KEY = 'qingyue-agreement-v1'
+const STORAGE_KEY = 'legadoq-agreement-v1'
 const READ_SECONDS = 5
+
+/** 协议文案按空行分段（`agreement.ts` 是纯文本，不在这里解析 Markdown）。 */
+function paragraphs(text: string) {
+  return text.split(/\n{2,}/).map((line, index) => <p key={index}>{line}</p>)
+}
 
 export function FirstRunAgreement() {
   const [visible, setVisible] = useState(() => {
@@ -40,9 +45,9 @@ export function FirstRunAgreement() {
         <p className="agreement-intro">{PRODUCT_INTRO}</p>
         <div className="agreement-body">
           <h2>用户协议</h2>
-          <p>{TERMS_TEXT}</p>
+          {paragraphs(TERMS_TEXT)}
           <h2>免责声明</h2>
-          <p>{DISCLAIMER_TEXT}</p>
+          {paragraphs(DISCLAIMER_TEXT)}
         </div>
         <div className="agreement-actions">
           <button type="button" className="primary-button" disabled={seconds > 0} onClick={agree}>

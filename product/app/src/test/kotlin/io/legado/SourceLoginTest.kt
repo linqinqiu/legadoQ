@@ -206,6 +206,51 @@ class SourceLoginTest {
     }
 
     @Test
+    fun `login action on a URL-only source opens the login page instead of failing`() {
+        val dbPath = Files.createTempFile("legado-login-url-only", ".sqlite").toString()
+        val db = Database(dbPath)
+        db.initialize()
+        val runner = RuleRunner(database = db)
+
+        // 番茄 v3.4.2 的真实形态：loginUrl 只有一个网址，没有 loginUi / loginCheckJs，也没有 login()
+        val sourceJson = """
+        {
+            "bookSourceUrl": "https://fq-book.example.com",
+            "bookSourceName": "番茄小说 v3.4.2",
+            "loginUrl": "https://fanqienovel.com/"
+        }
+        """.trimIndent()
+
+        val res = runner.executeLoginAction(sourceJson, "login(true)", mapOf("user" to "u"))
+        assertTrue("没有登录脚本时不该报失败: ${res.error}", res.success)
+        assertNull(res.error)
+        assertEquals("https://fanqienovel.com/", res.openUrl)
+        assertTrue(res.toastMessages.any { it.contains("没有登录脚本") })
+        assertEquals("u", res.updatedLoginInfo?.get("user"))
+    }
+
+    @Test
+    fun `login action without a login function reports a clear Chinese error`() {
+        val dbPath = Files.createTempFile("legado-login-no-func", ".sqlite").toString()
+        val db = Database(dbPath)
+        db.initialize()
+        val runner = RuleRunner(database = db)
+
+        val sourceJson = """
+        {
+            "bookSourceUrl": "https://script-only.example.com",
+            "bookSourceName": "只有工具函数的源",
+            "loginUrl": "function helper() { return 1 }"
+        }
+        """.trimIndent()
+
+        val res = runner.executeLoginAction(sourceJson, "login(true)", emptyMap())
+        assertFalse(res.success)
+        assertNotNull(res.error)
+        assertTrue("错误信息应说清是缺 login(): ${res.error}", res.error!!.contains("没有定义 login()"))
+    }
+
+    @Test
     fun `HTTP Login endpoints integration test`() = testApplication {
         val dbPath = Files.createTempFile("legado-routes-login-test", ".sqlite").toString()
         val tempDir = Files.createTempDirectory("legado-routes-login-covers")
@@ -529,6 +574,46 @@ class SourceLoginTest {
         val plain = """{"bookSourceUrl":"https://plain.example","loginUrl":"https://plain.example/login"}"""
         assertFalse(runner.loginIsScript(plain))
         assertNull(runner.loginBrowserStartUrl(plain))
+    }
+
+    @Test
+    fun `relative login urls resolve against the source site while js comments stay scripts`() {
+        val runner = RuleRunner { "" }
+
+        // 单斜杠相对路径：按 bookSourceUrl 解析，且不能再被当成登录 JS
+        val relative = """{"bookSourceUrl":"https://books.example/a/index.html","loginUrl":"/my/profile.html"}"""
+        assertEquals("https://books.example/my/profile.html", WebViewProxy.loginPageUrl(relative))
+        assertFalse(runner.loginIsScript(relative))
+        assertTrue(runner.loginCanOpenBrowser(relative))
+
+        // 协议相对地址：补上 bookSourceUrl 的 scheme
+        val protocolRelative = """{"bookSourceUrl":"http://books.example/","loginUrl":"//passport.example/sso"}"""
+        assertEquals("http://passport.example/sso", WebViewProxy.loginPageUrl(protocolRelative))
+        assertFalse(runner.loginIsScript(protocolRelative))
+
+        // `// 注释` 开头的登录 JS 是脚本，不是协议相对地址；`/*…*/` 开头的同理
+        val lineComment = """{"bookSourceUrl":"https://books.example/","loginUrl":"// 登录及登录检查\nfunction login(){ java.startBrowserAwait('https://books.example/qr'); }"}"""
+        assertTrue(runner.loginIsScript(lineComment))
+        assertNull("登录 JS 不是可直开的网址", WebViewProxy.loginPageUrl(lineComment))
+        assertEquals("https://books.example/qr", runner.loginBrowserStartUrl(lineComment))
+
+        val blockComment = """{"bookSourceUrl":"https://books.example/","loginUrl":"/* 域名设置 */\nfunction login(){ java.startBrowserAwait('https://books.example/sso'); }"}"""
+        assertTrue(runner.loginIsScript(blockComment))
+        assertNull(WebViewProxy.loginPageUrl(blockComment))
+        assertEquals("https://books.example/sso", runner.loginBrowserStartUrl(blockComment))
+    }
+
+    @Test
+    fun `login entry detection covers url script and jsLib shapes without executing them`() {
+        val runner = RuleRunner { "" }
+        assertTrue(runner.loginCanOpenBrowser("""{"bookSourceUrl":"https://a.example","loginUrl":"https://a.example/login"}"""))
+        assertTrue(runner.loginCanOpenBrowser("""{"bookSourceUrl":"https://a.example","loginUrl":"/login"}"""))
+        assertTrue(runner.loginCanOpenBrowser("""{"bookSourceUrl":"https://a.example","loginUrl":"function login(){ java.startBrowserAwait('https://a.example/qr'); }"}"""))
+        // 没有 loginUrl，登录入口写在 jsLib 里
+        assertTrue(runner.loginCanOpenBrowser("""{"bookSourceUrl":"https://a.example","jsLib":"function login(){ java.startBrowserAwait('https://a.example/qr'); }"}"""))
+        assertFalse(runner.loginCanOpenBrowser("""{"bookSourceUrl":"https://a.example"}"""))
+        // 有 login() 但只做账号密码提交、不会打开浏览器：不能冒充能打开登录页
+        assertFalse(runner.loginCanOpenBrowser("""{"bookSourceUrl":"https://a.example","jsLib":"function login(){ source.putLoginHeader('x'); }"}"""))
     }
 
     @Test

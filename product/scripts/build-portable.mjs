@@ -10,7 +10,7 @@
  *   （前置：先跑 `npm run build`，它会打 fatJar；本脚本只负责打包，不重新编译）
  *
  * 产物（按「产物出库」规则放仓库外，与仓库并列）：
- *   <repo>/legado-releases/qingyue-portable-<version>/
+ *   <repo>/legado-releases/legadoq-portable-<version>/
  *     ├─ start.bat / start.sh
  *     ├─ runtime/            ← jlink 精简 JRE 17（不依赖本机 Java）
  *     ├─ app/legado-<version>-all.jar
@@ -38,7 +38,7 @@ if (!fs.existsSync(jar)) {
   process.exit(1)
 }
 
-const outDir = path.join(REPO, 'legado-releases', `qingyue-portable-${version}`)
+const outDir = path.join(REPO, 'legado-releases', `legadoq-portable-${version}`)
 fs.rmSync(outDir, { recursive: true, force: true })
 for (const sub of ['app', 'home', 'data', 'tmp']) fs.mkdirSync(path.join(outDir, sub), { recursive: true })
 

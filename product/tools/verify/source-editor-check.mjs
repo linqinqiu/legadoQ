@@ -221,7 +221,7 @@ await wait(400)
 const warnGone = await p.$$eval('.source-editor-broken', els => els.length)
 check('改回原域名后警告消失', warnGone === 0, `${warnGone} 条`)
 
-// ---------- 6. 登录浏览器整屏化 ----------
+// ---------- 6. 登录浮层只剩两条能拿到凭据的路 ----------
 await filterList('')
 const loginRow = await p.evaluate(() => {
   const row = [...document.querySelectorAll('.source-list button')].find(el => el.innerText.includes('登录'))
@@ -236,62 +236,32 @@ if (loginRow) {
   if (entry) {
     await entry.click()
     await wait(1500)
-    const opened = await p.evaluate(() => {
-      const btn = [...document.querySelectorAll('button')].find(e =>
-        (e.innerText || '').includes('用内置浏览器登录') || (e.getAttribute('title') || '').includes('用内置浏览器登录'))
-      if (!btn) return 'no-webview-button'
-      btn.click()
-      return 'clicked'
-    })
-    await wait(2500)
-    const geometry = await p.evaluate(() => {
-      const dialog = document.querySelector('.source-webview-dialog')
-      const backdrop = document.querySelector('.overlay-backdrop.is-flush')
-      const frame = document.querySelector('.source-webview-frame')
-      const picker = document.querySelector('.source-webview-viewport-picker')
-      if (!dialog) return { missing: true, opened: true }
-      const r = dialog.getBoundingClientRect()
-      const cs = getComputedStyle(dialog)
-      const bs = backdrop ? getComputedStyle(backdrop) : null
+    // 用户 2026-10-28：内置浏览器抓不到风控站点的 Cookie，填写表单与书签同步也没人用。
+    // 登录浮层只保留真浏览器 + 粘贴 Cookie；这条判据同时钉住"死入口不许回来"。
+    const loginDialog = await p.evaluate(() => {
+      const dialog = document.querySelector('.source-login-dialog')
       return {
-        vw: innerWidth, vh: innerHeight,
-        w: Math.round(r.width), h: Math.round(r.height),
-        radius: cs.borderRadius,
-        backdropPadding: bs ? bs.padding : 'n/a',
-        picker: !!picker,
-        frameW: frame ? Math.round(frame.getBoundingClientRect().width) : 0,
-        frameH: frame ? Math.round(frame.getBoundingClientRect().height) : 0,
-        transform: frame ? getComputedStyle(frame).transform : 'none',
+        missing: !dialog,
+        tabs: [...(dialog?.querySelectorAll('.source-login-method-tab') || [])].map(t => t.textContent.replace('推荐', '').trim()),
+        text: dialog?.innerText || '',
+        globe: !!dialog?.querySelector('[aria-label="用内置浏览器登录"]'),
       }
     })
-    if (geometry.missing) {
-      check('内置浏览器弹窗已挂载', false, opened)
+    if (loginDialog.missing) {
+      check('登录浮层已挂载', false, '没有 .source-login-dialog')
     } else {
-      check('弹窗宽度铺满视口', Math.abs(geometry.w - geometry.vw) <= 1, `${geometry.w}×${geometry.h} vs ${geometry.vw}×${geometry.vh}`)
-      check('弹窗高度铺满视口', Math.abs(geometry.h - geometry.vh) <= 1, `${geometry.h}`)
-      check('遮罩不再留内边距', geometry.backdropPadding === '0px', geometry.backdropPadding)
-      check('弹窗不再有圆角/缩放', geometry.radius === '0px' && (geometry.transform === 'none' || !geometry.transform), `radius=${geometry.radius} transform=${geometry.transform}`)
-      check('手机/平板/铺满切换器已删除', geometry.picker === false)
-      check('iframe 拿到弹窗全部宽度', geometry.frameW >= geometry.w - 1, `${geometry.frameW}px`)
-      // 安装横幅层级 999 压过弹窗 100，正好盖在移动站提交按钮的位置
-      const bannerVisible = await p.evaluate(() => {
-        const el = document.querySelector('.pwa-install-banner')
-        if (!el) return 'none'
-        const cs = getComputedStyle(el)
-        const r = el.getBoundingClientRect()
-        return cs.display === 'none' || !r.width ? 'hidden' : `visible@${Math.round(r.top)}`
+      check('登录浮层只有真浏览器 / 粘贴 Cookie 两个入口',
+        loginDialog.tabs.length === 2 && loginDialog.tabs.join('|') === '真浏览器|粘贴 Cookie', loginDialog.tabs.join('|'))
+      check('内置浏览器 / 填写表单 / 书签同步入口已撤掉',
+        !loginDialog.globe && !/填写表单|内置浏览器|书签同步|用内置浏览器登录/.test(loginDialog.text),
+        loginDialog.globe ? '地球按钮还在' : '')
+      await p.screenshot({ path: path.join(SHOTS, `v6-login-tabs-${RUN}.png`) })
+      await p.evaluate(() => {
+        const btn = [...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || '') === '关闭' || (e.innerText || '').trim() === '✕')
+        btn?.click()
       })
-      check('整屏登录时安装横幅让路', bannerVisible === 'hidden' || bannerVisible === 'none', bannerVisible)
-      await p.screenshot({ path: path.join(SHOTS, `v6-webview-fullscreen-${RUN}.png`) })
-      const close = await p.$('.source-webview-dialog .source-webview-icon-btn:last-of-type')
-      if (close) await close.click()
       await wait(400)
     }
-    await p.evaluate(() => {
-      const btn = [...document.querySelectorAll('button')].find(e => (e.getAttribute('aria-label') || '') === '关闭' || (e.innerText || '').trim() === '✕')
-      btn?.click()
-    })
-    await wait(400)
   }
 }
 

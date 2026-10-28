@@ -410,6 +410,7 @@ fun Route.sourcesRoutes(
                         loginHeader = state?.loginHeader,
                         sourceVariable = state?.sourceVariable,
                         loginIsScript = runner.loginIsScript(source.json),
+                        loginCanOpenBrowser = runner.loginCanOpenBrowser(source.json),
                         cookieDomains = WebViewProxy.credentialDomains(source.json),
                     )
                 )
@@ -512,7 +513,6 @@ fun Route.sourcesRoutes(
                     if (!call.requireSameOriginWrite()) return@post
                     val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
                     val sourceObj = runCatching { Json.parseToJsonElement(source.json).jsonObject }.getOrNull()
-                    val loginUrl = (sourceObj?.get("loginUrl") as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.startsWith("http") }
                     val sourceUrl = (sourceObj?.get("bookSourceUrl") as? JsonPrimitive)?.contentOrNull?.trim()
                     val homeUrl = sourceUrl?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                     // 书源 JS 里的 java.startBrowserAwait(url) 会给出真实入口，优先级最高
@@ -526,7 +526,8 @@ fun Route.sourcesRoutes(
                     val startUrl = requestedHttp
                         // loginUrl 是整段登录 JS 时，真正的登录地址只有脚本知道（`java.startBrowserAwait(...)`）
                         ?: runner.loginBrowserStartUrl(source.json)
-                        ?: loginUrl
+                        // 静态 loginUrl：含相对路径（如 `/login`）时按 bookSourceUrl 解析
+                        ?: WebViewProxy.loginPageUrl(source.json)
                         ?: homeUrl
                         ?: WebViewProxy.defaultStartUrl(source.json)
                     if (startUrl == null && !inlineOnly) {
@@ -582,20 +583,23 @@ fun Route.sourcesRoutes(
                         val sourceId = call.parameters["id"]!!
                         val source = database.getSource(sourceId)
                             ?: return@post call.respond(HttpStatusCode.NotFound, ApiError("source_not_found", "书源不存在"))
-                        val startUrl = runCatching {
+                        val requested = runCatching {
                             Json.parseToJsonElement(call.receiveText().ifBlank { "{}" }).jsonObject["url"]
-                                ?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("http") }
+                                ?.jsonPrimitive?.contentOrNull
                         }.getOrNull()
-                            ?: runner.loginBrowserStartUrl(source.json)
-                            ?: WebViewProxy.defaultStartUrl(source.json)
-                            ?: source.id
+                        // 与内置浏览器同一条入口求法：脚本/静态 loginUrl/书源首页都能落到一个真地址。
+                        val startUrl = loginStartUrl(runner, source.json, requested)
+                        if (startUrl == null) {
+                            call.respond(HttpStatusCode.BadRequest, ApiError("no_login_url", "这本书源没有可打开的登录地址（loginUrl 与配置里的网址都为空）"))
+                            return@post
+                        }
                         val (resolvedId, _) = targetHosts(sourceId)
                         val outcome = runCatching { withContext(Dispatchers.IO) { externalLogin.start(startUrl) } }
                         outcome.getOrElse { error ->
                             call.respond(HttpStatusCode.ServiceUnavailable, ApiError("browser_unavailable", error.message ?: "启动浏览器失败"))
                             return@post
                         }
-                        call.application.log.info("external browser opened for source: {}, pid: {}", resolvedId, outcome.getOrThrow().pid)
+                        call.application.log.info("external browser opened for source: {}, start: {}, pid: {}", resolvedId, startUrl, outcome.getOrThrow().pid)
                         call.respond(externalLoginStatus(externalLogin, targetHosts(sourceId).second, null))
                     }
                     get {
@@ -711,19 +715,46 @@ fun Route.sourcesRoutes(
         }
 }
 
+/**
+ * 书源登录页入口的统一求法（内置浏览器与真浏览器共用）：
+ * 界面显式给的地址 → 登录脚本 `startBrowserAwait` → 静态 `loginUrl`（含相对路径）→
+ * `bookSourceUrl` → 配置里首个网址。
+ *
+ * 顺序照着"越具体越优先"排：界面把 loginUrl 原样传来时它最准；脚本生成的地址次之；
+ * 静态 loginUrl 可能是相对路径；最后才退到书源首页，保证任何配了网址的书源都能打开一个页面。
+ */
+private fun loginStartUrl(runner: RuleRunner, sourceJson: String, requested: String?): String? {
+    requested?.trim()
+        ?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
+        ?.let { return it }
+    runner.loginBrowserStartUrl(sourceJson)?.let { return it }
+    WebViewProxy.loginPageUrl(sourceJson)?.let { return it }
+    val sourceUrl = runCatching {
+        (Json.parseToJsonElement(sourceJson).jsonObject["bookSourceUrl"] as? JsonPrimitive)?.contentOrNull?.trim()
+    }.getOrNull()
+    if (sourceUrl != null && (sourceUrl.startsWith("http://", true) || sourceUrl.startsWith("https://", true))) {
+        return sourceUrl
+    }
+    return WebViewProxy.defaultStartUrl(sourceJson)
+}
+
 /** 外部浏览器登录的统一回包：开着没有、是哪个浏览器、目标域、以及哪些域已经见到 Cookie。 */
 private fun externalLoginStatus(
     externalLogin: ExternalBrowserLogin,
     hosts: List<String>,
     seen: List<String>?,
-) = ExternalLoginStatus(
-    opened = externalLogin.status() != null,
-    browser = externalLogin.status()?.browser ?: "",
-    port = externalLogin.status()?.port ?: 0,
-    pid = externalLogin.status()?.pid ?: 0,
-    hosts = hosts,
-    seen = seen ?: emptyList(),
-)
+): ExternalLoginStatus {
+    // 只问一次：status() 在服务重启后会去附着 profile 里还活着的调试端口，重复调用就是重复探测。
+    val session = externalLogin.status()
+    return ExternalLoginStatus(
+        opened = session != null,
+        browser = session?.browser ?: "",
+        port = session?.port ?: 0,
+        pid = session?.pid ?: 0,
+        hosts = hosts,
+        seen = seen ?: emptyList(),
+    )
+}
 
 private fun jsonEvent(message: String): String = Json.encodeToString(message)
 

@@ -15,6 +15,7 @@ import { BrandModal } from './components/BrandModal'
 import { ChangelogModal } from './plugins/changelog/ChangelogModal'
 import { BackupModal } from './plugins/backup/BackupModal'
 import { AboutModal } from './plugins/about/AboutModal'
+import { GuideModal } from './plugins/about/GuideModal'
 import { ReadingLogModal } from './plugins/reading-log/ReadingLogModal'
 import { SourceHealthEntryModal } from './plugins/source-health/SourceHealthModalEntry'
 import { AiModal } from './features/ai/AiModal'
@@ -636,8 +637,10 @@ function App() {
           onClose={closeModal}
           onOpenChangelog={() => openModalFrom('changelog', 'about')}
           onOpenShortcuts={() => openModalFrom('shortcuts', 'about')}
+          onOpenGuide={() => openModalFrom('guide', 'about')}
         />
       )}
+      {openModal === 'guide' && <GuideModal onClose={closeModal} />}
       {openModal === 'reading-log' && <ReadingLogModal onClose={closeModal} />}
       {openModal === 'source-health' && (
         <SourceHealthEntryModal

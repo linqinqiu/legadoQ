@@ -46,12 +46,10 @@ const allRows = (sections: SettingsSection[]) => sections.flatMap(s => s.rows)
 test('产出非空，且分组顺序稳定（用户靠位置记东西）', () => {
   const { actions } = fakeActions()
   const sections = buildSettingsSections(actions)
-  assert.ok(sections.length >= 3, `至少 3 个分组，实际 ${sections.length}`)
-  const titles = sections.map(s => s.title)
-  // 顺序是刻意的：阅读在前（最常用），系统在后（最少用）
-  assert.equal(titles[0], '阅读', `第一组应是「阅读」，实际 ${titles[0]}`)
-  assert.equal(titles[titles.length - 1], '接入与扩展', `最后一组应是「接入与扩展」，实际 ${titles[titles.length - 1]}`)
+  // 2026-10-28 收成四档：原来九档里有五档只有一行，两栏版式一半格子空着。
+  assert.deepEqual(sections.map(s => s.title), ['阅读', '外观', '数据与凭据', '服务与接入'])
   // 分组标题不许重复（重复意味着有人顺手加了一组同名的）
+  const titles = sections.map(s => s.title)
   assert.equal(new Set(titles).size, titles.length, `分组标题重复：${titles}`)
 })
 
@@ -84,9 +82,10 @@ test('每一行的 onClick 真的调到对应回调（不是死按钮）', () =>
   assert.equal(new Set(called).size, totalActions, `应有 ${totalActions} 个不同动作被触发，实际 ${new Set(called).size}：${[...new Set(called)]}`)
 })
 
-test('接入与扩展分组：只剩 AI 接入一行（插件架构已移除）', () => {
+test('服务与接入分组：AI 接入仍在，插件架构已移除', () => {
   const { actions } = fakeActions()
-  const rows = allRows(buildSettingsSections(actions))
+  const sections = buildSettingsSections(actions)
+  const rows = sections.find(section => section.title === '服务与接入')?.rows ?? []
   const titles = rows.map(r => r.title)
   assert.ok(titles.includes('AI 接入'), `应有一行「AI 接入」，实际 ${titles}`)
   assert.ok(!titles.includes('插件'), `不该再有「插件」一行，实际 ${titles}`)
@@ -152,18 +151,28 @@ test('反向对照：把搜索改成"只搜标题"必须被这条判据逮住', 
     `「${hintOnly}」只出现在 hint 里，若搜索只看标题这里就会是空 —— 说明搜索范围退化了`)
 })
 
-test('Cookie 分区：一行入口，排在「规则」之前，点开走全局弹窗', () => {
+test('Cookie 收进「数据与凭据」：一行入口，点开走全局弹窗', () => {
   const { actions, called } = fakeActions()
   const sections = buildSettingsSections(actions)
-  const titles = sections.map(section => section.title)
-  assert.ok(titles.includes('Cookie'), '应生成「Cookie」档')
-  assert.ok(titles.indexOf('Cookie') < titles.indexOf('规则'),
-    `「Cookie」应排在「规则」之前，实际顺序：${titles.join(' / ')}`)
-  const section = sections.find(item => item.title === 'Cookie')!
+  const section = sections.find(item => item.title === '数据与凭据')!
+  assert.ok(section, '应有「数据与凭据」分组')
   assert.equal(section.content, undefined, '「Cookie」不再内联渲染，入口是一行按钮')
-  assert.equal(section.rows.length, 1, '只留一行入口')
-  const row = section.rows[0]
-  assert.equal(row.action, '打开', '入口动作名要说清是「打开」弹窗')
+  const row = section.rows.find(item => item.title === 'Cookie 管理')!
+  assert.ok(row, `「数据与凭据」里应有 Cookie 行，实际 ${section.rows.map(r => r.title)}`)
+  assert.equal(row.action, '管理 Cookie', '入口动作名要说清打开弹窗')
   row.onClick()
   assert.ok(called.includes('openCookies'), '这一行必须真的去开 Cookie 弹窗')
+})
+
+test('搜分组名给出整组，搜具体项只留那一行', () => {
+  const { actions } = fakeActions()
+  const sections = buildSettingsSections(actions)
+  // 搜「外观」：用户想看这一类有什么，只回一行会让他以为只有一项
+  const group = filterSettingsSections(sections, '外观')
+  assert.equal(group.length, 1, `「外观」应命中一组，实际 ${group.map(s => s.title)}`)
+  assert.equal(group[0].rows.length, sections.find(s => s.title === '外观')!.rows.length,
+    '命中分组名时应整组保留')
+  // 搜「端口」：只留服务端口那一行，不把同组的 AI 接入、运行日志倒出来
+  const row = allRows(filterSettingsSections(sections, '端口'))
+  assert.deepEqual(row.map(r => r.title), ['服务端口'])
 })

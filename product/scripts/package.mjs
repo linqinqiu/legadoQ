@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 /**
- * 组装整合包：`dist/qingyue-<版本>/` + 同名 zip。
+ * 组装整合包：`dist/legadoq-<版本>/` + 同名 zip。
  *
  * 借鉴 workbuddy-switch 的发版做法：**产物布局只有一处定义**（他那边是 CI 里
  * `select-matrix` 生成的那张平台表，构建、发包、更新器都读它），所以名字不会各写一套。
@@ -35,7 +35,7 @@ const hasNext = fs.existsSync(nextIndex)
 if (hasNext && !/\/next\/assets\//.test(fs.readFileSync(nextIndex, 'utf8'))) fail('next/index.html 不带 /next/ 前缀，解开就是空白页')
 if (!hasNext) console.log('NOTE  没有 next/（新骨架产物）—— 出不含 /next/ 的包')
 
-const NAME = `qingyue-${version}`
+const NAME = `legadoq-${version}`
 const outDir = path.join(ROOT, 'dist', NAME)
 const zipPath = path.join(ROOT, 'dist', `${NAME}.zip`)
 
@@ -52,7 +52,7 @@ function resolveRuntime(target) {
     return `复用 ${path.relative(ROOT, given)}`
   }
   if (!process.argv.includes('--jlink')) {
-    const prev = fs.readdirSync(path.join(ROOT, 'dist')).filter(n => /^qingyue-\d+\.\d+\.\d+$/.test(n) && n !== NAME)
+    const prev = fs.readdirSync(path.join(ROOT, 'dist')).filter(n => /^legadoq-\d+\.\d+\.\d+$/.test(n) && n !== NAME)
       .sort().reverse().find(n => fs.existsSync(path.join(ROOT, 'dist', n, 'runtime', 'bin', 'java.exe')))
     if (prev) {
       fs.cpSync(path.join(ROOT, 'dist', prev, 'runtime'), target, { recursive: true })
@@ -133,7 +133,7 @@ const walk = dir => { for (const entry of fs.readdirSync(dir, { withFileTypes: t
 walk(outDir)
 if (dirty.length) fail(`包里混进了数据或运行痕迹：${dirty.slice(0, 4).join(', ')}`)
 
-/** zip：条目名一律正斜杠 + 一个顶层目录（包门禁按 `qingyue-x.y.z/next/index.html` 找东西）。 */
+/** zip：条目名一律正斜杠 + 一个顶层目录（包门禁按 `legadoq-x.y.z/next/index.html` 找东西）。 */
 const table = new Int32Array(256)
 for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; table[i] = c }
 const crc32 = buf => { let c = -1; for (const b of buf) c = (c >>> 8) ^ table[(c ^ b) & 0xff]; return (c ^ -1) >>> 0 }

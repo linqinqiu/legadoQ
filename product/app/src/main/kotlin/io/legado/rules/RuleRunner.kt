@@ -362,6 +362,14 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
     private fun loginScript(source: JsonObject): String? {
         val raw = source.string("loginUrl")?.trim().orEmpty()
         if (raw.isEmpty() || raw.startsWith("http://", true) || raw.startsWith("https://", true)) return null
+        // 相对路径也不是脚本：`/login.php` 当 JS 跑是语法错误，连进 jsLib 上下文还会把整段脚本库编译坏。
+        // 库内这种写法 12 个，交给 loginPageUrl 解析。`/*…*/` 开头的整段登录 JS 不能误判成路径。
+        val blockCommentScript = raw.startsWith("/*")
+        if (!blockCommentScript && raw.startsWith("/") && !raw.startsWith("//")) return null
+        if (raw.startsWith("./") || raw.startsWith("../")) return null
+        // `//` 要分两种情况：库内 200+ 个登录 JS 以 `// 说明文字` 开头（行注释），
+        // 只有"// 完整主机名"这种协议相对地址才是网址。
+        if (PROTOCOL_RELATIVE_URL.containsMatchIn(raw)) return null
         val unwrapped = if (raw.contains("<js>")) raw.substringAfter("<js>").substringBefore("</js>")
             else raw.removePrefix("@js:").removePrefix("js:").removePrefix("@javascript:")
         return unwrapped.trim().takeIf { it.isNotEmpty() }
@@ -369,6 +377,18 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
 
     /** 界面据此决定「内置浏览器」是直开 loginUrl，还是先执行登录脚本拿地址。 */
     fun loginIsScript(sourceJson: String): Boolean = loginScript(sourceJson.objectValue()) != null
+
+    /**
+     * 这本书源有没有可打开的登录入口，只看配置形状、**不执行脚本**（界面加载时不能有副作用）。
+     * 网址型 / 相对路径型 loginUrl；loginUrl 里的登录 JS；或 jsLib 里带
+     * `login()` + `java.startBrowserAwait` 的组合，都算。
+     */
+    fun loginCanOpenBrowser(sourceJson: String): Boolean {
+        val source = sourceJson.objectValue()
+        if (!source.string("loginUrl").isNullOrBlank()) return true
+        val jsLib = source.string("jsLib").orEmpty()
+        return jsLib.contains("startBrowserAwait") && LOGIN_FUNCTION.containsMatchIn(jsLib)
+    }
 
     /**
      * 让登录脚本告诉我们要打开哪个地址。
@@ -381,14 +401,22 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
      */
     fun loginBrowserStartUrl(sourceJson: String): String? {
         val source = sourceJson.objectValue()
-        if (loginScript(source) == null) return null
+        // 两类书源都算“脚本里有登录入口”：loginUrl 本身就是登录 JS；或者 login() 写在 jsLib 里。
+        // 后者只在 jsLib 真调用了 startBrowserAwait 时才执行 —— 否则那可能是一段账号密码登录脚本，
+        // 拿空表单跑一遍等于朝站点发一次无效登录，可能触发风控/锁定。
+        val jsLib = source.string("jsLib").orEmpty()
+        val hasLoginEntry = loginScript(source) != null ||
+            (jsLib.contains("startBrowserAwait") && LOGIN_FUNCTION.containsMatchIn(jsLib))
+        if (!hasLoginEntry) return null
         val sourceUrl = source.string("bookSourceUrl")
         val execContext = sourceContext(source, sourceUrl)
-        jsSandbox.eval(
-            "if (typeof login === 'function') { login(true, false); }",
-            mapOf("baseUrl" to sourceUrl.orEmpty(), "sourceId" to sourceUrl.orEmpty(), "result" to emptyMap<String, String>()),
-            execContext,
-        )
+        runCatching {
+            jsSandbox.eval(
+                "if (typeof login === 'function') { login(true, false); }",
+                mapOf("baseUrl" to sourceUrl.orEmpty(), "sourceId" to sourceUrl.orEmpty(), "result" to emptyMap<String, String>()),
+                execContext,
+            )
+        }
         return execContext.openUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
     }
 
@@ -840,16 +868,16 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val source = sourceJson.objectValue()
         val sourceUrl = source.string("bookSourceUrl") ?: ""
         val loginUiStr = source.string("loginUi")?.trim()
-        val loginUrl = source.string("loginUrl")?.trim()
-        val jsLib = source.string("jsLib")?.trim()
 
         if (loginUiStr.isNullOrBlank()) {
-            if (!loginUrl.isNullOrBlank() && (loginUrl.startsWith("http://") || loginUrl.startsWith("https://"))) {
+            // 网址型 loginUrl（含相对路径 / 协议相对地址）都生成按钮；纯 JS 脚本没有可直开的页面。
+            val loginPage = WebViewProxy.loginPageUrl(sourceJson)
+            if (loginPage != null) {
                 return listOf(
                     SourceLoginUiItem(
                         name = "打开登录网页",
                         type = "button",
-                        action = loginUrl,
+                        action = loginPage,
                         style = FlexChildStyle(layout_flexBasisPercent = 1.0f),
                     ),
                 )
@@ -901,10 +929,29 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         // 上游两条路径要分清：菜单「确定」走 `BaseSource.login()`，那是 `login.apply(this)`（不带实参）；
         // 而 loginUi 按钮的 action 是**原样执行的 JS**，`login(true,false)` 这类带实参的调用必须保留实参，
         // 否则脚本里靠 `checkMode` 分支的源会被当成"打开浏览器"那条路走。
-        val bareLogin = trimmedAction.equals("login", ignoreCase = true) ||
-            trimmedAction.replace("\\s".toRegex(), "").let { it == "login()" || it == "login();" }
-        val fullScript = if (bareLogin) {
-            "if (typeof login === 'function') { login.apply(this); } else { throw new Error('该书源脚本未定义 login()'); }"
+        //
+        // 但 `login(...)` 不是每个源都定义得起：番茄 v3.4.2 这类源的 loginUrl 只是一个网址，
+        // 没有 loginUi/loginCheckJs，更没有 `login()` 函数。旧逻辑把 `login(true)` 直接丢给 Rhino，
+        // 只会得到 "login is not defined"，界面报「书源脚本执行失败」而实际什么都没发生。
+        // 没有登录脚本时按上游语义退到「打开登录页」；有脚本但没定义 login() 时给中文错误。
+        val loginArgs = LOGIN_CALL.matchEntire(trimmedAction)?.groupValues?.getOrNull(1)
+        val hasLoginFunction = loginScript(source) != null ||
+            source.string("jsLib")?.let { LOGIN_FUNCTION.containsMatchIn(it) } == true
+        if (loginArgs != null && !hasLoginFunction) {
+            // 网址型 loginUrl（含相对路径）交给统一的入口解析；纯 JS 脚本已在 hasLoginFunction 里算过。
+            val loginPage = WebViewProxy.loginPageUrl(sourceJson)
+            return SourceLoginActionResult(
+                success = true,
+                toastMessages = listOf(
+                    if (loginPage != null) "这本书源没有登录脚本，已改为打开登录页"
+                    else "这本书源没有登录脚本，无需执行登录",
+                ),
+                openUrl = loginPage,
+                updatedLoginInfo = if (loginData.isEmpty()) null else loginData,
+            )
+        }
+        val fullScript = if (loginArgs != null) {
+            "if (typeof login === 'function') { login($loginArgs); } else { throw new Error('该书源脚本没有定义 login()，无法执行登录') }"
         } else {
             trimmedAction
         }
@@ -1183,7 +1230,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         "url" to url.take(120),
     )
 
-    private fun buildRequest(
+    internal fun buildRequest(
         initial: URI,
         options: UrlOptions?,
         keyword: String?,
@@ -1211,7 +1258,18 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val body = options?.body
         if (method != "GET" && body != null) {
             val rendered = keyword?.let { renderUrl(body, it, initial.toString()) } ?: body
-            builder.method(method, HttpRequest.BodyPublishers.ofString(rendered, options?.charset ?: Charsets.UTF_8))
+            val charset = options?.charset ?: Charsets.UTF_8
+            // 书源只写了 body 没写 Content-Type 时，HttpClient 会发 `text/plain`（或干脆不带），
+            // 不少站点的 JSON 接口因此不认：番茄书架的 multidetail 返回
+            // `{"code":-1,"message":"Cannot read properties of undefined (reading 'map')"}`，
+            // 规则把这个错误当空结果，界面就显示「返回 0 本」。body 长得像 JSON 就补上标准头；
+            // 显式给了 Content-Type 的（包括 text/plain）保持原样，不擅自覆盖。
+            if (headers.keys.none { it.equals("Content-Type", ignoreCase = true) } &&
+                rendered.trimStart().firstOrNull() in listOf('{', '[')
+            ) {
+                builder.header("Content-Type", "application/json; charset=${charset.name()}")
+            }
+            builder.method(method, HttpRequest.BodyPublishers.ofString(rendered, charset))
         } else {
             builder.method(method, HttpRequest.BodyPublishers.noBody())
         }
@@ -1534,6 +1592,12 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val URL_VARIABLE_PATTERN = Regex("\\{\\{(.+?)}}")
         /** `<…>` 翻页段（非贪婪，一段一段来）：见 `selectPageSegments`。 */
         val PAGE_SEGMENT_PATTERN = Regex("<(.*?)>")
+        /** 登录动作是不是一次 `login(...)` 调用：`login`、`login()`、`login(true)`、`login(true, false)` 都算。 */
+        val LOGIN_CALL = Regex("""^\s*login\s*(?:\((.*)\))?\s*;?\s*$""", RegexOption.IGNORE_CASE)
+        /** jsLib 里到底有没有定义 login 函数（没有 loginUrl 脚本时用它兜底判断）。 */
+        val LOGIN_FUNCTION = Regex("""(?:function\s+login\s*\(|login\s*=\s*function\b)""")
+        /** 协议相对地址（`//host.tld/path`）。注意别把登录 JS 开头的 `// 注释` 也认成网址。 */
+        val PROTOCOL_RELATIVE_URL = Regex("""^//[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?(?:[/?#]|$)""")
 
         // 下方几个正则原来在每次调用处现编译：cleanContent 走每章正文（离线缓存整本 = 上万次），
         // 其余的走每个字段取值。语义不变，只是提到类级只编译一次。

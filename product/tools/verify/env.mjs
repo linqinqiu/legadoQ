@@ -149,5 +149,5 @@ export async function requireService(name, base = BASE) {
  * 后面全是假红。所以第一次导航到 `BASE` 之后调一次这个。
  */
 export async function acceptAgreement(page) {
-  await page.evaluate(() => { try { localStorage.setItem('qingyue-agreement-v1', '1') } catch { /* 隐私模式：存不进就每次都看一遍 */ } })
+  await page.evaluate(() => { try { localStorage.setItem('legadoq-agreement-v1', '1') } catch { /* 隐私模式：存不进就每次都看一遍 */ } })
 }

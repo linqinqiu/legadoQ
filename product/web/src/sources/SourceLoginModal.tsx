@@ -1,20 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { api, ExternalLoginStatus, SourceBrowserCookies, SourceLoginUiItem, SourceLoginUiResponse } from '../lib/api'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { api, ExternalLoginStatus, SourceBrowserCookies, SourceLoginUiResponse } from '../lib/api'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
-import { Select } from '../components/Select'
-import { SourceWebViewModal } from './SourceWebViewModal'
 
 interface SourceLoginModalProps {
   sourceId: string
   sourceName: string
   onClose: () => void
   onToast: (message: string, type?: 'info' | 'success' | 'error') => void
-}
-
-/** 「填写表单」值不值得推荐：loginUi 里得有真的可填控件，只有一个「打开登录网页」按钮时不该推荐。 */
-function hasFillableControl(items: SourceLoginUiItem[]): boolean {
-  return items.some(item => !['button', 'label', 'textlabel'].includes((item.type || 'text').toLowerCase()))
 }
 
 /** 输入框里可能填 `https://x.com/path` 也可能只填 `x.com`，取主机部分去和罐子里的键对。 */
@@ -53,13 +46,8 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
   const [cookieInputText, setCookieInputText] = useState('')
   /** 粘贴的 Cookie 要落到哪个域名/地址：默认取书源自己的登录域，而不是书源主域。 */
   const [cookieDomain, setCookieDomain] = useState('')
-  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({})
-  const [webViewOpen, setWebViewOpen] = useState(false)
-  const [webViewStartUrl, setWebViewStartUrl] = useState<string | undefined>(undefined)
-  /** 触发内置浏览器的登录动作，登录完成后需要带 Cookie 重跑一次 */
-  const pendingBrowserActionRef = useRef<string | null>(null)
   /** 当前选择的登录方式；null 表示还没按书源能力自动选过。 */
-  const [method, setMethod] = useState<'form' | 'browser' | 'external' | 'cookie' | 'bookmark' | null>(null)
+  const [method, setMethod] = useState<'external' | 'cookie' | null>(null)
   /** 真浏览器登录：服务端拉起的本机 Chromium 状态。 */
   const [external, setExternal] = useState<ExternalLoginStatus | null>(null)
   /**
@@ -82,6 +70,12 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
       /* 读不到状态就维持原样：这里不报错，避免把「浏览器已关」渲染成一次失败 */
     }
   }, [sourceId])
+
+  // 切到「真浏览器」时先问一次状态：服务重启后窗口可能还开着（服务端靠 profile 里的调试端口
+  // 附着回来），界面不该一上来就说「还没打开」，更不该因此把「抓取并入库」禁用掉。
+  useEffect(() => {
+    if (method === 'external') void refreshExternal()
+  }, [method, refreshExternal])
 
   // 浏览器活着的时候每 2.5 秒问一次：用户在窗口里登录完，这边要能看到「这个域已经有 Cookie 了」。
   useEffect(() => {
@@ -110,7 +104,14 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
       const res = await api.externalLoginCapture(sourceId)
       setExternal(res)
       setExternalStored(res.stored)
-      setJar(await api.sourceBrowserCookies(sourceId))
+      // 抓取的同时重判一次登录态：有 loginCheckJs 的源会当场从「未验证」变成「已验证」；
+      // 没有校验规则的源（番茄就是）仍然如实显示"有凭据、未验证"，不假装。
+      const [nextJar, check] = await Promise.all([
+        api.sourceBrowserCookies(sourceId),
+        api.checkSourceLogin(sourceId).catch(() => null),
+      ])
+      setJar(nextJar)
+      if (check) setStatus(check)
       onToast(
         res.stored.length > 0 ? `已自动入库 ${res.stored.length} 个域的凭据：${res.stored.join('、')}` : '目标域上还没有 Cookie —— 通常是还没在弹出的窗口里登录',
         res.stored.length > 0 ? 'success' : 'info',
@@ -157,11 +158,11 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
       setStatus(check)
       setJar(cookies)
       setCookieDomain(current => current || (res.cookieDomains ?? [])[0] || '')
-      // 用户没手动切过分段时，按书源能力自动选推荐方式。
-      // 「表单」只有真的有待填字段才值得推荐：不少源的 loginUi 就一个「打开登录网页」按钮，
-      // 推荐它等于把用户领到一个没有输入框的页面。
+      // 用户没手动切过分段时，按书源能力自动选推荐方式：
+      // 有登录入口（URL / 脚本 / jsLib 里的 startBrowserAwait）就开真浏览器，
+      // 否则只剩粘贴 Cookie 一条路。
       if (!userPickedRef.current) {
-        setMethod(hasFillableControl(res.loginUi) ? 'form' : res.loginUrl ? 'browser' : 'cookie')
+        setMethod((res.loginUrl || res.loginCanOpenBrowser) ? 'external' : 'cookie')
       }
     } catch (err: any) {
       onToast(err.message || '获取登录界面失败', 'error')
@@ -174,106 +175,94 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
     loadLoginUi()
   }, [loadLoginUi])
 
-  // Esc 一次只关一层：登录头编辑 → 内置浏览器 → 凭据菜单 → 登录浮层本身。
+  // Esc 一次只关一层：登录头编辑 → 凭据菜单 → 登录浮层本身。
   // 全站其它浮层都吃 Esc，这个浮层以前不吃，键盘用户只能点 ✕。
   useEscapeClose(() => {
     if (headerEditOpen) { setHeaderEditOpen(false); return }
-    if (webViewOpen) { setWebViewOpen(false); return }
     if (menuOpen) { setMenuOpen(false); return }
     onClose()
   })
 
-  /** 用户手动打开内置浏览器（不带触发动作），入口地址交给书源配置决定 */
-  const openBuiltInBrowser = useCallback(() => {
-    pendingBrowserActionRef.current = null
-    setWebViewStartUrl(undefined)
-    setWebViewOpen(true)
-  }, [])
-
-  const bookmarkletCode = useMemo(() => {
-    const serverOrigin = window.location.origin
-    const targetSourceId = encodeURIComponent(sourceId)
-    return `javascript:(function(){var c=document.cookie;var u=location.href;if(!c){alert('当前页面没有可读到的 Cookie');return;}fetch('${serverOrigin}/api/sources/${targetSourceId}/login-cookie',{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookie:c,url:u})}).then(function(r){return r.text().then(function(t){return{ok:r.ok,status:r.status,body:t}})}).then(function(x){if(!x.ok){var m='';try{var j=JSON.parse(x.body);m=j.message||j.error||''}catch(e){}alert('同步失败：'+(m||('HTTP '+x.status)));return}alert('已把当前站点的 Cookie 同步进 legadoQ')}).catch(function(e){alert('同步失败：'+e)});})();`
-  }, [sourceId])
-
-  const handleInputChange = (key: string, val: string) => {
-    setFormData(prev => ({ ...prev, [key]: val }))
-  }
-
-  const handleAction = async (actionCode?: string, isLongClick = false, allowBuiltInBrowser = true, browserCompleted = false) => {
-    if (!actionCode && actionCode !== '') return
-    try {
-      setExecuting(true)
-      const trimmed = actionCode.trim()
-      if (!browserCompleted && (trimmed.startsWith('http://') || trimmed.startsWith('https://'))) {
-        window.open(trimmed, '_blank', 'noopener,noreferrer')
-        return
-      }
-
-      const res = await api.executeSourceLoginAction(sourceId, actionCode, formData, isLongClick, browserCompleted)
-      if (res.error) {
-        // 书源脚本失败时必须显式告知，否则按钮会「看起来成功但毫无反应」
-        onToast(`书源脚本执行失败：${res.error}`, 'error')
-      } else if (res.toastMessages && res.toastMessages.length > 0) {
-        res.toastMessages.forEach(msg => onToast(msg, res.success ? 'success' : 'info'))
-      } else if (res.success) {
-        onToast('操作执行成功', 'success')
-      }
-
-      if (res.openUrl) {
-        // 书源 JS 通过 java.startBrowserAwait(url) 请求打开网页：在本应用内置浏览器中打开，
-        // 而不是弹到外部标签页，这样登录产生的 Cookie 能直接落到书源 Credential 里。
-        if (allowBuiltInBrowser) {
-          pendingBrowserActionRef.current = actionCode
-          setWebViewStartUrl(res.openUrl)
-          setWebViewOpen(true)
-        } else {
-          window.open(res.openUrl, '_blank', 'noopener,noreferrer')
-        }
-      }
-      if (res.copyText) {
-        await navigator.clipboard.writeText(res.copyText)
-        onToast(`已复制到剪贴板: ${res.copyText}`, 'info')
-      }
-      if (res.updatedLoginInfo) {
-        setFormData(prev => ({ ...prev, ...res.updatedLoginInfo }))
-      }
-      if (res.reRenderUi) {
-        await loadLoginUi()
-      }
-    } catch (err: any) {
-      onToast(err.message || '执行操作失败', 'error')
-    } finally {
-      setExecuting(false)
-    }
-  }
-
+  /**
+   * 顶栏「保存并登录」的唯一路径。
+   *
+   * 书源的登录方式分三类：
+   * ① loginUrl 是整段 JS（大多数聚合源）：保存表单后执行 `login(true)`，脚本自己决定
+   *    是拿表单去请求，还是 java.startBrowserAwait 打开登录页；
+   * ② loginUrl 只是一个网址（番茄 v3.4.2 就是）：这种源没有 `login()` 可执行。
+   *    以前硬投 `login(true)` 只会得到 "login is not defined"，用户看到「书源脚本执行失败」
+   *    而实际什么都没发生 —— 现在保存后直接打开真浏览器登录页；
+   * ③ 两者都没有：只保存输入，不再假装能登录。
+   */
   const handleSaveAndLogin = async () => {
+    if (executing || loading) return
     try {
       setExecuting(true)
       await api.saveSourceLoginInfo(sourceId, formData)
-      const res = await api.executeSourceLoginAction(sourceId, 'login(true)', formData, false)
-      if (res.error) {
-        onToast(`书源脚本执行失败：${res.error}`, 'error')
-      } else if (res.toastMessages && res.toastMessages.length > 0) {
-        res.toastMessages.forEach(msg => onToast(msg, res.success ? 'success' : 'info'))
-      } else {
-        onToast('登录信息已保存并尝试登录', 'success')
+      if (uiResponse?.loginIsScript) {
+        const res = await api.executeSourceLoginAction(sourceId, 'login(true)', formData, false)
+        if (res.error) {
+          onToast(`书源脚本执行失败：${res.error}`, 'error')
+        } else if (res.toastMessages && res.toastMessages.length > 0) {
+          res.toastMessages.forEach(msg => onToast(msg, res.success ? 'success' : 'info'))
+        } else {
+          onToast('登录信息已保存并尝试登录', 'success')
+        }
+        if (res.openUrl) {
+          // 登录脚本用 java.startBrowserAwait 要一个浏览器：只有真浏览器能读回带
+          // HttpOnly 的 Cookie，所以直接交给它，并切到对应页签让用户看到后续步骤。
+          userPickedRef.current = true
+          setMethod('external')
+          setExternalBusy(true)
+          try {
+            const started = await api.externalLoginStart(sourceId, res.openUrl)
+            setExternal(started)
+            setExternalStored([])
+            onToast(
+              started.opened ? '已在真浏览器中打开登录页，登录完成后点「抓取并入库」' : '浏览器没能打开',
+              started.opened ? 'success' : 'error',
+            )
+          } finally {
+            setExternalBusy(false)
+          }
+        }
+        if (res.copyText) {
+          await navigator.clipboard.writeText(res.copyText)
+        }
+        if (res.updatedLoginInfo) {
+          setFormData(prev => ({ ...prev, ...res.updatedLoginInfo }))
+        }
+        if (res.reRenderUi) {
+          await loadLoginUi()
+        }
+        return
       }
-      if (res.openUrl) {
-        pendingBrowserActionRef.current = 'login(true)'
-        setWebViewStartUrl(res.openUrl)
-        setWebViewOpen(true)
+      if (uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl) {
+        // 没有登录脚本时「登录」只能发生在网站自己的页面上，交给真浏览器；
+        // 内置浏览器的 opaque origin 沙箱跑不了这类站点的风控脚本。
+        // 只把绝对的 http(s) 地址交给服务端；相对路径 / jsLib 里的 startBrowserAwait
+        // 由服务端自己解析 —— 界面上不该重复一套解析逻辑。
+        const explicit = uiResponse?.loginUrl?.trim()
+        const startUrl = explicit && /^https?:\/\//i.test(explicit) ? explicit : undefined
+        userPickedRef.current = true
+        setMethod('external')
+        setExternalBusy(true)
+        try {
+          const res = await api.externalLoginStart(sourceId, startUrl)
+          setExternal(res)
+          setExternalStored([])
+          onToast(
+            res.opened
+              ? '登录信息已保存。请在打开的浏览器里登录，完成后点「抓取并入库」'
+              : '登录信息已保存，但浏览器没能打开',
+            res.opened ? 'success' : 'error',
+          )
+        } finally {
+          setExternalBusy(false)
+        }
+        return
       }
-      if (res.copyText) {
-        await navigator.clipboard.writeText(res.copyText)
-      }
-      if (res.updatedLoginInfo) {
-        setFormData(prev => ({ ...prev, ...res.updatedLoginInfo }))
-      }
-      if (res.reRenderUi) {
-        await loadLoginUi()
-      }
+      onToast('登录信息已保存（这本书源没有登录流程）', 'success')
     } catch (err: any) {
       onToast(err.message || '保存或登录失败', 'error')
     } finally {
@@ -368,122 +357,6 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
     }
   }
 
-  const copyBookmarklet = async () => {
-    await navigator.clipboard.writeText(bookmarkletCode)
-    onToast('一键抓取书签代码已复制到剪贴板', 'success')
-  }
-
-  const renderControl = (item: SourceLoginUiItem, index: number) => {
-    const key = item.key || item.name
-    const label = item.viewName || item.name
-    const type = (item.type || 'text').toLowerCase()
-    const value = formData[key] ?? ''
-
-    const basisPercent = item.style?.layout_flexBasisPercent ?? -1
-    let flexStyle: React.CSSProperties = {}
-    if (basisPercent > 0) {
-      if (basisPercent >= 0.9) {
-        flexStyle = { flex: '1 1 100%', width: '100%' }
-      } else if (basisPercent >= 0.4 && basisPercent <= 0.6) {
-        flexStyle = { flex: '1 1 calc(50% - 8px)', minWidth: '180px' }
-      } else {
-        flexStyle = { flex: `1 1 ${Math.round(basisPercent * 100)}%` }
-      }
-    } else {
-      flexStyle = { flex: item.style?.layout_flexGrow ? `${item.style.layout_flexGrow} 1 auto` : '1 1 100%', width: '100%' }
-    }
-
-    if (item.style?.layout_wrapBefore) {
-      flexStyle.breakBefore = 'always'
-    }
-
-    if (type === 'button') {
-      return (
-        <div key={`${key}-${index}`} style={flexStyle}>
-          <button
-            type="button"
-            className="source-login-btn primary-subtle"
-            disabled={executing}
-            onClick={() => handleAction(item.action, false)}
-            onContextMenu={e => {
-              e.preventDefault()
-              handleAction(item.action, true)
-            }}
-          >
-            {label}
-          </button>
-        </div>
-      )
-    }
-
-    if (type === 'toggle' || type === 'switch' || type === 'checkbox') {
-      const isChecked = value === 'true' || value === '1'
-      return (
-        <div key={`${key}-${index}`} style={flexStyle} className="login-ui-item-toggle-container">
-          <label className="login-ui-toggle-label">
-            <span>{label}</span>
-            <input
-              type="checkbox"
-              checked={isChecked}
-              onChange={e => handleInputChange(key, e.target.checked ? 'true' : 'false')}
-            />
-          </label>
-        </div>
-      )
-    }
-
-    if (type === 'select' || type === 'dropdown') {
-      const options = item.options || (item.chars ? item.chars.filter((c): c is string => c !== null) : [])
-      return (
-        <div key={`${key}-${index}`} style={flexStyle} className="login-ui-item-field">
-          <label className="login-ui-field-label">{label}</label>
-          <Select
-            className="login-ui-select"
-            value={value}
-            onChange={v => handleInputChange(key, v)}
-            ariaLabel={label || '选择'}
-            options={options.map(opt => ({ value: opt, label: opt }))}
-          />
-        </div>
-      )
-    }
-
-    if (type === 'label' || type === 'textlabel') {
-      return (
-        <div key={`${key}-${index}`} style={flexStyle} className="login-ui-item-info">
-          <div className="login-ui-info-text">{item.hint || item.default || label}</div>
-        </div>
-      )
-    }
-
-    const isPassword = type === 'password'
-    const isShowing = showPasswords[key]
-    return (
-      <div key={`${key}-${index}`} style={flexStyle} className="login-ui-item-field">
-        <label className="login-ui-field-label">{label}</label>
-        <div className="login-ui-input-wrapper">
-          <input
-            type={isPassword && !isShowing ? 'password' : 'text'}
-            className="login-ui-input"
-            value={value}
-            placeholder={item.hint || item.default || `请输入${label}`}
-            onChange={e => handleInputChange(key, e.target.value)}
-          />
-          {isPassword && (
-            <button
-              type="button"
-              className="login-ui-eye-btn"
-              onClick={() => setShowPasswords(prev => ({ ...prev, [key]: !prev[key] }))}
-              title={isShowing ? '隐藏密码' : '显示密码'}
-            >
-              <Icon name={isShowing ? 'eyeOff' : 'eye'} />
-            </button>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="overlay-backdrop" onClick={onClose}>
       <div className="dialog-shell size-s source-login-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="书源登录">
@@ -499,18 +372,9 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
           <div className="source-login-actions">
             <button
               type="button"
-              className="source-login-action-btn"
-              title="用内置浏览器登录"
-              aria-label="用内置浏览器登录"
-              onClick={openBuiltInBrowser}
-            >
-              <Icon name="globe" />
-            </button>
-            <button
-              type="button"
               className="source-login-action-btn primary"
-              title="保存并登录"
-              aria-label="保存并登录"
+              title={uiResponse?.loginIsScript ? '保存并登录' : (uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl) ? '保存并打开登录页' : '保存登录信息'}
+              aria-label={uiResponse?.loginIsScript ? '保存并登录' : (uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl) ? '保存并打开登录页' : '保存登录信息'}
               disabled={executing || loading}
               onClick={handleSaveAndLogin}
             >
@@ -569,17 +433,17 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
           {loading ? (
             <div className="login-ui-loading">正在加载登录界面…</div>
           ) : (() => {
-            const hasForm = (uiResponse?.loginUi?.length ?? 0) > 0
-            const hasInput = hasFillableControl(uiResponse?.loginUi ?? [])
-            const hasLoginUrl = !!uiResponse?.loginUrl
-            const recommended = hasInput ? 'form' : hasLoginUrl ? 'browser' : 'cookie'
+            // 登录入口不再只看"是不是一个 http 地址"：相对路径、登录脚本、jsLib 里的
+            // startBrowserAwait，服务端都能解析成真正的登录页。
+            const hasLoginUrl = !!(uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl)
+            const hasCredential = (jar?.count ?? 0) > 0 || !!uiResponse?.loginHeader
+            const recommended = hasLoginUrl ? 'external' : 'cookie'
             const active = method ?? recommended
-            const tab = (key: 'form' | 'browser' | 'external' | 'cookie' | 'bookmark', label: string, enabled = true) => (
+            const tab = (key: 'external' | 'cookie', label: string) => (
               <button
                 key={key}
                 type="button"
                 className={`source-login-method-tab${active === key ? ' is-active' : ''}`}
-                disabled={!enabled}
                 onClick={() => { userPickedRef.current = true; setMethod(key) }}
               >
                 {label}
@@ -589,25 +453,29 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
             return (
               <>
                 <div className="source-login-method-tabs" role="tablist">
-                  {tab('form', '填写表单', hasForm)}
-                  {tab('browser', '内置浏览器')}
                   {tab('external', '真浏览器')}
                   {tab('cookie', '粘贴 Cookie')}
-                  {tab('bookmark', '书签同步')}
                 </div>
 
-                <div className={`source-login-status ${status?.verified ? 'is-verified' : jar?.count || uiResponse?.loginHeader ? 'is-credential' : 'is-empty'}`}>
+                {/* 状态行只给结论；"为什么不能验证"放进 title，不再占一整行正文 */}
+                <div
+                  className={`source-login-status ${status?.verified ? 'is-verified' : hasCredential ? 'is-credential' : 'is-empty'}`}
+                  title={status?.verified
+                    ? '书源的 loginCheckJs 判定通过'
+                    : hasCredential
+                      ? '这本书源没有 loginCheckJs，无法自动判定有效性；实际搜索或阅读一次即可确认'
+                      : undefined}
+                >
                   {status?.verified
-                    ? '登录态已验证（书源自带的校验判定通过）'
-                    : jar?.count || uiResponse?.loginHeader
-                      ? '已存凭据，未自动验证（这个源没写校验规则，只能靠实际读一次确认）'
+                    ? '登录态已验证'
+                    : hasCredential
+                      ? '已存凭据 · 未自动验证'
                       : '还没有任何凭据'}
                 </div>
 
-                {(jar?.count ?? 0) === 0 && (
+                {!hasCredential && (
                   <p className="source-login-hint small">
-                    下面列的是<b>这本书源会带出去</b>的凭据：真浏览器、内置浏览器与粘贴来的 Cookie 都按<b>注册域</b>存进同一张全局表，
-                    所以同一个域（例如 fanqienovel.com）是所有访问它的书源共用一份，删掉也会影响那些书源。
+                    凭据按注册域全局共享，同一域的所有书源共用一份；删除会影响它们。
                   </p>
                 )}
 
@@ -665,66 +533,34 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
                   </div>
                 )}
 
-                {active === 'form' && (hasForm ? (
-                  <form
-                    className="source-login-flex-form"
-                    onSubmit={e => { e.preventDefault(); handleSaveAndLogin() }}
-                  >
-                    {uiResponse!.loginUi.map((item, idx) => renderControl(item, idx))}
-                    {/* 上游只在真有表单时才给「确定」：只有一个「打开登录网页」按钮时，
-                        摆一个全宽的"保存并登录"等于骗用户点一个什么都不做的按钮 */}
-                    {hasInput && (
-                      <div style={{ flex: '1 1 100%', width: '100%', marginTop: 6 }}>
-                        <button type="submit" className="primary-button" style={{ width: '100%' }} disabled={executing}>
-                          {executing ? '登录中…' : '保存并登录'}
-                        </button>
-                      </div>
-                    )}
-                  </form>
-                ) : (
-                  <p className="source-login-hint">此书源未提供可视化登录表单，请改用「内置浏览器」或「粘贴 Cookie」方式。</p>
-                ))}
-
-                {active === 'browser' && (
-                  <div className="source-login-panel">
-                    <p className="source-login-hint">
-                      {uiResponse?.loginIsScript
-                        ? '这本书源的登录地址由它自己的脚本决定（loginUrl 是整段登录 JS）。点下面的按钮会执行脚本，由它请求打开真正的登录页；登录完成后站点写回的 Cookie 会按域名收进书源凭据罐。'
-                        : '在内置浏览器中打开该书源登录页完成登录，站点的 Set-Cookie 会被服务端自动收进书源 Cookie 罐。对纯前端渲染 / 风控站点（番茄、起点等）常无效，此时请改用「粘贴 Cookie」。'}
-                    </p>
-                    {uiResponse?.loginUrl && !uiResponse.loginIsScript && (
-                      <div className="source-login-url-line">{uiResponse.loginUrl}</div>
-                    )}
-                    <button type="button" className="primary-button" disabled={!hasLoginUrl} onClick={openBuiltInBrowser} style={{ alignSelf: 'flex-start' }}>
-                      打开内置浏览器登录
-                    </button>
-                    {!hasLoginUrl && <p className="source-login-hint small">此书源未配置 loginUrl，无法用内置浏览器登录。</p>}
-                  </div>
-                )}
-
-                {/* 真浏览器：内嵌浏览器把页面关在 opaque origin 沙箱里，番茄这类站点自己的风控脚本
-                    跑不起来（实测 forms:0 fields:0）；这里交给本机真 Chromium 窗口，登录完由服务端
-                    经 CDP 自动回读该域 Cookie —— 含 HttpOnly，书签方式取不到那种。 */}
                 {active === 'external' && (
                   <div className="source-login-panel">
                     <p className="source-login-hint">
-                      由服务端在你这台机器上打开一个<b>真正的浏览器窗口</b>（Chrome / Edge），用它自己的引擎跑该书源的登录页 ——
-                      扫码、账号密码、站点风控脚本都照常。你在窗口里登录完成后点「抓取并入库」，服务端会读回那个域
-                      的 Cookie（<b>含 HttpOnly</b>，所以不需要你手工复制粘贴），按域名分别存进凭据罐。
+                      用本机 Chrome / Edge 打开登录页，扫码、账号密码、站点风控都照常。登录后点「抓取并入库」，
+                      含 HttpOnly 的 Cookie 会自动读回并按域入库；登录时经 passport / OAuth 中转写下的凭据
+                      （书源配置里没提到的域）也会一并识别。
                     </p>
-                    <p className="source-login-hint small">
-                      这个窗口用的是独立且持久的登录档，<b>不会</b>动你日常浏览器的资料；第一次要在里面登一遍，之后登录档会留着。
-                      另外它也无法直接读你已经开着的那个浏览器 —— 没带调试端口启动的实例，任何本地程序都贴不上去，这是浏览器自身的边界。
-                    </p>
+                    {!hasLoginUrl && (
+                      <p className="source-login-hint small">
+                        这本书源没有配置 loginUrl，会直接打开书源首页；在窗口里登录后同样可以抓取凭据。
+                      </p>
+                    )}
                     <div className={`source-login-status ${external?.opened ? 'is-credential' : 'is-empty'}`}>
                       {external?.opened
-                        ? `已打开 ${external.browser || '浏览器'}（进程 ${external.pid}），等你在窗口里登录`
+                        // 附着到早先拉起的窗口时服务端拿不到 pid（为 0），这时不摆一个「进程 0」
+                        ? `已打开 ${external.browser || '浏览器'}${external.pid > 0 ? `（进程 ${external.pid}）` : ''}，等你在窗口里登录`
                         : '还没打开浏览器'}
                       {(external?.seen.length ?? 0) > 0 && ` · 已见到凭据：${external!.seen.join('、')}`}
                       {externalStored.length > 0 && ` · 本轮入库：${externalStored.join('、')}`}
                     </div>
                     <div className="source-login-external-actions">
-                      <button type="button" className="primary-button" disabled={externalBusy} onClick={() => void handleExternalStart()}>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        disabled={externalBusy}
+                        title="使用独立且持久的登录档，不会动你日常浏览器的资料"
+                        onClick={() => void handleExternalStart()}
+                      >
                         {externalBusy ? '处理中…' : '打开真浏览器登录'}
                       </button>
                       <button type="button" className="subtle-button" disabled={externalBusy || !external?.opened} onClick={() => void handleExternalCapture()}>
@@ -734,9 +570,6 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
                         关闭浏览器
                       </button>
                     </div>
-                    <p className="source-login-hint small">
-                      要打开的地址：{uiResponse?.loginUrl && !uiResponse.loginIsScript ? uiResponse.loginUrl : uiResponse?.loginUrl ? '由该书源脚本决定（loginUrl 是整段 JS），将退到它的主页' : '此书源没配 loginUrl，将打开它的主页'}
-                    </p>
                   </div>
                 )}
 
@@ -788,21 +621,6 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
                     )}
                   </div>
                 )}
-
-                {active === 'bookmark' && (
-                  <div className="source-login-panel">
-                    <p className="source-login-hint">
-                      在新标签页打开目标网站并登录后，在书签栏点一下此书签，即可把当前站点 Cookie 秒级回传到 legadoQ。
-                    </p>
-                    <ol className="source-login-bookmark-steps">
-                      <li>复制下方代码（或点「复制书签代码」）；</li>
-                      <li>浏览器书签栏新建书签，网址处粘贴该代码；</li>
-                      <li>在网站登录完成后，点击该书签即可回传。</li>
-                    </ol>
-                    <textarea className="source-login-textarea" rows={4} readOnly value={bookmarkletCode} style={{ fontSize: '11px', fontFamily: 'monospace' }} onFocus={e => e.currentTarget.select()} />
-                    <button type="button" className="primary-button" onClick={copyBookmarklet} style={{ alignSelf: 'flex-start' }}>复制书签代码</button>
-                  </div>
-                )}
               </>
             )
           })()}
@@ -833,31 +651,6 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
               </div>
             </div>
           </div>
-        )}
-        {webViewOpen && (
-          <SourceWebViewModal
-            sourceId={sourceId}
-            sourceName={sourceName}
-            startUrl={webViewStartUrl}
-            onClose={() => setWebViewOpen(false)}
-            onToast={onToast}
-            onNeedOtherMethod={() => {
-              setWebViewOpen(false)
-              userPickedRef.current = true
-              setMethod('cookie')
-            }}
-            onLoggedIn={async () => {
-              await loadLoginUi()
-              // 内置浏览器登录完，带着已落库的 Cookie 重跑当初触发浏览器的动作。
-              // browserCompleted=true 让服务端把 `startBrowserAwait` 的返回体填成它自己抓到的页面，
-              // 否则脚本里 `r.body` 永远是空串，登录等于只做了一半。
-              const pending = pendingBrowserActionRef.current
-              if (pending) {
-                pendingBrowserActionRef.current = null
-                await handleAction(pending, false, false, true)
-              }
-            }}
-          />
         )}
       </div>
     </div>

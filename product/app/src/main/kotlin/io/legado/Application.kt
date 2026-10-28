@@ -6,6 +6,7 @@ import io.ktor.server.application.*
 import io.ktor.server.cio.*
 import io.ktor.server.engine.*
 import io.ktor.server.plugins.*
+import io.ktor.server.plugins.compression.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
@@ -159,6 +160,20 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
         // encodeDefaults 必须开：kotlinx 默认 false 会把「取值等于默认值」的字段整个省掉，
         // 于是 replacement/isRegex/isEnabled 在响应里消失，前端按非空类型直接用就会白屏。
         json(Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true })
+    }
+    // 接口 JSON 压一层 gzip：书源清单 5,574 条实测 1,063,255 字节 → gzip -9 只有 100,436 字节，
+    // 发现页书源 540KB 同理。这些对象重复度极高，压缩几乎白赚；此前只有 `/assets` 那批
+    // 静态文件在 StaticWeb 里自己压，API 响应是原样出去的。
+    //
+    // 只认 `application/json`，不用插件默认的"除黑白名单外全压"：
+    // ① 静态资源已经带 Content-Encoding（插件会跳过，但没必要让它每次都走到那一步）；
+    // ② 图片/音频/封面/备份下载本来就不该压；
+    // ③ SSE（搜索进度、AI 流式输出）压了就等于把流缓冲成整篇，插件本身也会跳，这里再从入口收窄。
+    // 小于 1KB 的响应压了反而多几个字节的头，直接跳过。
+    install(Compression) {
+        gzip()
+        matchContentType(ContentType.Application.Json)
+        minimumSize(1024)
     }
     install(WebSockets)
     install(StatusPages) {

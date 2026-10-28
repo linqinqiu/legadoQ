@@ -6,9 +6,9 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 /**
- * PROPOSAL-017 / ADR-017 一期：把 legadoQ 打成能双击的 Windows 程序（`qingyue.exe`）。
+ * PROPOSAL-017 / ADR-017 一期：把 legadoQ 打成能双击的 Windows 程序（`legadoq.exe`）。
  *
- * 形态：jlink 裁过的运行时 + 我们的 fat jar，由 jpackage 包成 app-image；`qingyue.exe` 起来后
+ * 形态：jlink 裁过的运行时 + 我们的 fat jar，由 jpackage 包成 app-image；`legadoq.exe` 起来后
  * 由 `DesktopLauncher` 探端口、开浏览器、挂托盘、退出时优雅关服务。壳只当进程管家 + 窗口，
  * 界面永远开在 `http://127.0.0.1:<port>`（同源闸门一行不改）。
  *
@@ -52,7 +52,7 @@ const MODULES = 'java.base,java.datatransfer,java.xml,java.prefs,java.desktop,ja
   'jdk.crypto.ec,jdk.dynalink,jdk.unsupported'
 function resolveRuntime(target) {
   if (!hasFlag('--jlink')) {
-    const prev = fs.readdirSync(path.join(ROOT, 'dist')).filter(n => /^qingyue-\d+\.\d+\.\d+$/.test(n))
+    const prev = fs.readdirSync(path.join(ROOT, 'dist')).filter(n => /^legadoq-\d+\.\d+\.\d+$/.test(n))
       .sort().reverse().find(n => fs.existsSync(path.join(ROOT, 'dist', n, 'runtime', 'bin', 'java.exe')))
     if (prev) { fs.cpSync(path.join(ROOT, 'dist', prev, 'runtime'), target, { recursive: true }); return `复用 dist/${prev}/runtime` }
   }
@@ -79,7 +79,7 @@ fs.mkdirSync(destDir, { recursive: true })
 const icon = path.join(ROOT, 'assets', 'app.ico')
 const jpkgArgs = [
   '--type', 'app-image',
-  '--name', 'qingyue',
+  '--name', 'legadoq',
   '--app-version', version,
   '--input', staging,
   '--main-jar', jarName,
@@ -97,11 +97,14 @@ const jpkgArgs = [
 if (fs.existsSync(icon)) jpkgArgs.push('--icon', icon)
 const ran = spawnSync(jbin('jpackage'), jpkgArgs, { cwd: ROOT, stdio: 'inherit' })
 if (ran.status !== 0) fail('jpackage 失败')
-const imageRoot = path.join(destDir, 'qingyue')
-if (!fs.existsSync(path.join(imageRoot, 'qingyue.exe'))) fail('没生成 qingyue.exe')
+const imageRoot = path.join(destDir, 'legadoq')
+if (!fs.existsSync(path.join(imageRoot, 'legadoq.exe'))) fail('没生成 legadoq.exe')
 
-// 5) 把图标也放进镜像根，DesktopLauncher 的托盘/错误提示要读它。
+// 5) 把图标也放进镜像根：app.ico 给 exe/快捷方式，app.png 给托盘与启动画面。
+//    托盘必须用 PNG —— Java ImageIO 没有 ICO 解码器，读 app.ico 只会得到 1×1 透明图。
 if (fs.existsSync(icon)) fs.copyFileSync(icon, path.join(imageRoot, 'app.ico'))
+const trayIcon = path.join(ROOT, 'web/public/brand-logo-96.png')
+if (fs.existsSync(trayIcon)) fs.copyFileSync(trayIcon, path.join(imageRoot, 'app.png'))
 
 // 6) 可选：把数据目录指向现有书架（本机首次打包用，不静默迁移）。
 const dataDir = arg('--data-dir')
@@ -110,16 +113,16 @@ if (dataDir) {
   console.log(`NOTE  数据目录指向 ${dataDir}（镜像根 .env）`)
 }
 
-// 7) 校验产物布局（ADR-017 §5）：qingyue.exe / app/legado-*-all.jar / runtime/bin/java.exe。
+// 7) 校验产物布局（ADR-017 §5）：legadoq.exe / app/legado-*-all.jar / runtime/bin/java.exe。
 const appJar = fs.readdirSync(path.join(imageRoot, 'app')).find(n => n.endsWith('-all.jar'))
 if (!appJar) fail('app/ 里没有 fat jar —— stop.mjs 的 CommandLine 匹配会静默跳过它')
 if (!fs.existsSync(path.join(imageRoot, 'runtime', 'bin', 'java.exe'))) fail('runtime/bin/java.exe 缺失')
-console.log(`OK  ${path.relative(ROOT, imageRoot)}/qingyue.exe`)
+console.log(`OK  ${path.relative(ROOT, imageRoot)}/legadoq.exe`)
 console.log(`    运行时：${runtimeNote}；数据默认 ${dataDir ? dataDir : '<镜像>/data'}`)
 
 // 8) zip（顶层目录 = legadoQ）。
 if (!hasFlag('--no-zip')) {
-  const zipName = `qingyue-desktop-${version}.zip`
+  const zipName = `legadoq-desktop-${version}.zip`
   const zipPath = path.join(ROOT, 'dist', zipName)
   const files = []
   const collect = dir => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) collect(p); else files.push(p) } }
@@ -133,7 +136,7 @@ if (!hasFlag('--no-zip')) {
   const chunks = [], central = []
   let offset = 0
   for (const file of files) {
-    const name = `qingyue/${path.relative(imageRoot, file).split(path.sep).join('/')}`
+    const name = `legadoq/${path.relative(imageRoot, file).split(path.sep).join('/')}`
     const data = fs.readFileSync(file)
     const deflated = zlib.deflateRawSync(data, { level: 9 })
     const useDeflate = deflated.length < data.length
@@ -159,9 +162,9 @@ if (!hasFlag('--no-zip')) {
   eocd.writeUInt32LE(cd.length, 12); eocd.writeUInt32LE(offset, 16)
   fs.writeFileSync(zipPath, Buffer.concat([...chunks, cd, eocd]))
   const bytes = fs.statSync(zipPath)
-  console.log(`OK  dist/${zipName} · ${(bytes.size / 1024 / 1024).toFixed(1)} MB · ${files.length} 条 · 顶层 qingyue/`)
+  console.log(`OK  dist/${zipName} · ${(bytes.size / 1024 / 1024).toFixed(1)} MB · ${files.length} 条 · 顶层 legadoq/`)
   console.log(`    sha256 ${crypto.createHash('sha256').update(fs.readFileSync(zipPath)).digest('hex').slice(0, 16).toUpperCase()}…`)
 }
 
 fs.rmSync(staging, { recursive: true, force: true })
-console.log('下一步：双击 dist/desktop/qingyue/qingyue.exe（或在干净 PATH 下跑 tools/verify/desktop-check.mjs 验）')
+console.log('下一步：双击 dist/desktop/legadoq/legadoq.exe（或在干净 PATH 下跑 tools/verify/desktop-check.mjs 验）')

@@ -179,3 +179,16 @@ test('搜索框画在界面上，且"没搜到"只在真搜过时才说', () => 
   assert.match(settingsSrc, /const nothingMatched = searching &&/, '空态条件里必须包含"真的输入过"')
   assert.match(settingsSrc, /\{nothingMatched \?/, '空态要用那个条件把关')
 })
+
+test('壁纸模式：分区标题自己垫一层更实的底，不跟着面板不透明度一起淡', () => {
+  // 实测来源：面板调到 35%、毛玻璃 0 时，12px 的 --muted 标题压在壁纸上按配色折算约 3:1，
+  // 「阅读 / 界面 / 规则」这些字在花背景上基本认不出。标题是分区唯一的文字锚点，
+  // 不能因为用户把卡片调透就一起失守 —— 它得有自己的底，且比面板实一档。
+  const css = read('../src/styles.css')
+  const block = /html\[data-wallpaper="on"\] \.settings-section h2 \{([\s\S]*?)\}/.exec(css)?.[1] ?? ''
+  assert.ok(block.length > 80, '找不到壁纸模式的分区标题规则（取空串时下面几条对什么都成立）')
+  assert.match(block, /color: var\(--ink\)/, '标题还用 --muted，花背景上依旧糊')
+  assert.match(block, /background: color-mix\(/, '标题需要自己的底，不能只靠换文字颜色')
+  assert.match(block, /var\(--wallpaper-panel-opacity[^)]*\)\s*\+\s*\.4/, '标题底色没有比面板多垫一档：面板越透它越看不见')
+  assert.match(block, /border-radius: 999px/, '标题的底要收成一颗胶囊，别横贯成一条色带')
+})

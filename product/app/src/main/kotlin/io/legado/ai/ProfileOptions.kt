@@ -28,6 +28,16 @@ object ProfileOptions {
     const val TIMEOUT_MS = "timeoutMs"
 
     /**
+     * 「默认走这条」的标记。多个连接时由用户选一条生效，存在连接自己的 options 里
+     * （`default=1`），选择策略据此优先，不必再开一个"当前连接"的全局设置。
+     */
+    const val DEFAULT = "default"
+
+    /** 这条连接是否被用户设为默认。 */
+    fun isDefault(options: Map<String, String>): Boolean =
+        options[DEFAULT]?.trim()?.lowercase() in setOf("1", "true", "yes")
+
+    /**
      * 思考强度档位 —— 沿用 OpenAI 的命名，不自己发明。
      *
      * 顺序即强弱：LOW < MEDIUM < HIGH < XHIGH < MAX。

@@ -256,6 +256,7 @@ export type ExternalLoginStatus = {
   opened: boolean
   browser: string
   port: number
+  /** 我们拉起时是真实进程号；服务重启后附着到仍开着的窗口时拿不到，为 0。 */
   pid: number
   /** 这本书源会带凭据去访问的域（登录页排最前）。 */
   hosts: string[]
@@ -276,6 +277,8 @@ export type SourceLoginUiResponse = {  sourceId: string
   loginHeader?: string
   /** loginUrl 不是网址而是整段登录 JS（聚合源普遍如此）。 */
   loginIsScript?: boolean
+  /** 有没有能替你打开的登录入口（网址 / 相对路径 / 登录脚本 / jsLib 里的 startBrowserAwait）。 */
+  loginCanOpenBrowser?: boolean
   /** 这本书源实际会带凭据访问的域名，登录页那个排最前。 */
   cookieDomains?: string[]
   sourceVariable?: string
@@ -392,8 +395,25 @@ export type LogEntry = {
   count?: number
 }
 
+/**
+ * 整份书源清单（5,598 条、~1MB）的请求合流。
+ *
+ * 启动探活一过，main.tsx 就为书库选源/书架取一次；如果落点正好是「书源」页，
+ * SourcesPage 挂载后还会为同一份数据再取一次，两份 1MB 同时在路上。这里只共享
+ * **还没落地**的那一次请求 —— 落地即清空，增删改后的刷新照旧拿最新数据。
+ * 带 q 的搜索不参与合流：每次关键词都是不同的一份结果。
+ */
+let sourcesInflight: Promise<SourceSummary[]> | null = null
+const fetchSources = (query = '') => {
+  if (query) return request<SourceSummary[]>(`/api/sources?q=${encodeURIComponent(query)}`)
+  if (!sourcesInflight) {
+    sourcesInflight = request<SourceSummary[]>('/api/sources?q=').finally(() => { sourcesInflight = null })
+  }
+  return sourcesInflight
+}
+
 export const api = {
-  sources: (query = '') => request<SourceSummary[]>(`/api/sources?q=${encodeURIComponent(query)}`),
+  sources: fetchSources,
   source: (id: string) => request<SourceRecord>(`/api/sources/${encodeURIComponent(id)}`),
   save: (id: string, json: string, version?: number) => request<SourceRecord>(`/api/sources/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ json, version }) }),
   remove: (id: string) => request<void>(`/api/sources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -758,8 +778,8 @@ export const api = {
   agentChat: (messages: AgentChatMessage[], toolGroups?: string[] | null) =>
     request<AgentChatResult>('/api/agent/chat', { method: 'POST', body: JSON.stringify({ messages, ...(toolGroups ? { toolGroups } : {}) }) }),
   /** 拉取某个 OpenAI 兼容网关的模型清单（服务端代发，避免 CORS 与把 key 交给浏览器直连）。 */
-  listAgentModels: (baseUrl: string, apiKey?: string) =>
-    request<{ models: string[] }>('/api/agent/models', { method: 'POST', body: JSON.stringify({ baseUrl, apiKey }) }),
+  listAgentModels: (baseUrl: string, apiKey?: string, options?: Record<string, string>) =>
+    request<{ models: string[] }>('/api/agent/models', { method: 'POST', body: JSON.stringify({ baseUrl, apiKey, options }) }),
 }
 
 export function streamSearch(keyword: string, sourceIds: string[] | undefined, onEvent: (event: SearchStreamEvent) => void, onError: (message: string) => void, onClose: () => void): WebSocket {
@@ -800,6 +820,8 @@ export type AgentConnection = {
   kind: string
   model: string | null
   baseUrl: string | null
+  /** 连接自己的配置：header.* / thinking / timeoutMs / default，不含 apiKey。 */
+  options?: Record<string, string>
 }
 
 export type AgentConnectionInput = {
@@ -809,6 +831,7 @@ export type AgentConnectionInput = {
   baseUrl: string
   apiKey?: string
   model: string
+  options?: Record<string, string>
 }
 
 export type AgentComprehendResult = {

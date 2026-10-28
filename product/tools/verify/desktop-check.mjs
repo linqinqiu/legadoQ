@@ -32,14 +32,14 @@ const SMOKE = hasFlag('--smoke')
 // 分支秒退，所有判据就都打到开发服务上了（实测一次假红）。--port 给的是基址，实际用基址+40。
 const port = Number(arg('--port', '1234')) + 40
 
-const exe = arg('--exe') || path.join(ROOT, 'dist', 'desktop', 'qingyue', 'qingyue.exe')
+const exe = arg('--exe') || path.join(ROOT, 'dist', 'desktop', 'legadoq', 'legadoq.exe')
 
 /**
  * 前置产物不存在时判 **NOTE（前置不满足）** 而不是 FAIL。
  *
- * 为什么改：这条门禁判的是**桌面壳产物** `dist/desktop/qingyue/qingyue.exe`，
+ * 为什么改：这条门禁判的是**桌面壳产物** `dist/desktop/legadoq/legadoq.exe`，
  * 而它是 jpackage 在 Windows 上打出来的 app-image（`scripts/package-desktop.mjs:101,116`
- * 要求 `qingyue.exe` 与 `runtime/bin/java.exe`）。CI 的 full job 跑在 `ubuntu-latest`，
+ * 要求 `legadoq.exe` 与 `runtime/bin/java.exe`）。CI 的 full job 跑在 `ubuntu-latest`，
  * 只 `./gradlew :app:fatJar`，既不产桌面壳、也不可能产 .exe —— 于是这条门禁在 CI 里
  * **每次必红**，把"全量门禁"永久染红，绿/红信号失去意义。
  *
@@ -49,14 +49,25 @@ const exe = arg('--exe') || path.join(ROOT, 'dist', 'desktop', 'qingyue', 'qingy
 if (!fs.existsSync(exe)) {
   console.log(`NOTE  前置不满足：找不到桌面壳产物 ${exe}`)
   console.log('      这条门禁判的是**桌面壳产物**，不是源码：先在 Windows 上 node scripts/package-desktop.mjs。')
-  console.log(`      当前平台 ${process.platform}：jpackage 的 app-image（qingyue.exe）只有 Windows 构建才有，`)
+  console.log(`      当前平台 ${process.platform}：jpackage 的 app-image（legadoq.exe）只有 Windows 构建才有，`)
   console.log('      所以这里判 NOTE 而不是 FAIL —— 详见本文件开头的前置说明。')
   console.log('\ndesktop-check: NOTE 前置不满足（没有桌面壳产物），不做任何断言')
   process.exit(0)
 }
 
-// 主实例用一次性临时数据目录（跑完清掉，不污染真书架）。
-const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qingyue-desktop-'))
+/**
+ * 一次性数据目录建在仓库自己的 `tmp/` 下，**不用 `os.tmpdir()`**。
+ *
+ * 原因是这台机器的沙箱约束：仓库所在的 `E:\legado` 带 `Low Mandatory Level` 标签，
+ * 从这里启动的可执行文件会以**低完整性**运行（同一枚 `java.exe` 复制到别处运行就是 Medium，
+ * 用 `whoami /groups` 实测过）—— 低完整性进程只能写低完整性目录，拿系统临时目录（Medium）
+ * 当数据目录时 sqlite 连库文件都建不出来，报 `opening db: …: 拒绝访问`，门禁于是**假红**；
+ * 同一份 exe 解压到普通目录运行没有这个问题。建在仓库 `tmp/` 里既绕开沙箱差异，
+ * 也免得每次跑门禁都往用户 Temp 里扔一个上百 MB 的库。跑完照旧整个删掉。
+ */
+const scratchRoot = path.join(ROOT, 'tmp')
+fs.mkdirSync(scratchRoot, { recursive: true })
+const tmpDataDir = fs.mkdtempSync(path.join(scratchRoot, 'desktop-check-'))
 
 function spawnExe(port, dataDir, opts = {}) {
   const child = spawn(exe, ['--no-open'], {
@@ -156,8 +167,9 @@ else fail('退出后端口仍在监听')
 
 // === 数据目录测试：遵守 LEGADO_DATA_DIR、重启不变、不同目录隔离 ===
 if (!SMOKE) {
-  const da = fs.mkdtempSync(path.join(os.tmpdir(), 'qy-dataA-'))
-  const db = fs.mkdtempSync(path.join(os.tmpdir(), 'qy-dataB-'))
+  // 同 tmpDataDir：A/B 两个数据目录也建在仓库 tmp/ 下（低完整性沙箱里只有这里写得进去）。
+  const da = fs.mkdtempSync(path.join(scratchRoot, 'dataA-'))
+  const db = fs.mkdtempSync(path.join(scratchRoot, 'dataB-'))
   const pA = port + 11, pB = port + 22
   const dbFile = d => path.join(d, 'legado.sqlite')
 
@@ -185,17 +197,41 @@ if (!SMOKE) {
   fs.rmSync(db, { recursive: true, force: true })
 
   // 最佳努力：若仓库自带真实书架，验证指向它时读得到真实源。
+  //
+  // 不直接把壳指向 `data/`，而是先用 SQLite 自己的 `VACUUM INTO` 拷一份**一致性快照**到仓库 tmp/：
+  //  ① 真实库正被 1234 的开发服务占着，直接开第二个写连接要么抢锁、要么拷出"少了 WAL"的半截库；
+  //  ② 这台机器的沙箱把仓库盘标成低完整性，从仓库里起的壳是低完整性进程，而 `data/` 下的库文件是普通标签
+  //     —— 低完整性进程读得到、写不了，直接指过去会报 SQLITE_READONLY（实测）。
+  // 快照落在 tmp/（低完整性目录）里，既保留"能读真实书架"这条判据，又不受上面两条影响。
   const realData = path.join(ROOT, 'data')
-  if (fs.existsSync(path.join(realData, 'legado.sqlite'))) {
-    const pR = port + 33
-    const r = spawnExe(pR, realData)
-    if (await waitHealthOn(pR)) {
-      const src = await fetch(`http://127.0.0.1:${pR}/api/sources`).then(x => x.json()).catch(() => null)
-      const n = Array.isArray(src) ? src.length : (src && src.data ? src.data.length : 0)
-      if (n > 0) ok(`数据目录：指向真实书架读到 ${n} 个源`)
-      else fail(`数据目录：真实书架读到 0 个源（异常）`)
-    } else fail('数据目录：真实书架实例没起来')
-    killProc(r.pid); await waitPortFree(pR)
+  const realDb = path.join(realData, 'legado.sqlite')
+  if (fs.existsSync(realDb)) {
+    const snapshotDir = fs.mkdtempSync(path.join(scratchRoot, 'realshelf-'))
+    const snapshotDb = path.join(snapshotDir, 'legado.sqlite')
+    let copied = false
+    try {
+      const { DatabaseSync } = await import('node:sqlite')
+      const src = new DatabaseSync(realDb, { readOnly: true })
+      try {
+        // SQL 字符串里只转义单引号；反斜杠在 SQLite 里就是普通字符，Windows 路径可以直接写。
+        src.exec(`VACUUM INTO '${snapshotDb.replaceAll("'", "''")}'`)
+      } finally { src.close() }
+      copied = true
+    } catch (error) {
+      console.log(`NOTE  真实书架快照没做成（${error.message}），跳过这一条`)
+    }
+    if (copied) {
+      const pR = port + 33
+      const r = spawnExe(pR, snapshotDir)
+      if (await waitHealthOn(pR)) {
+        const src = await fetch(`http://127.0.0.1:${pR}/api/sources`).then(x => x.json()).catch(() => null)
+        const n = Array.isArray(src) ? src.length : (src && src.data ? src.data.length : 0)
+        if (n > 0) ok(`数据目录：指向真实书架快照读到 ${n} 个源`)
+        else fail('数据目录：真实书架读到 0 个源（异常）')
+      } else fail('数据目录：真实书架实例没起来')
+      killProc(r.pid); await waitPortFree(pR)
+    }
+    fs.rmSync(snapshotDir, { recursive: true, force: true })
   }
 }
 

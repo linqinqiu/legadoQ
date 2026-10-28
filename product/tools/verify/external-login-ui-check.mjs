@@ -44,6 +44,8 @@ const SOURCE_ID = `http://127.0.0.1:${site.port}/`
 
 const browser = await puppeteer.launch(launchOptions())
 const page = await browser.newPage()
+// PWA 的 service worker 会插手 fetch：不绕开它，验证读到的是缓存而不是刚部署的包。
+await page.setBypassServiceWorker(true)
 const errors = []
 page.on('pageerror', error => errors.push(error.message))
 await page.setViewport({ width: 1440, height: 900 })
@@ -70,6 +72,14 @@ ok('探针源已入库', imported.status === 200 && imported.json?.imported === 
 // 找到它并打开登录浮层
 await page.reload({ waitUntil: 'domcontentloaded' })
 await page.waitForSelector('.source-list-item', { timeout: 30000 })
+
+// 真浏览器是服务级单例：上一轮（或用户手动点的）可能还开着窗口——先收掉，
+// 后面断言「没打开时抓取/关闭禁用」才有意义。
+const reset = await page.evaluate(async id => {
+  const r = await fetch(`/api/sources/${encodeURIComponent(id)}/browser/external-login`, { method: 'DELETE', headers: { 'X-CSRF-Token': '' } })
+  return r.status
+}, SOURCE_ID)
+ok('先收掉上一轮可能还开着的真浏览器', reset === 204, `HTTP ${reset}`)
 const clicked = await page.evaluate(name => {
   const input = document.querySelector('.sources-page input')
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
@@ -98,11 +108,24 @@ const tabs = await page.evaluate(() => [...document.querySelectorAll('.source-lo
 })))
 // 页签文字里会带「推荐」角标，比顺序要用前缀匹配，不能全等
 const indexOfTab = label => tabs.findIndex(t => t.text.startsWith(label))
-ok('页签里有「真浏览器」且紧挨在内置浏览器之后',
-  tabs.some(t => t.text.startsWith('真浏览器')) && indexOfTab('真浏览器') === indexOfTab('内置浏览器') + 1,
+ok('登录方式只剩「真浏览器」与「粘贴 Cookie」两条',
+  tabs.length === 2 && indexOfTab('真浏览器') === 0 && indexOfTab('粘贴 Cookie') === 1,
   tabs.map(t => t.text).join(' | '))
 ok('页签没有表情符号且高度≥30px', tabs.every(t => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u.test(t.text) && t.h >= 30),
   JSON.stringify(tabs.map(t => `${t.text}:${t.h}`)))
+// 480px 浮层里页签必须完整可见：以前页签多到要横向滚动，最后一个被切掉半截
+const clippedTabs = await page.evaluate(() => {
+  const row = document.querySelector('.source-login-method-tabs').getBoundingClientRect()
+  return [...document.querySelectorAll('.source-login-method-tab')]
+    .filter(tab => tab.getBoundingClientRect().right > row.right + 1)
+    .map(tab => tab.textContent.trim())
+})
+ok('两个页签都完整可见（没有被切掉）', clippedTabs.length === 0, clippedTabs.join('、') || '全部在浮层内')
+
+// loginUrl 型登录源（库内 2000+ 个登录源的主流形态）：默认就该落在真浏览器页签。
+const activeTab = await page.evaluate(() =>
+  document.querySelector('.source-login-method-tab.is-active')?.textContent.trim() ?? '')
+ok('URL 型登录源默认选中并推荐「真浏览器」', activeTab.startsWith('真浏览器') && activeTab.includes('推荐'), activeTab || '(无选中)')
 
 await page.evaluate(() => {
   [...document.querySelectorAll('.source-login-method-tab')].find(t => t.textContent.trim() === '真浏览器')?.click()
@@ -110,13 +133,18 @@ await page.evaluate(() => {
 await sleep(600)
 const panel = await page.evaluate(() => ({
   text: document.querySelector('.source-login-panel')?.innerText ?? '',
+  startTitle: [...document.querySelectorAll('.source-login-external-actions button')]
+    .find(b => b.textContent.includes('打开真浏览器'))?.getAttribute('title') ?? '',
   buttons: [...document.querySelectorAll('.source-login-external-actions button')].map(b => ({
     label: b.textContent.trim(),
     h: Math.round(b.getBoundingClientRect().height),
     disabled: b.disabled,
   })),
 }))
-ok('切过去就说清"独立持久登录档、不动日常浏览器"', panel.text.includes('独立且持久') || panel.text.includes('不会'), panel.text.slice(0, 60))
+ok('页签只留一句操作说明（长解释已删）',
+  !panel.text.includes('任何本地程序都贴不上去') && panel.text.includes('抓取并入库'),
+  panel.text.slice(0, 80))
+ok('登录档隔离说明仍在按钮提示里', /独立且持久/.test(panel.startTitle), panel.startTitle)
 ok('三个动作按钮在位且不缩水', panel.buttons.length === 3 && panel.buttons.every(b => b.h >= 30), JSON.stringify(panel.buttons))
 ok('没打开浏览器时「抓取/关闭」是禁用的（不是点了报错）',
   panel.buttons.filter(b => b.label !== '打开真浏览器登录').every(b => b.disabled), JSON.stringify(panel.buttons.map(b => `${b.label}:${b.disabled}`)))
@@ -127,7 +155,18 @@ const started = await page.evaluate(async () => {
 })
 await sleep(6000)
 const afterStart = await page.evaluate(() => document.querySelector('.source-login-panel')?.innerText ?? '')
-ok('点一下真的起了浏览器并显示进程号', started && /已打开/.test(afterStart) && /进程 \d+/.test(afterStart), afterStart.split('\n').find(l => l.includes('已打开')) ?? '(没有状态行)')
+const extState = await page.evaluate(async id => {
+  const r = await fetch(`/api/sources/${encodeURIComponent(id)}/browser/external-login`)
+  const text = await r.text()
+  return { status: r.status, text }
+}, SOURCE_ID)
+ok('状态接口有内容（不是空响应）', extState.status === 200 && extState.text.length > 0, JSON.stringify(extState))
+const extJson = extState.text ? JSON.parse(extState.text) : { pid: 0 }
+ok('点一下真的起了浏览器并显示已打开', started && /已打开/.test(afterStart) && /等你在窗口里登录/.test(afterStart), afterStart.split('\n').find(l => l.includes('已打开')) ?? '(没有状态行)')
+// 服务重启后附着到早先拉起的窗口时拿不到 pid，界面不该摆一个「进程 0」
+ok('状态行只在拿得到进程号时才写进程号',
+  extJson.pid > 0 ? new RegExp(`进程 ${extJson.pid}`).test(afterStart) : !/进程 0/.test(afterStart),
+  `pid=${extJson.pid} · ${afterStart.split('\n').find(l => l.includes('已打开')) ?? '(没有状态行)'}`)
 
 await page.evaluate(() => {
   [...document.querySelectorAll('.source-login-external-actions button')].find(b => b.textContent.trim() === '抓取并入库')?.click()

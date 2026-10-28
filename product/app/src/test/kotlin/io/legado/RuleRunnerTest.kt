@@ -864,6 +864,43 @@ class RuleRunnerTest {
     }
 
     @Test
+    fun `POST body 长得像 JSON 时自动补 Content-Type`() {
+        // 番茄书架的 multidetail 只认 application/json：缺这个头时站点返回
+        // `{"code":-1,"message":"Cannot read properties of undefined (reading 'map')"}`，
+        // 书源规则把这个错误当成"没有书"，探索页就显示「返回 0 本」。
+        // HttpClient 对 ofString 默认不带任何 Content-Type，所以规则只写 body 时必须由我们补。
+        val runner = RuleRunner { "" }
+        val (url, options) = runner.splitUrlOptions(
+            """https://fanqienovel.com/api/bookshelf/multidetail,{"method":"post","body":{"books":[{"book_id":"1"}]}}"""
+        )
+        val request = runner.buildRequest(java.net.URI(url), options, null, null, null)
+        assertEquals("POST", request.method())
+        assertEquals(
+            "JSON 外形的 body 要自动带 application/json",
+            "application/json; charset=UTF-8",
+            request.headers().firstValue("Content-Type").orElse(null),
+        )
+    }
+
+    @Test
+    fun `显式 Content-Type 不被自动补的 JSON 头覆盖`() {
+        val runner = RuleRunner { "" }
+        val (url, options) = runner.splitUrlOptions(
+            """https://fanqienovel.com/api,{"method":"post","body":{"a":1},"headers":{"Content-Type":"application/x-www-form-urlencoded"}}"""
+        )
+        val request = runner.buildRequest(java.net.URI(url), options, null, null, null)
+        assertEquals(
+            listOf("application/x-www-form-urlencoded"),
+            request.headers().allValues("Content-Type").map { it.trim() },
+        )
+
+        // 表单外形的 body（a=1&b=2）不该被加上 JSON 头。
+        val (formUrl, formOptions) = runner.splitUrlOptions("""https://fanqienovel.com/api,{"method":"post","body":"a=1&b=2"}""")
+        val formRequest = runner.buildRequest(java.net.URI(formUrl), formOptions, null, null, null)
+        assertNull("表单 body 不该被当成 JSON", formRequest.headers().firstValue("Content-Type").orElse(null))
+    }
+
+    @Test
     fun `nextTocUrl 返回 JSON 数组时逐页爬取`() {
         // 懒人听书的 `nextTocUrl` 是 `@js:` 拼出的分页数组，Rhino 的 NativeJSON.stringify 把它序列化成
         // 一行 `["url1","url2"]`；原来只按行拆 → 整个数组被当成**一个** URL 请求 → 「URL 格式无效或包含

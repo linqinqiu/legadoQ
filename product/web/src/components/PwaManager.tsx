@@ -28,9 +28,22 @@ export function isPwaStandalone(): boolean {
   )
 }
 
+/**
+ * 桌面壳（jpackage 壳开 Chromium `--app` 窗口）会在地址上带 `?desktop=1`。
+ * 那个窗口不是浏览器标签页，装 PWA 没有意义 —— 安装条只会占掉窗口底部。
+ */
+export function isDesktopShell(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return new URLSearchParams(window.location.search).get('desktop') === '1'
+  } catch {
+    return false
+  }
+}
+
 export function subscribePwaInstall(callback: (canInstall: boolean) => void): () => void {
   installPromptListeners.add(callback)
-  callback(deferredInstallPrompt !== null && !isPwaStandalone())
+  callback(deferredInstallPrompt !== null && !isPwaStandalone() && !isDesktopShell())
   return () => installPromptListeners.delete(callback)
 }
 
@@ -64,6 +77,8 @@ export function PwaManager() {
 
     // 1. Listen for install prompt
     const handleBeforeInstallPrompt = (e: BeforeInstallPromptEvent) => {
+      // 桌面壳的 app 窗口不提供安装入口：不拦截事件、不记录可装状态。
+      if (isDesktopShell()) return
       e.preventDefault()
       deferredInstallPrompt = e
       setCanInstall(true)
@@ -163,7 +178,7 @@ export function PwaManager() {
     }
   }
 
-  const showBanner = canInstall && !dismissedBanner && !isPwaStandalone()
+  const showBanner = canInstall && !dismissedBanner && !isPwaStandalone() && !isDesktopShell()
 
   return (
     <>

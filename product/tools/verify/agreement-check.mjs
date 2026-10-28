@@ -21,7 +21,7 @@ try {
   await page.goto(BASE, { waitUntil: 'domcontentloaded' })
   // 归零：清掉同意标记，模拟"第一次打开"。
   await page.evaluate(async () => {
-    localStorage.removeItem('qingyue-agreement-v1')
+    localStorage.removeItem('legadoq-agreement-v1')
     const registrations = await (navigator.serviceWorker?.getRegistrations?.() ?? [])
     return Promise.all(registrations.map(entry => entry.unregister()))
   })
@@ -47,7 +47,7 @@ try {
 
   await page.click('.agreement-actions .primary-button')
   await page.waitForFunction(() => !document.querySelector('.overlay-backdrop.is-agreement'), { timeout: 5000 })
-  const stored = await page.evaluate(() => localStorage.getItem('qingyue-agreement-v1'))
+  const stored = await page.evaluate(() => localStorage.getItem('legadoq-agreement-v1'))
   check('点同意：层消失、localStorage 记住', Boolean(stored), stored ? `标记 ${String(stored).slice(0, 19)}` : '没写标记')
 
   await page.goto(`${BASE}/?t=${Date.now() + 1}`, { waitUntil: 'domcontentloaded' })
@@ -59,7 +59,7 @@ try {
 } finally {
   try {
     const pages = await browser.pages()
-    if (pages[0]) await pages[0].evaluate(() => localStorage.removeItem('qingyue-agreement-v1')).catch(() => undefined)
+    if (pages[0]) await pages[0].evaluate(() => localStorage.removeItem('legadoq-agreement-v1')).catch(() => undefined)
   } catch { /* profile 清理失败不掩盖判据 */ }
   await browser.close()
 }

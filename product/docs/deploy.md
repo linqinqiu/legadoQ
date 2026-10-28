@@ -7,14 +7,18 @@
 
 | 形态 | 怎么来 | 装了什么 Java | 默认端口 | 适合谁 |
 | :--- | :--- | :--- | :--- | :--- |
-| 桌面程序 `qingyue-desktop-<版本>.zip` | `node scripts/package-desktop.mjs`（需 `JAVA_HOME` 指向带 `jpackage`/`jlink` 的 JDK） | 自带 jlink 裁过的精简运行时，**用户机器不用装 Java** | `1234`（被占则顺延，见 §3） | 双击用的普通人 |
-| 整合包 `qingyue-<版本>.zip` | `node scripts/package.mjs`（先 `./gradlew :app:fatJar`） | 包内 `runtime/bin/java.exe`，同样免装 Java | `1234` | 想整个文件夹搬盘的人 |
+| 桌面程序 `legadoq-desktop-<版本>.zip` | `node scripts/package-desktop.mjs`（需 `JAVA_HOME` 指向带 `jpackage`/`jlink` 的 JDK） | 自带 jlink 裁过的精简运行时，**用户机器不用装 Java** | `1234`（被占则顺延，见 §3） | 双击用的普通人 |
+| 整合包 `legadoq-<版本>.zip` | `node scripts/package.mjs`（先 `./gradlew :app:fatJar`） | 包内 `runtime/bin/java.exe`，同样免装 Java | `1234` | 想整个文件夹搬盘的人 |
 | 裸 jar `legado-<版本>-all.jar` | `./gradlew :app:fatJar` | 需要本机 Java 17+ | `8080` | 已经有 JVM 的人 |
-| Docker | `docker build -f Dockerfile -t qingyue .` | 三段构建：node 打前端 → gradle 打服务端 → `eclipse-temurin:17-jre` | 容器内 `8080`，`LEGADO_HOST=0.0.0.0` | 有 NAS / 服务器的人 |
+| Docker | `docker build -f Dockerfile -t legadoq .` | 三段构建：node 打前端 → gradle 打服务端 → `eclipse-temurin:17-jre` | 容器内 `8080`，`LEGADO_HOST=0.0.0.0` | 有 NAS / 服务器的人 |
 | 源码 | `cd web && npm install && npm run dev` + `./gradlew :app:run` | 本机 JDK | dev server 5174 代理到 1234（可用 `LEGADO_PROXY_TARGET` 换） | 改代码的人 |
 
 **当前 Releases 上有的**：`latest`（流水线连续构建）给 `legado.jar` + `legado-dist.zip`；
-按版本号打的 tag 给 `qingyue-<版本>.zip`。**桌面包还没上传**，所以现在要用桌面版只能自己打（`dist/qingyue-desktop-<版本>.zip`）。
+按版本号打的 tag 给 `legadoq-<版本>.zip`。**桌面包还没上传**，所以现在要用桌面版只能自己打（`dist/legadoq-desktop-<版本>.zip`）。
+
+桌面壳为什么是 jlink + jpackage 而不是 Tauri / GraalVM，见
+[`研究-桌面外壳与Tauri.md`](研究-桌面外壳与Tauri.md)：结论是现有外壳已经满足"免装 JDK、只跑一个进程、
+界面同源"，换 Tauri 省不下体积，还得再养一条 Rust 打包链。
 
 ## 2. 构建顺序不是可选的
 
@@ -43,7 +47,8 @@ node scripts/package-desktop.mjs    # ⑤ 可选：桌面包
 
 - **界面上就能改**：设置 → 服务 → 服务端口（写的是安装根下的 `port.txt`，**重启后生效** —— 正在跑的进程挪不了自己的监听口）。
 - 桌面程序（`DesktopLauncher.kt`）：端口上已经是 legadoQ → 只开界面、不留第二个进程；被**别的程序**占了 → 从下一个端口起
-  在 20 个内找空闲的，并用它写回 `port.txt`，下次仍稳定在它上面。
+  在 20 个内找空闲的，并用它写回 `port.txt`，下次仍稳定在它上面。应用窗口的地址带 `?desktop=1`，界面据此不显示 PWA 安装条；
+  托盘可开窗口、浏览器、数据/日志/程序目录，复制地址与退出；壳输出写 `server.log`（`LEGADO_LOG_FILE` 可改，5MB 轮转）。
 - 裸 jar 默认 `8080`；启动脚本与桌面版默认 `1234`。
 
 ## 4. 启动、停止与数据目录

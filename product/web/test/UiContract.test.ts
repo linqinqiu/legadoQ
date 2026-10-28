@@ -121,7 +121,7 @@ const MARKER_CLASSES: Record<string, string> = {
   'health-stop-btn': '体检弹窗的「停止体检」，source-health-check 按它点键',
   'health-grouping-apply': '体检结论那三行「打标签」的按钮，source-health-check 按它点（删掉它门禁会点到空处）',
   'health-grouping-undo': '同一行的「撤销」，source-health-check 按它点',
-  'source-login-entry-btn': '书源编辑器里那颗「登录」入口，source-editor-check 与 webview-login-probe 按它定位',
+  'source-login-entry-btn': '书源编辑器里那颗「登录」入口，source-editor-check 按它定位',
   'reader-flow-tail': '滚动模式章末提示条，reader-transition-check 按它判断"接不上下一章时有没有给提示"',
   // W2 并档之后，这些页面类名不再声明几何（宽高/圆角/阴影/动画都在 `.dialog-shell` 那一档），
   // 但门禁靠它们定位"是哪一张弹窗"。和上面几条同一个道理：没有样式 ≠ 没有用处。
@@ -135,7 +135,6 @@ const MARKER_CLASSES: Record<string, string> = {
   'source-group-modal': '批量分组弹窗根节点，source-health-check 按它定位',
   'book-manage-sheet': '「书籍管理」那张卡的根节点，shelf-layout-check 与 ui-shell-check 按它定位',
   'source-login-dialog': '书源登录弹窗根节点，source-login-check 按它定位',
-  'source-webview-dialog': '内置浏览器弹窗根节点，source-editor-check 按它定位',
 }
 
 /**
@@ -334,7 +333,7 @@ const bareCss = css.replace(/\/\*[\s\S]*?\*\//g, '')
  *
  * 三条口径不然这条判据就是一堆假红（第一版就是这么报了 28 个）：
  * ① 选择器串里的**逗号是"或"** —— `.a, .b` 命中一个就有效，必须整串一起判；
- * ② `next-*` 那两份门禁打的是**另一个仓库**（qingyue 的新骨架），不许拿旧界面的源码判它；
+ * ② `next-*` 那两份门禁打的是**另一个仓库**（历史骨架），不许拿旧界面的源码判它；
  * ③ v2 外壳回滚后 ui-shell-check 是在**断言那些类名不存在**，那种锚点天生该找不到，逐条写清是谁在钉。
  */
 const GATE_ANCHOR_EXEMPT: Record<string, string> = {
@@ -346,7 +345,6 @@ const GATE_ANCHOR_EXEMPT: Record<string, string> = {
   'shelf-density': '书架密度切换器已删，shelf-layout-check 断言 densityControl === false',
   'explore-search': '发现页那格"在这个源里搜书名"已按用户要求删除，source-picker-check 断言它不许回来',
   'ui-select-more': '选项截断提示已随虚拟滚动删除，source-picker / source-scale 两条都写成"没有也算过"',
-  'source-webview-viewport-picker': '内置浏览器的手机/平板/铺满切换器已删，source-editor-check 断言 picker === false',
   'shelf-card-read-track': '封面下沿的阅读进度条已删（用户 2026-10-03），shelf-layout-check 判的是"它不许回来"',
   'shelf-card-read-fill': '同上（那条带的填充）',
 }
@@ -393,7 +391,7 @@ function classesIn(selector: string): string[] {
 
 test('门禁里的选择器锚点都还长在界面上（删类名要先查门禁）', () => {
   const verifyDir = path.resolve(import.meta.dirname, '../../tools/verify')
-  // next-* 打的是 qingyue 那份新骨架（另一个仓库），env/zip-make/… 是工具不是门禁
+  // next-* 打的是历史骨架（另一个仓库），env/zip-make/… 是工具不是门禁
   const gates = fs.readdirSync(verifyDir).filter(n => n.endsWith('.mjs') && !AUDIT_ONLY.test(n) && !/^(next-|env|multipart|zip-make|make-ico|render-icons|preview|snapshot|commit-pending|extract-|testreport|test-failure|chaincheck|archive-verify|md-table-check|frame-metrics)/.test(n))
     .map(n => ({ name: n, src: fs.readFileSync(path.join(verifyDir, n), 'utf8') }))
   const dir = path.resolve(import.meta.dirname, '../src')

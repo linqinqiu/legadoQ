@@ -25,12 +25,13 @@ import kotlin.io.path.readText
  *    即 AGENTS.md §4 的「已确认正确行为」）；外部策略用命名类可增删，同名类注册被拒。
  * 3. **工具面可插拔、内置工具不可被默认摘掉**：`ToolRegistry` 内置一份 `BuiltinTools.all()`，
  *    外部工具可注册/注销，但内置工具默认拒绝删除（保持框架不被插件悄悄削弱）。
- * 4. **端点计数契约**：随包的 `agent-api.json` 是 141 条端点 / 19 个组，其中 `AI 自定义接入` 组 8 条。
- *    这是与 `http/` 路由文件双向核对的真实数目（见 AGENTS.md §6）。旧版这里写 142 —— 那是
- *    插件系统还在时的数，移除 `/api/plugins` 后本文件的断言已改成 141，注释跟着一起改。
+ * 4. **端点计数契约**：随包的 `agent-api.json` 是 144 条端点 / 19 个组，其中 `AI 自定义接入` 组 9 条。
+ *    这是与 `http/` 路由文件双向核对的真实数目（见 AGENTS.md §6）。计数随端点增减同步更新：
+ *    141（移除插件）→ 143（补全局 Cookie 管理两条）→ 144（连接模型清单探针），见
+ *    `web/test/ApiCatalog.test.ts` 同一串注释。
  * 5. **框架容器不注册任何 HTTP 路由**：`plugin/`（纯框架容器）与 `ai/`（内置 AI 接入，类比 `features/`）
  *    都不 import `io.ktor.server.routing`、不出现 `routing {` / `route(` —— 端点只由 `http/` 装配，
- *    因此 141 计数稳定，框架扩展不会凭空多出路由。
+ *    因此 144 计数稳定，框架扩展不会凭空多出路由。
  *
  * 注意：本文件只断言「框架形状」，不绑定任何具体业务端点/工具 id；新增内置工具或 provider 时，
  * 只要不破坏上述不变量，本测试照常通过。
@@ -119,10 +120,10 @@ class FrameworkContractTest {
         assertEquals(before, registry.size())
     }
 
-    // ===== 4. 端点计数契约（141 / 19 / 8） =====
+    // ===== 4. 端点计数契约（144 / 19 / 9） =====
 
     @Test
-    fun `agent-api 契约：141 端点、19 组、AI 自定义接入 8 条`() {
+    fun `agent-api 契约：144 端点、19 组、AI 自定义接入 9 条`() {
         // RouteCatalog 从 classpath 读 /agent-api.json，serve 会补齐 version、count 与 baseUrl。
         val raw = RouteCatalog.serve("0.0.0-contract", "http://127.0.0.1:1234")
         val root = Json.parseToJsonElement(raw).jsonObject
@@ -133,8 +134,8 @@ class FrameworkContractTest {
         val declaredCount = root["count"]?.jsonPrimitive?.int
         assertEquals("count 必须等于 endpoints 实际条数", endpoints.size, declaredCount)
 
-        // 全量契约：141 条端点（插件系统移除后从 142 减 1）。
-        assertEquals("端点总数必须是 141", 141, endpoints.size)
+        // 全量契约：144 条端点（插件移除后 141，补 Cookie 两条与模型清单探针一条）。
+        assertEquals("端点总数必须是 144", 144, endpoints.size)
 
         // baseUrl 必须按运行时地址注入，不能沿用文件里写死的端口。
         val injectedBase = root["howToConnect"]?.jsonObject?.get("baseUrl")?.jsonPrimitive?.content
@@ -143,9 +144,9 @@ class FrameworkContractTest {
         val groups = endpoints.map { (it as JsonObject)["group"]!!.jsonPrimitive.content }
         // 19 个互不相同的组。
         assertEquals("组数必须是 19", 19, groups.toSet().size)
-        // AI 自定义接入组恰好 8 条。
+        // AI 自定义接入组恰好 9 条（含新增的模型清单探针）。
         val aiGroupCount = groups.count { it == "AI 自定义接入" }
-        assertEquals("AI 自定义接入 组必须是 8 条", 8, aiGroupCount)
+        assertEquals("AI 自定义接入 组必须是 9 条", 9, aiGroupCount)
     }
 
     // ===== 5. 框架容器不注册任何 HTTP 路由 =====

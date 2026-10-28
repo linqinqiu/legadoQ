@@ -1,6 +1,6 @@
 {
   "name": "legado",
-  "version": "0.1.4",
+  "version": "0.1.7",
   "private": true,
   "license": "GPL-3.0-or-later",
   "description": "legadoQ — 本地阅读服务（Kotlin/Ktor 后端 + 内置 Web UI）",

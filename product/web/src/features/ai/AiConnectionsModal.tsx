@@ -58,7 +58,11 @@ type ChatLine = {
 function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
   const [connections, setConnections] = useState<AgentConnection[]>([])
   const [loadError, setLoadError] = useState('')
-  const external = connections[0]
+  /** 正在编辑哪一条；`null` = 表单处于"新建"。 */
+  const [editing, setEditing] = useState<AgentConnection | null>(null)
+  /** 真正生效的那条：标了「默认」的优先，否则第一条（与服务端选择策略同一条规则）。 */
+  const active = connections.find(c => c.options?.default === '1' || c.options?.default === 'true') ?? connections[0]
+  const external = active
 
   const refresh = () => {
     api.listAgentConnections()
@@ -66,6 +70,33 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
       .catch(err => setLoadError(err instanceof Error ? err.message : '读取连接失败'))
   }
   useEffect(() => { refresh() }, [])
+
+  /**
+   * 把某条标成默认：给它的 options 加 `default=1`，其余清掉。
+   *
+   * 走的是同一条 upsert 接口（不带 apiKey = 服务端沿用原密钥），不额外开"当前连接"端点 ——
+   * 多一个全局状态就多一处会与列表不一致的地方。
+   */
+  const makeDefault = async (id: string) => {
+    try {
+      await Promise.all(connections.map(c => {
+        const options = { ...(c.options ?? {}) }
+        if (c.id === id) options.default = '1'
+        else delete options.default
+        return api.registerAgentConnection({
+          id: c.id,
+          name: c.name,
+          kind: c.kind,
+          baseUrl: c.baseUrl ?? '',
+          model: c.model ?? '',
+          options,
+        })
+      }))
+      refresh()
+    } catch (failure) {
+      setLoadError(failure instanceof Error ? failure.message : '设为默认失败')
+    }
+  }
 
   return (
     <div className="ai-connections">
@@ -75,29 +106,50 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
         <section className="ai-section">
           <h3>连接</h3>
           <p className="ai-section-hint">
-            连接会写入 <code>agent-profiles.json</code>，重启后保留。多个连接时只走第一条；
-            没有连接时 AI 不可用，不会用本地抽取冒充模型结果。
+            连接会写入 <code>agent-profiles.json</code>，重启后保留。多个连接时走标了「默认」的那条，
+            没标就走第一条；没有连接时 AI 不可用，不会用本地抽取冒充模型结果。
           </p>
           {loadError ? (
             <p className="customize-error" role="alert">{loadError}</p>
+          ) : connections.length === 0 ? (
+            <p className="ai-muted">还没有登记连接。下面填一个 openai-compatible 地址就行。</p>
           ) : (
             <ul className="ai-conn-list">
-              {connections.map(c => (
-                <li key={c.id} className="ai-conn-item">
-                  <div className="ai-conn-main">
-                    <strong>{c.name}</strong>
-                    <small>外部 · {c.model ?? '—'}{c.baseUrl ? ` · ${c.baseUrl}` : ''}</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="link-button ai-conn-del"
-                    onClick={() => void api.deleteAgentConnection(c.id).then(refresh).catch(() => setLoadError('删除失败'))}
-                  >删除</button>
-                </li>
-              ))}
+              {connections.map(c => {
+                const isActive = c.id === active?.id
+                return (
+                  <li key={c.id} className="ai-conn-item">
+                    <div className="ai-conn-main">
+                      <strong>
+                        {c.name}
+                        {isActive && <span className="ai-tag ai-tag-ok ai-conn-badge">正在使用</span>}
+                      </strong>
+                      <small>外部 · {c.model ?? '—'}{c.baseUrl ? ` · ${c.baseUrl}` : ''}</small>
+                      {!!describeOptions(c.options) && <small className="ai-conn-opts">{describeOptions(c.options)}</small>}
+                    </div>
+                    <div className="ai-conn-actions">
+                      <button type="button" className="link-button" onClick={() => setEditing(c)}>编辑</button>
+                      {!isActive && (
+                        <button type="button" className="link-button" onClick={() => void makeDefault(c.id)}>设为默认</button>
+                      )}
+                      <button
+                        type="button"
+                        className="link-button ai-conn-del"
+                        onClick={() => void api.deleteAgentConnection(c.id)
+                          .then(() => { if (editing?.id === c.id) setEditing(null); refresh() })
+                          .catch(() => setLoadError('删除失败'))}
+                      >删除</button>
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           )}
-          <RegisterConnection onRegistered={refresh} />
+          <RegisterConnection
+            editing={editing}
+            onCancel={() => setEditing(null)}
+            onRegistered={() => { setEditing(null); refresh() }}
+          />
         </section>
         <section className="ai-section">
           <h3>工具</h3>
@@ -300,11 +352,53 @@ function ChatPanel({
   )
 }
 
-function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
+/** 常见网关的地址预设：选一家只填地址与常用模型，其余照旧可改。 */
+const PROVIDER_PRESETS = [
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { id: 'moonshot', name: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: '' },
+  { id: 'siliconflow', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', model: '' },
+  { id: 'ollama', name: 'Ollama（本机）', baseUrl: 'http://127.0.0.1:11434/v1', model: '' },
+]
+
+/** 连接 options 里用户看得见的那部分摘要（不含 default 标记）。 */
+function describeOptions(options?: Record<string, string>): string {
+  if (!options) return ''
+  const headers = Object.keys(options).filter(key => key.startsWith('header.')).length
+  const parts: string[] = []
+  if (headers > 0) parts.push(`${headers} 个自定义头`)
+  if (options.thinking) parts.push(`思考 ${options.thinking}`)
+  if (options.timeoutMs) parts.push(`超时 ${options.timeoutMs}ms`)
+  return parts.join(' · ')
+}
+
+/** 把 "Name: Value" 多行文本解析成 options.header.*。 */
+function parseHeaders(text: string): Record<string, string> {
+  const options: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const index = line.indexOf(':')
+    if (index <= 0) continue
+    const name = line.slice(0, index).trim()
+    const value = line.slice(index + 1).trim()
+    if (name && value) options[`header.${name}`] = value
+  }
+  return options
+}
+
+function RegisterConnection({ editing, onRegistered, onCancel }: {
+  editing: AgentConnection | null
+  onRegistered: () => void
+  onCancel: () => void
+}) {
   const [name, setName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
   const [apiKey, setApiKey] = useState('')
+  /** 高级项：自定义请求头（一行一个 Name: Value）、超时、思考强度。 */
+  const [headersText, setHeadersText] = useState('')
+  const [timeoutMs, setTimeoutMs] = useState('')
+  const [thinking, setThinking] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
@@ -315,13 +409,48 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
   /** 已经为哪个地址拉过清单：同一个地址失焦不重复打网关。 */
   const fetchedFor = useRef('')
 
+  // 进入编辑：把这条连接的值铺回表单。密钥不回填（接口也不返回它），留空 = 沿用原密钥。
+  useEffect(() => {
+    if (!editing) return
+    setName(editing.name)
+    setBaseUrl(editing.baseUrl ?? '')
+    setModel(editing.model ?? '')
+    setApiKey('')
+    const options = editing.options ?? {}
+    setHeadersText(Object.entries(options)
+      .filter(([key]) => key.startsWith('header.'))
+      .map(([key, value]) => `${key.slice('header.'.length)}: ${value}`)
+      .join('\n'))
+    setTimeoutMs(options.timeoutMs ?? '')
+    setThinking(options.thinking ?? '')
+    setError('')
+    setNote('')
+    fetchedFor.current = ''
+  }, [editing])
+
+  const buildOptions = (): Record<string, string> => {
+    const options = parseHeaders(headersText)
+    if (thinking) options.thinking = thinking
+    if (timeoutMs.trim() && Number(timeoutMs) > 0) options.timeoutMs = timeoutMs.trim()
+    // 编辑时保留「默认」标记：改个模型不该把它从默认位上踢下来。
+    if (editing?.options?.default) options.default = editing.options.default
+    return options
+  }
+
+  const reset = () => {
+    setName(''); setBaseUrl(''); setModel(''); setApiKey('')
+    setHeadersText(''); setTimeoutMs(''); setThinking('')
+    setModels([]); setModelsNote(''); fetchedFor.current = ''
+  }
+
   const fetchModels = async () => {
     const url = baseUrl.trim()
     if (!url) { setModelsNote('先填接口地址'); return }
     setModelsBusy(true)
     setModelsNote('')
     try {
-      const result = await api.listAgentModels(url, apiKey.trim() || undefined)
+      // 带上高级项：有些中转站要自定义头才允许列模型。
+      const result = await api.listAgentModels(url, apiKey.trim() || undefined, buildOptions())
       setModels(result.models)
       fetchedFor.current = `${url}|${apiKey.trim()}`
       setModelsNote(`已拿到 ${result.models.length} 个模型；从下拉里挑，或直接填清单外的名字。`)
@@ -352,16 +481,19 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
     setError('')
     setNote('')
     try {
-      const created = await api.registerAgentConnection({
+      const saved = await api.registerAgentConnection({
+        id: editing?.id,
         name: name.trim(),
         kind: 'openai-compatible',
         baseUrl: baseUrl.trim(),
         model: model.trim(),
         apiKey: apiKey.trim() || undefined,
+        options: buildOptions(),
       })
-      setNote(`已登记「${created.name}」（id: ${created.id}）。注意：有多个外部连接时只走第一条，想让它生效就放在第一条。`)
-      setName(''); setBaseUrl(''); setModel(''); setApiKey('')
-      setModels([]); setModelsNote(''); fetchedFor.current = ''
+      setNote(editing
+        ? `已更新「${saved.name}」。`
+        : `已登记「${saved.name}」（id: ${saved.id}）。多个连接时走标了「默认」的那条，需要它生效就点「设为默认」。`)
+      reset()
       onRegistered()
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '登记失败')
@@ -372,7 +504,28 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
 
   return (
     <div className="ai-register">
-      <h4>登记外部连接（openai-compatible）</h4>
+      <h4>{editing ? `编辑连接：${editing.name}` : '登记外部连接（openai-compatible）'}</h4>
+      {!editing && (
+        <label className="customize-field">
+          <span>从预设开始（可选）</span>
+          <select
+            className="settings-search"
+            value=""
+            onChange={event => {
+              const preset = PROVIDER_PRESETS.find(item => item.id === event.target.value)
+              if (!preset) return
+              if (!name.trim()) setName(preset.name)
+              setBaseUrl(preset.baseUrl)
+              if (preset.model) setModel(preset.model)
+            }}
+          >
+            <option value="">选一家自动填地址…</option>
+            {PROVIDER_PRESETS.map(preset => (
+              <option key={preset.id} value={preset.id}>{preset.name} · {preset.baseUrl}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="ai-field-grid">
         <label className="customize-field">
           <span>名称</span>
@@ -400,10 +553,52 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
           </datalist>
         </label>
         <label className="customize-field">
-          <span>密钥（可空）</span>
-          <input type="password" autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} onBlur={autoFetch} placeholder="sk-…（留空则不带 Authorization）" />
+          <span>密钥{editing ? '（留空 = 不改）' : '（可空）'}</span>
+          <input
+            type="password"
+            autoComplete="off"
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            onBlur={autoFetch}
+            placeholder={editing ? '不改就留空' : 'sk-…（留空则不带 Authorization）'}
+          />
         </label>
       </div>
+      <details className="ai-register-advanced">
+        <summary>高级（自定义请求头 / 超时 / 思考强度）</summary>
+        <label className="customize-field">
+          <span>自定义请求头，一行一个 <code>Name: Value</code></span>
+          <textarea
+            rows={3}
+            spellCheck={false}
+            value={headersText}
+            onChange={e => setHeadersText(e.target.value)}
+            placeholder={'X-Api-Key: abc\nHTTP-Referer: https://example.com'}
+          />
+        </label>
+        <div className="ai-field-grid">
+          <label className="customize-field">
+            <span>思考强度</span>
+            <select className="settings-search" value={thinking} onChange={e => setThinking(e.target.value)}>
+              <option value="">默认（不发这个字段）</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+              <option value="max">max</option>
+            </select>
+          </label>
+          <label className="customize-field">
+            <span>超时（毫秒，留空用默认 30s）</span>
+            <input
+              inputMode="numeric"
+              value={timeoutMs}
+              onChange={e => setTimeoutMs(e.target.value)}
+              placeholder="30000"
+            />
+          </label>
+        </div>
+      </details>
       <div className="ai-model-fetch">
         <button
           type="button"
@@ -420,7 +615,12 @@ function RegisterConnection({ onRegistered }: { onRegistered: () => void }) {
       {!!error && <p className="customize-error" role="alert">{error}</p>}
       {!!note && <p className="customize-note">{note}</p>}
       <div className="customize-actions">
-        <button type="button" className="primary-button" onClick={() => void submit()} disabled={busy}>登记</button>
+        <button type="button" className="primary-button" onClick={() => void submit()} disabled={busy}>
+          {editing ? '保存' : '登记'}
+        </button>
+        {editing && (
+          <button type="button" className="ghost-button" onClick={() => { reset(); onCancel() }}>取消</button>
+        )}
       </div>
     </div>
   )

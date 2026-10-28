@@ -26,8 +26,14 @@ export const SOURCE_PAGE_SIZE = 120
 
 /* 目录预览不再分水位：一次全给（用户 2026-10-09：「目录预览直接展示全部目录，不需要展开了」）。 */
 
-export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected: SourceSummary | null; onSelect: (source: SourceSummary | null) => void; onSourcesChange: (sources: SourceSummary[]) => void }) {
-  const [sources, setSources] = useState<SourceSummary[]>([])
+export function SourcesPage({ selected, onSelect, onSourcesChange, sources: hostedSources }: {
+  selected: SourceSummary | null
+  onSelect: (source: SourceSummary | null) => void
+  onSourcesChange: (sources: SourceSummary[]) => void
+  /** 宿主启动时已取过的整份清单（~1MB）：有就直接铺上，别再为同一份数据跑第二趟。 */
+  sources?: SourceSummary[]
+}) {
+  const [sources, setSources] = useState<SourceSummary[]>(hostedSources ?? [])
   const [query, setQuery] = useState('')
   const loadGeneration = useRef(0)
   const [groupFilter, setGroupFilter] = useState('')
@@ -60,7 +66,44 @@ export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected:
    * 书源清单到没到手。体检弹窗要读这个：清单还在路上时 `sources` 是空数组，
    * 于是界面会一本正经地写「探测『启用中』的 0 个书源」—— 把"还没取到"说成"一个都没有"。
    */
-  const [sourcesState, setSourcesState] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [sourcesState, setSourcesState] = useState<'loading' | 'ready' | 'failed'>(
+    hostedSources && hostedSources.length > 0 ? 'ready' : 'loading',
+  )
+
+  /**
+   * 窄屏是纵向堆叠（页头 → 列表 → 编辑器）：点一条书源后，编辑器在列表下面几百像素，
+   * 不滚过去就等于"点了没反应"。宽屏两栏并排，不需要动。
+   */
+  const revealEditorOnPhone = () => {
+    if (!window.matchMedia('(max-width: 720px)').matches) return
+    const target = document.querySelector<HTMLElement>('.sources-page .sources-content')
+    if (!target) return
+
+    // 用即时滚动而不是 smooth：内容异步换上来时文档高度会变，平滑动画会被取消。
+    // 顶栏补偿交给 CSS 的 scroll-margin-top（56px + 安全区）。
+    const align = () => target.scrollIntoView({ block: 'start', behavior: 'auto' })
+    align()
+
+    // 刚点下去时编辑器还是空壳（文档只有 ~1200px 高），上面的对齐会被浏览器截在
+    // 最大滚动位置（实测 contentTop 停在 406，目标是 56）。等内容长高一点再对一次；
+    // 用户一旦自己滚（wheel / touch）就立刻停手，别把人拽回来。
+    let lastHeight = target.offsetHeight
+    const observer = new ResizeObserver(() => {
+      if (target.offsetHeight === lastHeight) return
+      lastHeight = target.offsetHeight
+      align()
+    })
+    observer.observe(target)
+    const stop = () => {
+      observer.disconnect()
+      window.clearTimeout(timer)
+      window.removeEventListener('wheel', stop)
+      window.removeEventListener('touchstart', stop)
+    }
+    const timer = window.setTimeout(stop, 2500)
+    window.addEventListener('wheel', stop, { passive: true })
+    window.addEventListener('touchstart', stop, { passive: true })
+  }
 
   // 从别处（书籍详情的换源行）右键跳过来时，把目标填进搜索框并选中它
   useEffect(() => {
@@ -85,7 +128,26 @@ export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected:
     }
   }, [onSourcesChange, query])
 
+  /*
+    首屏只取一次：宿主启动探活一过就取过整份清单（5,598 条、~1MB），书源页挂载时
+    如果那份已经到手，直接铺开就行 —— 再为同一份数据跑一趟，等于开机就多花一次
+    1MB 的传输与解析。搜索、增删改、保存后的刷新仍照常走 load()。
+  */
+  const skipFirstLoad = useRef((hostedSources?.length ?? 0) > 0)
+  const firstLoad = useRef(true)
   useEffect(() => {
+    if (skipFirstLoad.current) {
+      skipFirstLoad.current = false
+      firstLoad.current = false
+      return
+    }
+    // 挂载即取：宿主启动时那份整表请求通常还在路上，两处会合流成一次（api.sources）。
+    // 180ms 防抖只留给之后的输入，别让首屏白白多等一个防抖窗口。
+    if (firstLoad.current) {
+      firstLoad.current = false
+      void load()
+      return
+    }
     const timer = window.setTimeout(() => { void load() }, 180)
     return () => window.clearTimeout(timer)
   }, [load])
@@ -460,7 +522,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected:
         <button
           type="button"
           className="primary-button source-create-btn"
-          onClick={() => { setCreating(true); onSelect(null) }}
+          onClick={() => { setCreating(true); onSelect(null); revealEditorOnPhone() }}
         >
           <Icon name="plus" />
           新建书源
@@ -542,9 +604,9 @@ export function SourcesPage({ selected, onSelect, onSourcesChange }: { selected:
                 type="button"
                 onPointerDown={onSourcePointerDown(index)}
                 onClickCapture={onSourceClickCapture}
-                onClick={() => { setCreating(false); onSelect(source) }}
+                onClick={() => { setCreating(false); onSelect(source); revealEditorOnPhone() }}
                 onContextMenu={event => showContextMenu(event, [
-                  { label: '编辑此书源', icon: 'edit', onSelect: () => { setCreating(false); onSelect(source) } },
+                  { label: '编辑此书源', icon: 'edit', onSelect: () => { setCreating(false); onSelect(source); revealEditorOnPhone() } },
                   { label: '分阶段调试', icon: 'activity', onSelect: () => setDebugModalSource(source) },
                   ...(source.hasLogin ? [{ label: '登录 / Cookie', icon: 'logOut' as const, onSelect: () => setLoginModalSource(source) }] : []),
                   {

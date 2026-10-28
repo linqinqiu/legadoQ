@@ -37,7 +37,7 @@ app/src/main/resources/static/
 *.log
 tools/verify/out/
 .agents/
-# 新骨架前端（qingyue 的构建产物）按目录挂载给 /next，不烤进 jar 也不入库：
+# 历史骨架前端的构建产物按目录挂载给 /next，不烤进 jar 也不入库：
 # 它是另一个仓库的产物，进版本库就会变成"源码与产物谁新谁旧"的老问题
 /next/
 # 整合包（jar + runtime + next + start.bat）的组装目录与 zip

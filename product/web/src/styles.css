@@ -472,7 +472,9 @@ svg { width: 18px; height: 18px; flex: none; }
 .source-list button { min-height: var(--row-h); display: grid; gap: 2px; padding: 8px 16px; background: transparent; color: var(--ink); text-align: left; border-left: 3px solid transparent; width: 100%; box-sizing: border-box; min-width: 0; }
 .source-list button:hover { background: var(--surface-muted); }
 .source-list button.selected { background: var(--accent-soft); border-left-color: var(--accent); color: var(--accent-ink); }
-.source-list small { color: var(--muted); font-size: 11px; }
+/* 分组名是自由文本（emoji、`·` 串），不截断就会一直流到右侧那颗开关下面；
+   开关是绝对定位的，不会被文字推开，于是看着像"文字压到了开关上"。 */
+.source-list small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .source-list-more { padding: 12px 16px; color: var(--muted); font-size: 12px; text-align: center; }
 .source-list button.source-list-more { display: block; min-height: 40px; border-left-color: transparent; }
 .source-list button.source-list-more:hover { color: var(--accent-ink); }
@@ -1366,6 +1368,8 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .agreement-card h1 { margin: 0; font-size: 20px; }
 .agreement-card h2 { margin: 14px 0 4px; font-size: 15px; }
 .agreement-card p { margin: 0; font-size: 13.5px; line-height: 1.8; color: var(--ink-soft, #444); }
+/* 协议按空行分段：段与段之间留一口气，否则整块读起来像一坨。 */
+.agreement-body p + p { margin-top: 8px; }
 .agreement-intro { font-weight: 600; color: var(--ink, #1c1c1c) !important; }
 .agreement-body { overflow: auto; min-height: 0; padding-right: 6px; }
 .agreement-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
@@ -1497,9 +1501,18 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
     font-size: 14px;
   }
   .sources-page { min-height: calc(100vh - 58px); grid-template-columns: 1fr; }
-  .sources-page .source-sidebar { min-height: auto; height: auto; }
+  /* 窄屏主从改成纵向：页头 → 书源列表 → 编辑器。
+     DOM 里 .sources-main（页头 + 编辑器）排在侧栏之后，直接叠出来是"列表在标题上面"，
+     所以把这一层摊开（display: contents），让三块进同一个栅格再排序。 */
+  .sources-page .sources-main { display: contents; }
+  .sources-page .editor-region { order: 1; padding: 22px 18px 2px; }
+  .sources-page .source-sidebar { min-height: auto; height: auto; order: 2; }
+  /* scroll-margin-top：选完书源滚到编辑器时，别让标题钻到 sticky 顶栏下面 */
+  .sources-page .sources-content { order: 3; padding: 18px 18px 40px; scroll-margin-top: calc(56px + var(--safe-top)); }
+  /* 180px 是 .app-workspace 那套单栏留下的，在书源页只装得下两条半，
+     点第三条得滚一个自己都看不见的列表。窄屏按屏高给到 220–340。 */
+  .sources-page .source-list { max-height: clamp(220px, 34vh, 340px); }
   .source-sidebar-heading { padding: 14px 14px 6px; }
-  .sources-content { padding: 28px 18px; }
   .page-title { align-items: start; }
   .library-page { gap: 22px; padding: 42px 18px; }
   .library-hero h1 { font-size: 30px; }
@@ -2094,13 +2107,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   flex: 1;
 }
 
-.source-login-flex-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  width: 100%;
-}
-
 .login-ui-item-field {
   display: flex;
   flex-direction: column;
@@ -2111,12 +2117,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   font-size: 13px;
   font-weight: 500;
   color: var(--muted);
-}
-
-.login-ui-input-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
 }
 
 .login-ui-input {
@@ -2135,56 +2135,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   border-color: var(--accent);
 }
 
-.login-ui-eye-btn {
-  position: absolute;
-  right: 6px;
-  background: transparent;
-  border: none;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 4px;
-  color: var(--muted);
-}
-
-.login-ui-item-btn-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 4px;
-}
-
-.source-login-btn {
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.source-login-btn.primary {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
-}
-
-.source-login-btn.primary-subtle {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-.source-login-btn.primary-subtle:hover {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-}
-
-.login-ui-item-toggle-container {
-  display: flex;
-  align-items: center;
-  padding: 8px 0;
-}
-
 .login-ui-toggle-label {
   display: flex;
   align-items: center;
@@ -2193,20 +2143,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   cursor: pointer;
   font-size: 14px;
   color: var(--ink);
-}
-
-/* 登录 UI 的下拉（W3 起走站内 Select）：几何落到触发器上，外壳只管占满整行 */
-.login-ui-select { width: 100%; }
-.login-ui-select .ui-select-trigger { padding: 8px 12px; font-size: 14px; border-radius: 6px; background: var(--surface); }
-
-.login-ui-item-info {
-  padding: 6px 0;
-}
-
-.login-ui-info-text {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
 }
 
 .login-ui-loading, .login-ui-empty {
@@ -2722,154 +2658,10 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   }
 }
 
-/* ---------------------------------------------------------------- 内置登录浏览器 (WebView) */
-
-/* 内置登录浏览器独占整屏：挡片不留内边距（`.overlay-backdrop.is-flush`），
-   外壳不投影不圆角（`.dialog-shell.is-fullscreen`）—— 都是浮层那一档的开关，不再单写一类几何。 */
-
-.source-webview-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface-muted);
-  flex-shrink: 0;
-}
-
-.source-webview-nav-group { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-
-.source-webview-icon-btn {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background .15s ease, border-color .15s ease;
-}
-.source-webview-icon-btn:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.source-webview-icon-btn:disabled { opacity: .38; cursor: not-allowed; }
-
-.source-webview-address-form { flex: 1; min-width: 0; display: flex; }
-.source-webview-address {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  outline: 0;
-}
-.source-webview-address:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-
-.source-webview-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-
-.source-webview-cookie-badge {
-  padding: 4px 9px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-  border-radius: 20px;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.source-webview-login-btn { height: 32px; padding: 0 14px; font-size: 13px; white-space: nowrap; }
-
-.source-webview-body {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  background: #fff;
-}
-
-.source-webview-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
 /* 工具栏移到弹窗底部（拇指可达，贴近移动端浏览器习惯）：内容在上、脚注居中、工具栏在最下 */
-.source-webview-body { order: 1; }
-.source-webview-footnote { order: 2; }
-.source-webview-toolbar { order: 3; border-bottom: 0; border-top: 1px solid var(--line); }
-
-.source-webview-loading {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  /* 这层只是提示，绝不能吃掉点击：站点迟迟不触发 load 事件时，它盖在 iframe 上就是「按钮点不动」 */
-  pointer-events: none;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.source-webview-placeholder {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 32px;
-  text-align: center;
-  background: var(--surface);
-}
-.source-webview-placeholder-title { font-size: 15px; font-weight: 650; color: var(--danger); }
-.source-webview-placeholder-text { max-width: 560px; color: var(--muted); font-size: 13px; line-height: 1.7; }
-.source-webview-placeholder-text code {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--surface-muted);
-  color: var(--accent-ink);
-  font-size: 12px;
-}
-
-.source-webview-footnote {
-  flex-shrink: 0;
-  padding: 9px 16px;
-  border-top: 1px solid var(--line);
-  background: var(--surface-muted);
-  color: var(--muted);
-  font-size: 11.5px;
-  line-height: 1.6;
-}
-
-@media (max-width: 720px) {
-  .source-webview-toolbar { flex-wrap: wrap; gap: 8px; }
-  .source-webview-address-form { order: 3; flex: 1 1 100%; }
-  .source-webview-login-btn { padding: 0 10px; }
-}
-
-/* 内置浏览器：登录态分级徽标 + 脚注横向布局 */
-.source-webview-status-pill {
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  white-space: nowrap;
-  border: 1px solid var(--line);
-  background: var(--surface-muted);
-  color: var(--muted);
-}
-.source-webview-status-pill.is-verified { background: color-mix(in srgb, #22c55e 16%, var(--surface)); border-color: color-mix(in srgb, #22c55e 45%, var(--line)); color: #16a34a; }
-.source-webview-status-pill.is-credential { background: color-mix(in srgb, #f59e0b 14%, var(--surface)); border-color: color-mix(in srgb, #f59e0b 45%, var(--line)); color: #b45309; }
-.source-webview-footnote { display: flex; align-items: center; gap: 12px; max-height: 6.4em; overflow: auto; }
-.source-webview-footnote-text { flex: 1; min-width: 0; }
-.source-webview-switch-btn { flex-shrink: 0; }
-
 /* 登录方式分段（并列 + 按书源自动选） */
-/* 五个页签（填写表单/内置浏览器/真浏览器/粘贴 Cookie/书签同步）必须仍排一行：
-   换行会把浮层顶高、把下面的表单挤下去，所以禁换行 + 窄屏时横向滚动。 */
-.source-login-method-tabs { display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
-.source-login-method-tabs::-webkit-scrollbar { display: none; }
+/* 两个页签（真浏览器 / 粘贴 Cookie）：不靠横向滚动藏页签，窄屏宁可换行。 */
+.source-login-method-tabs { display: flex; gap: 6px 4px; flex-wrap: wrap; margin-bottom: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .source-login-method-tab {
   position: relative;
   display: inline-flex;
@@ -2914,7 +2706,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .source-login-header-preview { padding: 10px 14px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 6px; font-size: 12px; }
 .source-login-header-preview-title { font-weight: 600; color: #38bdf8; margin-bottom: 4px; }
 .source-login-header-preview-body { color: var(--muted); word-break: break-all; font-family: monospace; max-height: 60px; overflow: auto; }
-.source-login-bookmark-steps { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
 .direct-cookie-card { background: var(--surface-muted); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 
 /* Cache Range & Local Sync Controls */
@@ -3040,6 +2831,13 @@ body:has(.overlay-backdrop) .pwa-install-banner { display: none; }
 @keyframes pwa-banner-slide-up {
   from { transform: translate(-50%, 40px); opacity: 0; }
   to { transform: translate(-50%, 0); opacity: 1; }
+}
+/* 安装条是 fixed 浮层（z 999），页面滚到底时最后一行内容正好落在它下面 ——
+   390×844 实测设置页最后一行被盖住 34px。给主壳留一条与横幅等高的底部余量：
+   滚到底也能看全最后一行，而不是"看得见点不着"。
+   阅读器那一支是独立 return 的壳、根本不挂 PwaManager，不会被这条影响。 */
+body:has(.pwa-install-banner) .app-shell {
+  padding-bottom: calc(92px + var(--safe-bottom));
 }
 .pwa-banner-left {
   display: flex;
@@ -4510,9 +4308,6 @@ body:has(.overlay-backdrop) .pwa-install-banner { display: none; }
   }
 }
 
-
-
-
 /* 发现页 */
 .explore-page { width: min(1240px, 100%); display: grid; gap: 22px; padding: clamp(26px, 4vw, 56px) clamp(18px, 4vw, 44px); margin: 0 auto; }
 /* grid 子项默认 min-width: auto —— 页头里那颗不换行的「N 个书源配了发现页」芯片会把轨道顶宽，
@@ -4866,10 +4661,6 @@ input[type=range] { min-height: 24px; }
   .library-scope select { min-width: 0; width: 100%; }
 }
 
-/* —— 内置登录浏览器：整屏展开，被代理站点（含登录表单）必须完整可见可达 —— */
-.source-webview-body { overflow: hidden; }
-.source-webview-frame { background: var(--surface); }
-
 /* 体检结论新增「待确认」档：零结果/需登录/需渲染 JS 不算失效，不许被一键停用顺手关掉 */
 .badge-pending { background: color-mix(in srgb, #b07a12 16%, var(--surface)); color: color-mix(in srgb, #b07a12 78%, var(--ink)); border-color: color-mix(in srgb, #b07a12 40%, transparent); }
 
@@ -5024,10 +4815,6 @@ input[type=range] { min-height: 24px; }
 .shelf-resume-track i { min-width: 5px; }
 .shelf-resume-track { margin-top: 6px; }
 
-/* 内置浏览器：页面跑不起来时把原因说出来，别让用户对着残页猜 */
-.source-webview-footnote.is-warning { color: var(--ink); border-top: 2px solid color-mix(in srgb, var(--danger) 45%, var(--line)); background: color-mix(in srgb, var(--danger) 8%, var(--surface-muted)); line-height: 1.75; }
-.source-webview-footnote.is-warning strong { color: var(--danger); }
-
 /* ============================================================
    界面波 v6 · 书源结构化编辑器 + 登录浏览器整屏化
    ============================================================ */
@@ -5137,7 +4924,7 @@ input[type=range] { min-height: 24px; }
 .source-field-switch { display: flex; align-items: center; gap: 8px; font-size: var(--t-lg); font-weight: 600; cursor: pointer; }
 .source-editor-raw { flex: 1 1 auto; min-height: 300px; }
 
-.source-create-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: var(--ctl); margin-bottom: var(--s-2); }
+.source-create-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: calc(100% - 32px); min-height: var(--ctl); margin: 0 16px var(--s-2); border-radius: var(--r-2); }
 .source-create-btn svg { width: 15px; height: 15px; }
 
 @media (max-width: 720px) {
@@ -5287,7 +5074,6 @@ input[type=range] { min-height: 24px; }
   .search-mode-list .search-card-cover { display: none; }
   .search-mode-list .search-card-intro { -webkit-line-clamp: 3; }
 }
-
 
 /* 复选统一到一档（W3）：16px、一个强调色令牌 `--accent-solid`。以前 14/15/16px 混用、
    `--accent` 与 `--accent-solid` 混用，还有几处完全没声明（吃 UA 默认 ~13px）；更麻烦的是有些勾
@@ -5594,6 +5380,12 @@ input[type="checkbox"] {
 .ai-conn-main strong { font-size: 13px; font-weight: 600; }
 .ai-conn-main small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .ai-conn-del { flex: none; }
+.ai-conn-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.ai-conn-badge { margin-left: 8px; }
+.ai-conn-opts { color: var(--muted); }
+/* 登记/编辑连接的高级项：默认收起，展开后按普通字段排 */
+.ai-register-advanced { display: grid; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.ai-register-advanced > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .ai-register { display: grid; gap: 12px; padding-top: 14px; margin-top: 4px; border-top: 1px dashed var(--line); }
 .ai-register > h4 { margin: 0; font-size: 13px; font-weight: 600; }
 .ai-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -5625,7 +5417,8 @@ input[type="checkbox"] {
    与上面那句注释矛盾。改成 60 后注释与行为一致：常驻 ≠ 最上。 */
 .ai-fab {
   position: fixed;
-  right: 24px;
+  /* 右侧同样吃安全区：圆角屏 / 手势区上 24px 的"贴边"会看起来压到边框。 */
+  right: max(24px, calc(var(--safe-right) + 16px));
   bottom: 24px;
   z-index: 60;
   width: 52px;
@@ -5693,7 +5486,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 
 .ai-fab-panel {
   position: fixed;
-  right: 24px;
+  right: max(24px, calc(var(--safe-right) + 16px));
   bottom: 88px;
   z-index: 61;
   /* 宽度**不在这里写**：这一档借了 `.dialog-shell` 当外壳，而 `.dialog-shell` 的宽度
@@ -5805,10 +5598,10 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 
 /* 窄屏：面板铺满，球稍微收进来 */
 @media (max-width: 720px) {
-  .ai-fab { right: 14px; bottom: 14px; width: 46px; height: 46px; }
+  .ai-fab { right: max(14px, calc(var(--safe-right) + 8px)); bottom: 14px; width: 46px; height: 46px; }
   .ai-fab-panel {
-    right: 8px;
-    left: 8px;
+    right: max(8px, var(--safe-right));
+    left: max(8px, var(--safe-left));
     bottom: 70px;
     /* 窄屏下铺满。宽度仍然由 `.dialog-shell` 的档位给（size-s → min(480px, 94vw)），
        这里只让它跟着左右一起铺开；不另写一个 width，免得"几何只有一处来源"又破。 */
@@ -5818,7 +5611,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   }
 
   /* 阅读器底部那条导航（58px + 安全区、五颗键）在屏上时，球停在 bottom:14px 正好压在
-     最右边那颗上 —— 抬到它上面，面板与 PWA 安装条跟着抬，三者互不相压。
+     最右边那颗上 —— 抬到它上面，面板跟着抬，两者互不相压。
      条件里带上 `:not(.toolbars-hidden)`：沉浸态下导航是收起来的，那时球回到贴底的位置。 */
   body:has(.reader-workspace:not(.toolbars-hidden) .mobile-reader-nav) .ai-fab {
     bottom: calc(66px + var(--safe-bottom));
@@ -5827,8 +5620,18 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
     bottom: calc(120px + var(--safe-bottom));
     max-height: calc(100vh - 170px);
   }
-  body:has(.reader-workspace:not(.toolbars-hidden) .mobile-reader-nav) .pwa-install-banner {
-    bottom: calc(74px + var(--safe-bottom));
+
+  /* 安装提示条（z 999）在窄屏铺满底部，正好盖住默认位置的球（bottom 14）——
+     球是常驻入口，不能被一条可关的提示吞掉。提示在时把球与面板都抬到它上面。
+     63px 是 390×844 实测的横幅高度（两行文案 + 24px 内边距），再留 5px 缝。
+     阅读器那一支是提前 return 的独立壳，根本不挂 PwaManager / 安装条，
+     所以这里不需要"阅读器 + 安装条"的叠加档位。 */
+  body:has(.pwa-install-banner) .ai-fab {
+    bottom: calc(84px + var(--safe-bottom));
+  }
+  body:has(.pwa-install-banner) .ai-fab-panel {
+    bottom: calc(140px + var(--safe-bottom));
+    max-height: calc(100vh - 190px);
   }
 }
 .ai-chat { display: grid; gap: 12px; }
@@ -5898,7 +5701,47 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 .about-table th { padding: 6px 10px 6px 0; color: var(--muted); font-weight: 500; text-align: left; border-bottom: 1px solid var(--line); }
 .about-table td { padding: 7px 10px 7px 0; vertical-align: top; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
 .about-table td:last-child { width: 88px; color: var(--muted); white-space: nowrap; }
-@media (max-width: 640px) { .about-page { padding: 32px 18px 44px; } }
+/* 关于页里的外链：这一站没有全局 a 样式，不写就落回浏览器默认蓝。 */
+.about-facts a, .about-section-body a, .about-check a { color: var(--accent-ink, var(--accent)); text-decoration: none; }
+.about-facts a:hover, .about-section-body a:hover, .about-check a:hover { text-decoration: underline; }
+/* 许可段的小字说明：比正文轻一档，别和 GPL 正文抢。 */
+.about-section-body .about-license-note { color: var(--muted); font-size: var(--t-xs); line-height: 1.8; }
+
+/* —— 「功能说明」浮层 —— */
+/* 说明是一份长文档：宽屏也不分栏，目录与正文一路向下读。 */
+.guide-page { display: block; }
+.guide-toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.guide-toc-link {
+  min-height: 0; padding: 4px 11px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface-muted); color: var(--ink-soft, #444);
+  font-size: var(--t-sm); line-height: 1.6; cursor: pointer;
+}
+.guide-toc-link:hover { border-color: var(--accent); color: var(--accent-ink, var(--accent)); }
+.guide-page .about-section-body h3 { margin: 6px 0 0; }
+@media (max-width: 640px) {
+  .about-page { padding: 32px 18px 44px; }
+  /* 许可表在窄屏上摊不成三列：协议列固定 88px 之后，中间那列只剩一个字宽，
+     「书源规则 DSL 的求值语义…」被挤成竖排。改成一行一项的卡片：
+     第一行「名称 + 协议」，第二行用途。表头在卡片形态下没有意义，收掉。 */
+  .about-table thead { display: none; }
+  .about-table, .about-table tbody, .about-table tr, .about-table td { display: block; width: auto; }
+  .about-table tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 10px; padding: 9px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  }
+  .about-table td { padding: 0; border: 0; }
+  .about-table td:first-child { font-weight: 600; overflow-wrap: anywhere; }
+  .about-table td:nth-child(2) {
+    grid-column: 1 / -1; color: var(--muted);
+    font-size: var(--t-xs); line-height: 1.6;
+  }
+  .about-table td:last-child {
+    grid-column: 2; grid-row: 1; width: auto; white-space: nowrap;
+    text-align: right; color: var(--muted);
+  }
+}
 
 /* —— C 类页（设置 / 备份 / 关于）居中 + 宽屏两栏 ——
    2026-10-11 用户拍板：设置页不居中、偏左，恢复居中。PROPOSAL-018 §3.2 当年为压两侧死白
@@ -5919,12 +5762,17 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   .settings-page > .page-title,
   .backup-page > .page-title,
   .about-page > .about-hero { grid-column: 1 / -1; }
+  /* 关于页里的引导段与许可表横跨两栏：前者是导语，后者的两张三列表在半栏里
+     会把名字与用途挤成两行。中间的用户协议 / 免责声明正好左右各一栏。 */
+  .about-page > .about-section.is-wide { grid-column: 1 / -1; }
 }
 
 /* —— 「更新日志」页 —— */
 .changelog-page { max-width: 960px; min-height: calc(100vh - 68px); margin: 0; padding: 36px 32px 64px; }
 .changelog-loading, .changelog-empty { color: var(--muted); font-size: 14px; }
 .changelog-list { display: grid; gap: 8px; margin-top: 28px; }
+/* 折叠入口占一整行，与一版一版的日志分开，不挤在某一版里。 */
+.changelog-more { justify-self: start; margin-top: 6px; }
 .changelog-release { display: grid; gap: 14px; padding: 20px 0; border-top: 1px solid var(--line); }
 .changelog-release > header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .changelog-release h2 { margin: 0; font-family: Georgia, "Noto Serif SC", serif; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -5986,7 +5834,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 
    现在只有一档：几何值全部从下面的令牌取，页面类名只留内容样式
    （标题字号、封面列、动作条）与门禁锚点，不再声明宽高/圆角/阴影。
-   命名与新骨架 `qingyue/web/src/overlay/` 对齐（`.dialog-shell` + `size-*`），
+   命名与当初新骨架的 `web/src/overlay/` 对齐（`.dialog-shell` + `size-*`），
    W4 逐页搬过去时不必再改一遍名字。
    ============================================================ */
 :root {
@@ -5996,18 +5844,18 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   --backdrop: rgba(0, 0, 0, .45);
 }
 
-/* 一条遮罩：弹窗、内置浏览器、右键菜单挡片、看图都从这一档走。 */
+/* 一条遮罩：弹窗、右键菜单挡片、看图都从这一档走。 */
 .overlay-backdrop {
   position: fixed; inset: 0; z-index: 100;
   display: grid; place-items: center; padding: var(--s-4);
   background: var(--backdrop); backdrop-filter: blur(4px);
   animation: fadeIn .18s ease;
 }
-/* 叠在另一个弹窗之上（编辑弹窗 / 导入弹窗 / 调试面板 / 内置浏览器登录头）。 */
+/* 叠在另一个弹窗之上（编辑弹窗 / 导入弹窗 / 调试面板 / 登录头编辑）。 */
 .overlay-backdrop.is-topped { z-index: 120; }
 /* 顶栏「我的」菜单的挡片：比弹窗高，因为菜单本身挂在页头那一层之上。 */
 .overlay-backdrop.is-menu { z-index: 199; }
-/* 整屏就是内容（内置浏览器、RSS 文章），挡片不留 16px 白边。 */
+/* 整屏就是内容（RSS 文章），挡片不留 16px 白边。 */
 .overlay-backdrop.is-flush { padding: 0; }
 /* 看图画布：要压到 86% 才看得出深色图的血边，也不该再套一层模糊。 */
 .overlay-backdrop.is-viewer { background: rgba(0, 0, 0, .86); backdrop-filter: none; padding: var(--s-6); cursor: zoom-out; z-index: 1000; }
@@ -6022,8 +5870,6 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 .dialog-shell.size-s { width: min(var(--dw-s), 94vw); }
 .dialog-shell.size-m { width: min(var(--dw-m), 94vw); }
 .dialog-shell.size-l { width: min(var(--dw-l), 94vw); }
-/* 内置浏览器：整屏是它的语义，没有圆角也没有阴影。 */
-.dialog-shell.is-fullscreen { width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; animation: fadeIn .18s ease; }
 
 /* 弹窗页头一行：标题在左、动作在右，高度由内容定，只有底边线是一档。 */
 .dialog-head {
@@ -6049,6 +5895,8 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 .page-dialog .backup-page, .page-dialog .changelog-page, .page-dialog .about-page {
   min-height: 0; max-width: none; margin: 0; padding: var(--s-5) var(--s-6);
 }
+/* 功能说明关在浮层里读：宽屏的两栏是给「关于」那几小节的，不能套到长文档上。 */
+.page-dialog .guide-page { display: block; }
 .page-dialog .backup-page { padding-block-start: var(--s-5); }
 /* 阅读记录（PROPOSAL-019 D）：按天一条时间轴，天与书都是「名字 + 时长」两栏。 */
 .page-dialog .reading-log { min-height: 0; margin: 0; padding: var(--s-5) var(--s-6); }
@@ -6311,8 +6159,14 @@ html[data-wallpaper="on"],
 html[data-wallpaper="on"] body,
 html[data-wallpaper="on"] .app-shell { background: transparent; }
 
-/* 壁纸模式下，浮在壁纸上的表面变成半透明玻璃：
-   顶栏/底栏、设置分区、书架卡片、弹层。阅读器正文保持不透明（阅读背景与壁纸各管各的）。 */
+/* 壁纸模式下，浮在壁纸上的表面统一用同一档半透明底：顶栏/底栏、内容面板、行卡片、弹层。
+   表单控件与阅读正文保持不透明（字要看得清）。分区容器 .settings-section 刻意不在这组里：
+   它一铺底就是「标题到第一张卡片」的一整条色带，行卡片自己已经是半透明底，再垫一层只会更浑。
+
+   毛玻璃（backdrop-filter）只留给顶栏/底栏、标题胶囊和弹层这类小面积层。内容面板与卡片
+   跟着页面滚，每帧都要把整块视口重新采样、重做高斯模糊；实测 1280×900、面板 35% + 毛玻璃 18px，
+   发现页滚动只有 9fps、订阅 14fps、设置 28fps，关掉内容面的模糊后回到 61/59/61fps。
+   这不是"少一点好看"，是整页交互发滞；用户调大的毛玻璃值不该把滚动一起拖下去。 */
 html[data-wallpaper="on"] .app-page-header,
 html[data-wallpaper="on"] .md3-topbar,
 html[data-wallpaper="on"] .md3-bottombar {
@@ -6320,12 +6174,64 @@ html[data-wallpaper="on"] .md3-bottombar {
   -webkit-backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.15);
   backdrop-filter: blur(var(--wallpaper-glass-blur, 12px)) saturate(1.15);
 }
-html[data-wallpaper="on"] .settings-section,
 html[data-wallpaper="on"] .settings-row,
-html[data-wallpaper="on"] .shelf-card {
+html[data-wallpaper="on"] .shelf-card,
+html[data-wallpaper="on"] .shelf-resume,
+html[data-wallpaper="on"] .shelf-empty,
+html[data-wallpaper="on"] .library-idle a,
+html[data-wallpaper="on"] .library-results,
+html[data-wallpaper="on"] .library-book-detail,
+html[data-wallpaper="on"] .explore-results,
+html[data-wallpaper="on"] .subscription-panel,
+html[data-wallpaper="on"] .source-editor,
+html[data-wallpaper="on"] .reading-desk,
+html[data-wallpaper="on"] .source-sidebar {
   background: color-mix(in srgb, var(--canvas) calc(var(--wallpaper-panel-opacity, .72) * 100%), transparent);
-  -webkit-backdrop-filter: blur(var(--wallpaper-glass-blur, 12px));
-  backdrop-filter: blur(var(--wallpaper-glass-blur, 12px));
+}
+/* 书源左栏在常规主题里是一条贴边的分栏（不透明底，贴边才是对的结构）；
+   壁纸模式下它透出底色后，就成了一整块四角全直的色带——桌面 280×832、窄屏通栏，
+   和右边圆角的编辑器并排时像两张不同的东西。只在壁纸模式把它收成一张卡：
+   桌面从页边让出 14px，窄屏左右各留 12px，四角与其它大面板同档（--r-3）。 */
+html[data-wallpaper="on"] .sources-page .source-sidebar {
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: var(--r-3);
+}
+@media (min-width: 721px) {
+  html[data-wallpaper="on"] .sources-page { padding: 14px 0 14px 14px; }
+}
+@media (max-width: 720px) {
+  html[data-wallpaper="on"] .sources-page .source-sidebar { margin: 4px 18px 10px; }
+}
+/* 玻璃面板里的格子不再各自铺不透明底：否则外面透、格子白，一屏两套材质。 */
+html[data-wallpaper="on"] .explore-card,
+html[data-wallpaper="on"] .search-results button {
+  background: transparent;
+}
+html[data-wallpaper="on"] .explore-card:hover,
+html[data-wallpaper="on"] .search-results button:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+/* .settings-rows 原本用 --line 铺底、留 1px 缝当分隔线。父级不透明时，半透明的行卡片
+   会把这条底色透出来、整组发灰；壁纸模式改成透明的缝 + 行自己的上边线。 */
+html[data-wallpaper="on"] .settings-rows {
+  gap: 0;
+  background: transparent;
+}
+html[data-wallpaper="on"] .settings-rows > .settings-row + .settings-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+/* 分区小标题没有卡片托底，直接压在壁纸上：12px 的 --muted 在花壁纸上按配色折算约 3:1，
+   认不出来。标题自己垫一档（比面板多 40 个百分点）并换成 --ink ——
+   面板多透是用户调的，标题的可读性不该跟着一起往下掉。 */
+html[data-wallpaper="on"] .settings-section h2 {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--canvas) calc(min(1, var(--wallpaper-panel-opacity, .72) + .4) * 100%), transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 html[data-wallpaper="on"] .dialog-shell,
 html[data-wallpaper="on"] .page-dialog,
@@ -6348,7 +6254,7 @@ html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-
 .customize-wallpaper .settings-row { padding: 11px 13px; }
 .customize-wallpaper .settings-row-main small { overflow-wrap: anywhere; }
 
-/* 首尾行的圆角跟容器对齐：壁纸模式下行带半透明 + backdrop-filter，
+/* 首尾行的圆角跟容器对齐：壁纸模式下行带半透明底，
    部分浏览器不会替父级的 overflow:hidden 裁圆角，这里显式补上。
    用 :first-of-type 而不是 :first-child —— 壁纸分区的第一个子节点是隐藏的 file input。 */
 .settings-rows > .settings-row:first-of-type { border-top-left-radius: var(--r-2); border-top-right-radius: var(--r-2); }

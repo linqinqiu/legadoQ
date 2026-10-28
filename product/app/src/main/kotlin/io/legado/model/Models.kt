@@ -72,6 +72,12 @@ data class SourceLoginUiResponse(
     val sourceVariable: String? = null,
     /** `loginUrl` 不是网址而是整段登录 JS（聚合源普遍如此），界面要按这个改文案与动作。 */
     val loginIsScript: Boolean = false,
+    /**
+     * 这本书源有没有「能替你打开」的登录入口：网址型 / 相对路径型 `loginUrl`，
+     * 或 `loginUrl`、`jsLib` 里那套 `login()` + `java.startBrowserAwait`。
+     * 界面据此决定「保存并登录」是开真浏览器，还是只保存输入。
+     */
+    val loginCanOpenBrowser: Boolean = false,
     /** 这份书源实际会带凭据去访问的域名，登录页那个排最前（粘贴 Cookie 要能选对地方）。 */
     val cookieDomains: List<String> = emptyList(),
 )

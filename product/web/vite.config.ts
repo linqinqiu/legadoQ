@@ -36,7 +36,9 @@ export default defineConfig({
       // 不让插件再注入一份 /registerSW.js —— 同一 scope 会去重，但两个注册入口、
       // 两条更新检查路径并存只会让人误判"到底谁在管更新"。
       injectRegister: null,
-      includeAssets: ['brand-icon.png'],
+      // 应用内只显示 96px 的派生图；512 的 brand-icon.png 是生成图标的源图，
+      // 不再被界面引用 —— 不放进预缓存，省掉每次安装/更新多搬的 478KB。
+      includeAssets: ['brand-logo-96.png'],
       manifest: {
         name: 'legadoQ',
         short_name: 'legadoQ',
@@ -78,6 +80,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2,ttf}'],
+        // globPatterns 会把 public 下所有 PNG 都收进预缓存；brand-icon.png 只是图标源图，
+        // 界面引用的是 brand-logo-96.png（见 includeAssets）。sw/workbox 自己由插件排除，
+        // 这里显式再写一遍，避免将来改 globIgnores 时把它们漏进预缓存。
+        globIgnores: ['brand-icon.png', 'sw.js', 'workbox-*.js'],
         navigateFallback: '/index.html',
         // workbox 是拿**绝对 URL**（`https://127.0.0.1:1234/api/...`）去试这些正则的。
         // 之前全部写成 `^\/api\/...`，锚在串首 → 一条都匹配不上：四条运行时缓存与这条黑名单

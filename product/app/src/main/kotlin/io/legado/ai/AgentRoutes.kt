@@ -86,6 +86,8 @@ private data class ConnectionResponse(
     val kind: String,
     val model: String? = null,
     val baseUrl: String? = null,
+    /** 连接自己的配置（自定义头 / 思考强度 / 超时 / default 标记），不含 apiKey。 */
+    val options: Map<String, String> = emptyMap(),
 )
 
 suspend fun ApplicationCall.agentListConnections(profileStoreHome: Path, profileStore: AgentProfileStore?) {
@@ -115,14 +117,22 @@ suspend fun ApplicationCall.agentCreateConnection(profileStoreHome: Path, profil
         ); return
     }
     val id = (req.id ?: req.name).trim().ifBlank { req.name }.replace(Regex("[^\\w\\-.]"), "_")
+    // 编辑已有连接时前端不回传密钥（GET 本来也不返回它）：apiKey 缺省 = 沿用原来的。
+    // 显式传空串才表示"清掉密钥"，否则改个模型名就会把 key 洗没。
+    val existing = store.get(profileStoreHome, id)
+    val apiKey = when (req.apiKey) {
+        null -> existing?.apiKey
+        else -> req.apiKey.ifBlank { null }
+    }
     val profile = AgentProfileStore.Profile(
         id = id,
         name = req.name.trim(),
         kind = kind,
         baseUrl = req.baseUrl,
-        apiKey = req.apiKey,
+        apiKey = apiKey,
         model = req.model,
-        options = req.options ?: emptyMap(),
+        // options 缺省也沿用：编辑表单没展开高级项时不该把已配的头丢掉。
+        options = req.options ?: existing?.options ?: emptyMap(),
     )
     runCatching { store.register(profileStoreHome, profile) }.onFailure { ex ->
         respond(HttpStatusCode.BadRequest, ApiError("register_failed", ex.message ?: "注册连接失败")); return
@@ -152,6 +162,7 @@ private fun toConnectionResponse(p: AgentProfileStore.Profile) = ConnectionRespo
     kind = p.kind.name.lowercase(),
     model = p.model,
     baseUrl = p.baseUrl,
+    options = p.options,
 )
 
 // ===== 模型清单 models =====

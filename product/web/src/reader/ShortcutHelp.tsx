@@ -33,7 +33,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
             </dl>)}
           </section>
         })}
-        <p className="setting-hint">输入框里打字不会触发快捷键；需要修饰键的动作（如 Ctrl / ⌘ + 滚轮调字号）不在这张表里，它们跟着浏览器的习惯走。</p>
+        <p className="setting-hint">输入框里打字不会触发快捷键；带修饰键的条目只有表里写着的这几条 —— Ctrl / ⌘ + F（阅读器里让给浏览器）、Ctrl / ⌘ + 滚轮与 Alt + ← / →，其余组合都交给浏览器。</p>
       </div>
     </div>
   </div>

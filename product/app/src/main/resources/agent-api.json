@@ -1,6 +1,6 @@
 {
   "service": "legadoQ",
-  "version": "0.1.4",
+  "version": "0.1.7",
   "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统）。每条按 group 归类。",
   "howToConnect": {
     "baseUrl": "http://127.0.0.1:1234",
@@ -41,7 +41,7 @@
     {"method":"POST","path":"/api/sources/{id}/validate","write":true,"purpose":"结构校验，不落库：可带草稿 json 校验编辑器里未保存的内容","body":{"json":"可选；不给就校验库里那一份"},"response":"{valid,errors[],warnings[]}","group":"书源"},
     {"method":"GET","path":"/api/sources/{id}/debug","write":false,"purpose":"SSE 逐阶段调试（结构 / 搜索 / 详情 / 目录 / 正文），每步给取到什么、为什么失败","query":{"keyword":"默认「测试」","bookUrl":"可指定从哪本书往下走","chapterIndex":"从第几章取正文"},"response":"text/event-stream：event: start / step / done；step 的 data 是 {stage,label,detail,ok,elapsedMs,traces[]}","group":"书源"},
     {"method":"GET","path":"/api/sources/{id}/explore","write":false,"purpose":"这一家书源的发现页分栏；supportsPaging 说这一栏吃不吃页码（服务端按规则写法静态判，不执行书源代码）","response":"[{title,url,supportsPaging}]","group":"发现页"},
-    {"method":"GET","path":"/api/sources/{id}/login-ui","write":false,"purpose":"这本书源要求的登录表单（上游 loginUi 那套动态项）","response":"{sourceId,sourceName,hasLogin,loginUi,loginUrl,loginInfo,loginIsScript,cookieDomains}","group":"登录与凭据"},
+    {"method":"GET","path":"/api/sources/{id}/login-ui","write":false,"purpose":"这本书源要求的登录表单（上游 loginUi 那套动态项）","response":"{sourceId,sourceName,hasLogin,loginUi,loginUrl,loginInfo,loginIsScript,loginCanOpenBrowser,cookieDomains}","group":"登录与凭据"},
     {"method":"POST","path":"/api/sources/{id}/login-info","write":true,"purpose":"存登录填写项 / 请求头 / 书源变量","body":{"loginInfo":{"键":"值"},"loginHeader":"可选整串","sourceVariable":"可选"},"response":"{ok:true}","group":"登录与凭据"},
     {"method":"DELETE","path":"/api/sources/{id}/login-info","write":true,"purpose":"清掉这本书源存的登录填写项","response":"{ok:true}","group":"登录与凭据"},
     {"method":"POST","path":"/api/sources/{id}/login-header","write":true,"purpose":"存一份登录请求头","body":{"loginHeader":"整串头，给 null 即清除"},"response":"{ok:true}","group":"登录与凭据"},
@@ -157,8 +157,8 @@
     {"method":"POST","path":"/api/tts/speak","write":true,"group":"朗读","purpose":"一次性把一段文本合成完整音频（整章文本走会话那条更好）","body":{"text":"要念的文本，不许空","voice":"音色","rate":"语速","pitch":"音高","engine":"引擎","customUrl":"自建引擎才填","customHeader":"可选","customMethod":"可选"},"response":"音频字节流；文本空 400 invalid_text，合成失败 500 tts_failed"},
     {"method":"GET","path":"/api/tts/speak","write":false,"group":"朗读","purpose":"同样的一次性合成，参数走查询串（给 audio 标签这种没法发 POST 的地方用）","query":{"text":"文本（必填）","voice":"音色","rate":"语速","pitch":"音高"},"response":"音频字节流；文本空 400 invalid_text，失败 500 tts_failed"},
     {"method":"GET","path":"/api/agent/manifest","write":false,"group":"AI 自定义接入","purpose":"列出 AI 能力的清单（工具名 / 分组 / 是否写库），以及是否登记了外部连接","response":"{enabled,tools:[{id,group,description,writes}],builtinConnections[]（恒为空，保留字段）}"},
-    {"method":"GET","path":"/api/agent/connections","write":false,"group":"AI 自定义接入","purpose":"列出当前已登记的外部连接（没有就是空列表）","response":"[{id,name,kind,model?,baseUrl?}]"},
-    {"method":"POST","path":"/api/agent/connections","write":true,"group":"AI 自定义接入","purpose":"注册或更新一个外部连接（OpenAI 兼容），落到 agent-profiles.json，重启仍生效；需同源写门","body":{"id":"可选，缺则按 name 生成","name":"连接名（必填）","kind":"openai-compatible（唯一支持）","baseUrl":"模型网关地址","apiKey":"可选","model":"可选模型名","options":"可选键值对"},"response":"{id,name,kind,model?,baseUrl?}；kind 不认 400 invalid_kind"},
+    {"method":"GET","path":"/api/agent/connections","write":false,"group":"AI 自定义接入","purpose":"列出当前已登记的外部连接（没有就是空列表）","response":"[{id,name,kind,model?,baseUrl?,options?}]（不含 apiKey）"},
+    {"method":"POST","path":"/api/agent/connections","write":true,"group":"AI 自定义接入","purpose":"注册或更新一个外部连接（OpenAI 兼容），落到 agent-profiles.json，重启仍生效；需同源写门","body":{"id":"可选，缺则按 name 生成","name":"连接名（必填）","kind":"openai-compatible（唯一支持）","baseUrl":"模型网关地址","apiKey":"可选","model":"可选模型名","options":"可选键值对"},"response":"{id,name,kind,model?,baseUrl?,options?}；kind 不认 400 invalid_kind。同 id 即更新：apiKey 缺省沿用原密钥、options 缺省沿用原配置"},
     {"method":"DELETE","path":"/api/agent/connections/{id}","write":true,"group":"AI 自定义接入","purpose":"删除一个外部连接，清掉对应 agent-profiles.json 记录；需同源写门","response":"{ok,removed}；不存在 404 not_found"},
     {"method":"POST","path":"/api/agent/sources","write":true,"group":"AI 自定义接入","purpose":"新建或覆盖一份书源（AI 也能写库）：json 是整份书源字符串，带 version 防并发覆盖；需同源写门","body":{"json":"整份书源 JSON 字符串","version":"可选，版本不符回 409 version_conflict"},"response":"{id,version,updatedAt}；结构错 400 invalid_source，并发改写 409 version_conflict"},
     {"method":"POST","path":"/api/agent/sources/validate","write":false,"group":"AI 自定义接入","purpose":"只校验书源合法性不落库（AI 接入前的探针）：结构能解析就 valid=true","body":{"json":"整份书源 JSON 字符串"},"response":"{valid,errors[],warnings[]}；结构错 400 invalid_request"},

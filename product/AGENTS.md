@@ -232,12 +232,12 @@ tasks.named('jar', Jar) {
 
 改完 `gradlew :app:installDist` 后，发行版 `/healthz` 与启动日志都显示真实版本（`0.8.2`）。
 
-## 10. 便携发行测试版（组装方法；示例包 `qingyue-dist-v0.8.2` 已于 2026-10-25 清理）
+## 10. 便携发行测试版（组装方法；历史示例包已于 2026-10-25 清理）
 
 便携发行包可双击运行、自带 JRE，用于验证"换台电脑也能跑"。按"产物出库"规则放在仓库外（旧例放 `legado-releases/`，与仓库并列；该具体包已清理，需要时按本节方法重新出包）。下面是组装要点：
 
 ```
-qingyue-dist-v0.8.2/
+legadoq-dist-v0.8.2/
 ├─ start.bat          ← 双击启动
 ├─ runtime/           ← jlink 精简 JRE 17（~45MB，不依赖本机 Java）
 ├─ app/lib/           ← legado-0.8.2.jar + 全部依赖

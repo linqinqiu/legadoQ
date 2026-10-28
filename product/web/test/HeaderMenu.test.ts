@@ -63,8 +63,9 @@ test('Logo - 品牌位与桌面/标签页图标是同一张图', () => {
   const html = renderToStaticMarkup(element)
   assert.ok(html.includes('app-brand-logo'), 'Logo should have app-brand-logo class')
   // 用户 2026-10-27 把品牌图形换成了自己给的图：品牌位直接引用随包位图，
-  // 不再内联「绿底白书」。这里钉住"引用的就是那张图 + size 照传"。
-  assert.ok(html.includes('src="/brand-icon.png"'), 'Logo 应引用随包的 brand-icon.png')
+  // 不再内联「绿底白书」。品牌位最大只显示 28px，所以引用 96px 派生图而不是 512px 源图
+  // （源图仍是图标唯一真源，见 BrandLogo.test.ts）。这里钉住"引用的就是那张图 + size 照传"。
+  assert.ok(html.includes('src="/brand-logo-96.png"'), 'Logo 应引用随包的 96px 派生图')
   assert.ok(!html.includes('#2E8B63'), '旧的绿底矢量不该再出现在品牌位里')
   assert.ok(html.includes('width="28"'), 'Logo should respect size prop')
 })

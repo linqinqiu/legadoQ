@@ -121,7 +121,24 @@ done
 | **过期门禁** | `next-mount-check`、`next-ui-check` | `/next/` 架构已删（404，`.grid-cards`/`.md-list` 等 class 一个都不存在） | 移到 `tools/verify/retired/` |
 | **判据写错** | `cache-range-check`、`source-health-check`、`explore-empty-check`、`source-editor-check`、`webview-*-check` | 见下 | 改判据 |
 | **外部漂移** | `media-reader-check` | 外部音频站搜不出书 | 改判 NOTE（跳过） |
-| **已知未修** | `stalled-client-check` | 24 个停读客户端能让 `/healthz` 卡 15 秒（任务 #36） | 保留红，如实记录 |
+| **已知未修** | `stalled-client-check` | 停读客户端能让 `/healthz` 卡住（任务 #36；0.1.7 复测见下） | 保留红，如实记录 |
+
+### 6.3.1 `stalled-client-check` 的实测台阶（2026-10-28，0.1.7 复测）
+
+这条门禁要求"24 个停读对端下，/healthz 仍能在 2 秒内答完"。复测结论有三条：
+
+- **不是 0.1.7 的回归。** 同一个门禁对着 0.1.6 的 fat jar（独立数据目录、全新进程）跑，也是
+  15 秒超时，甚至连"造出 24 个停读连接"这步都只造出 10 个 —— 后面的连接连响应头都收不到。
+- **台阶在 10 个上下，不在 24。** 逐级加压（0/8/12/16/24/40/48）测下来：8 个停读对端时
+  /healthz 仍是 10ms 级；到 12 个开始出现 3 秒以上，24 个时直接 15 秒超时。两个版本、
+  两套数据目录都是这个形状。
+- **调大 `Dispatchers.IO` 并行度不解决。** 用 `-Dkotlinx.coroutines.io.parallelism=512`
+  起同版本 jar，24 个停读对端下 /healthz 仍是 15 秒超时；`jstack` 里同时只有 9~24 条线程卡在
+  `SocketDispatcher.write0`，其余 30 多条工作线程是空闲的。说明瓶颈不在"线程不够"，
+  而是 CIO 的阻塞写把连接处理/接纳这条路拖住了 —— 这正是任务 #36 要根治的地方。
+
+门禁本身保持原判据（它描述的是**目标**，不是现状），红着如实记录；修的时候要么给响应写加超时，
+要么换非阻塞写的引擎（Netty），都属于改运行时的活儿，单独排期。
 
 ### 6.4 五个"判据写错"的具体错法（值得记，都是同类）
 

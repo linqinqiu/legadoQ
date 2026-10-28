@@ -16,12 +16,12 @@ import zlib from 'node:zlib'
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const BASE = (process.env.LEGADO_BASE_URL || 'http://127.0.0.1:1234').replace(/\/$/, '')
 /**
- * 默认包名从 `app/build.gradle` 的 version 推出来 —— 原来这里写死 `qingyue-0.6.0.zip`，
+ * 默认包名从 `app/build.gradle` 的 version 推出来 —— 原来这里写死 `legadoq-0.6.0.zip`，
  * 于是下一次发版若忘了带 `LEGADO_PACKAGE`，这条门禁会**去验上一版的包**并且照样全绿
  * （version-check 当年就是靠"build/libs 里留着旧号包"逮到人挑错包的，同一个入口）。
  */
 const PACKAGE_VERSION = (fs.readFileSync(path.join(ROOT, 'app/build.gradle'), 'utf8').match(/^version = '([\d.]+)'/m) ?? [])[1] ?? ''
-const ZIP = process.env.LEGADO_PACKAGE || path.join(ROOT, `dist/qingyue-${PACKAGE_VERSION}.zip`)
+const ZIP = process.env.LEGADO_PACKAGE || path.join(ROOT, `dist/legadoq-${PACKAGE_VERSION}.zip`)
 
 const results = []
 const check = (name, ok, detail = '') => {
@@ -69,7 +69,7 @@ function entryBytes(buffer, entry) {
 /**
  * 前置产物不存在时判 **NOTE（前置不满足）** 而不是 FAIL。
  *
- * 为什么改：CI 的 full job 只跑 `./gradlew :app:fatJar`，不产 `dist/qingyue-*.zip`
+ * 为什么改：CI 的 full job 只跑 `./gradlew :app:fatJar`，不产 `dist/legadoq-*.zip`
  * （组装脚本 `scripts/package.mjs` 是 Windows 专属的：它要求包里有 `runtime/bin/java.exe`，
  * 见 scripts/package.mjs:66,127，在 ubuntu-latest 上必然 fail）。于是这条门禁在 CI 里
  * **每次必红** —— "全量门禁"永远不是全绿，绿/红信号本身就失去意义了。

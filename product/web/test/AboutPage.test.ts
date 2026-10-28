@@ -98,6 +98,14 @@ test('路由与样式都接上了', () => {
   assert.match(read('../src/styles.css'), /\.about-page \{/)
 })
 
+test('宽屏两栏：导语与许可表横跨整行，协议两节并排', () => {
+  // 2026-10-28 截图复核发现的版面问题：不横跨时，产品介绍只有三行，
+  // 右栏的用户协议又很长，下一行的免责声明被顶到两百像素之外，左栏留一个洞。
+  assert.match(page, /<Section title="产品介绍" wide>/)
+  assert.match(page, /<Section title="开源许可" wide>/)
+  assert.match(read('../src/styles.css'), /\.about-page > \.about-section\.is-wide \{ grid-column: 1 \/ -1; \}/)
+})
+
 /**
  * 「顶栏『我的』菜单堆太多」（用户 2026-10-03 拍板要瘦）。收掉的两条不是删功能：
  * 「更新日志」本来就有两条路（顶栏版本芯片 + 这一页那颗按钮），「快捷键」这一页给一条。
@@ -116,4 +124,22 @@ test('「我的」菜单不再重复列「更新日志」「快捷键」，这�
   assert.doesNotMatch(header, /<span>快捷键<\/span>/, '菜单里那条已经收进「关于」')
   assert.doesNotMatch(header, /<span>更新日志<\/span>/, '菜单里那条与顶栏版本芯片是同一个目标，留芯片')
   assert.match(header, /onClick=\{\(\) => onOpenChangelog\?\.\(\)\}/, '顶栏那颗版本芯片仍然直接进更新日志')
+})
+
+/**
+ * 功能说明原来在关于页里展开，十四个小节把底下的用户协议、免责声明全顶走。
+ * 2026-10-28 拆成与更新日志、快捷键同级的独立浮层；正文仍然只有 docs/功能说明.md 一份。
+ */
+test('功能说明是独立浮层，从关于进，正文只有文档一份', () => {
+  assert.match(page, /onOpenGuide/, '关于页要有功能说明的入口')
+  assert.match(page, /<button type="button" className="ghost-button" onClick=\{onOpenGuide\}>功能说明<\/button>/)
+  const aboutModal = read('../src/plugins/about/AboutModal.tsx')
+  assert.match(aboutModal, /onOpenGuide=\{onOpenGuide\}/, '关于浮层要把功能说明按钮接到宿主回调上')
+  assert.match(read('../src/lib/nav.ts'), /\|\s*'guide'/, 'AppModal 要有 guide 这一档')
+  assert.match(read('../src/main.tsx'), /openModalFrom\('guide', 'about'\)/, '从关于打开功能说明要记来源')
+  assert.match(read('../src/main.tsx'), /openModal === 'guide' && <GuideModal/, '宿主没渲染 GuideModal')
+  const modal = read('../src/plugins/about/GuideModal.tsx')
+  assert.match(modal, /title="功能说明"/)
+  assert.match(modal, /<FeatureGuide \/>/)
+  assert.match(read('../src/pages/FeatureGuide.tsx'), /功能说明\.md\?raw/, '正文必须读随包文档，不许另写一套')
 })

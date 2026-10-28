@@ -114,7 +114,7 @@ tasks.register('testCoverageReport', JacocoReport) {
 
 
 group = 'io.legado'
-version = '0.1.4'
+version = '0.1.7'
 
 base {
     // plain jar 与发行版统一叫 legado：Docker 构建层 `jar uf …/lib/legado-*.jar`
@@ -234,6 +234,9 @@ dependencies {
     implementation "io.ktor:ktor-server-sessions:3.4.3"
     implementation "io.ktor:ktor-server-websockets:3.4.3"
     implementation "io.ktor:ktor-server-status-pages:3.4.3"
+    // 接口 JSON 的 gzip：书源清单 ~1MB、发现页书源 ~540KB，全是重复度极高的对象；
+    // 只压 JSON（静态资源在 StaticWeb 里自己压，SSE/音频/图片不压）。
+    implementation "io.ktor:ktor-server-compression:3.4.3"
     implementation "org.xerial:sqlite-jdbc:3.49.1.0"
     implementation "org.jsoup:jsoup:1.18.3"
     // 规则引擎的 @xpath 方言支持（与 Legado 同款 xpath-on-jsoup），本地已有缓存版本 2.5.1

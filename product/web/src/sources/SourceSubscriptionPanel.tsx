@@ -94,12 +94,18 @@ export function SourceSubscriptionPanel({ onSourcesChange, onClose }: {
           <h2>书源订阅地址</h2>
           <p>放的是<b>返回书源 JSON 的直链</b>（Legado「书源管理 · 订阅」里那种链接），不是网页地址。每 6 小时自动同步一次，同一地址的书源会整体覆盖更新。</p>
         </div>
-        <div className="subscription-actions">
-          <button className="subtle-button" onClick={() => void updateAll()} disabled={busy !== null || items.length === 0}>
-            {busy === 'all' ? '同步中…' : '全部同步'}
-          </button>
-          {onClose && <button type="button" className="subtle-button" onClick={onClose}>收起</button>}
-        </div>
+        {/* 空订阅时页头不摆一颗恒定灰着的「全部同步」：它在窄屏会掉到说明文字下面，
+            看上去像"还有个动作没做完"。有订阅（或宿主给了收起）才出现。 */}
+        {(items.length > 0 || onClose) && (
+          <div className="subscription-actions">
+            {items.length > 0 && (
+              <button className="subtle-button" onClick={() => void updateAll()} disabled={busy !== null}>
+                {busy === 'all' ? '同步中…' : '全部同步'}
+              </button>
+            )}
+            {onClose && <button type="button" className="subtle-button" onClick={onClose}>收起</button>}
+          </div>
+        )}
       </header>
       <form onSubmit={add}>
         <input ref={inputRef} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/sources.json" inputMode="url" aria-label="书源订阅地址" />

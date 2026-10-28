@@ -72,6 +72,16 @@ class ConnectionSelectorTest {
     }
 
     @Test
+    fun `标了 default 的连接优先于第一条`() {
+        val reg = ConnectionSelectorRegistry()
+        val marked = p2.copy(options = mapOf("default" to "1"))
+        assertEquals("second", reg.selected(listOf(p1, marked))!!.id)
+        // 标记值大小写/true 都认；没标时行为与从前一致。
+        assertEquals("second", reg.selected(listOf(p1, p2.copy(options = mapOf("default" to "TRUE"))))!!.id)
+        assertEquals("first", reg.selected(listOf(p1, p2.copy(options = mapOf("default" to "0"))))!!.id)
+    }
+
+    @Test
     fun `没有连接时 selected 返回 null`() {
         val reg = ConnectionSelectorRegistry()
         assertNull(reg.selected(emptyList()))

@@ -126,7 +126,9 @@ class AgentToolCallingTest {
         val providers = LlmProviderRegistry().apply { register(provider, replace = true) }
         val (db, agent) = buildAgent(providers, registry, home)
         try {
-            runBlocking { agent.chat(listOf("user" to "你好")) }
+            // 0.1.5 起工具按组下发（ToolSelection）：外部工具在 "demo" 组，默认关键词选不到它。
+            // 这里显式启用该组，验证的仍是"注册进去的工具会出现在模型看到的清单里"。
+            runBlocking { agent.chat(listOf("user" to "你好"), allowedToolGroups = setOf("demo", "sources")) }
             assertTrue("应至少问过模型一次", provider.seenTools.isNotEmpty())
             val tools = provider.seenTools.first()
             assertTrue("插件注册的工具应在清单里", tools.any { it.id == "plugin.query" })

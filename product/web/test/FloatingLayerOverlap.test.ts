@@ -117,7 +117,7 @@ test('悬浮球让位：底部抽屉与阅读器抽屉打开时，球不吃点�
     '让位规则要排除 .ai-fab-open —— 面板开着时球就是收起键')
 })
 
-test('窄屏：底部导航在屏上时，球 / 面板 / 安装条都抬到它上面，三者互不相压', () => {
+test('窄屏：底部导航在屏上时，球 / 面板都抬到它上面，两者互不相压', () => {
   const navHeight = px(bodyOf(narrow, '.mobile-reader-nav'), 'height')
   const fabSize = px(bodyOf(narrow, '.ai-fab'), 'height')
   const GAP = 4
@@ -125,20 +125,52 @@ test('窄屏：底部导航在屏上时，球 / 面板 / 安装条都抬到它�
   const when = 'body:has(.reader-workspace:not(.toolbars-hidden) .mobile-reader-nav)'
   const fabRaised = px(bodyOf(narrow, `${when} .ai-fab`), 'bottom')
   const panelRaised = px(bodyOf(narrow, `${when} .ai-fab-panel`), 'bottom')
-  const bannerRaised = px(bodyOf(narrow, `${when} .pwa-install-banner`), 'bottom')
 
   assert.ok(fabRaised >= navHeight + GAP,
     `球抬到 ${fabRaised}px，压不住 ${navHeight}px 高的导航（至少要 ${navHeight + GAP}px）`)
-  assert.ok(bannerRaised >= navHeight + GAP,
-    `安装条抬到 ${bannerRaised}px，还在导航范围内（至少要 ${navHeight + GAP}px）`)
   assert.ok(panelRaised >= fabRaised + fabSize + GAP,
     `面板底边 ${panelRaised}px 会与抬起来后的球（${fabRaised}+${fabSize}px）叠在一起`)
+
+  // 阅读器是提前 return 的独立壳，PwaManager 不挂在那里，安装条不可能出现 ——
+  // 旧版为"阅读器里的安装条"写过一套叠加档位，那是死样式（与组件实际渲染树对不上）。
+  assert.ok(!narrow.some((r) => r.selector.includes('.pwa-install-banner') && r.selector.includes('reader-workspace')),
+    '阅读器里没有安装条，不该再有"阅读器 + 安装条"的叠加抬高档位')
 
   // 沉浸态下导航是收起来的，那时球该回到贴底的位置 —— 条件里必须带这个否定
   assert.ok(narrow.every((r) => !r.selector.includes('.mobile-reader-nav)') || r.selector.includes(':not(.toolbars-hidden)')),
     '抬高的条件要排除沉浸态（.toolbars-hidden），否则导航收起后球还悬在半空')
 
   // 默认位置（没进阅读器 / 导航不在）仍然是贴底那颗，别把全局都抬了
+  assert.equal(px(bodyOf(narrow, '.ai-fab'), 'bottom'), 14, '窄屏默认球位应保持 bottom:14px')
+})
+
+test('窄屏：安装提示条在时，球与面板抬到它上面，页面底部也留出等高的余量', () => {
+  // 390×844 实测：安装条 bottom 16、高 63；默认球 bottom 14，点不到也看不见。
+  const BANNER_H = 63
+  const GAP = 4
+
+  const banner = bodyOf(rules, '.pwa-install-banner')
+  const bannerBottom = Number(/bottom:\s*max\((\d+)px/.exec(banner)?.[1])
+  assert.ok(bannerBottom > 0, '安装条的 bottom 应有一个像素基线（max(16px, 安全区)）')
+  assert.ok(zOf('.pwa-install-banner') > zOf('.ai-fab'), '前提：安装条的层级确实压在球上面')
+
+  const fabWhenBanner = bodyOf(narrow, 'body:has(.pwa-install-banner) .ai-fab')
+  const panelWhenBanner = bodyOf(narrow, 'body:has(.pwa-install-banner) .ai-fab-panel')
+  const fabBottom = px(fabWhenBanner, 'bottom')
+  const panelBottom = px(panelWhenBanner, 'bottom')
+  const fabSize = px(bodyOf(narrow, '.ai-fab'), 'height')
+
+  assert.ok(fabBottom >= bannerBottom + BANNER_H + GAP,
+    `提示条在时球只抬到 ${fabBottom}px，仍被 ${BANNER_H}px 高的提示条（底边 ${bannerBottom}）盖住`)
+  assert.ok(panelBottom >= fabBottom + fabSize + GAP,
+    `面板底边 ${panelBottom}px 会与抬起来后的球（${fabBottom}+${fabSize}px）叠在一起`)
+
+  // 内容也要让路：安装条是 fixed，最后一行滚到底时会落在它下面（390×844 实测被盖 34px）。
+  const shellPadding = px(bodyOf(rules, 'body:has(.pwa-install-banner) .app-shell'), 'padding-bottom')
+  assert.ok(shellPadding >= bannerBottom + BANNER_H,
+    `.app-shell 只留了 ${shellPadding}px 底部余量，安装条底边 ${bannerBottom} + 高 ${BANNER_H}px 之外没有富余`)
+
+  // 没有安装条时，球仍是贴底那颗（别把全局都抬了）
   assert.equal(px(bodyOf(narrow, '.ai-fab'), 'bottom'), 14, '窄屏默认球位应保持 bottom:14px')
 })
 

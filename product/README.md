@@ -22,19 +22,23 @@
 
 ## Windows 桌面程序
 
-桌面程序这一档**当前不在 Releases 上**（Releases 上现在只有 `legado.jar`、`legado-dist.zip` 与按版本号打的整合包 `qingyue-<版本>.zip`）。要桌面版就自己打一次：
+桌面程序这一档**当前不在 Releases 上**（Releases 上现在只有 `legado.jar`、`legado-dist.zip` 与按版本号打的整合包 `legadoq-<版本>.zip`）。要桌面版就自己打一次：
 
 ```bash
 node scripts/package-desktop.mjs   # 需要 JAVA_HOME 指向带 jpackage/jlink 的 JDK（Temurin 17 即可）
 ```
 
-产出 `dist/qingyue-desktop-<版本>.zip`，解压后双击 `qingyue.exe`：
+产出 `dist/legadoq-desktop-<版本>.zip`，解压后双击 `legadoq.exe`：
 
 - 自带精简 JRE，**不要求装 Java**；
-- 起来后开一个**独立的应用窗口**（无地址栏、无标签页，任务栏里是 legadoQ 自己的图标），地址仍是 `http://127.0.0.1:<端口>`；
+- 起来后开一个**独立的应用窗口**（无地址栏、无标签页，任务栏里是 legadoQ 自己的图标），地址仍是 `http://127.0.0.1:<端口>?desktop=1`；
+  这个标记让界面知道"这是桌面窗口"，不再弹「安装到桌面」的提示条。窗口按屏幕自适应（大屏 1280×860）；
   找不到可用的 Edge / Chrome 时才退回系统默认浏览器开标签页。**关掉这个窗口就是退出 legadoQ**（服务干净停止、端口释放）；
-  想让服务常驻而不要窗口，用 `qingyue.exe --no-open` 起，托盘里的「打开 / 退出」照常在；
+- 启动时有轻量启动画面；托盘菜单可打开应用窗口 / 浏览器 / 数据目录 / 日志目录 / 程序目录，复制访问地址与退出。
+  想让服务常驻而不要窗口，用 `legadoq.exe --no-open` 起，托盘照常在；
   浏览器可执行文件不按机器默认找的顺序时，用 `.env` 写 `LEGADO_BROWSER_PATH=<路径>` 指定；
+- 运行输出写在 exe 旁的 `server.log`（可用 `.env` 的 `LEGADO_LOG_FILE` 改），超过 5MB 轮转成 `server.log.1`；
+  结构化运行日志在 `logs/`，托盘的「打开日志目录」直达；
 - 数据默认放在 exe 旁边的 `data/`；想用已有的书架，在 exe 旁放一个 `.env` 写 `LEGADO_DATA_DIR=<你的数据目录>`；
 - 端口上已经是 legadoQ 在跑 → 不再起第二个进程，只把界面打开；端口被**别的程序**占了 → 从下一个端口起顺延找一个空闲的（往后 20 个内），并用它写回 `port.txt`，下次启动仍稳定在那个端口（界面上「设置 → 服务 → 服务端口」看到的也是它）。
 
@@ -108,11 +112,11 @@ AI 面板显示「未连接外部模型，AI 不可用」，输入框禁用。
 
 ### Windows 桌面程序（免 Java）
 
-见上一节：`node scripts/package-desktop.mjs` 打出 `dist/qingyue-desktop-<版本>.zip`，解压双击 `qingyue.exe`。这一档还没上传到 Releases，所以只能自己打（或者在 Issues 里问维护者要一份）。
+见上一节：`node scripts/package-desktop.mjs` 打出 `dist/legadoq-desktop-<版本>.zip`，解压双击 `legadoq.exe`。这一档还没上传到 Releases，所以只能自己打（或者在 Issues 里问维护者要一份）。
 
 ### 整合包 jar（免 Java）
 
-Releases 下载 `qingyue-<版本>.zip`，解压后运行 `start.bat`（默认端口 1234，可用 `start.bat 1235` 换）。
+Releases 下载 `legadoq-<版本>.zip`，解压后运行 `start.bat`（默认端口 1234，可用 `start.bat 1235` 换）。
 
 ### 直接跑 jar（需要 Java 17+）
 
@@ -123,7 +127,7 @@ java -jar legado-<版本>-all.jar
 （Releases 上那份被流水线改名成了 `legado.jar`，内容同一件东西。）浏览器打开 `http://127.0.0.1:8080`。数据落在当前目录的 `data/`。换端口或数据目录：
 
 ```bash
-LEGADO_PORT=9000 LEGADO_DATA_DIR=/srv/qingyue/data java -jar legado-<版本>-all.jar
+LEGADO_PORT=9000 LEGADO_DATA_DIR=/srv/legadoq/data java -jar legado-<版本>-all.jar
 ```
 
 自己构建：
@@ -139,9 +143,9 @@ node tools/make-cds.mjs       # 可选：生成 CDS 归档，冷启动 ~8.3s →
 镜像需本地构建（CI 的镜像发布还没通）：
 
 ```bash
-docker build -f Dockerfile -t qingyue .
-docker run -d --name qingyue --restart unless-stopped \
-  -p 8080:8080 -v ./ls_data:/data qingyue
+docker build -f Dockerfile -t legadoq .
+docker run -d --name legadoq --restart unless-stopped \
+  -p 8080:8080 -v ./ls_data:/data legadoq
 ```
 
 容器内要把 `LEGADO_HOST` 设成 `0.0.0.0` 才接得住宿主机映射（Dockerfile 里已经这么设）。仓库带了一份 `compose.yml`。

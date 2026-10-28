@@ -139,7 +139,7 @@ test('一张卡只有一个百分比口径，本地同步的进度分子只数�
     '反向对照：拿整本书的已缓存集合当分子，会念成「350 / 50 章」')
 })
 
-test('Esc 只挂一份、书签代码判响应状态、两个死导出不再长回来', () => {
+test('Esc 只挂一份、登录浮层只剩两条路、两个死导出不再长回来', () => {
   const logs = read('components', 'LogsModal.tsx')
   assert.doesNotMatch(logs, /addEventListener\('keydown'/, 'LogsModal 不该再自己挂一份 keydown')
   assert.match(logs, /useEscapeClose\(onClose\)/, '统一那一套要在')
@@ -147,12 +147,14 @@ test('Esc 只挂一份、书签代码判响应状态、两个死导出不再长�
   assert.doesNotMatch(debug, /addEventListener\('keydown'/, '调试台同理（收流留在卸载清理里）')
   assert.match(debug, /useEffect\(\(\) => \(\) => \{ streamRef\.current\?\.close\(\) \}, \[\]\)/, '卸载要收 EventSource')
 
+  // 内置浏览器抓不到需要站点脚本才写出的 Cookie、表单只对少数源有意义、书签脚本已被真浏览器取代：
+  // 登录浮层只留「真浏览器」与「粘贴 Cookie」两条真能拿到凭据的路（用户 2026-10-28）。
   const login = read('sources', 'SourceLoginModal.tsx')
-  const bookmarklet = /const bookmarkletCode[\s\S]*?\n  \}, \[sourceId\]\)/.exec(login)
-  assert.ok(bookmarklet, '书签代码要还在')
-  assert.match(bookmarklet[0], /ok:r\.ok/, '被同源闸门 403 挡下时不许报成功')
-  assert.doesNotMatch(bookmarklet[0], /return r\.json\(\)\}\)\.then\(function\(\w+\)\{alert\('已把/,
-    '反向对照：不判状态直接 alert 的写法要清零')
+  assert.doesNotMatch(login, /SourceWebViewModal|bookmarkletCode/, '内置浏览器 / 书签同步不许回来')
+  const tabs = [...login.matchAll(/tab\('(external|cookie|form|browser|bookmark)', '([^']+)'\)/g)].map(m => m[2])
+  assert.deepEqual(tabs, ['真浏览器', '粘贴 Cookie'], '登录方式只剩两条')
+  assert.match(login, /api\.externalLoginStart\(sourceId, res\.openUrl\)/,
+    '登录脚本要浏览器时必须交给真浏览器，不能弹到日常浏览器或内嵌沙箱')
 
   assert.doesNotMatch(read('sources', 'bookSourceFields.ts'), /SOURCE_FIELD_COUNT/,
     '与列表漂移的死常量不回来（总数由编辑器现算）')

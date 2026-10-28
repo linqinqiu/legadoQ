@@ -1,8 +1,9 @@
-// 书源登录浮层交付前自检。用两条一次性探针书源跑，不碰用户真源的凭据：
-//   A 只有「打开登录网页」按钮 → 不该推荐「填写表单」，该推荐「内置浏览器」
-//   B 有账号/密码字段 → 该推荐「填写表单」
-// 再验：页签与菜单不重复、图标按钮都有可访问名且不低于 30px、粘贴 Cookie 就地展开并立刻反映到凭据明细、
-// 删掉书源时它的 Cookie 罐必须一起消失。跑法：
+// 书源登录浮层交付前自检。用三条一次性探针书源跑，不碰用户真源的凭据：
+//   A 登录入口是整段登录 JS（库内实测 208 个源这么写）→ 默认落在「真浏览器」
+//   B loginUi 有账号/密码字段 → 表单已不再渲染，仍然只剩真浏览器 / 粘贴 Cookie 两条路
+//   C 照番茄官方接口直连源的形状：书源主域是代理站，要登录的是另一个域，搜索又走第三个域
+// 再验：页签固定两条、菜单不重复、图标按钮都有可访问名且不低于 30px、
+// 粘贴 Cookie 就地展开并立刻反映到凭据明细、删掉书源时它的 Cookie 罐必须一起消失。跑法：
 //   node tools/verify/preview.mjs --port 4399 && node tools/verify/source-login-check.mjs
 import fs from 'node:fs'
 import path from 'node:path'
@@ -14,9 +15,8 @@ const puppeteer = require('puppeteer-core')
 const STAMP = process.env.STAMP || new Date().toISOString().replace(/[-:]/g, '').slice(0, 13)
 const A = { id: `https://probe-a.login-${STAMP}.example`, name: `登录探针A ${STAMP}` }
 const B = { id: `https://probe-b.login-${STAMP}.example`, name: `登录探针B ${STAMP}` }
-// C 照番茄官方接口直连源的真实形状造：书源主域是代理站，要登录的是另一个域，搜索又走第三个域
 const C = { id: `https://proxy.probe-c-${STAMP}.example`, name: `登录探针C ${STAMP}` }
-const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{2700}-\u{27BF}]/u
+const TAB_LABELS = '真浏览器|粘贴 Cookie'
 
 const sourceJson = (fixture, loginUi, extra = {}) => JSON.stringify({
   bookSourceUrl: fixture.id,
@@ -43,13 +43,10 @@ await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 })
 await page.goto(`${BASE}/#sources`, { waitUntil: 'domcontentloaded' })
 await page.waitForSelector('.source-list-item', { timeout: 30000 })
 
-// 造三条探针源。A 的 loginUrl 是整段登录 JS（库内实测 208 个源这么写），
-// C 照番茄官方接口直连源的形状：要登录的域和书源主域不是一个。
 const imported = await page.evaluate(async ({ aJson, bJson, cJson }) => {
-  const csrfToken = '' // 不设身份：写操作只看同源
   const response = await fetch('/api/sources/import', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'X-CSRF-Token': csrfToken },
+    headers: { 'content-type': 'application/json', 'X-CSRF-Token': '' },
     body: JSON.stringify({ sources: [aJson, bJson, cJson] }),
   })
   return { status: response.status, body: await response.json().catch(() => null) }
@@ -95,66 +92,55 @@ const readModal = () => page.waitForSelector('.source-login-method-tab', { timeo
   const tabs = [...document.querySelectorAll('.source-login-method-tab')]
   const headerButtons = [...document.querySelectorAll('.source-login-action-btn')]
   const status = document.querySelector('.source-login-status')
+  const emoji = text => /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u.test(text)
   return {
     title: document.querySelector('.source-login-title')?.textContent || '',
-    tabs: tabs.map(tab => ({ label: tab.textContent.replace('推荐', '').trim(), active: tab.classList.contains('is-active'), recommended: tab.textContent.includes('推荐'), disabled: tab.disabled })),
+    tabs: tabs.map(tab => ({ label: tab.textContent.replace('推荐', '').trim(), active: tab.classList.contains('is-active'), recommended: tab.textContent.includes('推荐') })),
     tabRows: new Set(tabs.map(tab => Math.round(tab.getBoundingClientRect().top))).size,
     statusText: status?.innerText.replace(/\n+/g, ' · ') || '',
     statusClass: status?.className || '',
     headerButtons: headerButtons.map(button => ({
       label: button.getAttribute('aria-label') || '',
       svg: !!button.querySelector('svg'),
-      emoji: button.querySelector('svg') === null && EMOJI_TEST(button.textContent),
+      emoji: button.querySelector('svg') === null && emoji(button.textContent),
       height: Math.round(button.getBoundingClientRect().height),
     })),
-    formFields: [...document.querySelectorAll('.source-login-panel, form.source-login-flex-form')].length,
-    inputs: document.querySelectorAll('.login-ui-input').length,
+    formCount: [...document.querySelectorAll('.source-login-panel input')].filter(el => el.type === 'password').length,
+    jarRows: [...document.querySelectorAll('.source-login-jar-row')].map(row => row.innerText.replace(/\s+/g, ' ').trim()),
   }
 }))
-// 表情符号判定要在页面里做，正则写在这里会被序列化过去
-await page.evaluate(() => {
-  window.EMOJI_TEST = text => /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u.test(text)
-})
 
 await openLogin(A)
 const modalA = await readModal()
 await page.screenshot({ path: path.join(SHOTS, `source-login-A-${STAMP}.png`) })
 const activeA = modalA.tabs.find(tab => tab.active)
-check('A：只有按钮时不推荐「填写表单」', modalA.tabs.find(t => t.label === '填写表单')?.recommended === false, JSON.stringify(modalA.tabs.map(t => `${t.label}${t.recommended ? '(推荐)' : ''}`)))
-check('A：默认落在「内置浏览器」', activeA?.label === '内置浏览器', activeA?.label || '')
+check('A：只剩两个登录方式', modalA.tabs.length === 2 && modalA.tabs.map(t => t.label).join('|') === TAB_LABELS, modalA.tabs.map(t => t.label).join('|'))
+check('A：默认落在「真浏览器」并标推荐', activeA?.label === '真浏览器' && modalA.tabs.find(t => t.label === '真浏览器')?.recommended === true, activeA?.label || '')
 check('A：状态行说明还没有凭据', /还没有任何凭据/.test(modalA.statusText), modalA.statusText)
+check('A：不再渲染登录表单 / 内置浏览器残留', modalA.formCount === 0 && !/内置浏览器|填写表单|书签同步/.test(await page.$eval('.source-login-dialog', el => el.innerText)), String(modalA.formCount))
+check('A：页签一排排得下', modalA.tabRows === 1, `${modalA.tabRows} 行`)
+check('A：头部按钮全部换成图标组件并带可访问名', modalA.headerButtons.length >= 2 && modalA.headerButtons.every(b => b.svg && b.label && !b.emoji), JSON.stringify(modalA.headerButtons.map(b => `${b.label}:${b.svg ? 'svg' : 'text'}`)))
+check('A：头部按钮不低于 30px（控件下限）', Math.min(...modalA.headerButtons.map(b => b.height)) >= 30, `${Math.min(...modalA.headerButtons.map(b => b.height))}px`)
 
-// A 的 loginUrl 是整段登录 JS：界面不该把脚本原文当网址贴出来，而要让脚本决定登录页
-const scriptTab = await page.evaluate(() => ({
+// A 的 loginUrl 是整段登录 JS：界面不再把脚本原文当网址贴出来，而是由「保存并登录」执行脚本，
+// 脚本要求打开浏览器时交给真浏览器（openUrl 契约仍在服务端）。
+const scriptPanel = await page.evaluate(() => ({
   hint: document.querySelector('.source-login-panel .source-login-hint')?.innerText || '',
   urlLine: !!document.querySelector('.source-login-url-line'),
 }))
-check('A：JS 登录源不往界面上倒脚本', !scriptTab.urlLine && /脚本/.test(scriptTab.hint), scriptTab.hint.slice(0, 70))
-const sessionStart = await page.evaluate(async id => {
-  const csrfToken = '' // 不设身份：写操作只看同源
-  const response = await fetch(`/api/sources/${encodeURIComponent(id)}/browser/session`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-CSRF-Token': csrfToken }, body: '{}' })
-  return await response.json()
-}, A.id)
-check('A：内置浏览器地址由登录脚本给出（不是书源主页）', sessionStart.startUrl === 'https://qr.probe-a.example/login?tk=7', JSON.stringify(sessionStart).slice(0, 120))
-await page.evaluate(async t => { if (t) await fetch(`/api/sources/browser/session?t=${encodeURIComponent(t)}`, { method: 'DELETE' }) }, sessionStart.token)
-
-// 关掉内置浏览器后界面会带 browserCompleted 重跑一次：这一轮服务端不该再要求打开浏览器，
-// 而是自己带着已落库的 Cookie 去抓那一页（上游 startBrowserAwait 返回 StrResponse.body 的等价物）
+check('A：JS 登录源不往界面上倒脚本，也不给死链', !scriptPanel.urlLine && /真浏览器|Chrome|Edge/.test(scriptPanel.hint), scriptPanel.hint.slice(0, 70))
 const awaitRounds = await page.evaluate(async id => {
-  const csrfToken = '' // 不设身份：写操作只看同源
-  const call = async completed => {
+  const call = async () => {
     const response = await fetch(`/api/sources/${encodeURIComponent(id)}/login-action`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'X-CSRF-Token': csrfToken },
-      body: JSON.stringify({ action: 'login(true, false)', loginData: {}, isLongClick: false, browserCompleted: completed }),
+      headers: { 'content-type': 'application/json', 'X-CSRF-Token': '' },
+      body: JSON.stringify({ action: 'login(true, false)', loginData: {}, isLongClick: false, browserCompleted: false }),
     })
     return response.json()
   }
-  return { first: await call(false), second: await call(true) }
+  return call()
 }, A.id)
-check('A：第一轮把地址交给界面，第二轮不再要求开浏览器（服务端自己抓页）',
-  awaitRounds.first.openUrl === 'https://qr.probe-a.example/login?tk=7' && !awaitRounds.second.openUrl,
-  JSON.stringify({ 第一轮: awaitRounds.first.openUrl, 第二轮: awaitRounds.second.openUrl ?? '(无)', 错误: awaitRounds.second.error || '' }))
+check('A：登录脚本把要打开的地址交给界面（界面转交真浏览器）', awaitRounds.openUrl === 'https://qr.probe-a.example/login?tk=7', JSON.stringify(awaitRounds).slice(0, 120))
 
 await page.evaluate(() => [...document.querySelectorAll('.source-login-action-btn')].find(b => b.getAttribute('aria-label') === '凭据管理')?.click())
 await page.waitForSelector('.source-login-dropdown-menu', { timeout: 5000 })
@@ -164,23 +150,6 @@ check('菜单项都带图标', menu.every(item => item.svg), menu.map(m => m.tex
 await page.screenshot({ path: path.join(SHOTS, `source-login-menu-${STAMP}.png`) })
 await page.keyboard.press('Escape')
 await new Promise(resolve => setTimeout(resolve, 400))
-
-const shared = await page.evaluate(() => {
-  const tabs = [...document.querySelectorAll('.source-login-method-tab')]
-  const buttons = [...document.querySelectorAll('.source-login-action-btn')]
-  return {
-    tabRows: new Set(tabs.map(tab => Math.round(tab.getBoundingClientRect().top))).size,
-    tabCount: tabs.length,
-    labels: tabs.map(tab => tab.textContent.replace('推荐', '').trim()),
-    buttons: buttons.map(b => ({ label: b.getAttribute('aria-label') || '', svg: !!b.querySelector('svg'), height: Math.round(b.getBoundingClientRect().height), emoji: /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u.test(b.textContent) })),
-  }
-})
-// 五个登录方式各一个页签（真浏览器是这一波加的），且必须仍排一行不换行
-check('五个登录方式各一个页签', shared.tabCount === 5 && shared.labels.join('|') === '填写表单|内置浏览器|真浏览器|粘贴 Cookie|书签同步', shared.labels.join('|'))
-check('页签一排放得下（不换行）', shared.tabRows === 1, `${shared.tabRows} 行`)
-check('页签文字不用表情符号', shared.labels.every(label => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u.test(label)), shared.labels.join('|'))
-check('头部按钮全部换成图标组件并带可访问名', shared.buttons.every(b => b.svg && b.label && !b.emoji), JSON.stringify(shared.buttons.map(b => `${b.label}:${b.svg ? 'svg' : 'text'}`)))
-check('头部按钮不低于 30px（控件下限）', Math.min(...shared.buttons.map(b => b.height)) >= 30, `${Math.min(...shared.buttons.map(b => b.height))}px`)
 
 // 粘贴 Cookie：就地展开、保存后明细立刻反映，且按域名落库
 await page.evaluate(() => [...document.querySelectorAll('.source-login-method-tab')].find(t => t.textContent.includes('粘贴 Cookie'))?.click())
@@ -203,27 +172,22 @@ const afterSave = await readModal()
 await page.screenshot({ path: path.join(SHOTS, `source-login-cookie-${STAMP}.png`) })
 check('保存后状态行改成「已存凭据」', /已存凭据/.test(afterSave.statusText) && afterSave.statusClass.includes('is-credential'), afterSave.statusText)
 const jar = await page.evaluate(id => fetch(`/api/sources/${encodeURIComponent(id)}/browser/cookies`).then(r => r.json()), A.id)
-const jarRows = await page.evaluate(() => [...document.querySelectorAll('.source-login-jar-row')].map(row => row.innerText.replace(/\s+/g, ' ').trim()))
-check('凭据明细按主机摊开（不再只有一句结论）', jarRows.length === 1 && /probe-a/.test(jarRows[0]) && /2 项/.test(jarRows[0]), JSON.stringify(jarRows))
+check('凭据明细按主机摊开（不再只有一句结论）', afterSave.jarRows.length === 1 && /probe-a/.test(afterSave.jarRows[0]) && /2 项/.test(afterSave.jarRows[0]), JSON.stringify(afterSave.jarRows))
 check('Cookie 按域名落库（2 项）', jar.count === 1 && /probe_token=abc123/.test(Object.values(jar.cookies)[0]) && /probe_sid=42/.test(Object.values(jar.cookies)[0]), JSON.stringify(jar))
 
-// B：有可填字段时该推荐表单，并且字段真的渲染出来
+// B：loginUi 里还有账号/密码字段，但表单这条路已按用户要求撤掉，不该再渲染任何输入框
 await openLogin(B)
 const modalB = await readModal()
 await page.screenshot({ path: path.join(SHOTS, `source-login-B-${STAMP}.png`) })
-check('B：有输入框时推荐并落在「填写表单」', modalB.tabs.find(t => t.label === '填写表单')?.recommended === true && modalB.tabs.find(t => t.active)?.label === '填写表单', JSON.stringify(modalB.tabs.map(t => `${t.label}${t.active ? '*' : ''}${t.recommended ? '(推荐)' : ''}`)))
-check('B：账号/密码字段真的渲染出来', modalB.inputs >= 2, `${modalB.inputs} 个输入框`)
-const eye = await page.evaluate(() => {
-  const button = document.querySelector('.login-ui-eye-btn')
-  return { svg: !!button?.querySelector('svg'), emoji: /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u.test(button?.textContent || '') }
-})
-check('密码可见性切换也是图标组件（浮层里最后一个表情符号已清掉）', eye.svg && !eye.emoji, JSON.stringify(eye))
+check('B：仍然只有两个页签', modalB.tabs.length === 2 && modalB.tabs.map(t => t.label).join('|') === TAB_LABELS, modalB.tabs.map(t => t.label).join('|'))
+check('B：登录表单不再渲染（无密码框 / 眼睛按钮）', modalB.formCount === 0 && (await page.evaluate(() => document.querySelectorAll('.source-login-panel input[type=password]').length)) === 0, String(modalB.formCount))
 await page.keyboard.press('Escape')
 
 // C：番茄那种「要登录的域 ≠ 书源主域」的源，粘贴 Cookie 必须能选对域名。
 // 域名口径与上游 CookieStore 一致，是注册域（netsite.cc 而不是 fq-book.netsite.cc）。
 await openLogin(C)
-// C 配了 loginUrl 网址，默认落在「内置浏览器」档，要先切到粘贴 Cookie。
+const modalC = await readModal()
+check('C：配了 loginUrl 网址时默认落在「真浏览器」', modalC.tabs.find(t => t.active)?.label === '真浏览器', JSON.stringify(modalC.tabs))
 // 必须等页签真的渲染出来再点：早先这里在浮层还处于 loading 分支时就 evaluate，
 // `find(...)` 拿到 undefined、`?.click()` 静默无操作，于是后面整串 C 断言全读成空 —— 看着像产品坏了。
 await page.waitForFunction(
@@ -234,7 +198,6 @@ await page.evaluate(() => {
   const target = [...document.querySelectorAll('.source-login-method-tab')].find(t => t.textContent.includes('粘贴 Cookie'))
   target.click()
 })
-// 点完要核对：没切过去就是探针问题，当场说清楚，别把空 DOM 当成"功能坏了"往下传
 await page.waitForFunction(
   () => document.querySelector('.source-login-method-tab.is-active')?.textContent?.includes('粘贴 Cookie') === true,
   { timeout: 10000 },
@@ -250,8 +213,6 @@ const cookieTabC = await page.evaluate(() => ({
 }))
 check('C：候选主机把登录域排在最前', cookieTabC.domains[0] === 'reader.probe-c-login.example' && cookieTabC.domains.includes('api.probe-c-search.example') && cookieTabC.domains.length === new Set(cookieTabC.domains).size, JSON.stringify(cookieTabC))
 check('C：默认就落在登录主机上（不是书源主域）', cookieTabC.chosen === 'reader.probe-c-login.example', cookieTabC.chosen)
-// 先确认粘贴档真的开着：直接 setter.call(null) 会抛 "Illegal invocation"，
-// 把后面所有断言炸成一次崩溃，看不出到底是哪儿没渲染。
 const pasteState = await page.evaluate(() => ({
   tabs: [...document.querySelectorAll('.source-login-method-tab')].map(t => `${t.textContent}${t.classList.contains('is-active') ? '*' : ''}`),
   panels: document.querySelectorAll('.source-login-panel').length,
@@ -271,8 +232,6 @@ if (pasteState.area) {
 await page.evaluate(() => [...document.querySelectorAll('.source-login-panel button')].find(b => b.textContent.trim() === '保存 Cookie')?.click())
 await new Promise(resolve => setTimeout(resolve, 1500))
 const jarC = await page.evaluate(id => fetch(`/api/sources/${encodeURIComponent(id)}/browser/cookies`).then(r => r.json()), C.id)
-// 罐子按注册域归桶：粘贴到 reader.probe-c-login.example 的凭据落在 probe-c-login.example 桶里，
-// 关键是"没有落在书源主域 proxy.probe-c-xxx.example 上"。
 check('C：Cookie 存到了登录主机的注册域而不是书源主域', Object.keys(jarC.cookies).join() === 'probe-c-login.example', JSON.stringify(jarC.domains))
 await page.screenshot({ path: path.join(SHOTS, `source-login-C-${STAMP}.png`) })
 
@@ -300,30 +259,18 @@ const jarAfterDelete = await page.evaluate(id => fetch(`/api/sources/${encodeURI
 check('C：单域删除只清这一条并要求确认', jarAfterDelete.count === 0 && dialogSeen.some(msg => /probe-c-login\.example/.test(msg)), JSON.stringify({ 剩余: jarAfterDelete.count, 确认框: dialogSeen.length }))
 await page.keyboard.press('Escape')
 
-// A 只有一个按钮、没有可填控件：不该再摆一个全宽「保存并登录」骗点击
-await openLogin(A)
-await page.evaluate(() => [...document.querySelectorAll('.source-login-method-tab')].find(t => t.textContent.includes('填写表单'))?.click())
-await new Promise(resolve => setTimeout(resolve, 500))
-const formOnlyButton = await page.evaluate(() => ({
-  rows: [...document.querySelectorAll('.source-login-flex-form button')].map(b => b.textContent.trim()),
-  submit: [...document.querySelectorAll('button[type=submit]')].map(b => b.textContent.trim()),
-}))
-check('A：无可填控件时不渲染「保存并登录」提交按钮', formOnlyButton.rows.includes('打开登录网页') && formOnlyButton.submit.length === 0, JSON.stringify(formOnlyButton))
-await page.keyboard.press('Escape')
-
 // 删掉探针源：它的凭据必须跟着走，不能留在库里
-const cleanup = await page.evaluate(async ({ ids, name }) => {
-  const csrfToken = '' // 不设身份：写操作只看同源
+const cleanup = await page.evaluate(async ({ ids }) => {
   const response = await fetch('/api/sources/batch', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'X-CSRF-Token': csrfToken },
+    headers: { 'content-type': 'application/json', 'X-CSRF-Token': '' },
     body: JSON.stringify({ action: 'delete', ids }),
   })
   const removed = await response.json().catch(() => null)
   await new Promise(r => setTimeout(r, 800))
   const jarAfter = await fetch(`/api/sources/${encodeURIComponent(ids[2])}/browser/cookies`).then(r => r.json()).catch(() => null)
-  return { status: response.status, removed, jarAfter, name }
-}, { ids: [A.id, B.id, C.id], name: A.name })
+  return { status: response.status, removed, jarAfter }
+}, { ids: [A.id, B.id, C.id] })
 // 收尾必须走接口逐条复查 404：以前是"在界面列表里搜名字、搜不到就算已删"，
 // 而 4,876 源的列表里那条搜索本身就不生效，于是三条探针源一直静静留在库里。
 const teardown = await page.evaluate(async ids => {
@@ -340,11 +287,10 @@ check('探针源已从库里删除（逐条复查 404）',
 // 撤掉写进去的桶 —— 否则每跑一次就在用户库里堆一层垃圾，还会污染下一次运行
 // （实测：A 的 `probe-a.example` 残留让下一次运行的"还没有凭据"断言直接变红）。
 const bucketCleanup = await page.evaluate(async () => {
-  const csrfToken = '' // 不设身份：写操作只看同源
   const list = await (await fetch('/api/cookies')).json()
   const mine = (list.cookies ?? []).filter(c => /probe/i.test(c.domain) || /\.(example|test)$/.test(c.domain))
   for (const c of mine) {
-    await fetch(`/api/cookies?u=${encodeURIComponent(c.domain)}`, { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } })
+    await fetch(`/api/cookies?u=${encodeURIComponent(c.domain)}`, { method: 'DELETE', headers: { 'X-CSRF-Token': '' } })
   }
   const after = await (await fetch('/api/cookies')).json()
   return {
@@ -360,6 +306,6 @@ check('全程没有页面异常', errors.length === 0, errors.slice(0, 2).join('
 await browser.close()
 const failed = results.filter(result => !result.ok)
 for (const result of results) console.log(`${result.ok ? 'PASS' : 'FAIL'}  ${result.name}${result.detail ? ` (${result.detail})` : ''}`)
-fs.writeFileSync(path.join(OUT, `source-login-${STAMP}.json`), JSON.stringify({ base: BASE, modalA, modalB, menu, results }, null, 2))
+fs.writeFileSync(path.join(OUT, `source-login-${STAMP}.json`), JSON.stringify({ base: BASE, modalA, modalB, modalC, menu, results }, null, 2))
 console.log(`\n${results.length - failed.length}/${results.length} 通过`)
 if (failed.length) process.exitCode = 1

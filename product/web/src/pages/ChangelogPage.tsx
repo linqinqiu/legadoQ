@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { api, type ChangelogRelease } from '../lib/api'
 import { Notice } from '../components/Notice'
 
+/** 首屏先给最近几版；更早的放在「展开」后面，免得一页滚不到底。 */
+const RECENT_RELEASES = 6
+
 /**
  * 应用内的「更新日志」页。
  *
@@ -89,6 +92,8 @@ export function ChangelogPage({ serverVersion }: { serverVersion: string }) {
   const [releases, setReleases] = useState<ChangelogRelease[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // 日志会越写越长：先给最近几版，更早的折起来（用户偏好：长内容不整屏铺开）。
+  const [expanded, setExpanded] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -100,6 +105,8 @@ export function ChangelogPage({ serverVersion }: { serverVersion: string }) {
   }, [])
 
   useEffect(() => { load() }, [load])
+  const visible = expanded ? releases : releases.slice(0, RECENT_RELEASES)
+  const hidden = releases.length - visible.length
 
   return (
     <section className="changelog-page">
@@ -117,7 +124,7 @@ export function ChangelogPage({ serverVersion }: { serverVersion: string }) {
       )}
       {!loading && !error && releases.length > 0 && (
         <div className="changelog-list">
-          {releases.map(release => (
+          {visible.map(release => (
             <section key={release.version} className={`changelog-release ${release.version === serverVersion ? 'current' : ''}`}>
               <header>
                 <h2>{release.version}</h2>
@@ -135,6 +142,11 @@ export function ChangelogPage({ serverVersion }: { serverVersion: string }) {
               ))}
             </section>
           ))}
+          {(hidden > 0 || expanded) && releases.length > RECENT_RELEASES && (
+            <button type="button" className="ghost-button changelog-more" onClick={() => setExpanded(value => !value)}>
+              {expanded ? '收起更早的版本' : `展开更早的 ${hidden} 个版本`}
+            </button>
+          )}
         </div>
       )}
     </section>

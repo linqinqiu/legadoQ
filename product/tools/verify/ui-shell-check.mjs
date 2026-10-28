@@ -48,7 +48,15 @@ const clickIn = (page, scope, label) => page.evaluate(({ scope, label }) => {
 const openUserMenu = async (page, label = '') => {
   await page.evaluate(() => document.querySelector('.overlay-backdrop.is-menu')?.click())
   await page.waitForFunction(() => !document.querySelector('.header-menu-dropdown'), { timeout: 8000 }).catch(() => null)
-  if (!(await clickIn(page, '.app-page-header', '我的'))) return false
+  // 「我的」按钮是图标按钮（aria-label 带「我的」、正文为空），所以按类名点，
+  // 不能再用 clickIn 按文字找 —— 那样永远找不到，报出来像是"菜单坏了"。
+  const opened = await page.evaluate(() => {
+    const button = document.querySelector('.header-menu-btn')
+    if (!button) return false
+    button.click()
+    return true
+  })
+  if (!opened) return false
   try {
     await page.waitForSelector('.header-menu-dropdown', { timeout: 8000 })
   } catch {
@@ -89,6 +97,12 @@ try {
   const page = await browser.newPage()
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 })
   page.on('pageerror', error => errors.push(String(error.message)))
+
+  // 首启协议层会挡住真实点击（它盖满整屏）。这一条门禁不判协议，直接标记为已同意；
+  // agreement-check 会在跑完后清掉这个标记，所以不能假设上一条门禁留下了它。
+  await page.evaluateOnNewDocument(() => {
+    try { localStorage.setItem('legadoq-agreement-v1', new Date().toISOString()) } catch { /* 隐私模式就让它挡着 */ }
+  })
 
   // ─────────────────────── ① 只有一套外壳 ───────────────────────
   await page.goto(`${BASE}/#library`, { waitUntil: 'domcontentloaded' })
@@ -247,6 +261,10 @@ try {
   check('④皮肤 id 与 CSS 两栏都填进去了', typed, typed ? '' : '没找到 .customize-skin-editor input / .customize-css')
   const echo = await page.evaluate(() => document.querySelector('.customize-note code')?.textContent?.trim() ?? '')
   check('④id 过白名单，界面把清洗结果说出来（大写与感叹号被滤掉）', echo.includes('gatemidnight'), `回显 ${echo || '(无)'}`)
+  // 叠在「夜读」上而不是默认的晓白：:root 现在有一份与浅色同值的中性基线，
+  // 若叠在晓白上，摘掉基档后变量值一个都不变，反向对照就恒真、什么也证明不了。
+  check('④把这套皮肤叠在「夜读」之上（基档要与中性基线不同，反向对照才有意义）',
+    await clickIn(page, '[aria-label="自定义皮肤的基础皮肤"]', '夜读'), '')
   check('④「套用这套皮肤」点得动', await clickIn(page, '.customize-actions', '套用'), '')
   await page.waitForFunction(() => [...document.querySelectorAll('.customize-skin')].some(n => (n.textContent ?? '').includes('自定义（gatemidnight）')), { timeout: 8000 })
   check('④皮肤列表里选中新建的这一套', await clickIn(page, '.customize-skin-row', '自定义（gatemidnight）'), '')
@@ -267,14 +285,17 @@ try {
   })
   check('④注入的 <style> 在文档里，内容就是填的那条规则', skin.mounted && skin.text.includes('--canvas'), skin.text || '(空)')
   check('④皮肤类是「内置基档 + 自定义」两个，自定义在后',
-    /theme-(light|paper|dark)\s+theme-gatemidnight/.test(skin.classes.trim()), skin.classes || '(空)')
+    /theme-dark\s+theme-gatemidnight/.test(skin.classes.trim()), skin.classes || '(空)')
+  // 「夜读」的 --surface / --ink 与 :root 中性基线不同，所以下面同时证明了
+  // "其余变量来自基档"和"摘掉基档就换源"，不会因为基线兜底而恒真。
   check('④只写一个变量，其余变量仍从基档解析下来（不花屏）',
-    skin.canvas === canvas && skin.surface !== '' && skin.ink !== '',
+    skin.canvas === canvas && skin.surface === '#292e2b' && skin.ink === '#eef1ec',
     `--canvas ${skin.canvas} · --surface ${skin.surface || '(空)'} · --ink ${skin.ink || '(空)'}`)
   check('④标题栏 meta 取的是算出来的 --canvas（不是写死的三档色表）',
     rgbEq(skin.meta, canvas) || skin.meta.toLowerCase() === canvas.toLowerCase(), `meta=${skin.meta || '(空)'}`)
 
-  // 反向对照：摘掉基档类，未覆盖的变量必须立刻取不到 —— 否则上面那条"叠加"是恒真的。
+  // 反向对照：摘掉基档类，未覆盖的变量必须从「夜读」落回 :root 的中性基线 ——
+  // 若值不变，说明基档根本没参与解析（那条"叠加"就是恒真的）。
   await page.evaluate(() => {
     const html = document.documentElement
     for (const name of [...html.classList]) if (/^theme-(light|paper|dark)$/.test(name)) html.classList.remove(name)
@@ -284,9 +305,9 @@ try {
     const cs = getComputedStyle(document.documentElement)
     return { surface: cs.getPropertyValue('--surface').trim(), ink: cs.getPropertyValue('--ink').trim(), canvas: cs.getPropertyValue('--canvas').trim() }
   })
-  check('④反向对照：摘掉基档类后 --surface / --ink 立刻取不到（证明"叠加"是活的）',
-    noBase.surface === '' && noBase.ink === '' && noBase.canvas === canvas,
-    `--canvas ${noBase.canvas || '(空)'} · --surface ${noBase.surface || '(取不到)'}`)
+  check('④反向对照：摘掉「夜读」后 --surface / --ink 落回中性基线（证明"叠加"是活的）',
+    noBase.surface === '#ffffff' && noBase.ink === '#202522' && noBase.canvas === canvas,
+    `--canvas ${noBase.canvas || '(空)'} · --surface ${noBase.surface || '(取不到)'} · --ink ${noBase.ink || '(取不到)'}`)
 
   // 皮肤要存得住；清除自定义皮肤之后注入的 <style> 必须被摘掉（不留一条幽灵规则）
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -388,9 +409,11 @@ try {
       sections: [...(dialog?.querySelectorAll('.customize-section h3') ?? [])].map(n => (n.textContent ?? '').trim()),
     }
   })
-  check('⑤「自定义」不再是杂物间：只剩皮肤那两档，没有分章规则',
+  // 外观三节：皮肤 / 皮肤库 / 壁纸。壁纸与皮肤同一处改是刻意的（2026-10 加壁纸时定的），
+  // 判据只盯"杂物"：分章规则不能再回来，也不许多出第四节。
+  check('⑤「自定义」不再是杂物间：只剩皮肤与壁纸，没有分章规则',
     customize.tocRows === 0 && !customize.text.includes('分章规则')
-    && customize.sections.join('、') === '皮肤、自定义皮肤库',
+    && customize.sections.join('、') === '皮肤、自定义皮肤库、壁纸',
     `${customize.sections.join('、') || '(没有分节)'} · 规则行 ${customize.tocRows}`)
 
   // ─────────────────────────── ⑥ 收尾 ──────────────────────────

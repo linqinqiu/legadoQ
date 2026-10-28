@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, type AboutInfo, type UpdateCheckResult } from '../lib/api'
 import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../lib/agreement'
-import guideMarkdown from '../../../docs/功能说明.md?raw'
 
 /**
  * 「关于」（用户 2026-10-02：「加入关于（名称，开发者，更新日志，检查更新，用户协议，开源许可，免责声明）」）。
@@ -9,6 +8,9 @@ import guideMarkdown from '../../../docs/功能说明.md?raw'
  * 这一页也是"这条产品是谁做的、改到哪一版、怎么按键"的落点：顶栏「我的」里原来的
  * 「快捷键」「更新日志」两条都收到这里来了（用户 2026-10-03：「顶栏『我的』菜单堆太多」）。
  * 版本号本身在顶栏还是个芯片，点它同样进更新日志 —— 那是同一个目标的第二条路，不算重复入口。
+ *
+ * 2026-10-28：功能说明拆成独立浮层（原来展开后把用户协议推到看不见的地方），
+ * 产品介绍 / 用户协议 / 免责声明 / 开源许可改成按段渲染；协议文案仍只有 `agreement.ts` 一份。
  *
  * 版本与仓库地址都从服务端 `/api/about` 拿：界面里写死一个版本号，就有了第二个事实来源，
  * 而那两个来源一定会漂（这条在本项目里翻过车，见 `tools/verify/version-check.mjs`）。
@@ -37,9 +39,11 @@ const REFERENCED: Array<[string, string, string]> = [
   ['LegadoTeam/legado', '书源规则 DSL 的求值语义、体检口径、书架版式与书源编辑字段分组', 'GPL-3.0'],
   ['LegadoTeam/legado（随包数据）', 'TXT 分章规则表 26 条：原样副本，不是重抄', 'GPL-3.0'],
   ['gedoor/legado_web_source_editor', '书源编辑器的字段分栏形式', 'MIT'],
+  ['HapeLee/legado-with-MD3', '设置分组、关于页与协议文的组织方式（界面层面参照）', 'GPL-3.0'],
 ]
 
-const LICENSE_TEXT = '本项目以 GNU GPL-3.0 发布，完整条款见仓库根目录的 LICENSE 文件。你可以自由运行、研究、修改并分发本程序，但修改后的版本必须以同一协议公开。'
+const LICENSE_TEXT = 'legadoQ 以 GNU GPL-3.0 发布：你可以自由运行、研究、修改和分发本程序，' +
+  '但修改后的版本必须以同一协议公开源码。完整条款见仓库根目录的 LICENSE 文件。'
 // 用户协议 / 免责声明 / 产品介绍的文案在 `agreement.ts`（与首启弹层共用一份，抄两份迟早漂移）。
 
 /** 把 ISO 时间（`published_at`）念成本地时间；解析不了就原样返回，不编一个假时间。 */
@@ -49,81 +53,42 @@ function formatWhen(iso: string): string {
   return date.toLocaleString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** 协议文案是纯文本：空行分段，每段一个 `<p>`（一长段挤在一起没人读得下去）。 */
+function paragraphs(text: string) {
+  return text.split(/\n{2,}/).map((line, index) => <p key={index}>{line}</p>)
+}
+
+/**
+ * 一节正文。`wide` 的节在 ≥1200 的两栏里横跨整行：
+ * 产品介绍是引导段、开源许可是两张宽表，挤进半栏都会读得别扭；
+ * 中间的用户协议与免责声明正好并排，一段权利一段边界，放在一起看也合理。
+ */
+function Section({ title, children, wide = false }: {
+  title: string
+  children: React.ReactNode
+  wide?: boolean
+}) {
   return (
-    <section className="about-section">
+    <section className={`about-section${wide ? ' is-wide' : ''}`}>
       <h2>{title}</h2>
       <div className="about-section-body">{children}</div>
     </section>
   )
 }
 
-type GuideSection = { title: string; lines: string[] }
-
-/** 把「功能说明」的 Markdown 拆成「## 一节 + 正文行」；文档的 `#` 大标题由本页入口承担。 */
-function parseGuide(markdown: string): GuideSection[] {
-  const sections: GuideSection[] = []
-  let current: GuideSection | null = null
-  for (const raw of markdown.split(/\r?\n/)) {
-    const line = raw.trim()
-    if (!line || line.startsWith('# ')) continue
-    if (line.startsWith('## ')) {
-      current = { title: line.slice(3).trim(), lines: [] }
-      sections.push(current)
-      continue
-    }
-    if (!current) {
-      current = { title: '', lines: [] }
-      sections.push(current)
-    }
-    current.lines.push(line)
-  }
-  return sections
-}
-
-const GUIDE_SECTIONS = parseGuide(guideMarkdown)
-/** 第一个 `##` 之前的段落是整份说明的总述。 */
-const GUIDE_INTRO = GUIDE_SECTIONS.find(section => !section.title)?.lines ?? []
-const GUIDE_GROUPS = GUIDE_SECTIONS.filter(section => section.title)
-
-/** 按行渲染说明正文：`###` 作小标题、`- ` 聚成列表，其余作段落。 */
-function GuideBody({ lines }: { lines: string[] }) {
-  const nodes: React.ReactNode[] = []
-  let bullets: string[] = []
-  const flushBullets = (key: string) => {
-    if (bullets.length === 0) return
-    nodes.push(
-      <ul key={key} style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, fontSize: 'var(--t-sm)', lineHeight: 1.85 }}>
-        {bullets.map((item, index) => <li key={index}>{item}</li>)}
-      </ul>,
-    )
-    bullets = []
-  }
-  lines.forEach((line, index) => {
-    if (line.startsWith('- ')) {
-      bullets.push(line.slice(2))
-      return
-    }
-    flushBullets(`guide-list-${index}`)
-    if (line.startsWith('### ')) nodes.push(<h3 key={index}>{line.slice(4)}</h3>)
-    else nodes.push(<p key={index}>{line}</p>)
-  })
-  flushBullets('guide-list-end')
-  return <>{nodes}</>
-}
-
 export function AboutPage({
   onOpenChangelog,
   onOpenShortcuts,
+  onOpenGuide,
 }: {
   onOpenChangelog: () => void
   onOpenShortcuts: () => void
+  onOpenGuide: () => void
 }) {
   const [info, setInfo] = useState<AboutInfo | null>(null)
   const [check, setCheck] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
   const [notice, setNotice] = useState('')
-  const [showGuide, setShowGuide] = useState(false)
 
   useEffect(() => {
     void api.about().then(setInfo).catch(() => setNotice('关于信息没能从服务端读到'))
@@ -154,7 +119,12 @@ export function AboutPage({
           {/* 「开发者」这一格原来印的是仓库 slug，而 slug 的兜底值硬写着别人家的仓库
               （`lukelzlz/legado`，这份代码 clone 来的地方，不是本项目的归属）。
               现在服务端默认回本项目自己的仓库（`linqinqiu/legadoQ`），没取到才说没取到。 */}
-          <div><dt>开发者</dt><dd>{repository || '未配置'}</dd></div>
+          <div>
+            <dt>开发者</dt>
+            <dd>{repository
+              ? (homepage ? <a href={homepage} target="_blank" rel="noreferrer">{repository}</a> : repository)
+              : '未配置'}</dd>
+          </div>
         </dl>
         <div className="about-actions">
           {/* 没配仓库时按钮照旧可点：点了服务端会回一句"没配置"，比一颗点不动的按钮说得清 */}
@@ -165,16 +135,18 @@ export function AboutPage({
           {/* 「更新日志」「快捷键」从「我的」下拉里收进来：那一栏原来堆了 9 项，
               用户 2026-10-03 拍板「顶栏『我的』菜单堆太多」。版本芯片本身也能进日志。 */}
           <button type="button" className="ghost-button" onClick={onOpenShortcuts}>快捷键</button>
-          <button type="button" className="ghost-button" onClick={() => setShowGuide(value => !value)} aria-expanded={showGuide}>功能说明</button>
-          {homepage && <a className="ghost-button" href={homepage} target="_blank" rel="noreferrer">项目主页</a>}
+          <button type="button" className="ghost-button" onClick={onOpenGuide}>功能说明</button>
+          {homepage && <a className="ghost-button" href={homepage} target="_blank" rel="noreferrer" title={homepage}>项目主页</a>}
         </div>
         {notice && <p className="about-check is-unreachable">{notice}</p>}
         {check && (
-          <div className="about-check-group">
+          <div className="about-check-group" aria-live="polite">
             <p className={`about-check is-${check.status}`}>
               {check.status === 'available' && <>有新版本 <strong>{check.latest}</strong>（当前 {check.current}）
                 {check.url && <> · <a href={check.url} target="_blank" rel="noreferrer">查看这一版</a></>}</>}
-              {check.status === 'latest' && <>版本号发布里没有更新的（当前 {check.current}）</>}
+              {check.status === 'latest' && (check.latest
+                ? <>已是最新版本（当前 {check.current}{check.latest !== check.current ? `，发布页最新 ${check.latest}` : ''}）</>
+                : <>还没有发布过带版本号的版本（当前 {check.current}）</>)}
               {(check.status === 'not_found' || check.status === 'unreachable' || check.status === 'not_configured') && <>{check.message}</>}
             </p>
             {/* 版本号发布之外，CI 每推一次 main 就刷新一个滚动构建（标签不是版本号，如 `latest`）。
@@ -184,35 +156,31 @@ export function AboutPage({
                 另有一个持续构建 <code>{check.rollingTag}</code>
                 {check.rollingPublishedAt && <>（{formatWhen(check.rollingPublishedAt)} 发布）</>}
                 {check.rollingUrl && <> · <a href={check.rollingUrl} target="_blank" rel="noreferrer">查看 / 下载</a></>}
+                {!check.latest && <>；它没有版本号，不能和本机比新旧</>}
               </p>
             )}
           </div>
         )}
       </header>
 
-      <Section title="产品介绍">
-        <p>{PRODUCT_INTRO}</p>
+      <Section title="产品介绍" wide>
+        {paragraphs(PRODUCT_INTRO)}
       </Section>
-
-      {showGuide && (
-        <>
-          <Section title="功能说明">
-            {GUIDE_INTRO.map((line, index) => <p key={index}>{line}</p>)}
-          </Section>
-          {GUIDE_GROUPS.map(section => (
-            <Section key={section.title} title={section.title}>
-              <GuideBody lines={section.lines} />
-            </Section>
-          ))}
-        </>
-      )}
 
       <Section title="用户协议">
-        <p>{TERMS_TEXT}</p>
+        {paragraphs(TERMS_TEXT)}
       </Section>
 
-      <Section title="开源许可">
+      <Section title="免责声明">
+        {paragraphs(DISCLAIMER_TEXT)}
+      </Section>
+
+      <Section title="开源许可" wide>
         <p>{LICENSE_TEXT}</p>
+        <p className="about-license-note">
+          完整许可正文：<a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noreferrer">GNU GPL-3.0</a>。
+          下面两份表说明运行时依赖与借鉴过的上游项目，各自协议以对应项目为准。
+        </p>
         <table className="about-table">
           <thead><tr><th>依赖</th><th>用途</th><th>协议</th></tr></thead>
           <tbody>{THIRD_PARTY.map(([name, purpose, license]) => <tr key={name}><td>{name}</td><td>{purpose}</td><td>{license}</td></tr>)}</tbody>
@@ -222,10 +190,6 @@ export function AboutPage({
           <thead><tr><th>项目</th><th>借鉴了什么</th><th>协议</th></tr></thead>
           <tbody>{REFERENCED.map(([name, purpose, license]) => <tr key={name}><td>{name}</td><td>{purpose}</td><td>{license}</td></tr>)}</tbody>
         </table>
-      </Section>
-
-      <Section title="免责声明">
-        <p>{DISCLAIMER_TEXT}</p>
       </Section>
     </section>
   )

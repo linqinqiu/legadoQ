@@ -35,7 +35,11 @@ export function SettingsPage({ sections }: {
   return (
     <main className="settings-page">
       <header className="page-title">
-        <h1>设置</h1>
+        <div>
+          <h1>设置</h1>
+          {/* 这一句说的是这一页的逻辑：分类只是入口，不是第二份设置。 */}
+          <p>按类别找到要改的项；点开仍是原来那个编辑器。</p>
+        </div>
       </header>
       <div className="settings-search-row">
         {/* type=search 是刻意的：`/` 与 Ctrl/⌘+F 找"这一页的搜索框"就认这个选择器（见 main.tsx 的 focusSearch） */}
@@ -44,7 +48,7 @@ export function SettingsPage({ sections }: {
         <input
           type="search"
           className="settings-search"
-          placeholder="搜设置项"
+          placeholder="搜设置项或分组"
           aria-label="搜设置项"
           name="settings-search"
           autoComplete="off"
