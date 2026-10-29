@@ -175,7 +175,9 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
 
       - name: 准备 JDK 17
-        uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedbca3e77
+        # 原来钉的 SHA 在 GitHub 上并不存在，发布冒烟每次都在「Set up job」就红。
+        # 其余工作流统一用 @v4；供应链固定 SHA 的待办仍记在文件头注释里。
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
