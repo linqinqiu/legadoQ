@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.1.9 · 端点数：154 · 生成时间：2026-10-29
+> 版本：0.2.0 · 端点数：154 · 生成时间：2026-10-29
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -275,9 +275,9 @@
 | POST | `/api/agent/sources` | 是 | 新建或覆盖一份书源（AI 也能写库）：json 是整份书源字符串，带 version 防并发覆盖；需同源写门；请求体：json=整份书源 JSON 字符串，version=可选，版本不符回 409 version_conflict |
 | POST | `/api/agent/sources/validate` | 否 | 只校验书源合法性不落库（AI 接入前的探针）：结构能解析就 valid=true；请求体：json=整份书源 JSON 字符串 |
 | POST | `/api/agent/comprehend` | 否 | 文章阅读理解：必须有外部模型连接，不落库；请求体：text=文章正文（必填），question=可选问题，给出则返回答案句，summarySentences=默认 3，topKeywords=默认 8 |
-| POST | `/api/agent/chat` | 否 | 自由对话（多轮）：必须有外部模型连接，不落库；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空，toolGroups=可选，限定可用工具组，skills=可选，显式指定技能 id（不给则按关键词自动挑） |
+| POST | `/api/agent/chat` | 否 | 自由对话（多轮）：必须有外部模型连接，不落库；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空，toolGroups=可选，限定可用工具组，skills=可选，显式指定技能 id（不给则按关键词自动挑），disabledTools=可选，逐项停用的工具 id（组开着也不下发）；program 组豁免，否则模型连能力地图都查不到 |
 | POST | `/api/agent/models` | 否 | 拉取一个 OpenAI 兼容网关可用的模型清单（服务端代发 GET {baseUrl}/v1/models），登记连接时用来自动补全模型名；不落库、不保存 key；请求体：baseUrl=接口地址（必填，带不带 /v1 都行），apiKey=可选，仅本次请求使用，options=可选额外请求头，kind=可选，协议类型（缺省 openai-compatible）；anthropic 不提供模型清单 |
-| POST | `/api/agent/chat/stream` | 否 | 流式自由对话（SSE）：与 /chat 同一套工具循环，边跑边推 start/delta/tool_start/tool_end/usage/end/error 事件；客户端断开即取消，不再继续烧模型额度。；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空，toolGroups=可选，限定可用工具组，skills=可选，显式指定技能 id（不给则按关键词自动挑） |
+| POST | `/api/agent/chat/stream` | 否 | 流式自由对话（SSE）：与 /chat 同一套工具循环，边跑边推 start/delta/tool_start/tool_end/usage/end/error 事件；客户端断开即取消，不再继续烧模型额度。；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空，toolGroups=可选，限定可用工具组，skills=可选，显式指定技能 id（不给则按关键词自动挑），disabledTools=可选，逐项停用的工具 id（与 /chat 同一份过滤，两条路径必须一致） |
 | GET | `/api/agent/skills` | 否 | 列出技能库（内置 + 用户自建）：技能按关键词命中注入 system，一次最多 3 条。 |
 | POST | `/api/agent/skills` | 是 | 新建或覆盖一个技能（落盘 agent-skills/<id>.md，需同源写入）；同 id 覆盖内置技能会生成用户版本。；请求体：id=可选，缺省由 name 生成，name=技能名称（必填），description=一句话说明，keywords=关键词数组，命中才注入，content=技能正文（必填，注入 system），enabled=默认 true |
 | DELETE | `/api/agent/skills/{id}` | 是 | 删除一个用户技能（移入 agent-skills/.trash，不直接删文件）；内置技能拒绝删除。 |
