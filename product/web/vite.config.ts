@@ -83,7 +83,18 @@ export default defineConfig({
         // globPatterns 会把 public 下所有 PNG 都收进预缓存；brand-icon.png 只是图标源图，
         // 界面引用的是 brand-logo-96.png（见 includeAssets）。sw/workbox 自己由插件排除，
         // 这里显式再写一遍，避免将来改 globIgnores 时把它们漏进预缓存。
-        globIgnores: ['brand-icon.png', 'sw.js', 'workbox-*.js'],
+        // favicon-16/24/64/128/256 只给桌面快捷方式的 .ico 用（tools/verify/make-ico.mjs），
+        // 浏览器一次都不会请求它们，收进预缓存只是白搬 ~170KB。
+        globIgnores: [
+          'brand-icon.png',
+          'favicon-16.png',
+          'favicon-24.png',
+          'favicon-64.png',
+          'favicon-128.png',
+          'favicon-256.png',
+          'sw.js',
+          'workbox-*.js',
+        ],
         navigateFallback: '/index.html',
         // workbox 是拿**绝对 URL**（`https://127.0.0.1:1234/api/...`）去试这些正则的。
         // 之前全部写成 `^\/api\/...`，锚在串首 → 一条都匹配不上：四条运行时缓存与这条黑名单

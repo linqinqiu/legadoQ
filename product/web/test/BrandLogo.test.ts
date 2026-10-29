@@ -54,6 +54,11 @@ test('各尺寸 PNG 都随包，缺一张就是某处会退回默认图标', () 
     'apple-touch-icon.png',
     'favicon-32.png',
     'favicon-48.png',
+    'favicon-16.png',
+    'favicon-24.png',
+    'favicon-64.png',
+    'favicon-128.png',
+    'favicon-256.png',
     'shortcut-96x96.png',
     'brand-logo-96.png',
   ]

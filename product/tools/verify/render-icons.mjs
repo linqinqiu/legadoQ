@@ -22,6 +22,15 @@ const TARGETS = [
   // 只保留脸和眼睛反而认得出是谁（源图不变，只改取景）。
   { out: 'favicon-32.png', size: 32, zoom: 1.9 },
   { out: 'favicon-48.png', size: 48, zoom: 1.75 },
+  // 下面几档是给 Windows 的 .ico 用的（make-ico.mjs）。尺寸越小越往脸上收，
+  // 16px 只留眼睛与脸型，否则整个画面塌成一团深色。
+  { out: 'favicon-16.png', size: 16, zoom: 2.2 },
+  { out: 'favicon-24.png', size: 24, zoom: 2.05 },
+  { out: 'favicon-64.png', size: 64, zoom: 1.6 },
+  { out: 'favicon-128.png', size: 128, zoom: 1.25 },
+  // 256 是 .ico 的上限尺寸，也是资源管理器「大图标」实际取的那一帧，
+  // 必须是从源图直接渲染的 256×256 —— 以前拿 512 顶替、目录里写 0，见 make-ico.mjs。
+  { out: 'favicon-256.png', size: 256 },
   // iOS 主屏图标必须是不透明满幅图，与 maskable 同一套安全区
   { out: 'apple-touch-icon.png', size: 180, inset: 0.1, opaque: true },
   { out: 'shortcut-96x96.png', size: 96 },

@@ -77,6 +77,12 @@ fs.rmSync(destDir, { recursive: true, force: true })
 fs.mkdirSync(destDir, { recursive: true })
 
 const icon = path.join(ROOT, 'assets', 'app.ico')
+// app.ico 是生成物（assets/ 不入库）。缺了就现场按 web/public 里各档 PNG 拼一份，
+// 否则新克隆的机器打出来的包会静默退回 jpackage 的默认图标 —— 图标没了也不报错。
+if (!fs.existsSync(icon)) {
+  const made = spawnSync(process.execPath, [path.join(ROOT, 'tools/verify/make-ico.mjs')], { cwd: ROOT, stdio: 'inherit' })
+  if (made.status !== 0) fail('生成 app.ico 失败')
+}
 const jpkgArgs = [
   '--type', 'app-image',
   '--name', 'legadoq',
