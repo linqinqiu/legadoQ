@@ -151,6 +151,21 @@ class AgentConnection internal constructor(private val agent: Agent) {
     /** 删除一个用户技能（移入 .trash）。 */
     fun deleteSkill(id: String): Boolean = agent.deleteSkill(id)
 
+    /** 当前提示词预设（按 order 排好序）。 */
+    fun listPrompts(): List<AgentPromptStore.Preset> = agent.listPrompts()
+
+    /** 新建/覆盖一条提示词预设。 */
+    fun savePrompt(
+        id: String?,
+        name: String,
+        instruction: String,
+        enabled: Boolean,
+        order: Int?,
+    ): AgentPromptStore.Preset = agent.savePrompt(id, name, instruction, enabled, order)
+
+    /** 删除一条提示词预设（删前整份文件备份进 .trash）。 */
+    fun deletePrompt(id: String): Boolean = agent.deletePrompt(id)
+
     /**
      * 执行一个工具（同步）。内部以 `runBlocking` 把挂起调用摊平，方便非协程的进程内
      * 调用方（普通 Java/Kotlin 代码、调试脚本）直接使用。

@@ -272,6 +272,8 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
           ? result.tools.map(tool => `${tool.toolId}:${tool.status === 'error' ? (tool.code ?? 'error') : 'ok'}`)
           : undefined)
       const skillsUsed = result.skills.length > 0 ? result.skills : undefined
+      const promptsUsed = result.prompts.length > 0 ? result.prompts : undefined
+      const trimmed = result.trimmed > 0 ? result.trimmed : undefined
       if (result.error) {
         setError(result.error.message)
         appendAiLine({
@@ -281,6 +283,8 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
           toolRounds,
           usage: result.usage,
           skillsUsed,
+          promptsUsed,
+          trimmed,
         })
       } else if (result.aborted) {
         appendAiLine({
@@ -290,6 +294,8 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
           toolRounds,
           usage: result.usage,
           skillsUsed,
+          promptsUsed,
+          trimmed,
         })
       } else {
         appendAiLine({
@@ -299,6 +305,8 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
           toolRounds,
           usage: result.usage,
           skillsUsed,
+          promptsUsed,
+          trimmed,
         })
       }
     } catch (failure) {
@@ -424,10 +432,12 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
                 </ul>
               </div>
             )}
-            {m.role === 'assistant' && (m.usage?.totalTokens || (m.skillsUsed && m.skillsUsed.length > 0)) && (
+            {m.role === 'assistant' && (m.usage?.totalTokens || (m.skillsUsed && m.skillsUsed.length > 0) || (m.promptsUsed && m.promptsUsed.length > 0) || m.trimmed) && (
               <div className="ai-bubble-meta">
                 {m.usage?.totalTokens ? <span>{m.usage.totalTokens} tokens</span> : null}
                 {m.skillsUsed && m.skillsUsed.length > 0 ? <span>技能 {m.skillsUsed.length} 条</span> : null}
+                {m.promptsUsed && m.promptsUsed.length > 0 ? <span>提示词 {m.promptsUsed.length} 条</span> : null}
+                {m.trimmed ? <span>已裁历史 {m.trimmed} 条</span> : null}
               </div>
             )}
           </div>

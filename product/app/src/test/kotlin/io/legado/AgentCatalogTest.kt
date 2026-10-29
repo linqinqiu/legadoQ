@@ -24,8 +24,8 @@ class AgentCatalogTest {
     fun `能读出全部端点，且条数与随包契约一致`() {
         val endpoints = AgentCatalog.loadEndpoints()
         assertTrue("应读到端点，实际 ${endpoints.size} 条", endpoints.isNotEmpty())
-        // 权威契约当前是 151 条（web/test/ApiCatalog.test.ts 与 :app:verifyFramework 双重钉住）
-        assertEquals("端点条数应与 agent-api.json 一致", 151, endpoints.size)
+        // 权威契约当前是 154 条（web/test/ApiCatalog.test.ts 与 :app:verifyFramework 双重钉住）
+        assertEquals("端点条数应与 agent-api.json 一致", 154, endpoints.size)
     }
 
     @Test

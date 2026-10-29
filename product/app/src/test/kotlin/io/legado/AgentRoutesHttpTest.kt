@@ -278,6 +278,91 @@ class AgentRoutesHttpTest {
         }
     }
 
+    @Test
+    fun `GET prompts starts empty and POST persists to agent-prompts json`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-prompts", ".sqlite").toString()
+        val home = tempDir("home-prompts")
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            assertEquals("没有预设时应回空数组而不是缺字段",
+                emptyList<String>(), readJson(c.get("/api/agent/prompts")).jsonObject["prompts"]!!.jsonArray.map { it.toString() })
+
+            val create = c.post("/api/agent/prompts") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"name":"结论先行","instruction":"先给结论，再给理由。"}""")
+            }
+            assertEquals("create should be 200: ${create.status}", HttpStatusCode.OK, create.status)
+            val saved = readJson(create).jsonObject
+            val id = saved["id"]!!.jsonPrimitive.content
+            assertTrue("应落盘到 home/agent-prompts.json", Files.isRegularFile(home.resolve("agent-prompts.json")))
+            assertEquals(true, saved["enabled"]!!.jsonPrimitive.boolean)
+
+            // 同 id 再存是覆盖：列表仍只有一条，内容换了。
+            val update = c.post("/api/agent/prompts") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"id":"$id","name":"结论先行","instruction":"先给结论。","enabled":false}""")
+            }
+            assertEquals(HttpStatusCode.OK, update.status)
+            val listed = readJson(c.get("/api/agent/prompts")).jsonObject["prompts"]!!.jsonArray
+            assertEquals("同 id 覆盖不该多出一条", 1, listed.size)
+            val one = listed.first().jsonObject
+            assertEquals("先给结论。", one["instruction"]!!.jsonPrimitive.content)
+            assertEquals(false, one["enabled"]!!.jsonPrimitive.boolean)
+
+            val del = c.delete("/api/agent/prompts/$id")
+            assertEquals(HttpStatusCode.OK, del.status)
+            val backups = Files.list(home.resolve(".trash")).use { s ->
+                s.filter { p -> p.fileName.toString().startsWith("agent-prompts-") }.count()
+            }
+            assertTrue("删除前应在 .trash 留一份整文件备份，实际 $backups", backups > 0)
+            assertEquals("删掉的预设再删应 404", HttpStatusCode.NotFound, c.delete("/api/agent/prompts/$id").status)
+        } finally {
+            cleanup(dbPath, home)
+        }
+    }
+
+    @Test
+    fun `POST prompt with blank instruction is rejected`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-prompt-bad", ".sqlite").toString()
+        val home = tempDir("home-prompt-bad")
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            // 缺字段会在反序列化就 400；这里给一个空白 instruction，走的是存储层那句"内容不能为空"。
+            val resp = c.post("/api/agent/prompts") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"name":"只有名字","instruction":"   "}""")
+            }
+            assertEquals(HttpStatusCode.BadRequest, resp.status)
+            val body = readJson(resp).jsonObject
+            assertEquals("invalid_prompt", body["code"]!!.jsonPrimitive.content)
+            assertTrue("要说清是哪一项不行：${body["message"]}",
+                body["message"]!!.jsonPrimitive.content.contains("内容"))
+        } finally {
+            cleanup(dbPath, home)
+        }
+    }
+
+    @Test
+    fun `POST prompt from another origin is blocked by the write gate`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-prompt-csrf", ".sqlite").toString()
+        val home = tempDir("home-prompt-csrf")
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            val resp = c.post("/api/agent/prompts") {
+                contentType(ContentType.Application.Json)
+                header(HttpHeaders.Origin, "http://evil.example")
+                setBody("""{"name":"跨站写入","instruction":"不该落盘"}""")
+            }
+            assertEquals(HttpStatusCode.Forbidden, resp.status)
+            assertFalse("跨站写请求不该留下任何文件", Files.exists(home.resolve("agent-prompts.json")))
+        } finally {
+            cleanup(dbPath, home)
+        }
+    }
+
     private fun serverConfig(dbPath: String, home: Path) = ServerConfig(
         host = "127.0.0.1", port = 8080, databasePath = dbPath,
         coverCacheDirectory = Files.createTempDirectory("legado-agent-covers"),

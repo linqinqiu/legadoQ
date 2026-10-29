@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.1.8 · 端点数：151 · 生成时间：2026-10-29
+> 版本：0.1.8 · 端点数：154 · 生成时间：2026-10-29
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -33,8 +33,8 @@
 | 图片与媒体 | 6 |
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
-| AI 自定义接入 | 13 |
-| **合计** | **151** |
+| AI 自定义接入 | 16 |
+| **合计** | **154** |
 
 ## 目录（1）
 
@@ -264,7 +264,7 @@
 | POST | `/api/tts/speak` | 是 | 一次性把一段文本合成完整音频（整章文本走会话那条更好）；请求体：text=要念的文本，不许空，voice=音色，rate=语速，pitch=音高，engine=引擎，customUrl=自建引擎才填，customHeader=可选，customMethod=可选 |
 | GET | `/api/tts/speak` | 否 | 同样的一次性合成，参数走查询串（给 audio 标签这种没法发 POST 的地方用）；query：text=文本（必填），voice=音色，rate=语速，pitch=音高 |
 
-## AI 自定义接入（13）
+## AI 自定义接入（16）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
@@ -281,4 +281,7 @@
 | GET | `/api/agent/skills` | 否 | 列出技能库（内置 + 用户自建）：技能按关键词命中注入 system，一次最多 3 条。 |
 | POST | `/api/agent/skills` | 是 | 新建或覆盖一个技能（落盘 agent-skills/<id>.md，需同源写入）；同 id 覆盖内置技能会生成用户版本。；请求体：id=可选，缺省由 name 生成，name=技能名称（必填），description=一句话说明，keywords=关键词数组，命中才注入，content=技能正文（必填，注入 system），enabled=默认 true |
 | DELETE | `/api/agent/skills/{id}` | 是 | 删除一个用户技能（移入 agent-skills/.trash，不直接删文件）；内置技能拒绝删除。 |
+| GET | `/api/agent/prompts` | 否 | 列出提示词预设（按 order 升序）。预设管「怎么说话」：语气、字数、格式，启用的每条都注入 system，对所有对话生效 —— 与按关键词命中的技能分工不同。 |
+| POST | `/api/agent/prompts` | 是 | 新建或覆盖一条提示词预设（落盘 agent-prompts.json，需同源写入）；同 id 覆盖，order 缺省时新建排到末尾、改已有保持原位。；请求体：id=可选，缺省由 name 生成，name=预设名称（必填，最长 60 字），instruction=要注入 system 的说明（必填，最长 2000 字；更长的方法论请写成技能），enabled=默认 true；false 只占位不注入，order=可选整数，越小越先注入 |
+| DELETE | `/api/agent/prompts/{id}` | 是 | 删除一条提示词预设。删除前整份 agent-prompts.json 先备份到 {home}/.trash/，误删可以找回。 |
 

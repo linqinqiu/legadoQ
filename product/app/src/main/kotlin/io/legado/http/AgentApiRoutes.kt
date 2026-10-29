@@ -15,11 +15,14 @@ import io.legado.ai.agentComprehend
 import io.legado.ai.agentCreateConnection
 import io.legado.ai.agentCreateSource
 import io.legado.ai.agentDeleteConnection
+import io.legado.ai.agentDeletePrompt
 import io.legado.ai.agentDeleteSkill
 import io.legado.ai.agentListConnections
 import io.legado.ai.agentListModels
+import io.legado.ai.agentListPrompts
 import io.legado.ai.agentListSkills
 import io.legado.ai.agentManifest
+import io.legado.ai.agentSavePrompt
 import io.legado.ai.agentSaveSkill
 import io.legado.ai.agentValidateSource
 import io.legado.data.Database
@@ -103,6 +106,21 @@ fun Route.agentApiRoutes(
                 if (!call.requireSameOriginWrite()) return@delete
                 val id = call.parameters["id"] ?: ""
                 call.agentDeleteSkill(id, agentConnection)
+            }
+            get("prompts") {
+                // 只读：提示词预设清单（开关 + 排序）。不写库，无需同源写门。
+                call.agentListPrompts(agentConnection)
+            }
+            post("prompts") {
+                // 写：新建/覆盖一条提示词预设（落盘 agent-prompts.json），需同源写门防 CSRF。
+                if (!call.requireSameOriginWrite()) return@post
+                call.agentSavePrompt(agentConnection)
+            }
+            delete("prompts/{id}") {
+                // 写：删除一条预设（删前整份文件备份进 .trash），需同源写门防 CSRF。
+                if (!call.requireSameOriginWrite()) return@delete
+                val id = call.parameters["id"] ?: ""
+                call.agentDeletePrompt(id, agentConnection)
             }
         }
 }

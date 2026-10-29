@@ -52,6 +52,16 @@ object AppConfig {
     /** 单次工具结果塞回模型上下文的字符上限。默认 4000（约 2 KB 中文）。 */
     val aiMaxToolData: Int = int("LEGADO_AI_MAX_TOOL_DATA", 4000).coerceIn(500, 20000)
 
+    /**
+     * 整轮对话的字符预算（默认 24000，约 1.2 万汉字）。超过后从**最旧的整轮**开始丢，
+     * system 段与最后一条用户消息永远保留。按字符而不是 token：这层不引分词器，
+     * 中英混排下字符数已经足够稳定，且这个值只用来"别把整本书塞进去"。
+     */
+    val aiMaxContextChars: Int = int("LEGADO_AI_MAX_CONTEXT_CHARS", 24000).coerceIn(4000, 200000)
+
+    /** 提示词预设每轮最多注入多少字符（默认 6000）。超出预算的预设整条不注入，不截半句。 */
+    val aiMaxPromptChars: Int = int("LEGADO_AI_MAX_PROMPT_CHARS", 6000).coerceIn(0, 40000)
+
     /** 整书离线缓存的分片并发数。 */
     val cacheConcurrency: Int = int("LEGADO_CACHE_CONCURRENCY", 4)
 

@@ -30,6 +30,10 @@ export type AgentStreamDraft = {
   model: string
   /** 本轮注入的技能 id。 */
   skills: string[]
+  /** 本轮注入的提示词预设 id（按注入顺序）。 */
+  prompts: string[]
+  /** 为塞进上下文预算丢掉的旧消息条数；0 = 没裁。 */
+  trimmed: number
   usage?: AgentChatUsage
   /** 最终文本：`end.content` 优先，没有 end 时退回增量。 */
   content: string
@@ -48,6 +52,8 @@ export function emptyAgentDraft(): AgentStreamDraft {
     engine: '',
     model: '',
     skills: [],
+    prompts: [],
+    trimmed: 0,
     content: '',
     aborted: false,
     done: false,
@@ -60,6 +66,8 @@ function applyEvent(draft: AgentStreamDraft, event: AgentStreamEvent): void {
       if (event.engine) draft.engine = event.engine
       if (event.model) draft.model = event.model
       if (event.skills) draft.skills = event.skills
+      if (event.prompts) draft.prompts = event.prompts
+      if (event.trimmed) draft.trimmed = event.trimmed
       break
     case 'delta':
       if (event.text) draft.text += event.text
@@ -102,6 +110,8 @@ function applyEvent(draft: AgentStreamDraft, event: AgentStreamEvent): void {
       draft.content = event.content ?? draft.text
       if (event.engine) draft.engine = event.engine
       if (event.skills) draft.skills = event.skills
+      if (event.prompts) draft.prompts = event.prompts
+      if (event.trimmed) draft.trimmed = event.trimmed
       if (event.toolRounds) draft.toolRounds = event.toolRounds
       break
     case 'error':
@@ -121,6 +131,7 @@ function snapshot(draft: AgentStreamDraft): AgentStreamDraft {
     ...draft,
     tools: draft.tools.map(tool => ({ ...tool })),
     skills: [...draft.skills],
+    prompts: [...draft.prompts],
     usage: draft.usage ? { ...draft.usage } : undefined,
     toolRounds: draft.toolRounds ? [...draft.toolRounds] : undefined,
     error: draft.error ? { ...draft.error } : undefined,

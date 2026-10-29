@@ -369,6 +369,10 @@ private data class ChatResponseDto(
     val usage: ChatUsageDto? = null,
     /** 本轮实际注入的技能 id；没命中就不出现。 */
     val skillsUsed: List<String>? = null,
+    /** 本轮实际注入的提示词预设 id（按注入顺序）；一条都没启用就不出现。 */
+    val promptsUsed: List<String>? = null,
+    /** 为塞进上下文预算丢掉的旧消息条数；没裁就是 0。 */
+    val trimmed: Int = 0,
 )
 
 // 自由对话（多轮）：直接把 messages 数组交给外部模型。
@@ -402,6 +406,8 @@ suspend fun ApplicationCall.agentChat(agentConnection: AgentConnection?) {
             toolRounds = outcome.toolRounds,
             usage = outcome.usage?.toDto(),
             skillsUsed = outcome.skillsUsed,
+            promptsUsed = outcome.promptsUsed,
+            trimmed = outcome.trimmed,
         ),
     )
 }
@@ -548,6 +554,89 @@ suspend fun ApplicationCall.agentDeleteSkill(id: String, agentConnection: AgentC
         return
     }
     respond(SkillDeleteResponse(removed = id))
+}
+
+// ===== 提示词预设 prompts =====
+//
+// 与技能的分工写进界面提示，也写在这里，免得两者被理解成"两个 system 输入框"：
+// 预设管"怎么说话"（语气、字数、格式，开关 + 排序，对所有对话生效），
+// 技能管"这类任务怎么做"（按关键词命中，一次最多 3 条）。
+
+@Serializable
+private data class PromptDto(
+    val id: String,
+    val name: String,
+    val instruction: String,
+    val enabled: Boolean = true,
+    val order: Int = 0,
+)
+
+@Serializable
+private data class PromptListResponse(val prompts: List<PromptDto>)
+
+@Serializable
+private data class PromptSaveRequest(
+    val id: String? = null,
+    val name: String,
+    val instruction: String,
+    val enabled: Boolean = true,
+    /** 缺省 = 新建排到末尾、改已有保持原位（见 AgentPromptStore.save）。 */
+    val order: Int? = null,
+)
+
+@Serializable
+private data class PromptDeleteResponse(val ok: Boolean = true, val removed: String)
+
+private fun AgentPromptStore.Preset.toDto() = PromptDto(
+    id = id,
+    name = name,
+    instruction = instruction,
+    enabled = enabled,
+    order = order,
+)
+
+suspend fun ApplicationCall.agentListPrompts(agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    respond(PromptListResponse(conn.listPrompts().map { it.toDto() }))
+}
+
+suspend fun ApplicationCall.agentSavePrompt(agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    val req = runCatching { receive<PromptSaveRequest>() }.getOrElse {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 {name, instruction}")); return
+    }
+    val saved = runCatching {
+        conn.savePrompt(req.id, req.name, req.instruction, req.enabled, req.order)
+    }.getOrElse { error ->
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_prompt", error.message ?: "提示词保存失败"))
+        return
+    }
+    respond(saved.toDto())
+}
+
+suspend fun ApplicationCall.agentDeletePrompt(id: String, agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    val removed = runCatching { conn.deletePrompt(id) }.getOrElse { error ->
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_prompt", error.message ?: "提示词删除失败"))
+        return
+    }
+    if (!removed) {
+        respond(HttpStatusCode.NotFound, ApiError("not_found", "提示词 $id 不存在"))
+        return
+    }
+    respond(PromptDeleteResponse(removed = id))
 }
 
 /**

@@ -904,6 +904,11 @@ export const api = {
     request<AgentSkill>('/api/agent/skills', { method: 'POST', body: JSON.stringify(req) }),
   deleteAgentSkill: (id: string) =>
     request<{ ok: boolean; removed: string }>(`/api/agent/skills/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listAgentPrompts: () => request<{ prompts: AgentPrompt[] }>('/api/agent/prompts'),
+  saveAgentPrompt: (req: AgentPromptInput) =>
+    request<AgentPrompt>('/api/agent/prompts', { method: 'POST', body: JSON.stringify(req) }),
+  deleteAgentPrompt: (id: string) =>
+    request<{ ok: boolean; removed: string }>(`/api/agent/prompts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 export function streamSearch(keyword: string, sourceIds: string[] | undefined, onEvent: (event: SearchStreamEvent) => void, onError: (message: string) => void, onClose: () => void): WebSocket {
@@ -984,6 +989,10 @@ export type AgentChatResult = {
   usage?: AgentChatUsage
   /** 本轮实际注入的技能 id；没命中就不出现。 */
   skillsUsed?: string[]
+  /** 本轮实际注入的提示词预设 id（按注入顺序）；一条都没带上就不出现。 */
+  promptsUsed?: string[]
+  /** 为塞进上下文预算丢掉的旧消息条数；0/缺省表示没裁。 */
+  trimmed?: number
 }
 
 /** 流式对话的一帧，与后端 `AgentStreamEvent` 一一对应。 */
@@ -1005,6 +1014,10 @@ export type AgentStreamEvent = {
   content?: string
   toolRounds?: string[]
   skills?: string[]
+  /** start/end：本轮实际注入的提示词预设 id。 */
+  prompts?: string[]
+  /** start/end：为塞进上下文预算丢掉的旧消息条数；没裁时不出现。 */
+  trimmed?: number
 }
 
 export type AgentModelListResult = {
@@ -1031,4 +1044,25 @@ export type AgentSkillInput = {
   keywords?: string[]
   content: string
   enabled?: boolean
+}
+
+/**
+ * 提示词预设 —— 管「怎么说话」（语气、字数、格式），启用的每条都注入 system，对所有对话生效。
+ * 与技能（管「这类任务怎么做」，按关键词命中）是两回事，别混用。
+ */
+export type AgentPrompt = {
+  id: string
+  name: string
+  instruction: string
+  enabled: boolean
+  /** 越小越先注入；相等时按名称。 */
+  order: number
+}
+
+export type AgentPromptInput = {
+  id?: string
+  name: string
+  instruction: string
+  enabled?: boolean
+  order?: number
 }

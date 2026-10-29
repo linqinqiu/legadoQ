@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, AgentChatMessage, AgentConnection, AgentSkill, AgentSkillInput } from '../../lib/api'
+import { api, AgentChatMessage, AgentConnection, AgentPrompt, AgentPromptInput, AgentSkill, AgentSkillInput } from '../../lib/api'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
@@ -56,6 +56,10 @@ type ChatLine = {
   toolRounds?: string[]
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }
   skillsUsed?: string[]
+  /** 本轮实际注入的提示词预设 id（按注入顺序）。 */
+  promptsUsed?: string[]
+  /** 为塞进上下文预算丢掉的旧消息条数；没裁就不出现。 */
+  trimmed?: number
 }
 
 function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
@@ -161,6 +165,7 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
           </p>
           <AiToolsSection />
         </section>
+        <PromptsSection />
         <SkillsSection />
         <SourceValidatePanel />
       </details>
@@ -267,6 +272,8 @@ function ChatPanel({
         toolRounds,
         usage: result.usage,
         skillsUsed: result.skills.length > 0 ? result.skills : undefined,
+        promptsUsed: result.prompts.length > 0 ? result.prompts : undefined,
+        trimmed: result.trimmed > 0 ? result.trimmed : undefined,
       }
       if (result.error) {
         setError(result.error.message)
@@ -356,6 +363,8 @@ function ChatPanel({
                 </span>
                 {m.usage?.totalTokens ? <span>{m.usage.totalTokens} tokens</span> : null}
                 {m.skillsUsed && m.skillsUsed.length > 0 ? <span>技能 {m.skillsUsed.length} 条</span> : null}
+                {m.promptsUsed && m.promptsUsed.length > 0 ? <span>提示词 {m.promptsUsed.length} 条</span> : null}
+                {m.trimmed ? <span>已裁历史 {m.trimmed} 条</span> : null}
               </div>
             )}
           </div>
@@ -927,6 +936,205 @@ function SkillForm({ skill, onCancel, onSaved }: { skill: AgentSkill | null; onC
       <label className="ai-check">
         <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
         <span>启用（停用后不会被关键词命中）</span>
+      </label>
+      {!!error && <p className="customize-error" role="alert">{error}</p>}
+      <div className="customize-actions">
+        <button type="button" className="primary-button" onClick={() => void submit()} disabled={busy}>
+          {busy ? '保存中…' : '保存'}
+        </button>
+        <button type="button" className="ghost-button" onClick={onCancel} disabled={busy}>取消</button>
+      </div>
+    </div>
+  )
+}
+
+/** 把一条预设原样折成保存请求（同 id 覆盖）；停用与排序都只改其中一个字段。 */
+function toPromptInput(preset: AgentPrompt): AgentPromptInput {
+  return {
+    id: preset.id,
+    name: preset.name,
+    instruction: preset.instruction,
+    enabled: preset.enabled,
+    order: preset.order,
+  }
+}
+
+/**
+ * 提示词预设：管「怎么说话」的一段全局 system 说明（语气、字数、格式）。
+ *
+ * 与上面的技能不是一回事，这里把分工写在提示里，否则用户会把两者当成两个 system 输入框：
+ * 预设**对所有对话生效**（开关控制，按顺序注入），技能按关键词命中、一次最多 3 条。
+ * 借自 legado-with-MD3 的 `AiPromptPreset`，但落到本地 `agent-prompts.json`，可排序可停用。
+ *
+ * 列表沿用技能那套紧凑习惯：默认一行，正文点开才展开。
+ */
+function PromptsSection() {
+  const [prompts, setPrompts] = useState<AgentPrompt[]>([])
+  const [loadError, setLoadError] = useState('')
+  const [expanded, setExpanded] = useState('')
+  const [editing, setEditing] = useState<AgentPrompt | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  const refresh = () => {
+    api.listAgentPrompts()
+      .then(result => { setPrompts(result.prompts); setLoadError('') })
+      .catch(err => setLoadError(err instanceof Error ? err.message : '读取提示词失败'))
+  }
+  useEffect(() => { refresh() }, [])
+
+  const remove = async (preset: AgentPrompt) => {
+    if (!window.confirm(`删除提示词「${preset.name}」？删除前会把整份 agent-prompts.json 备份到 .trash，可以找回。`)) return
+    try {
+      await api.deleteAgentPrompt(preset.id)
+      if (editing?.id === preset.id) setEditing(null)
+      refresh()
+    } catch (failure) {
+      setLoadError(failure instanceof Error ? failure.message : '删除失败')
+    }
+  }
+
+  /** 停用/启用：只改 enabled，其余字段原样回存（同 id 覆盖）。 */
+  const toggle = async (preset: AgentPrompt) => {
+    try {
+      await api.saveAgentPrompt({ ...toPromptInput(preset), enabled: !preset.enabled })
+      refresh()
+    } catch (failure) {
+      setLoadError(failure instanceof Error ? failure.message : '切换失败')
+    }
+  }
+
+  /**
+   * 上移/下移：与相邻那条交换 order。
+   * 交换而不是重算全部序号：预设最多 30 条，一次只改两条最省请求，
+   * 也不会因为并发保存把别人的顺序冲掉。两条 order 相同（列表靠名称决胜）时，
+   * 给被移动的那条让出一个空位（上移减一、下移加一），否则换了也看不出来。
+   */
+  const move = async (index: number, delta: number) => {
+    const target = index + delta
+    if (target < 0 || target >= prompts.length) return
+    const a = prompts[index]
+    const b = prompts[target]
+    const orderForA = a.order === b.order ? b.order + delta : b.order
+    try {
+      await Promise.all([
+        api.saveAgentPrompt({ ...toPromptInput(a), order: orderForA }),
+        api.saveAgentPrompt({ ...toPromptInput(b), order: a.order }),
+      ])
+      refresh()
+    } catch (failure) {
+      setLoadError(failure instanceof Error ? failure.message : '调整顺序失败')
+    }
+  }
+
+  return (
+    <section className="ai-section">
+      <h3>提示词</h3>
+      <p className="ai-section-hint">
+        提示词是「怎么说话」：语气、字数、格式这类要求，启用的都会按顺序注入每一次对话。
+        与技能不同 —— 技能是「这类任务怎么做」，只在命中关键词时才进来。
+        单条最多 2000 字，全部预设每轮合计最多 6000 字，放不下的整条不注入。
+      </p>
+      {loadError ? (
+        <p className="customize-error" role="alert">{loadError}</p>
+      ) : (
+        <ul className="ai-skill-list">
+          {prompts.map((preset, index) => (
+            <li key={preset.id} className={`ai-skill-item${expanded === preset.id ? ' expanded' : ''}`}>
+              <div className="ai-skill-main">
+                <button
+                  type="button"
+                  className="ai-skill-name"
+                  onClick={() => setExpanded(current => (current === preset.id ? '' : preset.id))}
+                  title="展开/收起提示词正文"
+                >
+                  {preset.name}
+                </button>
+                {!preset.enabled && <span className="ai-tag ai-tag-warn ai-skill-badge">已停用</span>}
+                <span className="ai-skill-desc">{preset.instruction}</span>
+              </div>
+              <div className="ai-skill-actions">
+                <button type="button" className="link-button" onClick={() => void toggle(preset)}>
+                  {preset.enabled ? '停用' : '启用'}
+                </button>
+                <button type="button" className="link-button" onClick={() => void move(index, -1)} disabled={index === 0}>
+                  上移
+                </button>
+                <button type="button" className="link-button" onClick={() => void move(index, 1)} disabled={index === prompts.length - 1}>
+                  下移
+                </button>
+                <button type="button" className="link-button" onClick={() => { setEditing(preset); setCreating(false) }}>编辑</button>
+                <button type="button" className="link-button ai-conn-del" onClick={() => void remove(preset)}>删除</button>
+              </div>
+              {expanded === preset.id && <pre className="ai-skill-content">{preset.instruction}</pre>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {(creating || editing) ? (
+        <PromptForm
+          key={editing?.id ?? 'new'}
+          preset={editing}
+          onCancel={() => { setCreating(false); setEditing(null) }}
+          onSaved={() => { setCreating(false); setEditing(null); refresh() }}
+        />
+      ) : (
+        <div className="customize-actions">
+          <button type="button" className="ghost-button" onClick={() => { setEditing(null); setCreating(true) }}>新建提示词</button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PromptForm({ preset, onCancel, onSaved }: { preset: AgentPrompt | null; onCancel: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(preset?.name ?? '')
+  const [instruction, setInstruction] = useState(preset?.instruction ?? '')
+  const [enabled, setEnabled] = useState(preset?.enabled ?? true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    if (!name.trim() || !instruction.trim()) { setError('名称与正文都要填'); return }
+    setBusy(true)
+    setError('')
+    const req: AgentPromptInput = {
+      // 改已有条目时带上 id 覆盖；新建时不带，由服务端按名称生成。
+      id: preset?.id,
+      name: name.trim(),
+      instruction: instruction.trim(),
+      enabled,
+      // order 只在改已有条目时回传，新建交给服务端排到末尾。
+      ...(preset ? { order: preset.order } : {}),
+    }
+    try {
+      await api.saveAgentPrompt(req)
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '保存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="ai-skill-form">
+      <h4>{preset ? `编辑提示词：${preset.name}` : '新建提示词'}</h4>
+      <label className="customize-field">
+        <span>名称</span>
+        <input value={name} onChange={e => setName(e.target.value.slice(0, 60))} placeholder="如 结论先行" />
+      </label>
+      <label className="customize-field">
+        <span>正文（会作为 system 注入，最多 2000 字）</span>
+        <textarea
+          rows={5}
+          value={instruction}
+          onChange={e => setInstruction(e.target.value.slice(0, 2000))}
+          placeholder="例：先给结论，再给理由；不超过 100 字；不要用列表。"
+        />
+      </label>
+      <label className="ai-check">
+        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+        <span>启用（停用的预设不注入，但保留在列表里）</span>
       </label>
       {!!error && <p className="customize-error" role="alert">{error}</p>}
       <div className="customize-actions">

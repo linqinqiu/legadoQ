@@ -28,6 +28,10 @@ export type ChatLine = {
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }
   /** 这一轮实际注入的技能 id */
   skillsUsed?: string[]
+  /** 这一轮实际注入的提示词预设 id（按注入顺序） */
+  promptsUsed?: string[]
+  /** 这一轮为塞进上下文预算丢掉的旧消息条数；缺省/0 = 没裁 */
+  trimmed?: number
   /** 这条消息产生的时间戳，用于显示与清理 */
   at: number
 }

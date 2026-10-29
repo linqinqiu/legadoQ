@@ -158,7 +158,8 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 2026-10-28：章节正文支持单章/批量回源刷新，新增 POST /api/books/content-refresh（阅读组，写）→ 144 → 145。
   // 2026-10-28：登录界面按 Legado APK 的方式本地解析，新增 POST /api/sources/{id}/login-ui/render 与 /login-ui/action（登录与凭据组，写）→ 145 → 147。
   // 2026-10-29：借用 refgd/MD3 的 AI 形状，新增 POST /api/agent/chat/stream（SSE 流式）与 GET/POST /api/agent/skills、DELETE /api/agent/skills/{id}（技能库）→ 147 → 151。
-  assert.equal(catalog.endpoints.length, 151, `端点总数必须为 151，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-10-29：借 MD3 的 AiPromptPreset，新增 GET/POST /api/agent/prompts 与 DELETE /api/agent/prompts/{id}（提示词预设，开关+排序）→ 151 → 154。
+  assert.equal(catalog.endpoints.length, 154, `端点总数必须为 154，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')
   assert.equal(systemGroup.length, 7, `系统组必须为 7 条（插件架构已移除），现在是 ${systemGroup.length}`)

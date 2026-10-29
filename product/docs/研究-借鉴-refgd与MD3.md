@@ -16,7 +16,8 @@
   它没有协议抽象（只有 OpenAI 兼容），但工具面很宽：书架、章节正文、阅读记录、书源增删改查与调试、
   应用设置读写、Tavily 联网搜索、MCP 服务器。
 - **legadoQ** 走的是「服务端 agent + 浏览器 UI」：`Agent` 负责工具循环，`LlmProvider` 三协议，
-  `BuiltinTools` 55 个工具按组下发，提示词由前端会话携带，技能库落 `{home}/agent-skills/*.md`。
+  `BuiltinTools` 55 个工具按组下发，提示词由前端会话携带，技能库落 `{home}/agent-skills/*.md`，
+  提示词预设落 `{home}/agent-prompts.json`，历史按字符预算整轮裁剪。
 
 一句话：**MD3 值得学的是"任务层"和"协议细节"，refgd 值得学的是"工具生态"和"技能/MCP"**。
 两者都不该照搬的是"把全部工具/技能一次性塞给模型"。
@@ -34,6 +35,8 @@
 | 技能管理界面 | refgd 的技能配置项 | AI 接入弹窗「技能」区块：紧凑单行 + 展开正文 + 新建/覆盖/删除 | 内置技能只读、用户版本可覆盖；`enabled` 可停用 |
 | 工具调用过程可见 | MD3 思考/工具卡片 | 草稿气泡内工具 chip（进行中/完成/失败 + 耗时）+ `<details>` 推理过程 | `agentStream.ts` 按 `callId` 配对 `tool_start` / `tool_end` |
 | 工具参数 JSON Schema | refgd `AiResolvedTool.definition`（每个工具手写 schema） | `BuiltinTools` 每个工具补全参数 schema，经 `/api/agent/manifest` 下发 | 本轮已覆盖 55 个内置工具 |
+| 提示词预设库 | MD3 `AiPromptPreset` + `AiPromptConfigScreen`（`name + instruction + enabled + sortNumber`） | `ai/AgentPromptStore.kt`（落盘 `{home}/agent-prompts.json`，删除前整份备份进 `.trash`）；`GET/POST/DELETE /api/agent/prompts`；AI 接入弹窗「提示词」区块（开关 + 上移/下移 + 编辑 + 删除） | `AgentPromptStore` 的排序/覆盖/上限/备份判据 + `AiPromptPresets.test.ts` 守界面与 API 接线 |
+| 上下文预算裁剪 | refgd `messages.takeLast(12)`；MD3 `contextWindow` / `maxOutputTokens` | `Agent.trimToBudget`（`LEGADO_AI_MAX_CONTEXT_CHARS`，默 24000）：以 user 消息为段边界，从最旧的整轮开始丢 | `AgentPromptContextTest`：system 与最后一条用户消息必留、整轮不拆、`trimmed` 随 `start`/`end`/`chat` 回报并在气泡标注 |
 
 ## 2. 还值得借（按性价比排序）
 
@@ -48,16 +51,21 @@ refgd 的实现不大（403 行）但完整：JSON-RPC 2.0 over HTTP、`MCP-Prot
 工具组固定 `mcp`，默认关；`/api/agent/manifest` 里带 `origin: "mcp:<server>"`。
 判据：MCP 服务器不可达时聊天不失败（该组工具为空 + 一条 warning），工具调用超时按连接配置走。
 
-### P0 · 提示词预设库（MD3 `AiPromptPreset` + `AiPromptConfigScreen`）
+### 已落地 · 提示词预设库（MD3 `AiPromptPreset` + `AiPromptConfigScreen`）
 
 MD3 的模型是：`taskType + name + instruction + enabled + builtIn + sortNumber`，同一任务可挂多条，
 启用的按顺序拼进 system；内置条目可被用户改（生成用户副本），改坏了能恢复。
 
-我们现状：只有"一个会话一个 systemPrompt + 三个模板"，改了就丢，不能按任务区分。
-建议：新增 `GET/POST/DELETE /api/agent/prompts`，按 `taskType`（chat / summarize / clean / rewrite）
-存取；界面放在现有"系统提示词"折叠区里，做成一列紧凑条目（启用勾选 + 展开编辑），不新开页面。
-与技能的分工要写清：**提示词是"怎么说话"，技能是"这类任务的专门做法"**；两者都注入 system，顺序为
-基础人设 → 提示词预设 → 技能。
+本轮落地的口径见 §1。与原建议差两点，都是有意为之：
+
+- **没做 `taskType` 分任务**。我们目前只有"对话"这一个入口会被预设影响，摘要/清洗/改写还是各自
+  的工具提示词；先按任务分档会让界面多一个没人动的下拉。等 §P1「按任务选模型」一起做时再分。
+- **界面是独立区块**（在「技能」之前），没有塞进现有"系统提示词"折叠区：会话级 systemPrompt 是
+  "这一轮的人设"，预设是"跨会话的全局要求"，混在一个折叠区里改的人会按错地方。
+
+分工按原判断写进了界面提示与代码注释：**提示词是"怎么说话"，技能是"这类任务的专门做法"**；
+两者都注入 system，顺序为基础人设 → 提示词预设 → 技能，注入顺序与回报的 `promptsUsed` 一致
+（被预算挡掉的预设不算"用了"）。
 
 ### P1 · 按任务选模型（MD3 `AiTaskPreset` / `AiTaskType`）
 
@@ -105,11 +113,20 @@ refgd 有 `defaultEnabledTools`（默认开的 20 个）、`aiEnabledToolNames`�
 建议在「AI 工具组」展开区里加"本组内逐项勾选"，存储键沿用 `legado-ai-tool-groups` 的 v2 结构；
 默认值保持"组开 = 全开"，避免老用户感知变化。
 
-### P2 · 上下文裁剪（refgd `messages.takeLast(12)`；MD3 `contextWindow` / `maxOutputTokens`）
+### 已落地 · 上下文裁剪（refgd `messages.takeLast(12)`；MD3 `contextWindow` / `maxOutputTokens`）
 
-refgd 只带最近 12 条消息，MD3 给模型配上下文窗口与输出上限。
-我们现在按消息条数截断会话（200 条），没有按 token 估算。建议在 Agent 侧加一个保守的字符预算
-（中文 1 字 ≈ 1 token 的粗估），超了从最早的非 system 消息开始丢，并在 `start` 帧里报 `trimmed`。
+refgd 只带最近 12 条消息，MD3 给模型配上下文窗口与输出上限。本轮在 Agent 侧落了一个保守的字符预算
+（`LEGADO_AI_MAX_CONTEXT_CHARS`，默 24000 ≈ 1.2 万汉字），与原建议有三处不同：
+
+- **按字符而不是条数**：`takeLast(12)` 在"一条消息粘了半章正文"时照样爆；字符数对中文字符串
+  已经够稳，这层不引分词器。
+- **丢弃单位是整轮而不是单条**：以 user 消息为段边界，一轮之内（含 assistant 的 `tool_calls`
+  与它对应的 `role=tool` 结果）要么全留要么全丢 —— 拆开会得到上游那句 `invalid tool contract`。
+- **两条保底**：system 段（人设 + 预设 + 技能）与最后一条用户消息永远保留；那条自己就超预算时
+  **不截断**，宁可超一点也不悄悄改写用户问的内容。
+
+`trimmed` 在 `start` 与 `end` 两帧都回报（前端只在真裁过时显示"已裁历史 N 条"），
+非流式 `/chat` 与 `ChatOutcome` 同一口径。
 
 ### P3 · 只读设置工具（refgd `AiSettingsTool`）
 

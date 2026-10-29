@@ -48,4 +48,8 @@ data class AgentStreamEvent(
     val toolRounds: List<String>? = null,
     /** start/end 事件：本轮注入的技能 id。 */
     val skills: List<String>? = null,
+    /** start/end 事件：本轮注入的提示词预设 id（按注入顺序）。 */
+    val prompts: List<String>? = null,
+    /** start/end 事件：为塞进上下文预算丢掉的旧消息条数。没裁就不出现。 */
+    val trimmed: Int? = null,
 )

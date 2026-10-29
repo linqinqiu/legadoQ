@@ -263,10 +263,19 @@ class Agent(
         )
         // 只下发与这一轮相关的工具组：55 个全量塞进每次请求会白烧 token、也让模型更容易挑错工具。
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
-        val skills = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
         val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups)
         val toolRounds = mutableListOf<String>()
-        val convo = withSkills(norm, skills).toMutableList()
+        val injected = injectContext(
+            norm,
+            AgentPromptStore.select(homeDirectory),
+            AgentSkillStore.select(homeDirectory, skillIds, lastUserText),
+        )
+        // 这两个是**实际注入**的那两份：预设可能因为注入预算被挡掉几条，
+        // 回报给界面的 ids 必须与模型真正看到的一致。
+        val prompts = injected.prompts
+        val skills = injected.skills
+        val convo = injected.messages.toMutableList()
+        val trimmed = trimToBudget(convo)
         var usage = LlmUsage()
 
         // 多轮：模型要调工具 → 框架执行 → 结果回灌 → 再问。
@@ -327,6 +336,8 @@ class Agent(
                         toolRounds = toolRounds.ifEmpty { null },
                         usage = usage.plus(retry.usage).takeIf { !it.isEmpty },
                         skillsUsed = skills.map { it.id }.ifEmpty { null },
+                        promptsUsed = prompts.map { it.id }.ifEmpty { null },
+                        trimmed = trimmed,
                     )
                 }
             }
@@ -349,6 +360,8 @@ class Agent(
                     toolRounds = toolRounds.ifEmpty { null },
                     usage = usage.takeIf { !it.isEmpty },
                     skillsUsed = skills.map { it.id }.ifEmpty { null },
+                    promptsUsed = prompts.map { it.id }.ifEmpty { null },
+                    trimmed = trimmed,
                 )
             }
             // 有工具调用：先把它的话留下，再逐个执行并回灌。
@@ -395,6 +408,8 @@ class Agent(
                 toolRounds = toolRounds.ifEmpty { null },
                 usage = usage.takeIf { !it.isEmpty },
                 skillsUsed = skills.map { it.id }.ifEmpty { null },
+                promptsUsed = prompts.map { it.id }.ifEmpty { null },
+                trimmed = trimmed,
             )
         }
         return ChatOutcome(
@@ -476,9 +491,16 @@ class Agent(
             }
 
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
-        val skills = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
         val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups)
-        val convo = withSkills(norm, skills).toMutableList()
+        val injected = injectContext(
+            norm,
+            AgentPromptStore.select(homeDirectory),
+            AgentSkillStore.select(homeDirectory, skillIds, lastUserText),
+        )
+        val prompts = injected.prompts
+        val skills = injected.skills
+        val convo = injected.messages.toMutableList()
+        val trimmed = trimToBudget(convo)
         val toolRounds = mutableListOf<String>()
         var usage = LlmUsage()
         var providerFailure: String? = null
@@ -490,6 +512,8 @@ class Agent(
                 engine = "external:" + ext.id,
                 model = ext.model,
                 skills = skills.map { it.id }.ifEmpty { null },
+                prompts = prompts.map { it.id }.ifEmpty { null },
+                trimmed = trimmed.takeIf { it > 0 },
             ),
         )
 
@@ -552,6 +576,8 @@ class Agent(
                             content = retry.trim(),
                             toolRounds = toolRounds.ifEmpty { null },
                             skills = skills.map { it.id }.ifEmpty { null },
+                            prompts = prompts.map { it.id }.ifEmpty { null },
+                            trimmed = trimmed.takeIf { it > 0 },
                         ),
                     )
                     return ChatOutcome(
@@ -560,6 +586,8 @@ class Agent(
                         toolRounds = toolRounds.ifEmpty { null },
                         usage = usage.takeIf { !it.isEmpty },
                         skillsUsed = skills.map { it.id }.ifEmpty { null },
+                        promptsUsed = prompts.map { it.id }.ifEmpty { null },
+                        trimmed = trimmed,
                     )
                 }
             }
@@ -584,6 +612,8 @@ class Agent(
                         content = content,
                         toolRounds = toolRounds.ifEmpty { null },
                         skills = skills.map { it.id }.ifEmpty { null },
+                        prompts = prompts.map { it.id }.ifEmpty { null },
+                        trimmed = trimmed.takeIf { it > 0 },
                     ),
                 )
                 return ChatOutcome(
@@ -592,6 +622,8 @@ class Agent(
                     toolRounds = toolRounds.ifEmpty { null },
                     usage = usage.takeIf { !it.isEmpty },
                     skillsUsed = skills.map { it.id }.ifEmpty { null },
+                    promptsUsed = prompts.map { it.id }.ifEmpty { null },
+                    trimmed = trimmed,
                 )
             }
 
@@ -648,6 +680,8 @@ class Agent(
                     content = finalText.trim(),
                     toolRounds = toolRounds.ifEmpty { null },
                     skills = skills.map { it.id }.ifEmpty { null },
+                    prompts = prompts.map { it.id }.ifEmpty { null },
+                    trimmed = trimmed.takeIf { it > 0 },
                 ),
             )
             return ChatOutcome(
@@ -656,6 +690,8 @@ class Agent(
                 toolRounds = toolRounds.ifEmpty { null },
                 usage = usage.takeIf { !it.isEmpty },
                 skillsUsed = skills.map { it.id }.ifEmpty { null },
+                promptsUsed = prompts.map { it.id }.ifEmpty { null },
+                trimmed = trimmed,
             )
         }
         emit(AgentStreamEvent("error", code = "tool_rounds_exhausted", message = "工具调用轮数已达上限，模型仍未给出结论"))
@@ -700,22 +736,114 @@ class Agent(
     /** 删除一个用户技能（移入 agent-skills/.trash，不直接删文件）。 */
     fun deleteSkill(id: String): Boolean = AgentSkillStore.delete(homeDirectory, id)
 
+    /** 当前提示词预设（按 order 排好序）。 */
+    fun listPrompts(): List<AgentPromptStore.Preset> = AgentPromptStore.list(homeDirectory)
+
+    /** 新建/覆盖一条提示词预设。 */
+    fun savePrompt(
+        id: String?,
+        name: String,
+        instruction: String,
+        enabled: Boolean,
+        order: Int?,
+    ): AgentPromptStore.Preset = AgentPromptStore.save(homeDirectory, id, name, instruction, enabled, order)
+
+    /** 删除一条提示词预设（删前整份文件备份进 agent-prompts 的 .trash）。 */
+    fun deletePrompt(id: String): Boolean = AgentPromptStore.delete(homeDirectory, id)
+
+    /** 注入结果：拼好的消息序列 + **真的进了 system** 的预设与技能（回报用的就是这两份）。 */
+    private data class Injected(
+        val messages: List<LlmMessage>,
+        val prompts: List<AgentPromptStore.Preset>,
+        val skills: List<AgentSkillStore.Skill>,
+    )
+
     /**
-     * 把选中的技能插到 system 段末尾（现有系统提示词之后、对话历史之前）。
+     * 组装本轮 system 段：**宿主基础人设 → 提示词预设 → 技能**。
      *
-     * 为什么不拼成一个巨大的 system：多条技能各自有边界，分开注入后模型更容易
-     * 把"这次命中的是哪几条"对上；也方便在响应里回报 `skillsUsed`。
+     * 顺序有意如此：预设说的是"怎么说话"（全局生效），技能说的是"这类任务怎么做"
+     * （按关键词命中），越具体越靠后，模型更容易把它当成本轮的补充而不是全局人设。
+     * 调用方自己传的 system 永远排最前 —— 那是宿主的地基，不能被用户预设顶掉。
+     *
+     * 为什么不拼成一个巨大的 system：每条预设/技能各自有边界，分开注入后模型更容易
+     * 把"这次命中的是哪几条"对上；也方便在响应里回报 `promptsUsed` / `skillsUsed`。
+     *
+     * 预设总长受 [MAX_PROMPT_CHARS] 约束：放不下的一条**整条不注入**（不截半句），
+     * 后面的也不再试 —— 预设有顺序，前面缺一条后面接上去只会得到半套规则。
+     * 被这样挡掉的预设**不进 [Injected.prompts]**：回报"用了哪些"必须与实际发给模型的一致，
+     * 否则界面说"已注入 4 条"而模型只看到 3 条，用户排查半天找不到原因。
      */
-    private fun withSkills(base: List<LlmMessage>, skills: List<AgentSkillStore.Skill>): List<LlmMessage> {
-        if (skills.isEmpty()) return base
+    private fun injectContext(
+        base: List<LlmMessage>,
+        prompts: List<AgentPromptStore.Preset>,
+        skills: List<AgentSkillStore.Skill>,
+    ): Injected {
+        if (prompts.isEmpty() && skills.isEmpty()) return Injected(base, emptyList(), emptyList())
         val insertAt = base.indexOfFirst { it.role != "system" }.let { if (it < 0) base.size else it }
-        val injected = skills.map { skill ->
-            LlmMessage(
+        val injected = mutableListOf<LlmMessage>()
+        val usedPrompts = mutableListOf<AgentPromptStore.Preset>()
+        var promptBudget = MAX_PROMPT_CHARS
+        for (preset in prompts) {
+            val body = preset.instruction.take(AgentPromptStore.MAX_INSTRUCTION_CHARS)
+            if (body.length > promptBudget) break
+            promptBudget -= body.length
+            usedPrompts += preset
+            injected += LlmMessage(role = "system", content = "【提示词：${preset.name}】\n$body")
+        }
+        for (skill in skills) {
+            injected += LlmMessage(
                 role = "system",
                 content = "【技能：${skill.name}】\n${skill.content.take(AgentSkillStore.MAX_CONTENT_CHARS)}",
             )
         }
-        return base.take(insertAt) + injected + base.drop(insertAt)
+        return Injected(base.take(insertAt) + injected + base.drop(insertAt), usedPrompts, skills)
+    }
+
+    /**
+     * 按字符预算裁剪历史：从**最旧的整轮**开始丢，绝不切开任何一轮。
+     *
+     * 为什么按轮（user → assistant → tool…）而不是逐条丢：原生 tool 协议里
+     * assistant 的 `tool_calls` 与后面每条 `role=tool` 的结果必须成对出现，
+     * 单独丢掉一半，上游会直接报 invalid tool contract。以 user 消息为段边界
+     * 天然满足这条 —— 一轮之内的消息要么全留、要么全丢。
+     *
+     * 两条保底：system 段（人设 + 预设 + 技能）与**最后一条 user 消息**永远保留。
+     * 前者丢了整轮就变味；后者丢了等于没问。单条用户消息自己就超预算时不截断：
+     * 那是用户的原话，宁可让它超一点，也不能悄悄改写他问的内容。
+     *
+     * 直接改 [convo]，返回实际丢掉的条数（0 = 没到预算，没裁）。
+     */
+    private fun trimToBudget(convo: MutableList<LlmMessage>): Int {
+        if (convo.isEmpty()) return 0
+        var remaining = convo.sumOf { it.content.length }
+        if (remaining <= MAX_CONTEXT_CHARS) return 0
+
+        val lastUser = convo.indexOfLast { it.role == "user" }
+        if (lastUser < 0) return 0
+        val headEnd = convo.indexOfFirst { it.role != "system" }.let { if (it < 0) convo.size else it }
+        // 只有一轮：没有可丢的旧消息，宁可超预算也不动用户这次问的内容。
+        if (lastUser <= headEnd) return 0
+
+        // 段边界：headEnd 起每遇到一条 user 就是新的一段（headEnd→首条 user 之间的
+        // 零散消息并进第一段，它们本来就属于上一轮的尾巴）。
+        val cuts = mutableListOf(headEnd)
+        for (i in headEnd + 1 until lastUser) {
+            if (convo[i].role == "user") cuts += i
+        }
+
+        var dropUntil = headEnd
+        for (k in cuts.indices) {
+            if (remaining <= MAX_CONTEXT_CHARS) break
+            val from = cuts[k]
+            val to = if (k + 1 < cuts.size) cuts[k + 1] else lastUser
+            if (to <= from) continue
+            for (i in from until to) remaining -= convo[i].content.length
+            dropUntil = to
+        }
+        if (dropUntil <= headEnd) return 0
+        val count = dropUntil - headEnd
+        repeat(count) { convo.removeAt(headEnd) }
+        return count
     }
 
     /** 把一次工具结果压成给模型看的短文本（太长会挤爆上下文）。 */
@@ -798,6 +926,10 @@ class Agent(
         val usage: LlmUsage? = null,
         /** 本轮实际注入的技能 id。没命中就是 null。 */
         val skillsUsed: List<String>? = null,
+        /** 本轮实际注入的提示词预设 id（按注入顺序）。一条都没启用就是 null。 */
+        val promptsUsed: List<String>? = null,
+        /** 为塞进上下文预算丢掉的旧消息条数。0 = 没裁。 */
+        val trimmed: Int = 0,
     )
 
     companion object {
@@ -806,5 +938,11 @@ class Agent(
 
         /** 单次工具结果塞回上下文的字符上限。 */
         val MAX_TOOL_DATA: Int = AppConfig.aiMaxToolData
+
+        /** 整轮对话的字符预算，超过就从最旧的整轮开始丢（见 [trimToBudget]）。 */
+        val MAX_CONTEXT_CHARS: Int = AppConfig.aiMaxContextChars
+
+        /** 每轮注入提示词预设的总字符上限，放不下的整条不注入（见 [injectContext]）。 */
+        val MAX_PROMPT_CHARS: Int = AppConfig.aiMaxPromptChars
     }
 }
