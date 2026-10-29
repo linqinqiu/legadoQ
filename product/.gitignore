@@ -161,11 +161,12 @@ local-patches.diff
 !/tools/verify/retired/
 # 例外：这几个是一次性本机探针/产物脚本，含本机绝对路径或写本机图标/快捷方式，
 # 按 docs/STRUCTURE.md「产物出库」不入库（真要用就本地留着）。
+# render-icons.mjs 不能留在名单里：BrandLogo.test.ts 要读它证明派生图确实由源图生成，
+# 不入库时 CI 上直接 ENOENT 红一条（0.1.8 发版实测），而它本身只依赖 env.mjs，可移植。
 /tools/verify/webview-diagnose.mjs
 /tools/verify/webview-sandbox-probe.mjs
 /tools/verify/webview-ui-diagnostics.mjs
 /tools/verify/make-ico.mjs
-/tools/verify/render-icons.mjs
 /tools/verify/zip-inspect.mjs
 /tools/verify/extract-failures.mjs
 /tools/verify/test-failure-detail.mjs
