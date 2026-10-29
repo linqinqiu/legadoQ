@@ -246,6 +246,8 @@ class Agent(
         allowedToolGroups: Set<String>? = null,
         /** 本轮显式指定的技能 id；空表示按关键词自动挑。 */
         skillIds: List<String> = emptyList(),
+        /** 用户逐项停用的工具 id（组开着也不下发）；`program` 组豁免，见 [ToolSelection.select]。 */
+        disabledToolIds: List<String> = emptyList(),
     ): ChatOutcome {
         val norm = messages
             .filter { it.second.isNotBlank() }
@@ -263,7 +265,7 @@ class Agent(
         )
         // 只下发与这一轮相关的工具组：55 个全量塞进每次请求会白烧 token、也让模型更容易挑错工具。
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
-        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups)
+        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
         val toolRounds = mutableListOf<String>()
         val injected = injectContext(
             norm,
@@ -436,13 +438,17 @@ class Agent(
         messages: List<Pair<String, String>>,
         allowedToolGroups: Set<String>? = null,
         skillIds: List<String> = emptyList(),
+        /** 与 [chat] 同一份逐项停用清单 —— 两条路径的过滤必须一致。 */
+        disabledToolIds: List<String> = emptyList(),
         onEvent: suspend (AgentStreamEvent) -> Unit,
     ): ChatOutcome = coroutineScope {
         val events = Channel<AgentStreamEvent>(Channel.UNLIMITED)
         val result = CompletableDeferred<ChatOutcome>()
         val producer = launch(Dispatchers.IO) {
             try {
-                result.complete(runStream(messages, allowedToolGroups, skillIds) { event -> events.trySend(event) })
+                result.complete(
+                    runStream(messages, allowedToolGroups, skillIds, disabledToolIds) { event -> events.trySend(event) },
+                )
             } catch (cancelled: CancellationException) {
                 result.complete(ChatOutcome(engine = "unavailable", content = "", error = "cancelled"))
                 throw cancelled
@@ -469,6 +475,7 @@ class Agent(
         messages: List<Pair<String, String>>,
         allowedToolGroups: Set<String>?,
         skillIds: List<String>,
+        disabledToolIds: List<String>,
         emit: (AgentStreamEvent) -> Unit,
     ): Agent.ChatOutcome {
         val norm = messages
@@ -491,7 +498,7 @@ class Agent(
             }
 
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
-        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups)
+        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
         val injected = injectContext(
             norm,
             AgentPromptStore.select(homeDirectory),

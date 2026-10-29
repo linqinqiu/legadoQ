@@ -265,6 +265,17 @@ export function CookieManager() {
             const value = revealed[domain]
             const isRevealing = revealing.has(domain)
             const isConfirming = confirming?.kind === 'one' && confirming.domain === domain
+            const sessionCount = entry.sessionKeys?.length ?? 0
+            const dropped = entry.droppedKeys ?? []
+            const notes: string[] = []
+            if (sessionCount > 0) notes.push(`${sessionCount} 个仅本次会话（重启失效）`)
+            if (dropped.length > 0) {
+              notes.push(entry.oversized
+                // 单条就超 4096：不是"少带几个键"，是这桶本身不正常。
+                ? `单条就超过 4096 字符，仍会发出`
+                : `${dropped.length} 个键超出 4096 上限，不会发出：${dropped.join('、')}`)
+            }
+            const note = notes.length > 0 ? ` · ${notes.join(' · ')}` : ''
             return (
               <div key={domain} className="settings-row">
                 <label className="rule-checkbox-label">
@@ -278,7 +289,7 @@ export function CookieManager() {
                 <div className="settings-row-main">
                   <strong>{domain}</strong>
                   {value === undefined ? (
-                    <small>{`${entry.keys.length} 个键：${maskKeys(entry.keys)} · 被 ${entry.mentionedBy} 个书源提到`}</small>
+                    <small>{`${entry.keys.length} 个键：${maskKeys(entry.keys)} · 被 ${entry.mentionedBy} 个书源提到${note}`}</small>
                   ) : (
                     <div className="source-login-url-line">{value}</div>
                   )}

@@ -240,6 +240,8 @@ data class SourceBrowserCookieResponse(
 data class CookieBucket(
     val domain: String,
     val keys: List<String>,
+    /** 其中属于**会话层**的键（内存里，重启即失效）；其余来自库。 */
+    val sessionKeys: List<String> = emptyList(),
 )
 
 @Serializable
@@ -248,6 +250,14 @@ data class GlobalCookieEntry(
     val keys: List<String>,
     /** 有多少本书源的配置里**写到过**这个域（粗筛，不等于"会访问"）。 */
     val mentionedBy: Int,
+    /** 只是本次会话的键：重启就没了，也不会进备份包。 */
+    val sessionKeys: List<String> = emptyList(),
+    /** 因为整条 `Cookie` 头超过 4096 字符而**不会发出去**的键（最旧的先丢）。 */
+    val droppedKeys: List<String> = emptyList(),
+    /** 实际会发出去的那条头的字符数。 */
+    val headerChars: Int = 0,
+    /** 只剩一条仍然超过 4096：照发，但要告诉用户这桶不正常。 */
+    val oversized: Boolean = false,
 )
 
 @Serializable

@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.1.8 · 端点数：154 · 生成时间：2026-10-29
+> 版本：0.1.9 · 端点数：154 · 生成时间：2026-10-29
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -75,7 +75,7 @@
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
-| GET | `/api/cookies` | 否 | 全部登录凭据的域名清单（只回域名与键名，不回值） |
+| GET | `/api/cookies` | 否 | 全部登录凭据的域名清单（只回域名与键名，不回值）。分两层：库里的持久凭据 + 本次会话的内存凭据（重启即失效、不进备份包）；整条 Cookie 头超过 4096 字符时，最久没更新的键不会被发出，列在 droppedKeys 里。 |
 | GET | `/api/cookies/detail` | 否 | 读某一个域的凭据原文（编辑前回填用；列表接口故意不回值）；query：u=要读的那个地址或域 |
 | DELETE | `/api/cookies` | 是 | 撤掉某个域的全部凭据；query：url=要清的那个地址或域 |
 | POST | `/api/cookies` | 是 | 写入某个域的凭据（按注册域归桶，同名键覆盖、其余保留，与书源登录弹层同一条落库路径）；请求体：url=站点地址或裸域名，cookie=k=v; k2=v2（也接受 Cookie-Editor 的 JSON 导出） |

@@ -3,7 +3,7 @@ import { api, AgentChatMessage, AgentConnection, AgentPrompt, AgentPromptInput, 
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
-import { aiToolTitle, loadAiToolGroups, toolRoundGroups } from '../../lib/aiToolGroups'
+import { aiToolTitle, loadAiToolPrefs, toolRoundGroups } from '../../lib/aiToolGroups'
 import { activeSession, setAiSystemPrompt, useAiChat } from './aiChatStore'
 import { streamAgentChat, type AgentStreamDraft } from './agentStream'
 import { AiToolsSection } from '../../settings/AiToolsSection'
@@ -255,8 +255,10 @@ function ChatPanel({
     abortRef.current = controller
     setSending(true)
     try {
+      const prefs = loadAiToolPrefs()
       const result = await streamAgentChat(payload, {
-        toolGroups: loadAiToolGroups(),
+        toolGroups: prefs.groups,
+        disabledTools: prefs.disabledTools,
         signal: controller.signal,
         onUpdate: setDraft,
       })

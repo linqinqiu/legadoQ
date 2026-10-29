@@ -13,6 +13,14 @@ export type GlobalCookieEntry = {
   keys: string[]
   /** 有多少本书源的配置里写到过这个域（粗筛，不等于"会访问"）。 */
   mentionedBy: number
+  /** 其中属于**会话层**的键：只活到本次服务重启，也不进备份包。 */
+  sessionKeys?: string[]
+  /** 因为整条 `Cookie` 头超过 4096 字符而**发不出去**的键（丢的是最久没更新的）。 */
+  droppedKeys?: string[]
+  /** 实际会发出去的那条头的字符数。 */
+  headerChars?: number
+  /** 只剩一条仍然超过 4096：照发，但这桶本身就不正常。 */
+  oversized?: boolean
 }
 
 export type GlobalCookieList = {
@@ -24,6 +32,10 @@ export type GlobalCookieList = {
 export type GlobalCookieDetail = {
   domain: string
   cookie: string
+  /** 见 `GlobalCookieEntry.sessionKeys`。 */
+  sessionKeys?: string[]
+  /** 见 `GlobalCookieEntry.droppedKeys`。 */
+  droppedKeys?: string[]
 }
 
 /** `POST /api/cookies` 的回包：写进哪个桶、合并后该桶有几个键。 */

@@ -12,12 +12,14 @@ import io.legado.data.batchUpdateSources
 import io.legado.data.clearSourceOrder
 import io.legado.data.cookieBucket
 import io.legado.data.cookieBucketMentions
+import io.legado.data.cookieBucketState
 import io.legado.data.deleteSource
 import io.legado.data.exportSources
 import io.legado.data.getCookieForUrl
 import io.legado.data.getSource
 import io.legado.data.getSourceLoginState
 import io.legado.data.importSources
+import io.legado.data.listCookieBucketStates
 import io.legado.data.listCookieBuckets
 import io.legado.data.listSourceRecords
 import io.legado.data.listSources
@@ -116,6 +118,10 @@ data class GlobalCookieWriteResponse(
 data class GlobalCookieDetailResponse(
     val domain: String,
     val cookie: String,
+    /** 只是本次会话的键（重启即失效，不在库里）。 */
+    val sessionKeys: List<String> = emptyList(),
+    /** 因整条头超过 4096 字符而发不出去的键。 */
+    val droppedKeys: List<String> = emptyList(),
 )
 
 /**
@@ -139,11 +145,15 @@ fun Route.sourcesRoutes(
             val rows = withContext(Dispatchers.IO) {
                 // 一次扫描拿到全部桶的计数：逐桶查以前把这个接口拖到 2 分半
                 val mentions = database.cookieBucketMentions()
-                database.listCookieBuckets().map { bucket ->
+                database.listCookieBucketStates().map { state ->
                     GlobalCookieEntry(
-                        domain = bucket.domain,
-                        keys = bucket.keys,
-                        mentionedBy = mentions[bucket.domain] ?: 0,
+                        domain = state.domain,
+                        keys = (state.persistentKeys + state.sessionKeys).distinct(),
+                        mentionedBy = mentions[state.domain] ?: 0,
+                        sessionKeys = state.sessionKeys,
+                        droppedKeys = state.droppedKeys,
+                        headerChars = state.headerChars,
+                        oversized = state.oversized,
                     )
                 }
             }
@@ -167,12 +177,20 @@ fun Route.sourcesRoutes(
                 call.respond(HttpStatusCode.BadRequest, ApiError("missing_parameter", "缺少 u 参数（要读哪个域的凭据）"))
                 return@get
             }
+            val state = withContext(Dispatchers.IO) { database.cookieBucketState(target) }
             val value = withContext(Dispatchers.IO) { database.getCookieForUrl(target) }
             if (value.isNullOrBlank()) {
                 call.respond(HttpStatusCode.NotFound, ApiError("cookie_not_found", "这个域还没有凭据"))
                 return@get
             }
-            call.respond(GlobalCookieDetailResponse(domain = database.cookieBucket(target), cookie = value))
+            call.respond(
+                GlobalCookieDetailResponse(
+                    domain = state.domain,
+                    cookie = value,
+                    sessionKeys = state.sessionKeys,
+                    droppedKeys = state.droppedKeys,
+                ),
+            )
         }
         // 写入一个域的凭据：按注册域归桶，沿用 setCookieForUrl 的**按键合并**（同名覆盖、其余保留）。
         // 与书源登录弹层里的「粘贴 Cookie」是同一条落库路径，这里只是把入口开到全局管理页。

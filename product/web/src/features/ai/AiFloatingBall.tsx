@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AgentChatMessage, type AgentConnection } from '../../lib/api'
 import { Icon } from '../../icons'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
-import { aiToolTitle, loadAiToolGroups, rememberToolIndex, toolRoundGroups } from '../../lib/aiToolGroups'
+import { aiToolTitle, loadAiToolPrefs, rememberToolIndex, toolRoundGroups } from '../../lib/aiToolGroups'
 import { streamAgentChat, type AgentStreamDraft } from './agentStream'
 import {
   activeSession,
@@ -260,8 +260,10 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
     abortRef.current = controller
     setSending(true)
     try {
+      const prefs = loadAiToolPrefs()
       const result = await streamAgentChat(payload, {
-        toolGroups: loadAiToolGroups(),
+        toolGroups: prefs.groups,
+        disabledTools: prefs.disabledTools,
         signal: controller.signal,
         onUpdate: setDraft,
       })

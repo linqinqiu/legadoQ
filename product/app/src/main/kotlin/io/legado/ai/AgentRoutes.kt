@@ -349,6 +349,8 @@ private data class ChatRequestDto(
     val toolGroups: List<String>? = null,
     /** 本轮显式指定要注入的技能 id；缺省按关键词自动命中。 */
     val skills: List<String>? = null,
+    /** 用户逐项停用的工具 id（组开着也不下发）；`program` 组豁免。 */
+    val disabledTools: List<String>? = null,
 )
 
 @Serializable
@@ -393,6 +395,7 @@ suspend fun ApplicationCall.agentChat(agentConnection: AgentConnection?) {
         req.messages.map { (it.role to it.content) },
         req.toolGroups?.filter { it.isNotBlank() }?.toSet(),
         req.skills.orEmpty(),
+        req.disabledTools?.filter { it.isNotBlank() }.orEmpty(),
     )
     if (outcome.error != null) {
         respond(outcomeStatus(outcome.error), ApiError(outcome.error, outcomeMessage(outcome.error, outcome.errorDetail)))
@@ -446,6 +449,7 @@ suspend fun ApplicationCall.agentChatStream(agentConnection: AgentConnection?) {
                 messages = req.messages.map { it.role to it.content },
                 allowedToolGroups = req.toolGroups?.filter { it.isNotBlank() }?.toSet(),
                 skillIds = req.skills.orEmpty(),
+                disabledToolIds = req.disabledTools?.filter { it.isNotBlank() }.orEmpty(),
             ) { event ->
                 write("data: " + streamJson.encodeToString(AgentStreamEvent.serializer(), event) + "\n\n")
                 flush()

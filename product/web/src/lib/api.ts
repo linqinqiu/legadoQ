@@ -816,13 +816,14 @@ export const api = {
     request<{ id: string; version: number; updatedAt: string }>('/api/agent/sources', { method: 'POST', body: JSON.stringify({ json, version }) }),
   agentComprehend: (req: { text: string; question?: string; summarySentences?: number; topKeywords?: number }) =>
     request<AgentComprehendResult>('/api/agent/comprehend', { method: 'POST', body: JSON.stringify(req) }),
-  agentChat: (messages: AgentChatMessage[], toolGroups?: string[] | null, skills?: string[]) =>
+  agentChat: (messages: AgentChatMessage[], toolGroups?: string[] | null, skills?: string[], disabledTools?: string[]) =>
     request<AgentChatResult>('/api/agent/chat', {
       method: 'POST',
       body: JSON.stringify({
         messages,
         ...(toolGroups ? { toolGroups } : {}),
         ...(skills && skills.length > 0 ? { skills } : {}),
+        ...(disabledTools && disabledTools.length > 0 ? { disabledTools } : {}),
       }),
     }),
   /**
@@ -836,6 +837,8 @@ export const api = {
     opts: {
       toolGroups?: string[] | null
       skills?: string[]
+      /** 用户逐项停用的工具 id；与 `toolGroups` 一样，两条对话路径都要带上。 */
+      disabledTools?: string[]
       signal?: AbortSignal
       onEvent: (event: AgentStreamEvent) => void
     },
@@ -848,6 +851,7 @@ export const api = {
         messages,
         ...(opts.toolGroups ? { toolGroups: opts.toolGroups } : {}),
         ...(opts.skills && opts.skills.length > 0 ? { skills: opts.skills } : {}),
+        ...(opts.disabledTools && opts.disabledTools.length > 0 ? { disabledTools: opts.disabledTools } : {}),
       }),
       signal: opts.signal,
     })

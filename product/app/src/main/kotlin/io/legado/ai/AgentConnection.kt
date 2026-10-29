@@ -110,8 +110,9 @@ class AgentConnection internal constructor(private val agent: Agent) {
         messages: List<Pair<String, String>>,
         allowedToolGroups: Set<String>? = null,
         skillIds: List<String> = emptyList(),
+        disabledToolIds: List<String> = emptyList(),
     ): Agent.ChatOutcome = runBlocking {
-        agent.chat(messages, allowedToolGroups, skillIds)
+        agent.chat(messages, allowedToolGroups, skillIds, disabledToolIds)
     }
 
     /** 同 [chat]，但保留挂起语义。 */
@@ -119,7 +120,8 @@ class AgentConnection internal constructor(private val agent: Agent) {
         messages: List<Pair<String, String>>,
         allowedToolGroups: Set<String>? = null,
         skillIds: List<String> = emptyList(),
-    ): Agent.ChatOutcome = agent.chat(messages, allowedToolGroups, skillIds)
+        disabledToolIds: List<String> = emptyList(),
+    ): Agent.ChatOutcome = agent.chat(messages, allowedToolGroups, skillIds, disabledToolIds)
 
     /**
      * 流式对话：工具循环与 [chat] 完全一致，只是把过程作为 [AgentStreamEvent] 逐步回调。
@@ -132,8 +134,9 @@ class AgentConnection internal constructor(private val agent: Agent) {
         messages: List<Pair<String, String>>,
         allowedToolGroups: Set<String>? = null,
         skillIds: List<String> = emptyList(),
+        disabledToolIds: List<String> = emptyList(),
         onEvent: suspend (AgentStreamEvent) -> Unit,
-    ): Agent.ChatOutcome = agent.chatStream(messages, allowedToolGroups, skillIds, onEvent)
+    ): Agent.ChatOutcome = agent.chatStream(messages, allowedToolGroups, skillIds, disabledToolIds, onEvent)
 
     /** 当前技能库（内置 + 用户）。 */
     fun listSkills(): List<AgentSkillStore.Skill> = agent.listSkills()

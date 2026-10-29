@@ -37,6 +37,8 @@
 | 工具参数 JSON Schema | refgd `AiResolvedTool.definition`（每个工具手写 schema） | `BuiltinTools` 每个工具补全参数 schema，经 `/api/agent/manifest` 下发 | 本轮已覆盖 55 个内置工具 |
 | 提示词预设库 | MD3 `AiPromptPreset` + `AiPromptConfigScreen`（`name + instruction + enabled + sortNumber`） | `ai/AgentPromptStore.kt`（落盘 `{home}/agent-prompts.json`，删除前整份备份进 `.trash`）；`GET/POST/DELETE /api/agent/prompts`；AI 接入弹窗「提示词」区块（开关 + 上移/下移 + 编辑 + 删除） | `AgentPromptStore` 的排序/覆盖/上限/备份判据 + `AiPromptPresets.test.ts` 守界面与 API 接线 |
 | 上下文预算裁剪 | refgd `messages.takeLast(12)`；MD3 `contextWindow` / `maxOutputTokens` | `Agent.trimToBudget`（`LEGADO_AI_MAX_CONTEXT_CHARS`，默 24000）：以 user 消息为段边界，从最旧的整轮开始丢 | `AgentPromptContextTest`：system 与最后一条用户消息必留、整轮不拆、`trimmed` 随 `start`/`end`/`chat` 回报并在气泡标注 |
+| 凭据两层（持久 / 会话）+ 4096 淘汰 | MD3 `help/http/CookieManager.kt`、`CookieStore.kt` | `data/SessionCookies.kt`（内存层）+ `CookieDao.getCookieForUrl` 唯一出口合并并按"最后写入顺序"丢最旧的；`classifySetCookie` 判 Max-Age / Expires | `CookieLayersTest`（14 项，断言打在"实际会发出去的那条头"上）；`AiToolToggles.test.ts` 守界面把会话键与丢下的键摊开说 |
+| 工具逐项停用 | refgd `AiToolRegistry.aiEnabledToolNames` | `aiToolGroups.ts` 存储 v2（`{groups, disabledTools}`，自动迁移旧数组）+ `ToolSelection.select` 一处过滤（`program` 组豁免）；`/chat` 与 `/chat/stream` 都收 `disabledTools` | `ToolSelectionTest` 五条停用判据 + `AiToolToggles.test.ts`（含"关组不清空逐项、反之也一样"） |
 
 ## 2. 还值得借（按性价比排序）
 
@@ -106,12 +108,21 @@ refgd 的 Tavily 工具写得很克制：只有开关 + key 才注册，参数�
 建议做成"可配置的搜索连接"（Tavily / SearXNG / Bing），默认关，工具描述里明确"会把查询发给第三方"。
 出站仍走 `NetworkSecurity`，结果渲染成来源列表，不让模型手写链接。
 
-### P2 · 工具级开关（refgd `AiToolRegistry`）
+### 已落地 · 工具级开关（refgd `AiToolRegistry`）
 
 refgd 有 `defaultEnabledTools`（默认开的 20 个）、`aiEnabledToolNames`（用户增删）、
-`groupLabelOfTool`（前缀 → 中文组名）。我们现在只有组级开关。
-建议在「AI 工具组」展开区里加"本组内逐项勾选"，存储键沿用 `legado-ai-tool-groups` 的 v2 结构；
-默认值保持"组开 = 全开"，避免老用户感知变化。
+`groupLabelOfTool`（前缀 → 中文组名）。本轮在组级开关之上补了逐项停用：存储升到 v2
+（`{groups, disabledTools}`，读旧的纯数组值自动迁移），`/api/agent/chat` 与 `/chat/stream`
+都收 `disabledTools`，过滤只落在 `ToolSelection.select` 一处 —— 两条对话路径共用同一个函数，
+不会出现"非流式停了、流式还带着"。
+
+与原建议差两点，都是有意的：
+
+- **不引入"默认启用 20 个"白名单**。refgd 需要它，是因为它的工具是一张手写的小表；我们有 55 个
+  且已经按关键词选组，再加一层默认白名单等于让"没命中关键词"变成"什么都不能用"。
+  默认值仍是"组开 = 全开"，老用户感知不变。
+- **`program` 组豁免停用**。`program.catalog` 是模型的能力地图，摘掉它不是少一个能力，
+  而是整条"先查再调"的按需发现失效 —— 界面上这一组不给复选框，服务端也无视对它的停用。
 
 ### 已落地 · 上下文裁剪（refgd `messages.takeLast(12)`；MD3 `contextWindow` / `maxOutputTokens`）
 
@@ -135,13 +146,27 @@ refgd 让 AI 能读写应用设置。写设置的风险远大于收益，我们�
 
 ## 3. 非 AI 借鉴
 
-### P1 · Cookie 的持久/会话分离与长度上限（MD3 `http/CookieManager.kt`、`CookieStore.kt`）
+### 已落地 · Cookie 的持久/会话分离与长度上限（MD3 `http/CookieManager.kt`、`CookieStore.kt`）
 
 MD3 把 `Set-Cookie` 里 `persistent=false` 的会话 Cookie 放内存（重启即失效），持久的落库；
-取 Cookie 时合并两层，并**在总长度超过 4096 时随机淘汰键**直到放得下（防止超长头被服务端拒绝）。
-我们已经做到"按注册域归桶 + 按键合并 + 跨子域共享"，但没有这两条。
-建议：`cookie` 表加 `session` 布尔列（或内存 Map），取头时按 4096 截断并记一条 debug 日志。
-判据：现有登录测试全绿；新增单测覆盖"持久 + 会话合并"与"超长淘汰"。
+取 Cookie 时合并两层，并在总长度超过 4096 时淘汰键直到放得下。本轮照这个形状落地，
+三处比 MD3 更严：
+
+- **会话层是内存 Map，不加 `cookie` 表的 `session` 列**。它的定义就是"不该活过这次运行"，
+  写进库再靠启动时清一遍，等于把"重启即失效"变成一个需要每次都对的条件；一旦漏清，
+  用户重启后拿到的仍是那条本该作废的临时值。
+- **淘汰按"最后写入顺序"丢最旧的，不是 MD3 的 `keys.random()`**。随机淘汰会让同一个域在两次
+  请求里带出不一致的凭据 —— 对登录态等于偶发掉线，而且复现不了。为此 `setCookieForUrl`
+  合并时把重设的键挪到尾部（顺序即新旧），拼头时保留"能装下的那段最新后缀"。
+- **`Max-Age<=0` / `Expires` 已过会真的撤掉那一条**（两层都撤），而不是留着。站点用这个表达
+  "退出登录"，我们此前把它当普通一条存下来，效果是用户登出了还带着旧凭据。
+
+`Expires` 读不懂时**按会话处理**（不落库）：宁可少留一条，也不凭猜测把临时状态永久化。
+用户手工粘贴的串没有任何属性信息，一律算持久 —— 他贴进来就是要它留下。
+
+判据在 `CookieLayersTest`（14 项，断言打在"实际会发出去的那条头"上）；界面把会话键与
+被 4096 丢下的键都摊开说（`仅本次会话（重启失效）` / `N 个键超出 4096 上限，不会发出：…`），
+不静默截断。
 
 ### P2 · 局域网拦截的"说清楚"（MD3 `LocalNetworkBlockedNotifier.kt` / `LocalNetworkAccess.kt`）
 

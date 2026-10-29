@@ -1,10 +1,21 @@
 /**
- * AI 工具组开关的本地存储。
+ * AI 工具开关的本地存储。
  *
  * 存在浏览器 localStorage：这是"这台机器上我想让 AI 用哪些能力"的偏好，
- * 不上传服务端、不进备份包。`null` 表示没限制（按对话关键词自动选组）。
+ * 不上传服务端、不进备份包。`groups = null` 表示没限制（按对话关键词自动选组）。
+ *
+ * 形状是 v2：`{ groups, disabledTools }` —— 组级之外还要能逐项停用（借自 refgd 的
+ * `aiEnabledToolNames`）。v1 的整份数组值在读取时自动迁移，老用户的选择不会丢。
  */
 const KEY = 'legado-ai-tool-groups'
+
+/** 工具偏好：组级限制 + 逐项停用。 */
+export type AiToolPrefs = {
+  /** 启用的工具组；`null` = 不限制（由服务端按对话关键词选组）。 */
+  groups: string[] | null
+  /** 被逐项停用的工具 id（组开着也不下发）。 */
+  disabledTools: string[]
+}
 
 /**
  * 工具组的中文名与一句人话。
@@ -86,28 +97,52 @@ export function toolRoundGroups(rounds: string[]): { label: string; ids: string 
  * @returns 组名数组；`null` 表示不限制
  */
 export function loadAiToolGroups(): string[] | null {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (raw === null) return null
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return null
-    const groups = parsed.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
-    return groups.length > 0 ? groups : null
-  } catch {
-    return null
-  }
+  return loadAiToolPrefs().groups
 }
 
 /**
- * 保存用户启用的工具组。
- *
- * @param groups 组名数组；传 `null` 表示不限制（清掉这条偏好）
+ * 保存用户启用的工具组。**只改组这一项** —— 逐项停用是用户的另一个决定，
+ * 不能因为他在组开关上点了一下就被清空（那是最容易发生也最难被发现的数据丢失）。
  */
 export function saveAiToolGroups(groups: string[] | null): void {
+  saveAiToolPrefs({ groups, disabledTools: loadAiToolPrefs().disabledTools })
+}
+
+/** 读完整的工具偏好（组 + 逐项停用）。 */
+export function loadAiToolPrefs(): AiToolPrefs {
   try {
-    if (groups === null) localStorage.removeItem(KEY)
-    else localStorage.setItem(KEY, JSON.stringify(groups))
+    const raw = localStorage.getItem(KEY)
+    if (raw === null) return { groups: null, disabledTools: [] }
+    const parsed: unknown = JSON.parse(raw)
+    // 旧格式（v1）：整个值就是组名数组。迁移后原样保留组的选择。
+    if (Array.isArray(parsed)) {
+      return { groups: normalizeGroups(parsed), disabledTools: [] }
+    }
+    if (parsed && typeof parsed === 'object') {
+      const shape = parsed as { groups?: unknown; disabledTools?: unknown }
+      return {
+        groups: Array.isArray(shape.groups) ? normalizeGroups(shape.groups) : null,
+        disabledTools: Array.isArray(shape.disabledTools)
+          ? shape.disabledTools.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+          : [],
+      }
+    }
+    return { groups: null, disabledTools: [] }
+  } catch {
+    return { groups: null, disabledTools: [] }
+  }
+}
+
+/** 保存完整的工具偏好。 */
+export function saveAiToolPrefs(prefs: AiToolPrefs): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ groups: prefs.groups, disabledTools: prefs.disabledTools }))
   } catch {
     // 隐私模式 / 配额满：本次会话内仍然按界面上的选择走，只是下次打开会回到默认
   }
+}
+
+function normalizeGroups(items: unknown[]): string[] | null {
+  const groups = items.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+  return groups.length > 0 ? groups : null
 }

@@ -149,6 +149,8 @@ export async function streamAgentChat(
   opts: {
     toolGroups?: string[] | null
     skills?: string[]
+    /** 用户逐项停用的工具 id（组开着也不下发）。 */
+    disabledTools?: string[]
     signal?: AbortSignal
     onUpdate?: (draft: AgentStreamDraft) => void
   } = {},
@@ -160,6 +162,7 @@ export async function streamAgentChat(
     await api.agentChatStream(messages, {
       toolGroups: opts.toolGroups,
       skills: opts.skills,
+      disabledTools: opts.disabledTools,
       signal: opts.signal,
       onEvent: event => {
         applyEvent(draft, event)
