@@ -53,6 +53,17 @@ test('AI 接入面板有独立的提示词区块，且说清与技能的分工',
   assert.match(modal, /setInstruction\(e\.target\.value\.slice\(0,\s*2000\)\)/, '输入框就限 2000 字')
 })
 
+test('排序的两条保存要顺序发，不能并发', () => {
+  // 服务端 agent-prompts.json 是整份「读 → 改 → 写」：两条并发保存会各自读到旧快照，
+  // 后落盘的把先落盘的顶掉（实测点一次上移，两条 order 变成同一个数）。
+  const modal = read('../src/features/ai/AiConnectionsModal.tsx')
+  const move = modal.slice(modal.indexOf('const move = async'), modal.indexOf('return (\n    <section className="ai-section">\n      <h3>提示词</h3>'))
+  assert.ok(move.length > 0, '要能找到 move 的实现')
+  assert.doesNotMatch(move, /Promise\.all/, '排序不能用 Promise.all 并发发两条保存')
+  const saves = move.match(/await api\.saveAgentPrompt\(/g) ?? []
+  assert.equal(saves.length, 2, `应顺序 await 两次保存，实际 ${saves.length} 次`)
+})
+
 test('提示词排在技能之前（先定"怎么说话"，再定"怎么做"）', () => {
   const modal = read('../src/features/ai/AiConnectionsModal.tsx')
   const promptsIndex = modal.indexOf('<PromptsSection />')

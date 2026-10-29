@@ -26,6 +26,14 @@ app/src/main/resources/static/
 # 外部模型连接档案：里面有 apiKey（用户填的密钥），与 .env 同级待遇，严禁入库。
 # 运行时由 AgentProfileStore 写在「安装根」和 .data/ 两处；.data/ 已被上面覆盖，这里锚住根目录那份。
 /agent-profiles.json
+# AI 内容存储落在「安装根」的运行时产物，全是用户自己的数据，严禁入库：
+# - agent-prompts.json：用户手写的提示词预设；
+# - agent-skills/：用户技能，一条一个 .md；
+# - .trash/：上面两个库的回收站（删除前的整份快照），误删找回全靠它。
+# 与 agent-profiles.json 同理要带 / 锚住根目录，免得连带吞掉同名源码目录。
+/agent-prompts.json
+/agent-skills/
+/.trash/
 # 本机部署的数据目录（SQLite + 封面 + WebDAV 落盘），含用户书架，严禁入库。
 # 必须锚住具体位置：不带 / 的 data/ 会连带吞掉 app/src/main/kotlin/io/legado/data/，
 # 那里新拆出来的 DAO 文件对 git 直接不可见（0.8.2 结构重排时抓到）。

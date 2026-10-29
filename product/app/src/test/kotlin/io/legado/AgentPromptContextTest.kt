@@ -163,6 +163,30 @@ class AgentPromptContextTest {
         assertTrue("截断保留的是开头", saved.instruction.startsWith("开开"))
     }
 
+    @Test
+    fun `并发保存不能互相顶掉`() {
+        // 界面上点一次「上移」会连发两条保存；服务端这份文件是整份读改写，
+        // 没有锁时后落盘的那条会把先落盘的改动顶没（实测两条 order 变成同一个数）。
+        val home = Files.createTempDirectory("prompt-store-concurrent")
+        val count = 20
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(count)
+        try {
+            val done = java.util.concurrent.CountDownLatch(count)
+            (0 until count).forEach { i ->
+                pool.execute {
+                    runCatching { AgentPromptStore.save(home, "c$i", "并发$i", "内容$i", enabled = true, order = i) }
+                    done.countDown()
+                }
+            }
+            assertTrue("并发保存应在 30 秒内全部返回", done.await(30, java.util.concurrent.TimeUnit.SECONDS))
+        } finally {
+            pool.shutdown()
+        }
+        val all = AgentPromptStore.list(home)
+        assertEquals("每一条并发写入都该留下，实际 ${all.size}", count, all.size)
+        assertEquals("id 不该缺任何一个", (0 until count).map { "c$it" }.toSet(), all.map { it.id }.toSet())
+    }
+
     // ===== 注入 =====
 
     @Test

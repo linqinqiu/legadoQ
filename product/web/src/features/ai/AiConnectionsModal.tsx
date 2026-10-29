@@ -1005,9 +1005,13 @@ function PromptsSection() {
 
   /**
    * 上移/下移：与相邻那条交换 order。
-   * 交换而不是重算全部序号：预设最多 30 条，一次只改两条最省请求，
-   * 也不会因为并发保存把别人的顺序冲掉。两条 order 相同（列表靠名称决胜）时，
-   * 给被移动的那条让出一个空位（上移减一、下移加一），否则换了也看不出来。
+   * 交换而不是重算全部序号：预设最多 30 条，一次只改两条最省请求。
+   * 两条 order 相同（列表靠名称决胜）时，给被移动的那条让出一个空位（上移减一、下移加一），
+   * 否则换了也看不出来。
+   *
+   * **必须一条一条发**：服务端这份文件是「读 → 改 → 写」，两条并发请求会各自读到
+   * 旧快照再整份写回，后落盘的那条把先落盘的顶掉（实测点一次上移，两条 order 变成同一个数）。
+   * 服务端已加写锁兜底，这里仍按顺序发 —— 少一处竞态就少一处要解释的行为。
    */
   const move = async (index: number, delta: number) => {
     const target = index + delta
@@ -1016,13 +1020,12 @@ function PromptsSection() {
     const b = prompts[target]
     const orderForA = a.order === b.order ? b.order + delta : b.order
     try {
-      await Promise.all([
-        api.saveAgentPrompt({ ...toPromptInput(a), order: orderForA }),
-        api.saveAgentPrompt({ ...toPromptInput(b), order: a.order }),
-      ])
+      await api.saveAgentPrompt({ ...toPromptInput(a), order: orderForA })
+      await api.saveAgentPrompt({ ...toPromptInput(b), order: a.order })
       refresh()
     } catch (failure) {
       setLoadError(failure instanceof Error ? failure.message : '调整顺序失败')
+      refresh()
     }
   }
 

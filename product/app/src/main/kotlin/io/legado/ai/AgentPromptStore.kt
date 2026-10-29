@@ -51,6 +51,18 @@ object AgentPromptStore {
     fun select(homeDirectory: Path): List<Preset> = list(homeDirectory).filter { it.enabled }
 
     /**
+     * 写锁：整份文件是「读 → 改 → 写」，两个并发写必然互相覆盖。
+     *
+     * 这不是假想的坑：界面上点一次「上移」会连着发两条保存（交换两条的 order），
+     * 两条请求各自读到自己那份快照再整份写回，后落盘的那条就把先落盘的改动顶没了 ——
+     * 实测点完上移，两条的 order 变成同一个数。
+     *
+     * 锁放在存储层而不是调用方：除了 HTTP，脚本与插件也走同一个 save。
+     * `list` / `select` 是幂等读，不进锁（读到的最坏情况是上一毫秒的快照）。
+     */
+    private val writeLock = Any()
+
+    /**
      * 新建或覆盖。id 缺省时按名称生成。
      * 返回落盘后的那一条（`order` 缺省时排到末尾）。
      */
@@ -61,7 +73,7 @@ object AgentPromptStore {
         instruction: String,
         enabled: Boolean,
         order: Int?,
-    ): Preset {
+    ): Preset = synchronized(writeLock) {
         require(name.isNotBlank()) { "提示词名称不能为空" }
         require(instruction.isNotBlank()) { "提示词内容不能为空" }
         val current = read(homeDirectory)
@@ -78,14 +90,14 @@ object AgentPromptStore {
             order = order ?: existing?.order ?: ((others.maxOfOrNull { it.order } ?: -1) + 1),
         )
         write(homeDirectory, current.filterNot { it.id == finalId } + preset)
-        return preset
+        preset
     }
 
     /**
      * 删除一条。删除前把整份文件复制到 `.trash/agent-prompts-<时间戳>.json`，
      * 与技能"不直接删"的口径一致：预设是用户手写的，误删一次就得重写。
      */
-    fun delete(homeDirectory: Path, id: String): Boolean {
+    fun delete(homeDirectory: Path, id: String): Boolean = synchronized(writeLock) {
         val current = read(homeDirectory)
         if (current.none { it.id == id }) return false
         runCatching {
@@ -95,7 +107,7 @@ object AgentPromptStore {
             Files.copy(fileOf(homeDirectory), target, StandardCopyOption.REPLACE_EXISTING)
         }
         write(homeDirectory, current.filterNot { it.id == id })
-        return true
+        true
     }
 
     /** 清空（只在测试/自检里用）。 */
