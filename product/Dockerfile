@@ -9,6 +9,10 @@ RUN --mount=type=cache,id=legado-npm-cache,target=/root/.npm \
         npm install --ignore-scripts --no-audit --fund=false; \
     fi
 COPY web/ ./
+# FeatureGuide.tsx 用 `?raw` 把仓库里的产品说明原文打进页面（说明只有一份，
+# 不在前端再抄一遍）。构建上下文是 product/，所以这份 docs/ 要按相对路径放到 /src/docs，
+# 少拷贝时 Vite 报 "Could not resolve ../../../docs/功能说明.md?raw"（0.1.8 镜像实测）。
+COPY docs/功能说明.md /src/docs/
 RUN npm run build
 
 FROM ${DOCKER_REGISTRY}gradle:8.13-jdk17 AS server-build
