@@ -31,6 +31,7 @@ fun Route.backupRoutes(
 ) {
         /**
          * 浏览器直传备份包导入：选一个手机导出的 zip 就能恢复，不需要 WebDAV。
+         * 同一入口也收**裸 JSON**（分享书源、兄弟项目的合并导出）：容器由内容判别，不看扩展名。
          *
          * 以前只能"先把 zip 放进存储区（WebDAV 或手工拷），再在文件页点导入" —— 而 WebDAV 只绑回环时
          * 手机根本推不上来，这条路对用户等于不存在。落盘走临时文件，`BackupImporter` 全程按需读条目，
@@ -65,11 +66,19 @@ fun Route.backupRoutes(
             }
             val (filename, bytes) = upload
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ApiError("no_file", "没有收到备份包"))
-            if (!filename.lowercase().endsWith(".zip")) {
-                return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", "只支持手机导出的 .zip 备份包"))
-            }
             if (bytes.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", "备份包是空的"))
-            val staged = Files.createTempFile("legado-backup-", ".zip")
+            /*
+             * 不再按扩展名挑：兄弟项目与分享链接常见的裸 JSON（书源数组、合并导出）也要能导，
+             * 而转存工具经常把 zip 改成 .json。容器由 BackupImporter 按内容（zip 头 PK）判别，
+             * 这里只限制大小，避免把超大文件整个读进内存。
+             */
+            if (bytes.size > MAX_BACKUP_BYTES) {
+                return@post call.respond(
+                    HttpStatusCode.PayloadTooLarge,
+                    ApiError("backup_too_large", "备份包超过 ${MAX_BACKUP_BYTES / 1024 / 1024} MiB，已拒绝"),
+                )
+            }
+            val staged = Files.createTempFile("legado-backup-", ".bin")
             try {
                 Files.write(staged, bytes)
                 val summary = runCatching {
@@ -95,5 +104,8 @@ fun Route.backupRoutes(
             }
         }
 }
+
+/** 上传上限按原始字节算；zip 解包后的限额仍由 `BackupImporter` 按条目把关。 */
+private const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
 
 

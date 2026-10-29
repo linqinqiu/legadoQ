@@ -57,6 +57,12 @@ export function aiToolGroupOf(toolId: string): string | null {
   return toolGroupById.get(toolId) ?? null
 }
 
+/** 单个工具在界面上的短名：能归组就显示组名，否则退回工具 id。 */
+export function aiToolTitle(toolId: string): string {
+  const group = aiToolGroupOf(toolId)
+  return group ? aiToolGroupTitle(group) : toolId
+}
+
 /**
  * 把服务端回的 `工具id:结果` 折成"能力组"。
  *

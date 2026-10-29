@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, AgentChatMessage, AgentConnection } from '../../lib/api'
+import { api, AgentChatMessage, AgentConnection, AgentSkill, AgentSkillInput } from '../../lib/api'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
-import { loadAiToolGroups, toolRoundGroups } from '../../lib/aiToolGroups'
+import { aiToolTitle, loadAiToolGroups, toolRoundGroups } from '../../lib/aiToolGroups'
 import { activeSession, setAiSystemPrompt, useAiChat } from './aiChatStore'
+import { streamAgentChat, type AgentStreamDraft } from './agentStream'
 import { AiToolsSection } from '../../settings/AiToolsSection'
 
 /**
@@ -53,6 +54,8 @@ type ChatLine = {
   engine?: string
   /** AI 这一轮实际执行过的工具（`工具id:结果码`）。 */
   toolRounds?: string[]
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+  skillsUsed?: string[]
 }
 
 function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
@@ -112,7 +115,7 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
           {loadError ? (
             <p className="customize-error" role="alert">{loadError}</p>
           ) : connections.length === 0 ? (
-            <p className="ai-muted">还没有登记连接。下面填一个 openai-compatible 地址就行。</p>
+            <p className="ai-muted">还没有登记连接。下面选协议、填地址与模型即可。</p>
           ) : (
             <ul className="ai-conn-list">
               {connections.map(c => {
@@ -158,6 +161,7 @@ function AiConnectionsPanel({ uiContext }: { uiContext?: UiContext }) {
           </p>
           <AiToolsSection />
         </section>
+        <SkillsSection />
         <SourceValidatePanel />
       </details>
     </div>
@@ -183,6 +187,8 @@ function ChatPanel({
   const systemPrompt = activeSession(chat).systemPrompt
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [draft, setDraft] = useState<AgentStreamDraft | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const [error, setError] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -209,6 +215,11 @@ function ChatPanel({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
+  useEffect(() => {
+    if (!draft) return
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
+  }, [draft?.text, draft?.tools.length])
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   // 打开且已登记外部模型时，自动实测一次连通性。
   useEffect(() => {
@@ -216,13 +227,15 @@ function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalConnected])
 
+  const stop = () => abortRef.current?.abort()
+
   const send = async () => {
     const text = input.trim()
     if (!text || sending || !externalConnected) return
     setError('')
     const userLine: ChatLine = { role: 'user', content: text }
     const history: ChatLine[] = [...messages, userLine]
-    setMessages([...history, { role: 'assistant', content: '', pending: true }])
+    setMessages(history)
     setInput('')
 
     const payload: AgentChatMessage[] = []
@@ -233,24 +246,42 @@ function ChatPanel({
     if (ctxMsg) payload.push(ctxMsg)
     for (const m of history) payload.push({ role: m.role, content: m.content })
 
+    const controller = new AbortController()
+    abortRef.current = controller
     setSending(true)
     try {
-      const res = await api.agentChat(payload, loadAiToolGroups())
-      setMessages(prev => {
-        const copy = [...prev]
-        const idx = copy.findIndex(m => m.role === 'assistant' && m.pending)
-        if (idx >= 0) copy[idx] = { role: 'assistant', content: res.content, engine: res.engine, toolRounds: res.toolRounds }
-        return copy
+      const result = await streamAgentChat(payload, {
+        toolGroups: loadAiToolGroups(),
+        signal: controller.signal,
+        onUpdate: setDraft,
       })
+      const content = (result.content || result.text).trim()
+      const toolRounds = result.toolRounds
+        ?? (result.tools.length > 0
+          ? result.tools.map(tool => `${tool.toolId}:${tool.status === 'error' ? (tool.code ?? 'error') : 'ok'}`)
+          : undefined)
+      const line: ChatLine = {
+        role: 'assistant',
+        content,
+        engine: result.engine || undefined,
+        toolRounds,
+        usage: result.usage,
+        skillsUsed: result.skills.length > 0 ? result.skills : undefined,
+      }
+      if (result.error) {
+        setError(result.error.message)
+        line.content = content || `（请求失败：${result.error.message}）`
+      } else if (result.aborted) {
+        line.content = content ? `${content}\n\n（已停止）` : '（已停止，未生成内容）'
+      }
+      setMessages(prev => [...prev, line])
     } catch (failure) {
-      setMessages(prev => {
-        const copy = [...prev]
-        const idx = copy.findIndex(m => m.role === 'assistant' && m.pending)
-        if (idx >= 0) copy[idx] = { role: 'assistant', content: '（请求失败：' + (failure instanceof Error ? failure.message : '未知错误') + '）' }
-        return copy
-      })
-      setError(failure instanceof Error ? failure.message : '发送失败')
+      const message = failure instanceof Error ? failure.message : '未知错误'
+      setMessages(prev => [...prev, { role: 'assistant', content: `（请求失败：${message}）` }])
+      setError(message)
     } finally {
+      abortRef.current = null
+      setDraft(null)
       setSending(false)
     }
   }
@@ -301,7 +332,7 @@ function ChatPanel({
       <div className="ai-chat-log" ref={scrollRef}>
         {messages.length === 0 && (
           <p className="ai-chat-empty">
-            {externalConnected ? '在下面输入消息开始对话。' : '先在「连接与工具」里登记一个 openai-compatible 模型，才能对话。'}
+            {externalConnected ? '在下面输入消息开始对话。' : '先在「连接与工具」里登记一个模型连接，才能对话。'}
           </p>
         )}
         {messages.map((m, i) => (
@@ -323,10 +354,44 @@ function ChatPanel({
                 <span className="ai-tag">
                   {m.engine.startsWith('external:') ? `外部模型 ${m.engine.replace('external:', '')}` : '未返回模型结果'}
                 </span>
+                {m.usage?.totalTokens ? <span>{m.usage.totalTokens} tokens</span> : null}
+                {m.skillsUsed && m.skillsUsed.length > 0 ? <span>技能 {m.skillsUsed.length} 条</span> : null}
               </div>
             )}
           </div>
         ))}
+        {draft && (
+          <div className="ai-bubble ai-bubble-assistant ai-bubble-streaming">
+            <div className="ai-bubble-role">助手</div>
+            {!!draft.reasoning && (
+              <details className="ai-bubble-reasoning">
+                <summary>思考过程</summary>
+                <div>{draft.reasoning}</div>
+              </details>
+            )}
+            <div className="ai-bubble-content">
+              {draft.text || (draft.tools.length > 0 ? '正在调用能力…' : '思考中…')}
+            </div>
+            {draft.tools.length > 0 && (
+              <div className="ai-bubble-tools">
+                <ul className="ai-tool-list">
+                  {draft.tools.map((tool, index) => (
+                    <li
+                      key={`${tool.callId}-${index}`}
+                      className={`ai-tool-item ai-tool-${tool.status}`}
+                      title={tool.message ?? tool.toolId}
+                    >
+                      {aiToolTitle(tool.toolId)}
+                      <span className="ai-tool-state">
+                        {tool.status === 'running' ? ' · 进行中' : tool.status === 'error' ? ' · 失败' : ' · 完成'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {!!error && <p className="customize-error" role="alert">{error}</p>}
@@ -340,26 +405,41 @@ function ChatPanel({
           disabled={!externalConnected}
           placeholder={externalConnected ? '输入消息，Enter 发送，Shift+Enter 换行' : '先登记外部模型连接'}
         />
-        <button type="button" className="primary-button" onClick={() => void send()} disabled={!externalConnected || sending || !input.trim()}>
-          {sending ? '发送中…' : '发送'}
-        </button>
+        {sending ? (
+          <button type="button" className="ghost-button" onClick={stop} title="停止生成，已生成的部分会保留">
+            停止
+          </button>
+        ) : (
+          <button type="button" className="primary-button" onClick={() => void send()} disabled={!externalConnected || !input.trim()}>
+            发送
+          </button>
+        )}
       </div>
       <p className="ai-muted ai-chat-hint">
-        快捷键：Enter 发送，Shift+Enter 换行。对话走 <code>POST /api/agent/chat</code>，不落库。
+        快捷键：Enter 发送，Shift+Enter 换行。对话走 <code>POST /api/agent/chat/stream</code>（SSE 流式，可随时停止），不落库。
         {!externalConnected && ' 没有连接时不会用本地抽取代替模型回答。'}
       </p>
     </section>
   )
 }
 
+/** 三种协议的显示名；kind 用服务端 wire 值，保存后不用再翻译。 */
+const PROTOCOL_OPTIONS = [
+  { value: 'openai-compatible', title: 'OpenAI 兼容（chat/completions）' },
+  { value: 'anthropic', title: 'Anthropic Messages' },
+  { value: 'openai-responses', title: 'OpenAI Responses' },
+]
+
 /** 常见网关的地址预设：选一家只填地址与常用模型，其余照旧可改。 */
 const PROVIDER_PRESETS = [
-  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
-  { id: 'moonshot', name: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
-  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: '' },
-  { id: 'siliconflow', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1', model: '' },
-  { id: 'ollama', name: 'Ollama（本机）', baseUrl: 'http://127.0.0.1:11434/v1', model: '' },
+  { id: 'openai', name: 'OpenAI', kind: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' },
+  { id: 'openai-responses', name: 'OpenAI Responses', kind: 'openai-responses', baseUrl: 'https://api.openai.com/v1', model: 'gpt-5' },
+  { id: 'anthropic', name: 'Anthropic', kind: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-5' },
+  { id: 'deepseek', name: 'DeepSeek', kind: 'openai-compatible', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { id: 'moonshot', name: 'Moonshot', kind: 'openai-compatible', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+  { id: 'openrouter', name: 'OpenRouter', kind: 'openai-compatible', baseUrl: 'https://openrouter.ai/api/v1', model: '' },
+  { id: 'siliconflow', name: '硅基流动', kind: 'openai-compatible', baseUrl: 'https://api.siliconflow.cn/v1', model: '' },
+  { id: 'ollama', name: 'Ollama（本机）', kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:11434/v1', model: '' },
 ]
 
 /** 连接 options 里用户看得见的那部分摘要（不含 default 标记）。 */
@@ -392,6 +472,7 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
+  const [kind, setKind] = useState('openai-compatible')
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -413,6 +494,7 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
   useEffect(() => {
     if (!editing) return
     setName(editing.name)
+    setKind(editing.kind || 'openai-compatible')
     setBaseUrl(editing.baseUrl ?? '')
     setModel(editing.model ?? '')
     setApiKey('')
@@ -438,7 +520,7 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
   }
 
   const reset = () => {
-    setName(''); setBaseUrl(''); setModel(''); setApiKey('')
+    setName(''); setKind('openai-compatible'); setBaseUrl(''); setModel(''); setApiKey('')
     setHeadersText(''); setTimeoutMs(''); setThinking('')
     setModels([]); setModelsNote(''); fetchedFor.current = ''
   }
@@ -450,10 +532,12 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
     setModelsNote('')
     try {
       // 带上高级项：有些中转站要自定义头才允许列模型。
-      const result = await api.listAgentModels(url, apiKey.trim() || undefined, buildOptions())
+      const result = await api.listAgentModels(url, apiKey.trim() || undefined, buildOptions(), kind)
       setModels(result.models)
-      fetchedFor.current = `${url}|${apiKey.trim()}`
-      setModelsNote(`已拿到 ${result.models.length} 个模型；从下拉里挑，或直接填清单外的名字。`)
+      fetchedFor.current = `${url}|${apiKey.trim()}|${kind}`
+      setModelsNote(result.supported
+        ? `已拿到 ${result.models.length} 个模型；从下拉里挑，或直接填清单外的名字。`
+        : '这个协议不提供模型清单（如 Anthropic），直接填模型名即可。')
     } catch (failure) {
       setModels([])
       // 失败不记住"已拉过"：填上密钥后失焦要能自动再试一次（401 多半就是还没填 key）。
@@ -468,7 +552,7 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
   const autoFetch = () => {
     const url = baseUrl.trim()
     if (!/^https?:\/\//i.test(url)) return
-    if (fetchedFor.current === `${url}|${apiKey.trim()}`) return
+    if (fetchedFor.current === `${url}|${apiKey.trim()}|${kind}`) return
     void fetchModels()
   }
 
@@ -484,7 +568,7 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
       const saved = await api.registerAgentConnection({
         id: editing?.id,
         name: name.trim(),
-        kind: 'openai-compatible',
+        kind,
         baseUrl: baseUrl.trim(),
         model: model.trim(),
         apiKey: apiKey.trim() || undefined,
@@ -504,7 +588,7 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
 
   return (
     <div className="ai-register">
-      <h4>{editing ? `编辑连接：${editing.name}` : '登记外部连接（openai-compatible）'}</h4>
+      <h4>{editing ? `编辑连接：${editing.name}` : '登记外部连接（三种协议）'}</h4>
       {!editing && (
         <label className="customize-field">
           <span>从预设开始（可选）</span>
@@ -515,6 +599,7 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
               const preset = PROVIDER_PRESETS.find(item => item.id === event.target.value)
               if (!preset) return
               if (!name.trim()) setName(preset.name)
+              setKind(preset.kind)
               setBaseUrl(preset.baseUrl)
               if (preset.model) setModel(preset.model)
             }}
@@ -530,6 +615,24 @@ function RegisterConnection({ editing, onRegistered, onCancel }: {
         <label className="customize-field">
           <span>名称</span>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="如 我的网关" />
+        </label>
+        <label className="customize-field">
+          <span>协议</span>
+          <select
+            className="settings-search"
+            value={kind}
+            onChange={event => {
+              setKind(event.target.value)
+              // 换协议后旧清单不再适用，清掉免得选了一个对不上的模型名。
+              setModels([])
+              setModelsNote('')
+              fetchedFor.current = ''
+            }}
+          >
+            {PROTOCOL_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.title}</option>
+            ))}
+          </select>
         </label>
         <label className="customize-field">
           <span>接口地址（到 /v1）</span>
@@ -665,5 +768,173 @@ function SourceValidatePanel() {
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * 技能库：按关键词命中注入 system 的一段专业说明。
+ *
+ * 借自 refgd/legado 的 SKILL.md 思路，但放在本地磁盘（`agent-skills/<id>.md`），
+ * 用户可以直接改。内置技能能覆盖、不能删 —— 删了下次还会出现，只会让人困惑。
+ * 列表默认单行，正文点开才展开，和书源列表同一套紧凑习惯。
+ */
+function SkillsSection() {
+  const [skills, setSkills] = useState<AgentSkill[]>([])
+  const [loadError, setLoadError] = useState('')
+  const [expanded, setExpanded] = useState('')
+  const [editing, setEditing] = useState<AgentSkill | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  const refresh = () => {
+    api.listAgentSkills()
+      .then(result => { setSkills(result.skills); setLoadError('') })
+      .catch(err => setLoadError(err instanceof Error ? err.message : '读取技能失败'))
+  }
+  useEffect(() => { refresh() }, [])
+
+  const remove = async (skill: AgentSkill) => {
+    if (!window.confirm(`删除技能「${skill.name}」？会移到 agent-skills/.trash，可以找回。`)) return
+    try {
+      await api.deleteAgentSkill(skill.id)
+      if (editing?.id === skill.id) setEditing(null)
+      refresh()
+    } catch (failure) {
+      setLoadError(failure instanceof Error ? failure.message : '删除失败')
+    }
+  }
+
+  const openEditor = (skill: AgentSkill | null) => {
+    setEditing(skill)
+    setCreating(skill === null)
+  }
+
+  return (
+    <section className="ai-section">
+      <h3>技能</h3>
+      <p className="ai-section-hint">
+        技能是一段按需注入的方法说明：用户的话命中关键词才进入上下文，一次最多 3 条。
+        内置技能可以「覆盖」保存成自己的版本，但不能删除。
+      </p>
+      {loadError ? (
+        <p className="customize-error" role="alert">{loadError}</p>
+      ) : (
+        <ul className="ai-skill-list">
+          {skills.map(skill => (
+            <li key={skill.id} className={`ai-skill-item${expanded === skill.id ? ' expanded' : ''}`}>
+              <div className="ai-skill-main">
+                <button
+                  type="button"
+                  className="ai-skill-name"
+                  onClick={() => setExpanded(current => (current === skill.id ? '' : skill.id))}
+                  title="展开/收起技能正文"
+                >
+                  {skill.name}
+                </button>
+                {skill.builtin && <span className="ai-tag ai-skill-badge">内置</span>}
+                {!skill.enabled && <span className="ai-tag ai-tag-warn ai-skill-badge">已停用</span>}
+                <span className="ai-skill-desc">{skill.description || '—'}</span>
+                {skill.keywords.length > 0 && (
+                  <span className="ai-skill-keywords">{skill.keywords.slice(0, 4).join(' / ')}</span>
+                )}
+              </div>
+              <div className="ai-skill-actions">
+                <button type="button" className="link-button" onClick={() => openEditor(skill)}>
+                  {skill.builtin ? '覆盖' : '编辑'}
+                </button>
+                {!skill.builtin && (
+                  <button type="button" className="link-button ai-conn-del" onClick={() => void remove(skill)}>删除</button>
+                )}
+              </div>
+              {expanded === skill.id && <pre className="ai-skill-content">{skill.content}</pre>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {(creating || editing) ? (
+        <SkillForm
+          key={editing?.id ?? 'new'}
+          skill={editing}
+          onCancel={() => { setCreating(false); setEditing(null) }}
+          onSaved={() => { setCreating(false); setEditing(null); refresh() }}
+        />
+      ) : (
+        <div className="customize-actions">
+          <button type="button" className="ghost-button" onClick={() => openEditor(null)}>新建技能</button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function SkillForm({ skill, onCancel, onSaved }: { skill: AgentSkill | null; onCancel: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(skill?.name ?? '')
+  const [description, setDescription] = useState(skill?.description ?? '')
+  const [keywords, setKeywords] = useState((skill?.keywords ?? []).join(','))
+  const [content, setContent] = useState(skill?.content ?? '')
+  const [enabled, setEnabled] = useState(skill?.enabled ?? true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    if (!name.trim() || !content.trim()) { setError('名称与正文都要填'); return }
+    setBusy(true)
+    setError('')
+    const req: AgentSkillInput = {
+      // 覆盖内置技能时带上同 id；新建时不带，由服务端按名称生成。
+      id: skill?.id,
+      name: name.trim(),
+      description: description.trim(),
+      keywords: keywords.split(/[,，\s]+/).map(item => item.trim()).filter(Boolean),
+      content: content.trim(),
+      enabled,
+    }
+    try {
+      await api.saveAgentSkill(req)
+      onSaved()
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '保存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="ai-skill-form">
+      <h4>{skill ? (skill.builtin ? `覆盖内置技能：${skill.name}` : `编辑技能：${skill.name}`) : '新建技能'}</h4>
+      <div className="ai-field-grid">
+        <label className="customize-field">
+          <span>名称</span>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="如 书源排错" />
+        </label>
+        <label className="customize-field">
+          <span>关键词（逗号分隔，命中才注入）</span>
+          <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="书源,搜不到,目录为空" />
+        </label>
+      </div>
+      <label className="customize-field">
+        <span>说明（一句话）</span>
+        <input value={description} onChange={e => setDescription(e.target.value)} placeholder="按「结构 → 搜索 → 目录 → 正文」定位问题" />
+      </label>
+      <label className="customize-field">
+        <span>正文（会作为 system 注入，最多 4000 字）</span>
+        <textarea
+          rows={6}
+          value={content}
+          onChange={e => setContent(e.target.value.slice(0, 4000))}
+          placeholder="写清先查什么、给什么格式、哪些动作必须先问。"
+        />
+      </label>
+      <label className="ai-check">
+        <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+        <span>启用（停用后不会被关键词命中）</span>
+      </label>
+      {!!error && <p className="customize-error" role="alert">{error}</p>}
+      <div className="customize-actions">
+        <button type="button" className="primary-button" onClick={() => void submit()} disabled={busy}>
+          {busy ? '保存中…' : '保存'}
+        </button>
+        <button type="button" className="ghost-button" onClick={onCancel} disabled={busy}>取消</button>
+      </div>
+    </div>
   )
 }

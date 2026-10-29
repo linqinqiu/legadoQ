@@ -7,6 +7,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -30,24 +32,32 @@ class SearchDeadlineTest {
 
     @Test
     fun `到点就返回 不等慢源`() {
+        // 慢源用「阻塞闸门」模拟真实链路：RuleRunner 走阻塞式 HttpClient.send()，不响应协程取消。
+        // 之前用 delay(30_000) 模拟，取消时 delay 会立刻抛 CancellationException 并被 runCatching
+        // 吞掉，`done` 照样 +1 —— 机器繁忙时会偶发「全部算完成、truncated=false」的假失败。
+        val gate = CountDownLatch(1)
         val finished = AtomicInteger()
         val started = System.currentTimeMillis()
-        val outcome = kotlinx.coroutines.runBlocking {
-            collectWithDeadline(
-                values = (1..40).toList(),
-                limit = 4,
-                deadlineMs = 300,
-            ) { value ->
-                // 一半很快、一半很慢（模拟慢站），慢的明显超过截止
-                if (value % 2 == 0) {
-                    delay(5)
+        val outcome = try {
+            kotlinx.coroutines.runBlocking {
+                collectWithDeadline(
+                    values = (1..40).toList(),
+                    limit = 4,
+                    deadlineMs = 300,
+                ) { value ->
+                    // 一半很快、一半很慢（模拟慢站），慢的会一直占着并发名额直到测试收尾
+                    if (value % 2 == 0) {
+                        delay(5)
+                    } else {
+                        gate.await(30, TimeUnit.SECONDS)
+                    }
                     finished.incrementAndGet()
-                } else {
-                    delay(30_000)
-                    finished.incrementAndGet()
+                    value
                 }
-                value
             }
+        } finally {
+            // 到点返回后松开闸门，让被占住的线程自己收尾（它们已经不在返回值里了）
+            gate.countDown()
         }
         val elapsed = System.currentTimeMillis() - started
 

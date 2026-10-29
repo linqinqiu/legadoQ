@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AgentChatMessage, type AgentConnection } from '../../lib/api'
 import { Icon } from '../../icons'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
-import { loadAiToolGroups, rememberToolIndex, toolRoundGroups } from '../../lib/aiToolGroups'
+import { aiToolTitle, loadAiToolGroups, rememberToolIndex, toolRoundGroups } from '../../lib/aiToolGroups'
+import { streamAgentChat, type AgentStreamDraft } from './agentStream'
 import {
   activeSession,
   appendAiLine,
@@ -11,7 +12,6 @@ import {
   deleteAiSession,
   newAiSession,
   renameAiSession,
-  resolvePendingAiLine,
   setAiChatOpen,
   setAiSystemPrompt,
   switchAiSession,
@@ -197,6 +197,9 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
   const [loadError, setLoadError] = useState('')
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  /** 正在流式生成的回答；结束后才写进会话历史。 */
+  const [draft, setDraft] = useState<AgentStreamDraft | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const [error, setError] = useState('')
   const [showSystem, setShowSystem] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -213,6 +216,15 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [session.messages.length, sending])
+  // 流式期间每个增量都跟到底：用 auto，平滑滚动在每帧都触发时反而像卡住。
+  useEffect(() => {
+    if (!draft) return
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
+  }, [draft?.text, draft?.tools.length])
+
+  // 面板被收起/切页时断开流：服务端会随之中止，不再继续烧模型额度。
+  // 已经收到的半句话仍会在 send 的收尾里落库，不算白问。
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   // 展开时把焦点给输入框：随手就能问，不用再点一次
   useEffect(() => {
@@ -228,6 +240,8 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const stop = () => abortRef.current?.abort()
+
   const send = async () => {
     const text = input.trim()
     if (!text || sending || !external) return
@@ -236,30 +250,64 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
     appendAiLine({ role: 'user', content: text })
     const history: ChatLine[] = [...session.messages, { role: 'user', content: text, at: Date.now() }]
 
-    // 先放一个"思考中"占位气泡，位置记下来，回来精确替换它
-    appendAiLine({ role: 'assistant', content: '', toolRounds: [] })
-    const pendingIndex = history.length
-
     const payload: AgentChatMessage[] = []
     if (session.systemPrompt.trim()) payload.push({ role: 'system', content: session.systemPrompt.trim() })
     const ctxMsg = uiContextMessage(uiContext ?? EMPTY_UI_CONTEXT)
     if (ctxMsg) payload.push(ctxMsg)
     for (const m of history) payload.push({ role: m.role, content: m.content })
 
+    const controller = new AbortController()
+    abortRef.current = controller
     setSending(true)
     try {
-      const res = await api.agentChat(payload, loadAiToolGroups())
-      resolvePendingAiLine(pendingIndex, {
-        role: 'assistant',
-        content: res.content,
-        engine: res.engine,
-        toolRounds: res.toolRounds,
+      const result = await streamAgentChat(payload, {
+        toolGroups: loadAiToolGroups(),
+        signal: controller.signal,
+        onUpdate: setDraft,
       })
+      const content = (result.content || result.text).trim()
+      const engine = result.engine || undefined
+      const toolRounds = result.toolRounds
+        ?? (result.tools.length > 0
+          ? result.tools.map(tool => `${tool.toolId}:${tool.status === 'error' ? (tool.code ?? 'error') : 'ok'}`)
+          : undefined)
+      const skillsUsed = result.skills.length > 0 ? result.skills : undefined
+      if (result.error) {
+        setError(result.error.message)
+        appendAiLine({
+          role: 'assistant',
+          content: content || `（请求失败：${result.error.message}）`,
+          engine,
+          toolRounds,
+          usage: result.usage,
+          skillsUsed,
+        })
+      } else if (result.aborted) {
+        appendAiLine({
+          role: 'assistant',
+          content: content ? `${content}\n\n（已停止）` : '（已停止，未生成内容）',
+          engine,
+          toolRounds,
+          usage: result.usage,
+          skillsUsed,
+        })
+      } else {
+        appendAiLine({
+          role: 'assistant',
+          content,
+          engine,
+          toolRounds,
+          usage: result.usage,
+          skillsUsed,
+        })
+      }
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : '未知错误'
-      resolvePendingAiLine(pendingIndex, { role: 'assistant', content: `（请求失败：${message}）` })
+      appendAiLine({ role: 'assistant', content: `（请求失败：${message}）` })
       setError(message)
     } finally {
+      abortRef.current = null
+      setDraft(null)
       setSending(false)
       inputRef.current?.focus()
     }
@@ -323,7 +371,7 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
           <span className="ai-tag ai-tag-ok">已连接外部模型{external.name ? `：${external.name}` : ''}</span>
         ) : (
           <span className="ai-tag ai-tag-warn">
-            未连接外部模型 —— 去「设置 → AI 接入」登记一个 openai-compatible 地址
+            未连接外部模型 —— 去「设置 → AI 接入」登记一个模型连接
           </span>
         )}
         <ContextHint uiContext={uiContext} />
@@ -376,8 +424,46 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
                 </ul>
               </div>
             )}
+            {m.role === 'assistant' && (m.usage?.totalTokens || (m.skillsUsed && m.skillsUsed.length > 0)) && (
+              <div className="ai-bubble-meta">
+                {m.usage?.totalTokens ? <span>{m.usage.totalTokens} tokens</span> : null}
+                {m.skillsUsed && m.skillsUsed.length > 0 ? <span>技能 {m.skillsUsed.length} 条</span> : null}
+              </div>
+            )}
           </div>
         ))}
+        {draft && (
+          <div className="ai-bubble ai-bubble-assistant ai-bubble-streaming">
+            <div className="ai-bubble-role">助手</div>
+            {!!draft.reasoning && (
+              <details className="ai-bubble-reasoning">
+                <summary>思考过程</summary>
+                <div>{draft.reasoning}</div>
+              </details>
+            )}
+            <div className="ai-bubble-content">
+              {draft.text || (draft.tools.length > 0 ? '正在调用能力…' : '思考中…')}
+            </div>
+            {draft.tools.length > 0 && (
+              <div className="ai-bubble-tools">
+                <ul className="ai-tool-list">
+                  {draft.tools.map((tool, index) => (
+                    <li
+                      key={`${tool.callId}-${index}`}
+                      className={`ai-tool-item ai-tool-${tool.status}`}
+                      title={tool.message ?? tool.toolId}
+                    >
+                      {aiToolTitle(tool.toolId)}
+                      <span className="ai-tool-state">
+                        {tool.status === 'running' ? ' · 进行中' : tool.status === 'error' ? ' · 失败' : ' · 完成'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {error && <p className="customize-error ai-fab-error" role="alert">{error}</p>}
@@ -392,9 +478,15 @@ function AiFloatingPanel({ uiContext, onHide, fabPos }: { uiContext?: UiContext;
           placeholder={external ? '问点什么…（Enter 发送，Shift+Enter 换行）' : '未连接外部模型，暂不可用'}
           disabled={!external || sending}
         />
-        <button type="button" className="primary-button" onClick={() => void send()} disabled={!external || sending || !input.trim()}>
-          {sending ? '…' : '发送'}
-        </button>
+        {sending ? (
+          <button type="button" className="ghost-button" onClick={stop} title="停止生成，已生成的部分会保留">
+            停止
+          </button>
+        ) : (
+          <button type="button" className="primary-button" onClick={() => void send()} disabled={!external || !input.trim()}>
+            发送
+          </button>
+        )}
       </div>
     </aside>
   )

@@ -30,10 +30,35 @@ object AgentProfileStore {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; encodeDefaults = true; prettyPrint = true }
 
+    /**
+     * 连接类型。**wire 值必须与 [LlmProvider.id] 对上** —— 注册表按它挑协议实现。
+     *
+     * 三种：
+     * - `openai-compatible`：`/v1/chat/completions`（默认档，任何兼容服务）
+     * - `anthropic`：`/v1/messages`（Claude）
+     * - `openai-responses`：`/v1/responses`（gpt-5 / o 系列推荐）
+     *
+     * 老档案只写了 `openai-compatible`，照常可用 —— 新枚举值只是多了两条可选路。
+     */
     @Serializable
-    enum class ProfileKind {
+    enum class ProfileKind(val wire: String) {
         @SerialName("openai-compatible")
-        OPENAI_COMPATIBLE,
+        OPENAI_COMPATIBLE("openai-compatible"),
+
+        @SerialName("anthropic")
+        ANTHROPIC("anthropic"),
+
+        @SerialName("openai-responses")
+        OPENAI_RESPONSES("openai-responses");
+
+        companion object {
+            /** 宽容解析：大小写、下划线/短横线混写都认；认不出返回 null。 */
+            fun parse(raw: String?): ProfileKind? {
+                val normalized = raw?.trim()?.lowercase()?.replace('_', '-') ?: return null
+                if (normalized == "openaicompatible") return OPENAI_COMPATIBLE
+                return entries.firstOrNull { it.wire == normalized }
+            }
+        }
     }
 
     @Serializable

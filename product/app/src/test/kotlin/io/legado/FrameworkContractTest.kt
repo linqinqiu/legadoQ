@@ -19,19 +19,21 @@ import kotlin.io.path.readText
  *
  * 它要守住的几条「框架纪律」（不依赖具体实现，只钉形状与不变量）：
  *
- * 1. **协议可插拔、框架不夹带默认协议**：`LlmProviderRegistry` 只内置 `openai-compatible` 一个默认实现，
+ * 1. **协议可插拔、框架不夹带默认协议**：`LlmProviderRegistry` 内置三种**协议实现**（openai-compatible /
+ *    anthropic / openai-responses），但框架本身不认识任何一家 —— 它们都只是可替换的 [LlmProvider]。
  *    重复 id 注册被拒绝（返回 false，不抛），外部 provider 用新 id 可正常注册/注销。
  * 2. **连接选择可插拔**：`ConnectionSelectorRegistry` 只内置 `FirstProfileSelector`（首连接优先，
  *    即 AGENTS.md §4 的「已确认正确行为」）；外部策略用命名类可增删，同名类注册被拒。
  * 3. **工具面可插拔、内置工具不可被默认摘掉**：`ToolRegistry` 内置一份 `BuiltinTools.all()`，
  *    外部工具可注册/注销，但内置工具默认拒绝删除（保持框架不被插件悄悄削弱）。
- * 4. **端点计数契约**：随包的 `agent-api.json` 是 144 条端点 / 19 个组，其中 `AI 自定义接入` 组 9 条。
+ * 4. **端点计数契约**：随包的 `agent-api.json` 是 151 条端点 / 19 个组，其中 `AI 自定义接入` 组 13 条。
  *    这是与 `http/` 路由文件双向核对的真实数目（见 AGENTS.md §6）。计数随端点增减同步更新：
- *    141（移除插件）→ 143（补全局 Cookie 管理两条）→ 144（连接模型清单探针），见
+ *    141（移除插件）→ 143（补全局 Cookie 管理两条）→ 144（连接模型清单探针）
+ *    → 145（正文刷新）→ 147（登录界面本地解析两条）→ 151（流式对话 + 技能库三条），见
  *    `web/test/ApiCatalog.test.ts` 同一串注释。
  * 5. **框架容器不注册任何 HTTP 路由**：`plugin/`（纯框架容器）与 `ai/`（内置 AI 接入，类比 `features/`）
  *    都不 import `io.ktor.server.routing`、不出现 `routing {` / `route(` —— 端点只由 `http/` 装配，
- *    因此 144 计数稳定，框架扩展不会凭空多出路由。
+ *    因此 151 计数稳定，框架扩展不会凭空多出路由。
  *
  * 注意：本文件只断言「框架形状」，不绑定任何具体业务端点/工具 id；新增内置工具或 provider 时，
  * 只要不破坏上述不变量，本测试照常通过。
@@ -45,14 +47,19 @@ class FrameworkContractTest {
     // ===== 1. LLM 协议层：可插拔 + 不夹带默认协议 =====
 
     @Test
-    fun `LlmProviderRegistry 只内置 openai-compatible 且拒绝重复 id`() {
+    fun `LlmProviderRegistry 内置三种协议且拒绝重复 id`() {
         val registry = LlmProviderRegistry()
 
-        // 默认只含一个内置实现，且就是 OpenAiCompatibleProvider（类型身份不能漂）。
-        assertEquals("默认只应内置一个 provider", 1, registry.size())
+        // 内置三种协议实现 —— 都是可替换的 provider，框架不认识任何一家。
+        assertEquals("默认应内置三种协议实现", 3, registry.size())
         assertTrue(
-            "内置 provider 必须是 OpenAiCompatibleProvider",
+            "openai-compatible 必须是 OpenAiCompatibleProvider",
             registry.find("openai-compatible") is OpenAiCompatibleProvider,
+        )
+        assertTrue("anthropic 必须是 AnthropicProvider", registry.find("anthropic") is AnthropicProvider)
+        assertTrue(
+            "openai-responses 必须是 OpenAiResponsesProvider",
+            registry.find("openai-responses") is OpenAiResponsesProvider,
         )
 
         // 用相同 id 注册应被拒（返回 false），且注册表数量不变 —— 不允许静默覆盖。
@@ -60,14 +67,14 @@ class FrameworkContractTest {
             "重复 id 注册必须返回 false",
             registry.register(DupIdProvider),
         )
-        assertEquals("重复 id 注册后数量不应变化", 1, registry.size())
+        assertEquals("重复 id 注册后数量不应变化", 3, registry.size())
 
         // 用新 id 的外部 provider 可正常注册，并能被注销。
         assertTrue("新 id 的 provider 应能注册", registry.register(ExternalOllamaProvider))
-        assertEquals(2, registry.size())
+        assertEquals(4, registry.size())
         assertNotNull("应能按新 id 找到外部 provider", registry.find("ollama-external"))
         assertTrue("应能注销外部 provider", registry.unregister("ollama-external"))
-        assertEquals(1, registry.size())
+        assertEquals(3, registry.size())
     }
 
     // ===== 2. 连接选择层：可插拔 + 首连接优先为默认 =====
@@ -120,10 +127,10 @@ class FrameworkContractTest {
         assertEquals(before, registry.size())
     }
 
-    // ===== 4. 端点计数契约（144 / 19 / 9） =====
+    // ===== 4. 端点计数契约（151 / 19 / 13） =====
 
     @Test
-    fun `agent-api 契约：144 端点、19 组、AI 自定义接入 9 条`() {
+    fun `agent-api 契约：151 端点、19 组、AI 自定义接入 13 条`() {
         // RouteCatalog 从 classpath 读 /agent-api.json，serve 会补齐 version、count 与 baseUrl。
         val raw = RouteCatalog.serve("0.0.0-contract", "http://127.0.0.1:1234")
         val root = Json.parseToJsonElement(raw).jsonObject
@@ -134,8 +141,8 @@ class FrameworkContractTest {
         val declaredCount = root["count"]?.jsonPrimitive?.int
         assertEquals("count 必须等于 endpoints 实际条数", endpoints.size, declaredCount)
 
-        // 全量契约：144 条端点（插件移除后 141，补 Cookie 两条与模型清单探针一条）。
-        assertEquals("端点总数必须是 144", 144, endpoints.size)
+        // 全量契约：151 条端点（147 + 流式对话 + 技能库三条）。
+        assertEquals("端点总数必须是 151", 151, endpoints.size)
 
         // baseUrl 必须按运行时地址注入，不能沿用文件里写死的端口。
         val injectedBase = root["howToConnect"]?.jsonObject?.get("baseUrl")?.jsonPrimitive?.content
@@ -144,9 +151,9 @@ class FrameworkContractTest {
         val groups = endpoints.map { (it as JsonObject)["group"]!!.jsonPrimitive.content }
         // 19 个互不相同的组。
         assertEquals("组数必须是 19", 19, groups.toSet().size)
-        // AI 自定义接入组恰好 9 条（含新增的模型清单探针）。
+        // AI 自定义接入组恰好 13 条（含模型清单探针、流式对话与技能库三条）。
         val aiGroupCount = groups.count { it == "AI 自定义接入" }
-        assertEquals("AI 自定义接入 组必须是 9 条", 9, aiGroupCount)
+        assertEquals("AI 自定义接入 组必须是 13 条", 13, aiGroupCount)
     }
 
     // ===== 5. 框架容器不注册任何 HTTP 路由 =====

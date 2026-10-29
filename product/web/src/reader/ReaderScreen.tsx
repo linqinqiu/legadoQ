@@ -19,6 +19,7 @@ import { setAiChatOpen } from '../features/ai/aiChatStore'
 import { setSelection, setSelectionFromDraft } from '../lib/selectionStore'
 import { NotesPanel } from './NotesPanel'
 import { BookSearchDialog } from './BookSearchDialog'
+import { RefreshChaptersModal } from './RefreshChaptersModal'
 import { TocDrawerHeader } from './TocDrawerHeader'
 import { ReaderHeader } from './ReaderHeader'
 import { Md3BottomBar, Md3TopBar } from './Md3Chrome'
@@ -190,6 +191,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    */
   const [chapterWordCounts, setChapterWordCounts] = useState<ReadonlyMap<string, number>>(new Map())
   const [offlineStatsModal, setOfflineStatsModal] = useState(false)
+  const [showRefreshChapters, setShowRefreshChapters] = useState(false)
   const [localSyncing, setLocalSyncing] = useState(false)
   const [localSyncProgress, setLocalSyncProgress] = useState({ current: 0, total: 0 })
   const localSyncAbortRef = useRef<AbortController | null>(null)
@@ -467,6 +469,54 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     const timer = window.setInterval(syncCacheStatus, 3000)
     return () => window.clearInterval(timer)
   }, [cacheStatus.state, syncCacheStatus])
+
+  /**
+   * 手动刷新正文之后，屏幕上挂着的三处正文都要跟着换：当前章、下方续接段、向前接的段。
+   * 服务端缓存此时已经是新正文，这里重取命中缓存、不会二次回源；失败只影响界面这一份，
+   * 缓存里已是新内容，翻页回来仍能看到。
+   */
+  const handleChaptersRefreshed = useCallback((chapterUrls: string[]) => {
+    if (chapterUrls.length === 0) return
+    const refreshed = new Set(chapterUrls)
+    chapterUrls.forEach(url => preloadedContentRef.current.delete(url))
+    setCachedChapterUrls(prev => {
+      const next = new Set(prev)
+      chapterUrls.forEach(url => next.add(url))
+      return next
+    })
+    const sourceId = currentBook.details.sourceId
+    const bookUrl = currentBook.bookUrl
+    const updateFlow = async (items: { chapter: Chapter; content: string }[]) => {
+      if (!items.some(item => refreshed.has(item.chapter.url))) return items
+      return Promise.all(items.map(async item => {
+        if (!refreshed.has(item.chapter.url)) return item
+        const result = await api.content(sourceId, item.chapter.url, bookUrl).catch(() => null)
+        return result ? { chapter: item.chapter, content: result.content } : item
+      }))
+    }
+    const tailBefore = flowTailRef.current
+    void updateFlow(tailBefore).then(next => { if (next !== tailBefore) setFlowTail(next) })
+    const headBefore = flowHeadRef.current
+    void updateFlow(headBefore).then(next => { if (next !== headBefore) setFlowHead(next) })
+    const currentUrl = currentChapterUrlRef.current
+    if (currentUrl && refreshed.has(currentUrl)) {
+      void api.content(sourceId, currentUrl, bookUrl)
+        .then(result => {
+          if (currentChapterUrlRef.current !== currentUrl) return
+          setContent(result.content)
+          chapterBaseContentRef.current = result.content
+          setMediaUrl(result.mediaUrl ?? null)
+          setChapterWordCounts(prev => {
+            const next = new Map(prev)
+            next.set(currentUrl, result.content.length)
+            return next
+          })
+          warmContentImages(result.content, currentUrl, sourceId)
+        })
+        .catch(error => toast.error(`本章缓存已更新，但界面重载失败：${error instanceof Error ? error.message : '未知错误'}`))
+    }
+    void syncCacheStatus()
+  }, [currentBook.bookUrl, currentBook.details.sourceId, syncCacheStatus])
 
   useEffect(() => {
     // 名字读单一来源而不是写死「legadoQ」：用户改了应用名之后，
@@ -2405,6 +2455,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         notesCount={notes.length}
         onToggleNotes={() => setNotesPanel(value => !value)}
         onOpenSourceSwitch={() => { setActiveDrawer(null); setShowSourceSwitch(true) }}
+        onOpenRefresh={currentBook.details.sourceId === 'loc_book' ? undefined : () => setShowRefreshChapters(true)}
         inShelf={inShelf}
         onToggleShelf={() => void toggleShelf()}
         onClose={() => {
@@ -2723,6 +2774,19 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           setOfflineStatsModal(false)
           void syncCacheStatus()
         }}
+      />
+    )}
+
+    {/* 手动刷新正文：单章或一批，绕过缓存回源重取 */}
+    {showRefreshChapters && (
+      <RefreshChaptersModal
+        sourceId={currentBook.details.sourceId}
+        bookUrl={currentBook.bookUrl}
+        chapters={currentBook.chapters}
+        currentIndex={chapterIndex}
+        cachedUrls={cachedChapterUrls}
+        onClose={() => setShowRefreshChapters(false)}
+        onRefreshed={handleChaptersRefreshed}
       />
     )}
 

@@ -47,6 +47,15 @@ data class JsExecutionContext(
     var copyText: String? = null,
     var reRenderUi: Boolean = false,
     /**
+     * 登录脚本用 `java.startBrowserAwait('data:text/html;base64,…')` 打开的书源自带设置页。
+     * 这种页面没有远端地址，交给界面 iframe 本地渲染；关闭时把整页 HTML 交回来，
+     * 下一轮以 `browserCompleted` 重跑时就能从 body 里读到用户选的值。
+     */
+    var inlineHtml: String? = null,
+    var inlineTitle: String? = null,
+    /** 界面交回的本地页面 HTML（上一轮 `inlineHtml` 的渲染结果）。 */
+    var browserBody: String? = null,
+    /**
      * 正文 JS 里给 `yp_url` 赋值 = "这一章的内容是一个媒体地址"（音频/EPUB 直链）。
      * 音频源（如懒人听书）大量这么写；不认的话正文规则返回空、整章取不到。
      */
@@ -91,6 +100,27 @@ internal fun reloadFetchUrl(url: String): String {
     return "$url,$browserHeaders"
 }
 
+/**
+ * 解开 `data:text/html;base64,…` / `data:text/html;charset=utf-8,…` 里的页面正文。
+ * 聚合书源把设置页整页塞进 `java.startBrowserAwait` 的地址里（实测「光遇聚合」的
+ * 线路/书源/段评三个设置页都这么做），没有远端地址可开；返回 null 表示不是可解码的数据地址。
+ */
+internal fun decodeDataUrlText(url: String): String? {
+    if (!url.startsWith("data:", ignoreCase = true)) return null
+    val comma = url.indexOf(',')
+    if (comma < 0) return null
+    val header = url.substring(5, comma)
+    val payload = url.substring(comma + 1)
+    return runCatching {
+        if (header.contains(";base64", ignoreCase = true)) {
+            String(Base64.getMimeDecoder().decode(payload), Charsets.UTF_8)
+        } else {
+            // data URL 里的 `+` 是字面量，不是表单编码的空格。
+            java.net.URLDecoder.decode(payload.replace("+", "%2B"), Charsets.UTF_8)
+        }
+    }.getOrNull()
+}
+
 class JsSandbox(private val runner: RuleRunner? = null) {
     private val sessionStore = ConcurrentHashMap<String, Any>()
 
@@ -129,12 +159,14 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // 书源的 jsLib 对所有规则 JS 可见（Legado 语义），集中在这里注入，
         // 避免每个调用点各自拼接、漏拼一处就整段脚本 ReferenceError。
         val library = context?.jsLib?.takeIf { it.isNotBlank() }
-        val cleanScript = if (library == null) rawScript else "$library\n$rawScript"
-
-        val executableScript = if (Regex("""\breturn\b""").containsMatchIn(cleanScript)) {
-            "(function(){\n$cleanScript\n})()"
+        // jsLib 必须先在**全局作用域**单独求值，动作脚本再在同一个 scope 里跑：
+        // 书源库把工具函数写成顶层 `function getVariable(k){…}`，动作里却用 `this.getVariable('线路')`
+        // 去调（this 在全局函数里指全局对象）。过去把库和动作拼成一段再包 IIFE，函数声明
+        // 全落进 IIFE 的局部作用域，`this.getVariable` 当场 TypeError——光遇聚合的设置页就卡在这。
+        val executableScript = if (Regex("""\breturn\b""").containsMatchIn(rawScript)) {
+            "(function(){\n$rawScript\n})()"
         } else {
-            cleanScript
+            rawScript
         }
 
         val cx = BoundedJs.enter()
@@ -208,6 +240,11 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             ScriptableObject.putProperty(scope, "book", createBookBridge(scope, context))
             // chapter 对象：正文规则会引用 chapter.index / chapter.title
             ScriptableObject.putProperty(scope, "chapter", createChapterBridge(scope, context))
+
+            // 先求值书源脚本库；顶层 `function`/`let` 声明落成全局属性，动作里的 this.xxx 才解析得到。
+            if (library != null) {
+                cx.evaluateString(scope, library, "jsLib.js", 1, null)
+            }
 
             val result = cx.evaluateString(scope, executableScript, "rule.js", 1, null)
             // 音频 / EPUB 直链：书源正文 JS 会给全局 `yp_url` 赋媒体地址（无 `var`），脚本本身不 `return`。
@@ -333,12 +370,37 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             call(cx, s, s, args) as Scriptable
     }
 
-    private fun jsValueToString(context: Context, scope: Scriptable, value: Any?): String? = when (value) {        null, Context.getUndefinedValue() -> null
+    private fun jsValueToString(context: Context, scope: Scriptable, value: Any?): String? = when (value) {
+        null, Context.getUndefinedValue() -> null
+        is CallableBody -> value.text
         is CharSequence -> value.toString()
         is Number, is Boolean -> value.toString()
         else -> runCatching {
             NativeJSON.stringify(context, scope, value, null, null).toString()
         }.getOrNull() ?: value.toString()
+    }
+
+    /**
+     * 上游 `java.startBrowserAwait(...)` 返回 `StrResponse`，`body` 同时是字段和方法：
+     * 库内 6 处真实用法都写 `.body()`（光遇聚合的设置页就是其一），而按字段读 `String(r.body)` 也合理。
+     * 这里给一个"可调用的字符串"替身——调用返回正文，`String(...)`/拼接也取正文。
+     */
+    internal class CallableBody(scope: Scriptable, val text: String) : BaseFunction() {
+        init {
+            parentScope = scope
+            // 上游拿 `r.body` 当字符串用：`(r.body || '').length` 也要是正文长度，而不是函数形参数。
+            ScriptableObject.putProperty(this, "length", text.length)
+        }
+
+        override fun get(name: String, start: Scriptable): Any? {
+            // 函数自带的 length 是形参数；这里按字符串语义返回正文长度。
+            if (name == "length") return text.length
+            return super.get(name, start)
+        }
+
+        override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any = text
+
+        override fun getDefaultValue(typeHint: Class<*>?): Any = text
     }
 
     private fun createSourceBridge(
@@ -550,7 +612,11 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                     val encoded = url.removePrefix("data:text/html;base64,")
                     return runCatching { String(Base64.getDecoder().decode(encoded), Charsets.UTF_8) }.getOrDefault("")
                 }
-                return runner?.fetch(url, execContext?.sourceId, execContext?.database) ?: ""
+                // 上游 AnalyzeRule.ajax 把异常收成 stackTrace 字符串再交给脚本（脚本自己 JSON.parse 失败后会走
+                // 自己的错误提示）。Java 异常直接穿过 Rhino 会让 `catch (e) { '…' + e }` 变成
+                // ClassCastException 文案，登录界面只剩「服务器错误」都算好的。
+                return runCatching { runner?.fetch(url, execContext?.sourceId, execContext?.database) ?: "" }
+                    .getOrElse { it.stackTraceToString() }
             }
         })
 
@@ -561,7 +627,8 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val body = args.getOrNull(1)?.toString() ?: ""
                 val headers = args.getOrNull(2)?.let { parseJsMapOrJson(it) } ?: emptyMap()
                 val fullUrl = "$url,${urlOptionsJson("POST", headers, body)}"
-                return runner?.fetch(fullUrl, execContext?.sourceId, execContext?.database) ?: ""
+                return runCatching { runner?.fetch(fullUrl, execContext?.sourceId, execContext?.database) ?: "" }
+                    .getOrElse { it.stackTraceToString() }
             }
         })
 
@@ -574,7 +641,8 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val looksLikeUrl = first.startsWith("http://", ignoreCase = true) || first.startsWith("https://", ignoreCase = true)
                 if (args.size >= 2 || looksLikeUrl) {
                     val headers = args.getOrNull(1)?.let { parseJsMapOrJson(it) } ?: emptyMap()
-                    return runner?.fetch("$first,${urlOptionsJson("GET", headers, null)}", execContext?.sourceId, execContext?.database) ?: ""
+                    return runCatching { runner?.fetch("$first,${urlOptionsJson("GET", headers, null)}", execContext?.sourceId, execContext?.database) ?: "" }
+                        .getOrElse { it.stackTraceToString() }
                 }
                 return sessionStore[sessionKey(execContext?.sourceId, first)] ?: Context.getUndefinedValue()
             }
@@ -620,16 +688,32 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "startBrowserAwait", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val url = args.firstOrNull()?.toString() ?: ""
+                val title = args.getOrNull(1)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
                 val resObj = NativeObject()
                 resObj.parentScope = scope
                 ScriptableObject.putProperty(resObj, "url", url)
-                val body = if (execContext?.browserCompleted == true && url.startsWith("http")) {
-                    runCatching { runner?.fetch(url, execContext?.sourceId, execContext?.database) }.getOrNull()
-                } else {
-                    execContext?.openUrl = url
-                    null
+                val inline = if (url.startsWith("data:", ignoreCase = true)) decodeDataUrlText(url) else null
+                val body = when {
+                    // 页面这一轮已经关掉：优先用界面交回来的整页 HTML（本地 data 页没有远端可再抓），
+                    // 远端地址则按已落库的 Cookie 重新抓一次。
+                    execContext?.browserCompleted == true -> {
+                        execContext?.browserBody
+                            ?: if (url.startsWith("http")) {
+                                runCatching { runner?.fetch(url, execContext?.sourceId, execContext?.database) }.getOrNull()
+                            } else null
+                    }
+                    // 书源自拼的设置页（data:text/html）：地址没法交给真浏览器，界面用 iframe 渲染。
+                    inline != null -> {
+                        execContext?.inlineHtml = inline
+                        execContext?.inlineTitle = title
+                        null
+                    }
+                    else -> {
+                        execContext?.openUrl = url
+                        null
+                    }
                 } ?: ""
-                ScriptableObject.putProperty(resObj, "body", body)
+                ScriptableObject.putProperty(resObj, "body", CallableBody(scope, body))
                 return resObj
             }
         })

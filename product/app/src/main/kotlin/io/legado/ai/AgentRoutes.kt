@@ -1,9 +1,12 @@
 package io.legado.ai
 
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondTextWriter
 import io.legado.data.Database
 import io.legado.data.saveSource
 import io.legado.http.NetworkSecurity
@@ -11,6 +14,7 @@ import io.legado.model.ApiError
 import io.legado.model.SourceWriteRequest
 import io.legado.source.SourceCodec
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.nio.file.Path
 
 // `/api/agent/` 这一组的真实处理体。
@@ -24,6 +28,15 @@ import java.nio.file.Path
 // ===== 清单 manifest =====
 
 @Serializable
+private data class ManifestParam(
+    val name: String,
+    val type: String,
+    val description: String = "",
+    val required: Boolean = false,
+    val enum: List<String> = emptyList(),
+)
+
+@Serializable
 private data class ManifestTool(
     val id: String,
     val group: String,
@@ -34,6 +47,8 @@ private data class ManifestTool(
      * 保留这个字段只为契约稳定（前端已按它读取）。
      */
     val origin: String = "builtin",
+    /** 参数声明（与 provider 收到的 JSON Schema 同源），供界面展示与调试。 */
+    val parameters: List<ManifestParam> = emptyList(),
 )
 
 @Serializable
@@ -55,6 +70,9 @@ suspend fun ApplicationCall.agentManifest(profileStoreHome: Path, profileStore: 
             description = it.description,
             writes = it.writes,
             origin = it.origin ?: "builtin",
+            parameters = it.params.map { p ->
+                ManifestParam(p.name, p.type, p.description, p.required, p.enum)
+            },
         )
     }
     respond(
@@ -104,16 +122,13 @@ suspend fun ApplicationCall.agentCreateConnection(profileStoreHome: Path, profil
     if (req.name.isBlank()) {
         respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "连接名称 name 不能为空")); return
     }
-    val kind = runCatching {
-        when (req.kind.lowercase()) {
-            "openai-compatible", "openai_compatible", "openaicompatible" ->
-                AgentProfileStore.ProfileKind.OPENAI_COMPATIBLE
-            else -> throw IllegalArgumentException("unsupported kind")
-        }
-    }.getOrElse {
+    val kind = AgentProfileStore.ProfileKind.parse(req.kind) ?: run {
         respond(
             HttpStatusCode.BadRequest,
-            ApiError("invalid_kind", "自定义接入只支持 openai-compatible 一种连接类型"),
+            ApiError(
+                "invalid_kind",
+                "不支持的连接类型「${req.kind}」；可选 openai-compatible / anthropic / openai-responses",
+            ),
         ); return
     }
     val id = (req.id ?: req.name).trim().ifBlank { req.name }.replace(Regex("[^\\w\\-.]"), "_")
@@ -159,7 +174,8 @@ private data class DeleteConnectionResponse(val ok: Boolean = true, val removed:
 private fun toConnectionResponse(p: AgentProfileStore.Profile) = ConnectionResponse(
     id = p.id,
     name = p.name,
-    kind = p.kind.name.lowercase(),
+    // 用 wire 值（openai-compatible / anthropic / openai-responses），前端按它选协议预设。
+    kind = p.kind.wire,
     model = p.model,
     baseUrl = p.baseUrl,
     options = p.options,
@@ -173,11 +189,17 @@ private fun toConnectionResponse(p: AgentProfileStore.Profile) = ConnectionRespo
 private data class ModelListRequest(
     val baseUrl: String? = null,
     val apiKey: String? = null,
+    /** 连接类型；缺省按 openai-compatible 探。 */
+    val kind: String? = null,
     val options: Map<String, String>? = null,
 )
 
 @Serializable
-private data class ModelListResponse(val models: List<String>)
+private data class ModelListResponse(
+    val models: List<String>,
+    /** 这个协议是否提供模型清单端点。Anthropic 没有，界面应退回自由输入。 */
+    val supported: Boolean = true,
+)
 
 suspend fun ApplicationCall.agentListModels() {
     val req = runCatching { receive<ModelListRequest>() }.getOrElse {
@@ -187,16 +209,28 @@ suspend fun ApplicationCall.agentListModels() {
     if (baseUrl.isBlank()) {
         respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "接口地址 baseUrl 不能为空")); return
     }
+    val kind = AgentProfileStore.ProfileKind.parse(req.kind ?: "openai-compatible") ?: run {
+        respond(
+            HttpStatusCode.BadRequest,
+            ApiError("invalid_kind", "不支持的连接类型「${req.kind}」；可选 openai-compatible / anthropic / openai-responses"),
+        ); return
+    }
     val profile = AgentProfileStore.Profile(
         id = "model-probe",
         name = "model-probe",
-        kind = AgentProfileStore.ProfileKind.OPENAI_COMPATIBLE,
+        kind = kind,
         baseUrl = baseUrl,
         apiKey = req.apiKey?.takeIf { it.isNotBlank() },
         options = req.options.orEmpty(),
     )
+    val provider = LlmProviderRegistry().forProfile(profile)
+    if (provider == null) {
+        respond(HttpStatusCode.BadGateway, ApiError("no_provider", "没有能处理「${kind.wire}」这种连接的 provider")); return
+    }
     try {
-        respond(ModelListResponse(OpenAiCompatibleProvider().listModels(profile)))
+        val models = provider.listModels(profile)
+        // null = 这个协议不提供模型清单（如 Anthropic），不是错误：界面据此改为自由输入。
+        respond(ModelListResponse(models.orEmpty(), supported = models != null))
     } catch (blocked: NetworkSecurity.BlockedAddressException) {
         // 与对话同一条闸门：内网 / 本机地址默认拒，用户要能看懂"是你填的地址被拒了"。
         respond(HttpStatusCode.BadRequest, ApiError("invalid_request", blocked.message ?: "地址被出站安全闸门拒绝"))
@@ -313,6 +347,15 @@ private data class ChatRequestDto(
     val messages: List<ChatMessageDto>,
     /** 用户启用的工具组；缺省/空表示不限制（按对话关键词选）。 */
     val toolGroups: List<String>? = null,
+    /** 本轮显式指定要注入的技能 id；缺省按关键词自动命中。 */
+    val skills: List<String>? = null,
+)
+
+@Serializable
+private data class ChatUsageDto(
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null,
+    val totalTokens: Int? = null,
 )
 
 @Serializable
@@ -322,6 +365,10 @@ private data class ChatResponseDto(
     val error: String? = null,
     /** 本轮实际执行过的工具（`工具id:结果码`）；没调工具就不出现。 */
     val toolRounds: List<String>? = null,
+    /** 上游报告的 token 用量（多轮累加）；没报就不出现。 */
+    val usage: ChatUsageDto? = null,
+    /** 本轮实际注入的技能 id；没命中就不出现。 */
+    val skillsUsed: List<String>? = null,
 )
 
 // 自由对话（多轮）：直接把 messages 数组交给外部模型。
@@ -338,7 +385,11 @@ suspend fun ApplicationCall.agentChat(agentConnection: AgentConnection?) {
         respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
         return
     }
-    val outcome = conn.chat(req.messages.map { (it.role to it.content) }, req.toolGroups?.filter { it.isNotBlank() }?.toSet())
+    val outcome = conn.chat(
+        req.messages.map { (it.role to it.content) },
+        req.toolGroups?.filter { it.isNotBlank() }?.toSet(),
+        req.skills.orEmpty(),
+    )
     if (outcome.error != null) {
         respond(outcomeStatus(outcome.error), ApiError(outcome.error, outcomeMessage(outcome.error, outcome.errorDetail)))
         return
@@ -349,8 +400,154 @@ suspend fun ApplicationCall.agentChat(agentConnection: AgentConnection?) {
             content = outcome.content,
             error = outcome.error,
             toolRounds = outcome.toolRounds,
+            usage = outcome.usage?.toDto(),
+            skillsUsed = outcome.skillsUsed,
         ),
     )
+}
+
+// ===== 流式对话（SSE） =====
+//
+// 事件帧与 `AgentStreamEvent` 一一对应：start / delta / reasoning / tool_start / tool_end /
+// usage / end / error。前端按 `type` 分发，`delta` 直接追加到气泡。
+//
+// 开流前先判连接：SSE 一旦返回 200，前端就进"接收中"状态 —— 此时再报 409
+// 只能塞进一个 error 事件里，用户看到的会是"开了又断"。
+
+private val streamJson = Json { encodeDefaults = false; explicitNulls = false }
+
+suspend fun ApplicationCall.agentChatStream(agentConnection: AgentConnection?) {
+    val req = runCatching { receive<ChatRequestDto>() }.getOrElse {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 {messages:[{role,content}]}")); return
+    }
+    if (req.messages.isEmpty()) {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "messages 不能为空")); return
+    }
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    if (!conn.hasConnection()) {
+        respond(HttpStatusCode.Conflict, ApiError("no_connection", outcomeMessage("no_connection")))
+        return
+    }
+    response.header("X-Accel-Buffering", "no")
+    response.header("Cache-Control", "no-cache, no-transform")
+    respondTextWriter(ContentType.Text.EventStream, status = HttpStatusCode.OK) {
+        try {
+            conn.chatStream(
+                messages = req.messages.map { it.role to it.content },
+                allowedToolGroups = req.toolGroups?.filter { it.isNotBlank() }?.toSet(),
+                skillIds = req.skills.orEmpty(),
+            ) { event ->
+                write("data: " + streamJson.encodeToString(AgentStreamEvent.serializer(), event) + "\n\n")
+                flush()
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            // 客户端断开：Ktor 会取消这个协程；生产者随之停止，不再烧模型额度。
+            throw cancelled
+        } catch (error: Throwable) {
+            val frame = AgentStreamEvent(
+                "error",
+                code = "internal_error",
+                message = error.message ?: "流式对话中断（${error::class.simpleName}）",
+            )
+            runCatching {
+                write("data: " + streamJson.encodeToString(AgentStreamEvent.serializer(), frame) + "\n\n")
+                flush()
+            }
+        }
+    }
+}
+
+// ===== 技能库 skills =====
+
+@Serializable
+private data class SkillDto(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val keywords: List<String> = emptyList(),
+    val enabled: Boolean = true,
+    val builtin: Boolean = false,
+    val content: String = "",
+)
+
+@Serializable
+private data class SkillListResponse(val skills: List<SkillDto>)
+
+@Serializable
+private data class SkillSaveRequest(
+    val id: String? = null,
+    val name: String,
+    val description: String = "",
+    val keywords: List<String> = emptyList(),
+    val content: String,
+    val enabled: Boolean = true,
+)
+
+@Serializable
+private data class SkillDeleteResponse(val ok: Boolean = true, val removed: String)
+
+private fun AgentSkillStore.Skill.toDto() = SkillDto(
+    id = id,
+    name = name,
+    description = description,
+    keywords = keywords,
+    enabled = enabled,
+    builtin = builtin,
+    content = content,
+)
+
+private fun LlmUsage.toDto() = ChatUsageDto(
+    promptTokens = promptTokens,
+    completionTokens = completionTokens,
+    totalTokens = totalTokens,
+)
+
+suspend fun ApplicationCall.agentListSkills(agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    respond(SkillListResponse(conn.listSkills().map { it.toDto() }))
+}
+
+suspend fun ApplicationCall.agentSaveSkill(agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    val req = runCatching { receive<SkillSaveRequest>() }.getOrElse {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 {name, content}")); return
+    }
+    val saved = runCatching {
+        conn.saveSkill(req.id, req.name, req.description, req.keywords, req.content, req.enabled)
+    }.getOrElse { error ->
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_skill", error.message ?: "技能保存失败"))
+        return
+    }
+    respond(saved.toDto())
+}
+
+suspend fun ApplicationCall.agentDeleteSkill(id: String, agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    val removed = runCatching { conn.deleteSkill(id) }.getOrElse { error ->
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_skill", error.message ?: "技能删除失败"))
+        return
+    }
+    if (!removed) {
+        respond(HttpStatusCode.NotFound, ApiError("not_found", "技能 $id 不存在"))
+        return
+    }
+    respond(SkillDeleteResponse(removed = id))
 }
 
 /**
@@ -378,7 +575,7 @@ private fun outcomeMessage(code: String, detail: String? = null): String {
     val specific = detail?.trim()?.takeIf { it.isNotEmpty() }
     if (specific != null) return specific
     return when (code) {
-        "no_connection" -> "尚未登记外部模型连接；请先在「AI 接入 → 连接」里登记一个 openai-compatible 地址。"
+        "no_connection" -> "尚未登记外部模型连接；请先在「AI 接入 → 连接」里登记一个模型地址。"
         "invalid_request" -> "这个连接用不了：地址不合法或被出站安全闸门拒绝（内网 / 本机地址不放开）。"
         "upstream_unreachable" -> "外部模型连不上，本次没有结果。"
         "tool_rounds_exhausted" -> "外部模型在工具调用轮数上限内仍未给出结论。"

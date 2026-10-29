@@ -63,11 +63,22 @@ class BackupStore(private val directory: Path) {
     companion object {
         private val KEEP_UNSAFE = Regex("[^A-Za-z0-9._-]")
 
-        /** 备份包里我们目前没有原生归宿、但值得原样收下的条目。 */
+        /**
+         * 备份包里我们目前没有原生归宿、但值得原样收下的条目。
+         *
+         * 前两组是上游官方的个性化条目；后面是兄弟项目各自加的（MD3 的书签/高亮/首页模块、
+         * Night-Reader 的阅读统计与下载任务…）。它们与官方条目不冲突，收下并如实列出即可，
+         * 不因为某个项目多写了几节就把它导出的整包判成"不是 Legado 备份"。
+         */
         val KEEP_NAMES = listOf(
             "dictrule.json", "readconfig.json", "httptts.json",
             "searchhistory.json", "txtTocRule.json", "bookmemo.json", "rssStar.json",
             "themeConfig.json", "style.json", "theme.json", "readRecord.json",
+            "bookmark.json", "bookmarking.json", "highlight.json", "highlightRule.json",
+            "highlightTagRule.json", "tagGroupRule.json", "readRecordDetail.json",
+            "readRecordSession.json", "httpTtsVoices.json", "homepageModules.json",
+            "homepageCustomSets.json", "sourceSub.json", "keyboardAssists.json",
+            "readDay.json", "downloadTask.json", "readerChapterContent.json", "manifest.json",
         )
 
         /** 前端能真的映射到自己设置上的那几类，界面上才给「套用」按钮。 */
@@ -85,6 +96,23 @@ class BackupStore(private val directory: Path) {
             "style.json" to "阅读样式（旧名）",
             "theme.json" to "主题（旧名）",
             "readrecord.json" to "阅读记录",
+            "bookmark.json" to "书签",
+            "bookmarking.json" to "阅读书签",
+            "highlight.json" to "高亮",
+            "highlightrule.json" to "高亮规则",
+            "highlighttagrule.json" to "高亮标签规则",
+            "taggrouprule.json" to "标签分组规则",
+            "readrecorddetail.json" to "阅读记录明细",
+            "readrecordsession.json" to "阅读会话",
+            "httpttsvoices.json" to "朗读音色",
+            "homepagemodules.json" to "首页模块",
+            "homepagecustomsets.json" to "首页自定义",
+            "sourcesub.json" to "订阅源",
+            "keyboardassists.json" to "键盘辅助",
+            "readday.json" to "阅读统计",
+            "downloadtask.json" to "下载任务",
+            "readerchaptercontent.json" to "阅读器章节缓存",
+            "manifest.json" to "备份清单",
         )
 
         fun labelOf(name: String): String =

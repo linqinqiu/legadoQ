@@ -2,6 +2,13 @@ package io.legado.ai
 
 import io.legado.data.VersionConflict
 import io.legado.AppConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -234,7 +241,12 @@ class Agent(
      * - 工具执行走 [runTool]，护栏、钩子、权限全部照常生效
      * - 没有连接或外呼失败都返回 error，不编一段"本地说明"冒充回答
      */
-    suspend fun chat(messages: List<Pair<String, String>>, allowedToolGroups: Set<String>? = null): ChatOutcome {
+    suspend fun chat(
+        messages: List<Pair<String, String>>,
+        allowedToolGroups: Set<String>? = null,
+        /** 本轮显式指定的技能 id；空表示按关键词自动挑。 */
+        skillIds: List<String> = emptyList(),
+    ): ChatOutcome {
         val norm = messages
             .filter { it.second.isNotBlank() }
             .map { LlmMessage(role = it.first.takeIf { r -> r in setOf("system", "user", "assistant") } ?: "user", content = it.second) }
@@ -251,9 +263,11 @@ class Agent(
         )
         // 只下发与这一轮相关的工具组：55 个全量塞进每次请求会白烧 token、也让模型更容易挑错工具。
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
+        val skills = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
         val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups)
         val toolRounds = mutableListOf<String>()
-        val convo = norm.toMutableList()
+        val convo = withSkills(norm, skills).toMutableList()
+        var usage = LlmUsage()
 
         // 多轮：模型要调工具 → 框架执行 → 结果回灌 → 再问。
         //
@@ -311,6 +325,8 @@ class Agent(
                         engine = "external:" + ext.id,
                         content = retry.content.trim(),
                         toolRounds = toolRounds.ifEmpty { null },
+                        usage = usage.plus(retry.usage).takeIf { !it.isEmpty },
+                        skillsUsed = skills.map { it.id }.ifEmpty { null },
                     )
                 }
             }
@@ -324,12 +340,15 @@ class Agent(
                     errorDetail = providerFailure,
                 )
             }
+            usage = usage.plus(reply.usage)
             if (reply.toolCalls.isEmpty()) {
                 // 没有工具调用 = 模型给出了最终答复，收工。
                 return ChatOutcome(
                     engine = "external:" + ext.id,
                     content = reply.content.trim(),
                     toolRounds = toolRounds.ifEmpty { null },
+                    usage = usage.takeIf { !it.isEmpty },
+                    skillsUsed = skills.map { it.id }.ifEmpty { null },
                 )
             }
             // 有工具调用：先把它的话留下，再逐个执行并回灌。
@@ -342,20 +361,20 @@ class Agent(
                     toolCalls = reply.toolCalls,
                 )
                 for (call in reply.toolCalls) {
-                    val result = runTool(call.id, call.args)
-                    toolRounds += "${call.id}:${result.code}"
+                    val result = runTool(call.name, call.args)
+                    toolRounds += "${call.name}:${result.code}"
                     convo += LlmMessage(
                         role = "tool",
-                        content = renderToolResult(call.id, result),
+                        content = renderToolResult(call.name, result),
                         toolCallId = call.id,
                     )
                 }
             } else {
                 // 文本回灌形态：结果写成 user 消息，历史里不留 tool 角色。
                 val executed = reply.toolCalls.map { call ->
-                    val result = runTool(call.id, call.args)
-                    toolRounds += "${call.id}:${result.code}"
-                    renderToolResult(call.id, result)
+                    val result = runTool(call.name, call.args)
+                    toolRounds += "${call.name}:${result.code}"
+                    renderToolResult(call.name, result)
                 }
                 convo += LlmMessage(
                     role = "user",
@@ -374,6 +393,8 @@ class Agent(
                 engine = "external:" + ext.id,
                 content = finalText.trim(),
                 toolRounds = toolRounds.ifEmpty { null },
+                usage = usage.takeIf { !it.isEmpty },
+                skillsUsed = skills.map { it.id }.ifEmpty { null },
             )
         }
         return ChatOutcome(
@@ -382,6 +403,319 @@ class Agent(
             error = "tool_rounds_exhausted",
             toolRounds = toolRounds.ifEmpty { null },
         )
+    }
+
+    /**
+     * 流式对话：与 [chat] 同一套工具循环，但把过程作为 [AgentStreamEvent] 逐步吐出来。
+     *
+     * 实现上把"跑模型 + 执行工具"放在 IO 协程里，事件经无界 Channel 交给调用方；
+     * 调用方（HTTP 层）只负责把事件写成 SSE。这样：
+     * - provider 的回调在阻塞线程里也能安全发事件（trySend 不阻塞）；
+     * - 客户端断开 → 调用方取消 → 生产者协程一起取消，不会继续烧模型额度；
+     * - 前缀 `delta` 与最终 `end.content` 分开：工具轮次前的"我先查一下"不会被当成最终答案。
+     *
+     * 没有连接、provider 缺失等"开流前就能确定"的错误仍以 `error` 事件发出；
+     * HTTP 层在开流前会先检查连接，避免 200 之后才发现 409。
+     */
+    suspend fun chatStream(
+        messages: List<Pair<String, String>>,
+        allowedToolGroups: Set<String>? = null,
+        skillIds: List<String> = emptyList(),
+        onEvent: suspend (AgentStreamEvent) -> Unit,
+    ): ChatOutcome = coroutineScope {
+        val events = Channel<AgentStreamEvent>(Channel.UNLIMITED)
+        val result = CompletableDeferred<ChatOutcome>()
+        val producer = launch(Dispatchers.IO) {
+            try {
+                result.complete(runStream(messages, allowedToolGroups, skillIds) { event -> events.trySend(event) })
+            } catch (cancelled: CancellationException) {
+                result.complete(ChatOutcome(engine = "unavailable", content = "", error = "cancelled"))
+                throw cancelled
+            } catch (error: Throwable) {
+                val why = error.message ?: error::class.simpleName ?: "未知错误"
+                events.trySend(AgentStreamEvent("error", code = "internal_error", message = why))
+                result.complete(ChatOutcome(engine = "unavailable", content = "", error = "upstream_unreachable", errorDetail = why))
+            } finally {
+                events.close()
+            }
+        }
+        try {
+            for (event in events) onEvent(event)
+        } catch (error: Throwable) {
+            // 客户端断开/写失败：停掉生产者，别让模型继续算。
+            producer.cancel()
+            throw error
+        }
+        producer.join()
+        result.await()
+    }
+
+    private suspend fun runStream(
+        messages: List<Pair<String, String>>,
+        allowedToolGroups: Set<String>?,
+        skillIds: List<String>,
+        emit: (AgentStreamEvent) -> Unit,
+    ): Agent.ChatOutcome {
+        val norm = messages
+            .filter { it.second.isNotBlank() }
+            .map { LlmMessage(role = it.first.takeIf { r -> r in setOf("system", "user", "assistant") } ?: "user", content = it.second) }
+        if (norm.isEmpty()) {
+            emit(AgentStreamEvent("error", code = "empty_messages", message = "messages 不能为空"))
+            return ChatOutcome(engine = "error", content = "", error = "empty_messages")
+        }
+        val ext = selectedProfile()
+            ?: return ChatOutcome(engine = "unavailable", content = "", error = "no_connection").also {
+                emit(AgentStreamEvent("error", code = "no_connection", message = "尚未登记外部模型连接"))
+            }
+        val provider = providerRegistry.forProfile(ext)
+            ?: return ChatOutcome(
+                engine = "unavailable", content = "", error = "upstream_unreachable",
+                errorDetail = "没有能处理「${ext.kind.name}」这种连接的 provider",
+            ).also {
+                emit(AgentStreamEvent("error", code = "upstream_unreachable", message = "没有能处理「${ext.kind.name}」这种连接的 provider"))
+            }
+
+        val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
+        val skills = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
+        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups)
+        val convo = withSkills(norm, skills).toMutableList()
+        val toolRounds = mutableListOf<String>()
+        var usage = LlmUsage()
+        var providerFailure: String? = null
+        var useNativeToolProtocol = true
+
+        emit(
+            AgentStreamEvent(
+                type = "start",
+                engine = "external:" + ext.id,
+                model = ext.model,
+                skills = skills.map { it.id }.ifEmpty { null },
+            ),
+        )
+
+        for (round in 0 until MAX_TOOL_ROUNDS) {
+            val roundText = StringBuilder()
+            val callbacks = LlmStreamCallbacks(
+                onDelta = { piece ->
+                    if (piece.isNotEmpty()) {
+                        roundText.append(piece)
+                        emit(AgentStreamEvent("delta", text = piece))
+                    }
+                },
+                onReasoning = { piece ->
+                    if (piece.isNotEmpty()) emit(AgentStreamEvent("reasoning", text = piece))
+                },
+                onUsage = { reported ->
+                    usage = usage.plus(reported)
+                    emit(usageEvent(usage))
+                },
+            )
+            val reply: LlmReply? = try {
+                // runInterruptible：provider 走的是阻塞 HttpClient，客户端断开时靠线程中断
+                // 把那次 send/readLine 打断，否则协程取消了它还在继续读，模型额度照烧。
+                runInterruptible {
+                    provider.chatWithToolsStream(ext, convo, if (useNativeToolProtocol) tools else emptyList(), callbacks)
+                }
+            } catch (blocked: IllegalArgumentException) {
+                val why = blocked.message ?: "地址不合法或被出站安全闸门拒绝"
+                emit(AgentStreamEvent("error", code = "invalid_request", message = why))
+                return ChatOutcome(engine = "unavailable", content = "", error = "invalid_request", errorDetail = why)
+            } catch (cancelled: CancellationException) {
+                // 客户端断开：一路向上抛，别把它翻译成"上游不可达"。
+                throw cancelled
+            } catch (error: Throwable) {
+                providerFailure = error.message ?: "外呼失败（${error::class.simpleName}）"
+                null
+            }
+
+            if (reply == null && useNativeToolProtocol && convo.any { it.role == "tool" }) {
+                // 上游不认原生回灌：切到文本回灌，重试一次（与 [chat] 同一条降级路径）。
+                useNativeToolProtocol = false
+                val transcript = convo.filter { it.role == "tool" }.joinToString("\n") { it.content }
+                val stripped = convo.filter { it.role != "tool" && it.role != "assistant" }
+                convo.clear()
+                convo.addAll(stripped)
+                convo += LlmMessage(
+                    role = "user",
+                    content = "已执行以下工具，结果如下：\n$transcript\n请基于这些结果直接回答，不要再次请求工具。",
+                )
+                val retry = runCatching { provider.chat(ext, convo) }
+                    .onFailure { providerFailure = it.message ?: "外呼失败（${it::class.simpleName}）" }
+                    .getOrNull()
+                if (!retry.isNullOrBlank()) {
+                    emit(AgentStreamEvent("delta", text = retry))
+                    if (!usage.isEmpty) emit(usageEvent(usage))
+                    emit(
+                        AgentStreamEvent(
+                            "end",
+                            engine = "external:" + ext.id,
+                            content = retry.trim(),
+                            toolRounds = toolRounds.ifEmpty { null },
+                            skills = skills.map { it.id }.ifEmpty { null },
+                        ),
+                    )
+                    return ChatOutcome(
+                        engine = "external:" + ext.id,
+                        content = retry.trim(),
+                        toolRounds = toolRounds.ifEmpty { null },
+                        usage = usage.takeIf { !it.isEmpty },
+                        skillsUsed = skills.map { it.id }.ifEmpty { null },
+                    )
+                }
+            }
+
+            if (reply == null) {
+                val why = providerFailure ?: "外部模型没有返回内容"
+                emit(AgentStreamEvent("error", code = "upstream_unreachable", message = why))
+                return ChatOutcome(
+                    engine = "unavailable", content = "", error = "upstream_unreachable",
+                    toolRounds = toolRounds.ifEmpty { null }, errorDetail = why,
+                )
+            }
+            usage = usage.plus(reply.usage)
+
+            if (reply.toolCalls.isEmpty()) {
+                val content = reply.content.ifBlank { roundText.toString() }.trim()
+                if (!usage.isEmpty) emit(usageEvent(usage))
+                emit(
+                    AgentStreamEvent(
+                        "end",
+                        engine = "external:" + ext.id,
+                        content = content,
+                        toolRounds = toolRounds.ifEmpty { null },
+                        skills = skills.map { it.id }.ifEmpty { null },
+                    ),
+                )
+                return ChatOutcome(
+                    engine = "external:" + ext.id,
+                    content = content,
+                    toolRounds = toolRounds.ifEmpty { null },
+                    usage = usage.takeIf { !it.isEmpty },
+                    skillsUsed = skills.map { it.id }.ifEmpty { null },
+                )
+            }
+
+            reply.toolCalls.forEach { call ->
+                emit(
+                    AgentStreamEvent(
+                        "tool_start",
+                        toolId = call.name,
+                        callId = call.id,
+                        args = call.args.mapValues { (_, v) -> (v?.toString() ?: "").take(200) },
+                    ),
+                )
+            }
+
+            if (useNativeToolProtocol) {
+                convo += LlmMessage(role = "assistant", content = reply.content, toolCalls = reply.toolCalls)
+                for (call in reply.toolCalls) {
+                    val startedAt = System.currentTimeMillis()
+                    val result = runTool(call.name, call.args)
+                    toolRounds += "${call.name}:${result.code}"
+                    emit(toolEndEvent(call.name, call.id, result, System.currentTimeMillis() - startedAt))
+                    convo += LlmMessage(
+                        role = "tool",
+                        content = renderToolResult(call.name, result),
+                        toolCallId = call.id,
+                    )
+                }
+            } else {
+                val executed = reply.toolCalls.map { call ->
+                    val startedAt = System.currentTimeMillis()
+                    val result = runTool(call.name, call.args)
+                    toolRounds += "${call.name}:${result.code}"
+                    emit(toolEndEvent(call.name, call.id, result, System.currentTimeMillis() - startedAt))
+                    renderToolResult(call.name, result)
+                }
+                convo += LlmMessage(
+                    role = "user",
+                    content = "已执行以下工具，结果如下：\n" + executed.joinToString("\n") +
+                        "\n请基于这些结果直接回答，不要再次请求工具。",
+                )
+            }
+        }
+
+        val finalText = runCatching {
+            provider.chat(ext, convo + LlmMessage("user", "请基于以上工具结果直接回答，不要再调用工具。"))
+        }.getOrNull()
+        if (!finalText.isNullOrBlank()) {
+            emit(AgentStreamEvent("delta", text = finalText))
+            if (!usage.isEmpty) emit(usageEvent(usage))
+            emit(
+                AgentStreamEvent(
+                    "end",
+                    engine = "external:" + ext.id,
+                    content = finalText.trim(),
+                    toolRounds = toolRounds.ifEmpty { null },
+                    skills = skills.map { it.id }.ifEmpty { null },
+                ),
+            )
+            return ChatOutcome(
+                engine = "external:" + ext.id,
+                content = finalText.trim(),
+                toolRounds = toolRounds.ifEmpty { null },
+                usage = usage.takeIf { !it.isEmpty },
+                skillsUsed = skills.map { it.id }.ifEmpty { null },
+            )
+        }
+        emit(AgentStreamEvent("error", code = "tool_rounds_exhausted", message = "工具调用轮数已达上限，模型仍未给出结论"))
+        return ChatOutcome(
+            engine = "unavailable",
+            content = "",
+            error = "tool_rounds_exhausted",
+            toolRounds = toolRounds.ifEmpty { null },
+        )
+    }
+
+    private fun usageEvent(usage: LlmUsage) = AgentStreamEvent(
+        type = "usage",
+        promptTokens = usage.promptTokens,
+        completionTokens = usage.completionTokens,
+        totalTokens = usage.totalTokens,
+    )
+
+    private fun toolEndEvent(toolId: String, callId: String, result: AgentResult, ms: Long) = AgentStreamEvent(
+        type = "tool_end",
+        toolId = toolId,
+        callId = callId,
+        status = result.status,
+        code = result.code,
+        message = (result.message ?: result.code).take(200),
+        ms = ms,
+    )
+
+    /** 当前可用的技能（含内置）。 */
+    fun listSkills(): List<AgentSkillStore.Skill> = AgentSkillStore.list(homeDirectory)
+
+    /** 新建/覆盖一个用户技能。 */
+    fun saveSkill(
+        id: String?,
+        name: String,
+        description: String,
+        keywords: List<String>,
+        content: String,
+        enabled: Boolean,
+    ): AgentSkillStore.Skill = AgentSkillStore.save(homeDirectory, id, name, description, keywords, content, enabled)
+
+    /** 删除一个用户技能（移入 agent-skills/.trash，不直接删文件）。 */
+    fun deleteSkill(id: String): Boolean = AgentSkillStore.delete(homeDirectory, id)
+
+    /**
+     * 把选中的技能插到 system 段末尾（现有系统提示词之后、对话历史之前）。
+     *
+     * 为什么不拼成一个巨大的 system：多条技能各自有边界，分开注入后模型更容易
+     * 把"这次命中的是哪几条"对上；也方便在响应里回报 `skillsUsed`。
+     */
+    private fun withSkills(base: List<LlmMessage>, skills: List<AgentSkillStore.Skill>): List<LlmMessage> {
+        if (skills.isEmpty()) return base
+        val insertAt = base.indexOfFirst { it.role != "system" }.let { if (it < 0) base.size else it }
+        val injected = skills.map { skill ->
+            LlmMessage(
+                role = "system",
+                content = "【技能：${skill.name}】\n${skill.content.take(AgentSkillStore.MAX_CONTENT_CHARS)}",
+            )
+        }
+        return base.take(insertAt) + injected + base.drop(insertAt)
     }
 
     /** 把一次工具结果压成给模型看的短文本（太长会挤爆上下文）。 */
@@ -460,6 +794,10 @@ class Agent(
         val toolRounds: List<String>? = null,
         /** 出错的真因（一句中文），同 ComprehendOutcome.errorDetail。 */
         val errorDetail: String? = null,
+        /** 上游报告的 token 用量（多轮累加）；没报就是 null。 */
+        val usage: LlmUsage? = null,
+        /** 本轮实际注入的技能 id。没命中就是 null。 */
+        val skillsUsed: List<String>? = null,
     )
 
     companion object {

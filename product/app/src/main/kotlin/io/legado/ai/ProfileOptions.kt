@@ -28,6 +28,27 @@ object ProfileOptions {
     const val TIMEOUT_MS = "timeoutMs"
 
     /**
+     * 传输失败 / 429 / 5xx 时的**额外重试次数**。没设默认 2（即最多 3 次尝试）。
+     * 填 `0` 表示"一次失败就报错"。
+     */
+    const val RETRIES = "retries"
+
+    /** 重试退避的基础间隔（毫秒，按次翻倍，封顶 8 倍）。没设默认 800。 */
+    const val RETRY_BACKOFF_MS = "retryBackoffMs"
+
+    /** 单次回复的最大 token 数（Anthropic 必填；其它协议作为可选上限）。没设用 provider 默认。 */
+    const val MAX_TOKENS = "maxTokens"
+
+    /** 流式请求是否要上游在最后一帧带 usage。`0` 关掉（个别中转站不认这个字段）。 */
+    const val STREAM_USAGE = "streamUsage"
+
+    /**
+     * 追加 key：`key.2`、`key.3`……
+     * `apiKey` 字段本身也可以写多个（逗号/分号/空白分隔），两者合并去重。
+     */
+    const val KEY_PREFIX = "key."
+
+    /**
      * 「默认走这条」的标记。多个连接时由用户选一条生效，存在连接自己的 options 里
      * （`default=1`），选择策略据此优先，不必再开一个"当前连接"的全局设置。
      */
@@ -78,4 +99,20 @@ object ProfileOptions {
     /** 取超时毫秒；没设或不是正数返回 null（用 provider 默认值）。 */
     fun timeoutMs(options: Map<String, String>): Long? =
         options[TIMEOUT_MS]?.trim()?.toLongOrNull()?.takeIf { it > 0 }
+
+    /** 取额外重试次数；没设返回 null，写错或超出 0..5 也返回 null（用默认值）。 */
+    fun retries(options: Map<String, String>): Int? =
+        options[RETRIES]?.trim()?.toIntOrNull()?.takeIf { it in 0..5 }
+
+    /** 取退避基础间隔；没设或不是正数返回 null（用默认值）。 */
+    fun retryBackoffMs(options: Map<String, String>): Long? =
+        options[RETRY_BACKOFF_MS]?.trim()?.toLongOrNull()?.takeIf { it > 0 }
+
+    /** 单次回复的最大 token；没设或不是正数用 [default]。 */
+    fun maxTokens(options: Map<String, String>, default: Int): Int =
+        options[MAX_TOKENS]?.trim()?.toIntOrNull()?.takeIf { it > 0 } ?: default
+
+    /** 流式请求是否希望上游带 usage；默认要，`0`/`false`/`off` 关掉。 */
+    fun streamUsage(options: Map<String, String>): Boolean =
+        options[STREAM_USAGE]?.trim()?.lowercase() !in setOf("0", "false", "off", "no")
 }

@@ -135,16 +135,27 @@ class OpenAiCompatibleProviderTest {
     }
 
     @Test
-    fun `解析 tool_calls：id 取函数名，arguments 解析成扁平键值`() {
+    fun `解析 tool_calls：id 取协议 id，name 取函数名，arguments 解析成扁平键值`() {
         val body = """{"choices":[{"message":{"content":"","tool_calls":[
             {"id":"call_1","function":{"name":"source.list","arguments":"{\"q\":\"abc\",\"limit\":5}"}}
         ]}}]}"""
         val reply = provider.parseReply(body)
         assertEquals("应解析出 1 个工具调用", 1, reply.toolCalls.size)
         val call = reply.toolCalls.first()
-        assertEquals("id 应取函数名（框架侧按工具 id 分发）", "source.list", call.id)
+        assertEquals("id 应取协议 id（回灌 tool_call_id 要用它）", "call_1", call.id)
+        assertEquals("name 才是工具 id（框架侧按它分发）", "source.list", call.name)
         assertEquals("abc", call.args["q"])
         assertEquals("数字也按字符串收（框架侧对未知键宽容）", "5", call.args["limit"])
+    }
+
+    @Test
+    fun `tool_calls 缺协议 id 时退化成函数名`() {
+        val body = """{"choices":[{"message":{"content":"","tool_calls":[
+            {"function":{"name":"source.list","arguments":"{}"}}
+        ]}}]}"""
+        val call = provider.parseReply(body).toolCalls.first()
+        assertEquals("没有 id 时 id 退化为 name", "source.list", call.id)
+        assertEquals("source.list", call.name)
     }
 
     @Test

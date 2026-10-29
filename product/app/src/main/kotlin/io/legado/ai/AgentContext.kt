@@ -63,6 +63,25 @@ data class AgentResult(
 typealias ToolArgs = Map<String, Any?>
 
 /**
+ * 工具参数的一条声明 —— 用来生成标准的 JSON Schema。
+ *
+ * 以前工具只有一句 `description`，`parameters` 是空的 `{"type":"object","properties":{}}`，
+ * 模型只能从描述里猜参数名（猜成 `source_id` / `sourceId` 各一半），一填错就被工具
+ * 当成空参拒掉。把参数名、类型、必填与说明显式声明后，模型第一次就能填对。
+ *
+ * [type] 取 JSON Schema 的七种基础类型里的常用几种：string / integer / number /
+ * boolean / array / object。数组的 `items` 固定为 string（工具参数目前都是字符串列表）。
+ */
+data class ToolParam(
+    val name: String,
+    val type: String = "string",
+    val description: String = "",
+    val required: Boolean = false,
+    /** 可选枚举值（如 action=delete）；非空时写进 schema 的 `enum`。 */
+    val enum: List<String> = emptyList(),
+)
+
+/**
  * 工具的元信息，供 [Agent] 选择、也作为进程内"能力清单"对外暴露。
  *
  * [origin] 说明这个工具**是谁装的**：
@@ -72,6 +91,9 @@ typealias ToolArgs = Map<String, Any?>
  * 为什么必须有：插件一多，「AI 现在能调 56 个工具」这句话就变成了黑话 ——
  * 出了事（某个工具行为怪异、想卸掉一个插件）时，分不清哪个工具归谁管，
  * 审计就只能靠猜。带来源之后，`/api/agent/manifest` 与「插件」面板都能直接说清。
+ *
+ * [params] 为空表示"没声明参数"（插件临时注册的工具常见）。这时 provider 仍发
+ * `additionalProperties: true` 的宽松 schema，保持旧行为，不会把外部工具卡死。
  */
 data class ToolMeta(
     val id: String,
@@ -81,6 +103,8 @@ data class ToolMeta(
     val writes: Boolean,
     /** 工具来源：null = 框架内置；`"plugin:<插件id>"` = 插件注册。 */
     val origin: String? = null,
+    /** 参数声明；空 = 未声明（schema 退化为宽松对象）。 */
+    val params: List<ToolParam> = emptyList(),
 ) {
     /** 是不是框架内置的。 */
     val isBuiltin: Boolean get() = origin == null

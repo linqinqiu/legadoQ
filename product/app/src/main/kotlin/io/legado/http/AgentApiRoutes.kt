@@ -10,13 +10,17 @@ import io.ktor.websocket.*
 import io.legado.ai.AgentConnection
 import io.legado.ai.AgentProfileStore
 import io.legado.ai.agentChat
+import io.legado.ai.agentChatStream
 import io.legado.ai.agentComprehend
 import io.legado.ai.agentCreateConnection
 import io.legado.ai.agentCreateSource
 import io.legado.ai.agentDeleteConnection
+import io.legado.ai.agentDeleteSkill
 import io.legado.ai.agentListConnections
 import io.legado.ai.agentListModels
+import io.legado.ai.agentListSkills
 import io.legado.ai.agentManifest
+import io.legado.ai.agentSaveSkill
 import io.legado.ai.agentValidateSource
 import io.legado.data.Database
 import java.nio.file.Path
@@ -79,6 +83,26 @@ fun Route.agentApiRoutes(
                 // 只读：自由对话（多轮），把 messages 数组直接交给外部模型，缺连接/失败回退本地说明。
                 // 不落库，无需同源写门。
                 call.agentChat(agentConnection)
+            }
+            post("chat/stream") {
+                // 只读：流式对话（SSE）。事件序列 start/delta/tool_start/tool_end/usage/end/error。
+                // 不落库；客户端断开即取消生产者，不继续烧模型额度。
+                call.agentChatStream(agentConnection)
+            }
+            get("skills") {
+                // 只读：技能库（内置 + 用户）。不写库，无需同源写门。
+                call.agentListSkills(agentConnection)
+            }
+            post("skills") {
+                // 写：新建/覆盖一个技能（落盘 agent-skills/*.md），需同源写门防 CSRF。
+                if (!call.requireSameOriginWrite()) return@post
+                call.agentSaveSkill(agentConnection)
+            }
+            delete("skills/{id}") {
+                // 写：删除用户技能（移入 .trash），需同源写门防 CSRF。
+                if (!call.requireSameOriginWrite()) return@delete
+                val id = call.parameters["id"] ?: ""
+                call.agentDeleteSkill(id, agentConnection)
             }
         }
 }

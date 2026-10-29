@@ -47,11 +47,32 @@ function plainVersion(rel) {
   return { file, version: fs.readFileSync(file, 'utf8').replace(/^v/i, '').trim() }
 }
 
+/** 契约文件里也有一个 version（界面「关于」与外部程序都读它），一并钉住。 */
+function jsonFieldVersion(rel, key) {
+  const file = path.join(ROOT, rel)
+  if (!fs.existsSync(file)) return null
+  const value = JSON.parse(fs.readFileSync(file, 'utf8'))[key]
+  if (!value) return null
+  return { file, version: String(value).trim() }
+}
+
+/** README 顶部的「当前版本 **x.y.z**」。0.1.8 发版时真实漏过这一处，web 测试才发现。 */
+function readmeVersion(rel) {
+  const file = path.join(ROOT, rel)
+  if (!fs.existsSync(file)) return null
+  const found = fs.readFileSync(file, 'utf8').match(/当前版本\s*\*\*(\d+\.\d+\.\d+)\*\*/)?.[1]
+  return found ? { file, version: found } : null
+}
+
 const sources = [
   gradleVersion(),
   packageVersion('package.json'),
   packageVersion('web/package.json'),
+  // 仓库根（外层）也有一份：npm 脚本从这里进，漏掉它就意味着「外面写 0.1.7、里面写 0.1.8」。
+  packageVersion('../package.json'),
   plainVersion('../VERSION'),
+  jsonFieldVersion('app/src/main/resources/agent-api.json', 'version'),
+  readmeVersion('../README.md'),
 ].filter(Boolean)
 
 const expected = sources[0].version

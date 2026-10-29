@@ -282,6 +282,35 @@ export type SourceLoginUiResponse = {  sourceId: string
   /** 这本书源实际会带凭据访问的域名，登录页那个排最前。 */
   cookieDomains?: string[]
   sourceVariable?: string
+  /** loginUi 的协议版本：1 = 静态 JSON 数组，2 = 脚本渲染的 `{"version":2}`。 */
+  loginUiVersion?: number
+  /** v2 脚本渲染失败时的原因（界面要显示出来，而不是给一张空表单）。 */
+  loginUiError?: string
+}
+
+/** v2 表单渲染：rows 为脚本给的字段，loginInfo 为已保存的键值。 */
+export type SourceLoginUiRenderResponse = {
+  rows: SourceLoginUiItem[]
+  state: string
+  loginInfo: Record<string, string>
+  error?: string
+}
+
+/** v2 `loginAction` 的命令回包。 */
+export type SourceLoginUiActionResponse = {
+  ok: boolean
+  state?: string
+  error: Record<string, string>
+  close: boolean
+  unknownKeys: string[]
+  malformed: boolean
+  message?: string
+  toastMessages: string[]
+  updatedLoginInfo?: Record<string, string>
+  openUrl?: string
+  /** 脚本用 `java.startBrowserAwait(data:text/html…)` 给出的本地页面。 */
+  inlineHtml?: string
+  inlineTitle?: string
 }
 
 export type SourceLoginActionResult = {
@@ -294,6 +323,9 @@ export type SourceLoginActionResult = {
   updatedVariable?: string
   reRenderUi: boolean
   error?: string
+  /** 本地 `data:text/html` 页面（设置页等），界面用 iframe 展示后把整页 HTML 交回。 */
+  inlineHtml?: string
+  inlineTitle?: string
 }
 
 export type SourceLoginCheckResult = {
@@ -500,7 +532,9 @@ export const api = {
   saveSourceCookie: (sourceId: string, cookie: string, url?: string) => request<{ ok: boolean; message?: string }>(`/api/sources/${encodeURIComponent(sourceId)}/login-cookie`, { method: 'POST', body: JSON.stringify({ cookie, url }) }),
   clearSourceLoginInfo: (sourceId: string) => request<{ ok: boolean }>(`/api/sources/${encodeURIComponent(sourceId)}/login-info`, { method: 'DELETE' }),
   clearSourceLoginHeader: (sourceId: string) => request<{ ok: boolean }>(`/api/sources/${encodeURIComponent(sourceId)}/login-header`, { method: 'DELETE' }),
-  executeSourceLoginAction: (sourceId: string, action: string, loginData: Record<string, string>, isLongClick = false, browserCompleted = false) => request<SourceLoginActionResult>(`/api/sources/${encodeURIComponent(sourceId)}/login-action`, { method: 'POST', body: JSON.stringify({ action, loginData, isLongClick, browserCompleted }) }),
+  executeSourceLoginAction: (sourceId: string, action: string, loginData: Record<string, string>, isLongClick = false, browserCompleted = false, browserBody?: string) => request<SourceLoginActionResult>(`/api/sources/${encodeURIComponent(sourceId)}/login-action`, { method: 'POST', body: JSON.stringify({ action, loginData, isLongClick, browserCompleted, browserBody }) }),
+  renderSourceLoginUi: (sourceId: string, state = '{}') => request<SourceLoginUiRenderResponse>(`/api/sources/${encodeURIComponent(sourceId)}/login-ui/render`, { method: 'POST', body: JSON.stringify({ state }) }),
+  executeSourceLoginUiAction: (sourceId: string, action: string, state: string, form: Record<string, string>, browserCompleted = false, browserBody?: string) => request<SourceLoginUiActionResponse>(`/api/sources/${encodeURIComponent(sourceId)}/login-ui/action`, { method: 'POST', body: JSON.stringify({ action, state, form, browserCompleted, browserBody }) }),
   checkSourceLogin: (sourceId: string) => request<SourceLoginCheckResult>(`/api/sources/${encodeURIComponent(sourceId)}/login-check`),
   createSourceBrowserSession: (sourceId: string, url?: string) => request<SourceBrowserSession>(`/api/sources/${encodeURIComponent(sourceId)}/browser/session`, { method: 'POST', body: JSON.stringify({ url }) }),
   closeSourceBrowserSession: (sourceId: string, token: string) => request<void>(`/api/sources/${encodeURIComponent(sourceId)}/browser/session?t=${encodeURIComponent(token)}`, { method: 'DELETE' }),
@@ -530,15 +564,17 @@ export const api = {
   explore: (sourceId: string, url: string, page = 1, signal?: AbortSignal) => request<SearchResult[]>('/api/explore', { method: 'POST', body: JSON.stringify({ sourceId, url, page }), signal }),
   details: (sourceId: string, bookUrl: string, signal?: AbortSignal) => request<BookDetails>('/api/books/details', { method: 'POST', body: JSON.stringify({ sourceId, bookUrl }), signal }),
   chapters: (sourceId: string, bookUrl: string, signal?: AbortSignal) => request<Chapter[]>('/api/books/chapters', { method: 'POST', body: JSON.stringify({ sourceId, bookUrl }), signal }),
-  content: async (sourceId: string, chapterUrl: string, bookUrl?: string, signal?: AbortSignal) => {
+  content: async (sourceId: string, chapterUrl: string, bookUrl?: string, signal?: AbortSignal, force = false) => {
     try {
-      const res = await request<{ title?: string; content: string; mediaUrl?: string }>('/api/books/content', { method: 'POST', body: JSON.stringify({ sourceId, chapterUrl, bookUrl }), signal })
+      const res = await request<{ title?: string; content: string; mediaUrl?: string }>('/api/books/content', { method: 'POST', body: JSON.stringify({ sourceId, chapterUrl, bookUrl, ...(force ? { force: true } : {}) }), signal })
       if (res?.content && bookUrl) {
         void putOfflineChapter(sourceId, bookUrl, chapterUrl, res.title || null, res.content)
       }
       return res
     } catch (err) {
-      if (bookUrl) {
+      // 手动刷新（force）失败时要让调用方看到错误：拿 IndexedDB 里的旧正文当成功，
+      // 用户会以为"刷新了还是这些字"，实际是回源失败。
+      if (!force && bookUrl) {
         const offline = await getOfflineChapter(sourceId, bookUrl, chapterUrl)
         if (offline && offline.content) {
           return { title: offline.title ?? undefined, content: offline.content }
@@ -547,6 +583,11 @@ export const api = {
       throw err
     }
   },
+  refreshChapters: (sourceId: string, bookUrl: string, chapterUrls: string[]) =>
+    request<{ refreshed: string[]; failed: Array<{ chapterUrl: string; message: string }>; remaining: number }>('/api/books/content-refresh', {
+      method: 'POST',
+      body: JSON.stringify({ sourceId, bookUrl, chapterUrls }),
+    }),
   progress: (sourceId: string, bookUrl: string, signal?: AbortSignal) => request<ReadingProgress | undefined>(`/api/reading-progress?sourceId=${encodeURIComponent(sourceId)}&bookUrl=${encodeURIComponent(bookUrl)}`, { signal }),
   saveProgress: async (
     sourceId: string,
@@ -775,11 +816,94 @@ export const api = {
     request<{ id: string; version: number; updatedAt: string }>('/api/agent/sources', { method: 'POST', body: JSON.stringify({ json, version }) }),
   agentComprehend: (req: { text: string; question?: string; summarySentences?: number; topKeywords?: number }) =>
     request<AgentComprehendResult>('/api/agent/comprehend', { method: 'POST', body: JSON.stringify(req) }),
-  agentChat: (messages: AgentChatMessage[], toolGroups?: string[] | null) =>
-    request<AgentChatResult>('/api/agent/chat', { method: 'POST', body: JSON.stringify({ messages, ...(toolGroups ? { toolGroups } : {}) }) }),
-  /** 拉取某个 OpenAI 兼容网关的模型清单（服务端代发，避免 CORS 与把 key 交给浏览器直连）。 */
-  listAgentModels: (baseUrl: string, apiKey?: string, options?: Record<string, string>) =>
-    request<{ models: string[] }>('/api/agent/models', { method: 'POST', body: JSON.stringify({ baseUrl, apiKey, options }) }),
+  agentChat: (messages: AgentChatMessage[], toolGroups?: string[] | null, skills?: string[]) =>
+    request<AgentChatResult>('/api/agent/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages,
+        ...(toolGroups ? { toolGroups } : {}),
+        ...(skills && skills.length > 0 ? { skills } : {}),
+      }),
+    }),
+  /**
+   * 流式对话（SSE）。POST /api/agent/chat/stream，逐帧回调 `AgentStreamEvent`。
+   *
+   * 不走 `request()`：那个帮手把响应读成 JSON，而这里要按 `data: {...}\n\n` 边收边解析。
+   * 客户端断开（AbortSignal）会让服务端取消生产者，不再继续烧模型额度。
+   */
+  agentChatStream: async (
+    messages: AgentChatMessage[],
+    opts: {
+      toolGroups?: string[] | null
+      skills?: string[]
+      signal?: AbortSignal
+      onEvent: (event: AgentStreamEvent) => void
+    },
+  ): Promise<void> => {
+    const response = await fetch('/api/agent/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        messages,
+        ...(opts.toolGroups ? { toolGroups: opts.toolGroups } : {}),
+        ...(opts.skills && opts.skills.length > 0 ? { skills: opts.skills } : {}),
+      }),
+      signal: opts.signal,
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: response.statusText })) as { message?: string }
+      throw new Error(err.message ?? `请求失败（${response.status}）`)
+    }
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('当前浏览器不支持流式读取')
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let finished = false
+    try {
+      while (!finished) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let boundary = buffer.indexOf('\n\n')
+        while (boundary >= 0) {
+          const frame = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+          const data = frame
+            .split('\n')
+            .filter(line => line.startsWith('data:'))
+            .map(line => line.slice(5).replace(/^ /, ''))
+            .join('\n')
+          if (data) {
+            let event: AgentStreamEvent
+            try {
+              event = JSON.parse(data) as AgentStreamEvent
+            } catch {
+              throw new Error('流式响应格式无效')
+            }
+            opts.onEvent(event)
+            if (event.type === 'end' || event.type === 'error') finished = true
+          }
+          if (finished) break
+          boundary = buffer.indexOf('\n\n')
+        }
+      }
+    } finally {
+      // 收到 end/error 后主动收掉连接：服务端已经写完，不再等它自己关。
+      await reader.cancel().catch(() => undefined)
+    }
+  },
+  /** 拉取某个网关的模型清单（服务端代发，避免 CORS 与把 key 交给浏览器直连）。 */
+  listAgentModels: (baseUrl: string, apiKey?: string, options?: Record<string, string>, kind?: string) =>
+    request<AgentModelListResult>('/api/agent/models', {
+      method: 'POST',
+      body: JSON.stringify({ baseUrl, apiKey, options, ...(kind ? { kind } : {}) }),
+    }),
+  listAgentSkills: () => request<{ skills: AgentSkill[] }>('/api/agent/skills'),
+  saveAgentSkill: (req: AgentSkillInput) =>
+    request<AgentSkill>('/api/agent/skills', { method: 'POST', body: JSON.stringify(req) }),
+  deleteAgentSkill: (id: string) =>
+    request<{ ok: boolean; removed: string }>(`/api/agent/skills/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }
 
 export function streamSearch(keyword: string, sourceIds: string[] | undefined, onEvent: (event: SearchStreamEvent) => void, onError: (message: string) => void, onClose: () => void): WebSocket {
@@ -844,10 +968,67 @@ export type AgentComprehendResult = {
 
 export type AgentChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
+export type AgentChatUsage = {
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+}
+
 export type AgentChatResult = {
   engine: string
   content: string
   error?: string
   /** 本轮 AI 实际执行过的工具（`工具id:结果码`）。没调工具就不出现。 */
   toolRounds?: string[]
+  /** 上游报告的 token 用量（多轮累加）；没报就不出现。 */
+  usage?: AgentChatUsage
+  /** 本轮实际注入的技能 id；没命中就不出现。 */
+  skillsUsed?: string[]
+}
+
+/** 流式对话的一帧，与后端 `AgentStreamEvent` 一一对应。 */
+export type AgentStreamEvent = {
+  type: 'start' | 'delta' | 'reasoning' | 'tool_start' | 'tool_end' | 'usage' | 'end' | 'error'
+  engine?: string
+  model?: string
+  text?: string
+  toolId?: string
+  callId?: string
+  args?: Record<string, string>
+  status?: string
+  code?: string
+  message?: string
+  ms?: number
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  content?: string
+  toolRounds?: string[]
+  skills?: string[]
+}
+
+export type AgentModelListResult = {
+  models: string[]
+  /** false = 这个协议不提供模型清单（如 Anthropic），界面应退回自由输入。 */
+  supported: boolean
+}
+
+export type AgentSkill = {
+  id: string
+  name: string
+  description: string
+  keywords: string[]
+  enabled: boolean
+  /** 内置技能（不在磁盘上）；可以覆盖保存，但不能删除。 */
+  builtin: boolean
+  content: string
+}
+
+export type AgentSkillInput = {
+  id?: string
+  name: string
+  description?: string
+  keywords?: string[]
+  content: string
+  enabled?: boolean
 }

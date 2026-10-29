@@ -7,7 +7,9 @@ import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../lib/backupP
 import { fetchImportUrl, fileNameFromUrl } from '../lib/importFromUrl'
 
 /**
- * 「备份」页：把 Legado 导出的 zip 选进来就恢复，全程只在本机与这台服务之间传输。
+ * 「备份」页：把 Legado（或 MD3 / Max / Ink / Night-Reader 等兄弟项目）导出的备份选进来就恢复，
+ * 全程只在本机与这台服务之间传输。认 zip 备份包，也认分享出来的**裸 JSON**
+ * （单个/多个书源、`{bookSource:[…],bookshelf:[…]}` 这类合并导出）。
  *
  * 这条路径以前是"先把 zip 放进 WebDAV 存储区，再点导入"，而那个服务只绑回环时手机根本推不上来 ——
  * 等于没有。现在浏览器直接上传，服务端写临时文件、读完即删，包不落盘。
@@ -78,10 +80,10 @@ export function BackupPage() {
 
   const handleImport = async (file: File) => {
     const warned = window.confirm(
-      `导入备份包「${file.name}」？\n` +
+      `导入备份「${file.name}」？\n` +
       '会写入其中的书源、替换净化规则、书架、阅读进度、RSS 订阅源与分组。' +
       '已存在的书源保留你本机的启用/停用选择，包里的启用位不会把架上筛好的状态刷掉。' +
-      '其余个性化条目（阅读样式、朗读引擎等）原样收在服务器数据目录里，不会丢。',
+      '其余个性化条目（阅读样式、朗读引擎、书签、高亮等）原样收在服务器数据目录里，不会丢。',
     )
     if (!warned) return
     setBusy(true)
@@ -153,14 +155,17 @@ export function BackupPage() {
     <section className="backup-page">
       {/* 标题由悬浮层头给（0.6.27）。正文不再写"全程在本机/不经过网盘"这类讲实现的句子 ——
           "包不落盘"那句（下面主操作面板里）才是用户真正要的那句。 */}
-      <p className="page-lead">选一个 Legado 导出的 zip 就能恢复。</p>
+      <p className="page-lead">
+        选一个 Legado 导出的备份就能恢复：zip 备份包，或 MD3 / Max / Night-Reader 等兄弟项目的包；
+        分享出来的书源 JSON、合并导出也直接认。
+      </p>
 
       <section className="backup-panel">
         <div className="backup-actions">
           <input
             ref={backupInputRef}
             type="file"
-            accept=".zip,application/zip"
+            accept=".zip,.json,.txt,application/zip,application/json"
             hidden
             onChange={event => {
               const file = event.target.files?.[0]

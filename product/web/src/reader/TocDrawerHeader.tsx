@@ -7,7 +7,7 @@ import { IconButton } from './IconButton'
  * 从 `ReaderScreen` 抽出来（PROPOSAL-019 F）：只有标题与四个开关回调，
  * 跟目录内容、翻页、进度都不相干。
  */
-export function TocDrawerHeader({ chapterTitle, chapterCount, tocReverse, onToggleReverse, sidebarPinned, onTogglePin, notesPanel, notesCount, onToggleNotes, onOpenSourceSwitch, inShelf, onToggleShelf, onClose }: {
+export function TocDrawerHeader({ chapterTitle, chapterCount, tocReverse, onToggleReverse, sidebarPinned, onTogglePin, notesPanel, notesCount, onToggleNotes, onOpenSourceSwitch, onOpenRefresh, inShelf, onToggleShelf, onClose }: {
   /** 当前正在读那一章的标题（已过简繁转换）；空表示还没定位到章。 */
   chapterTitle: string | null
   chapterCount: number
@@ -20,6 +20,8 @@ export function TocDrawerHeader({ chapterTitle, chapterCount, tocReverse, onTogg
   onToggleNotes: () => void
   /** 换源：用户要求把入口从目录底部挪到目录顶端（「换源保留在目录侧放到顶端」）。 */
   onOpenSourceSwitch: () => void
+  /** 刷新正文（单章/批量回源重取）。本地书没有书源可回，调用方不传就不出这颗键。 */
+  onOpenRefresh?: () => void
   /** 这本书在不在书架里；决定「加书架」按钮是加还是移出。 */
   inShelf: boolean
   onToggleShelf: () => void
@@ -49,6 +51,13 @@ export function TocDrawerHeader({ chapterTitle, chapterCount, tocReverse, onTogg
           icon="sliders"
           onClick={onOpenSourceSwitch}
         />
+        {onOpenRefresh && (
+          <IconButton
+            label="刷新正文（单章或批量回源重取）"
+            icon="refresh"
+            onClick={onOpenRefresh}
+          />
+        )}
         <IconButton
           className={`desktop-reverse-btn ${tocReverse ? 'reversed' : ''}`}
           label={tocReverse ? '切换为正序目录' : '切换为倒序目录'}

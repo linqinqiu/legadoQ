@@ -24,6 +24,7 @@ class ToolRegistry(
         builtin.forEach { t ->
             val id = t.meta.id
             require(id.isNotBlank() && id != "__unset__") { "内置工具必须带 ToolMeta.id：$t" }
+            enrichSchema(t)
             require(tools.putIfAbsent(id, t) == null) { "内置工具 id 重复：$id" }
             builtinIds += id
         }
@@ -35,11 +36,26 @@ class ToolRegistry(
         require(id.isNotBlank() && id != "__unset__") {
             "注册工具必须带 ToolMeta.id（用 Tool { … }.also { it.meta = ToolMeta(...) } 贴上）"
         }
+        enrichSchema(tool)
         if (!replace) return tools.putIfAbsent(id, tool) == null
         tools[id] = tool
         // replace 一个内置 id 时，它仍然算内置：不许借此把内置工具变成可删的
         if (builtinIds.contains(id)) builtinIds += id
         return true
+    }
+
+    /**
+     * 工具没自己声明参数时，用 [ToolSchemas] 的集中表补齐。
+     *
+     * 放在注册表而不是 `BuiltinTools.all()`：`tool.search` / `tool.call` 是
+     * [AgentModule] 后注册的，插件工具更是随时进来；只有注册这一处能覆盖全部来源。
+     * 工具自己带了 params 就不动它 —— 显式声明优先于集中表。
+     */
+    private fun enrichSchema(tool: Tool) {
+        val meta = tool.meta
+        if (meta.id == "__unset__" || meta.params.isNotEmpty()) return
+        val params = ToolSchemas.forTool(meta.id)
+        if (params.isNotEmpty()) tool.meta = meta.copy(params = params)
     }
 
     /**

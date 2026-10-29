@@ -106,13 +106,50 @@ class AgentConnection internal constructor(private val agent: Agent) {
      * 缺连接 / 调用失败返回 error。HTTP 层 `POST /api/agent/chat` 直接委派到这里。
      * `messages` 是 (role, content) 对，role 取 system/user/assistant 之一（其它值按 user 处理）。
      */
-    fun chat(messages: List<Pair<String, String>>, allowedToolGroups: Set<String>? = null): Agent.ChatOutcome = runBlocking {
-        agent.chat(messages, allowedToolGroups)
+    fun chat(
+        messages: List<Pair<String, String>>,
+        allowedToolGroups: Set<String>? = null,
+        skillIds: List<String> = emptyList(),
+    ): Agent.ChatOutcome = runBlocking {
+        agent.chat(messages, allowedToolGroups, skillIds)
     }
 
     /** 同 [chat]，但保留挂起语义。 */
-    suspend fun chatSuspend(messages: List<Pair<String, String>>, allowedToolGroups: Set<String>? = null): Agent.ChatOutcome =
-        agent.chat(messages, allowedToolGroups)
+    suspend fun chatSuspend(
+        messages: List<Pair<String, String>>,
+        allowedToolGroups: Set<String>? = null,
+        skillIds: List<String> = emptyList(),
+    ): Agent.ChatOutcome = agent.chat(messages, allowedToolGroups, skillIds)
+
+    /**
+     * 流式对话：工具循环与 [chat] 完全一致，只是把过程作为 [AgentStreamEvent] 逐步回调。
+     *
+     * 这里不做 HTTP 相关的事 —— 写 SSE 是 `http/` 层的事；这里是进程内 API，
+     * 调用方拿到事件后自己决定怎么呈现。客户端断开时调用方应取消所在协程，
+     * 生产者会随之停止（不会继续烧模型额度）。
+     */
+    suspend fun chatStream(
+        messages: List<Pair<String, String>>,
+        allowedToolGroups: Set<String>? = null,
+        skillIds: List<String> = emptyList(),
+        onEvent: suspend (AgentStreamEvent) -> Unit,
+    ): Agent.ChatOutcome = agent.chatStream(messages, allowedToolGroups, skillIds, onEvent)
+
+    /** 当前技能库（内置 + 用户）。 */
+    fun listSkills(): List<AgentSkillStore.Skill> = agent.listSkills()
+
+    /** 新建/覆盖一个技能。 */
+    fun saveSkill(
+        id: String?,
+        name: String,
+        description: String,
+        keywords: List<String>,
+        content: String,
+        enabled: Boolean,
+    ): AgentSkillStore.Skill = agent.saveSkill(id, name, description, keywords, content, enabled)
+
+    /** 删除一个用户技能（移入 .trash）。 */
+    fun deleteSkill(id: String): Boolean = agent.deleteSkill(id)
 
     /**
      * 执行一个工具（同步）。内部以 `runBlocking` 把挂起调用摊平，方便非协程的进程内

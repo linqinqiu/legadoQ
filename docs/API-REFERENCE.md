@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.1.6 · 端点数：144 · 生成时间：2026-10-28
+> 版本：0.1.8 · 端点数：151 · 生成时间：2026-10-29
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -18,14 +18,14 @@
 | 目录 | 1 |
 | 系统 | 7 |
 | 书源 | 12 |
-| 登录与凭据 | 13 |
+| 登录与凭据 | 15 |
 | 发现页 | 3 |
 | 内置浏览器 | 17 |
 | 搜索 | 2 |
 | 书源订阅 | 5 |
 | 备份 | 3 |
 | RSS | 7 |
-| 阅读 | 5 |
+| 阅读 | 6 |
 | 净化规则 | 10 |
 | 书架 | 16 |
 | 分章规则 | 7 |
@@ -33,8 +33,8 @@
 | 图片与媒体 | 6 |
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
-| AI 自定义接入 | 9 |
-| **合计** | **144** |
+| AI 自定义接入 | 13 |
+| **合计** | **151** |
 
 ## 目录（1）
 
@@ -71,7 +71,7 @@
 | POST | `/api/sources/{id}/validate` | 是 | 结构校验，不落库：可带草稿 json 校验编辑器里未保存的内容；请求体：json=可选；不给就校验库里那一份 |
 | GET | `/api/sources/{id}/debug` | 否 | SSE 逐阶段调试（结构 / 搜索 / 详情 / 目录 / 正文），每步给取到什么、为什么失败；query：keyword=默认「测试」，bookUrl=可指定从哪本书往下走，chapterIndex=从第几章取正文 |
 
-## 登录与凭据（13）
+## 登录与凭据（15）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
@@ -79,13 +79,15 @@
 | GET | `/api/cookies/detail` | 否 | 读某一个域的凭据原文（编辑前回填用；列表接口故意不回值）；query：u=要读的那个地址或域 |
 | DELETE | `/api/cookies` | 是 | 撤掉某个域的全部凭据；query：url=要清的那个地址或域 |
 | POST | `/api/cookies` | 是 | 写入某个域的凭据（按注册域归桶，同名键覆盖、其余保留，与书源登录弹层同一条落库路径）；请求体：url=站点地址或裸域名，cookie=k=v; k2=v2（也接受 Cookie-Editor 的 JSON 导出） |
-| GET | `/api/sources/{id}/login-ui` | 否 | 这本书源要求的登录表单（上游 loginUi 那套动态项） |
+| GET | `/api/sources/{id}/login-ui` | 否 | 这本书源要求的登录表单：v1 是静态行，v2 是脚本首屏渲染结果（失败时 loginUiError 说明原因） |
+| POST | `/api/sources/{id}/login-ui/render` | 是 | 按 loginUi(state) 渲染 v2 登录界面的一屏（动作返回新 state 后用它换屏）；请求体：state=脚本给的界面状态 JSON，默认 {} |
+| POST | `/api/sources/{id}/login-ui/action` | 是 | 分发 v2 登录界面里的按钮动作（loginAction(action,state,form)），返回命令对象；请求体：action=动作名，state=当前界面状态，form={"字段key":"填好的值"}，browserCompleted=可选，本地页面是否已展示并回传，browserBody=可选，回传的整页 HTML |
 | POST | `/api/sources/{id}/login-info` | 是 | 存登录填写项 / 请求头 / 书源变量；请求体：loginInfo={"键":"值"}，loginHeader=可选整串，sourceVariable=可选 |
 | DELETE | `/api/sources/{id}/login-info` | 是 | 清掉这本书源存的登录填写项 |
 | POST | `/api/sources/{id}/login-header` | 是 | 存一份登录请求头；请求体：loginHeader=整串头，给 null 即清除 |
 | POST | `/api/sources/{id}/login-cookie` | 是 | 直接灌 Cookie（按注册域入库，会先归一化成 k1=v1; k2=v2 并剥掉 Path/HttpOnly 这类指令属性）；请求体：cookie=整串，url=可指定挂到哪个域 |
 | DELETE | `/api/sources/{id}/login-header` | 是 | 清掉这本书源存的登录请求头 |
-| POST | `/api/sources/{id}/login-action` | 是 | 执行书源自定义的登录动作（loginUi 里的按钮规则）；请求体：action=规则原文，loginData={"表单字段":"填好的值"}，isLongClick=是否长按，browserCompleted=浏览器流程是否已走完 |
+| POST | `/api/sources/{id}/login-action` | 是 | 执行书源自定义的登录动作（v1 loginUi 里的按钮规则，或整段 login() 脚本）；请求体：action=规则原文，loginData={"表单字段":"填好的值"}，isLongClick=是否长按，browserCompleted=本地页面是否已展示并回传，browserBody=回传的整页 HTML |
 | GET | `/api/sources/{id}/login-check` | 否 | 登录态检查：配了 loginCheckJs 才可能 verified=true，否则只回答「有/无凭据」，不假装能判定登录有效 |
 | GET | `/api/sources/{id}/credential` | 否 | 某个地址所在注册域上到底有没有凭据（界面用它把「要登录」和「站点确实没内容」分开）；query：u=必填，要查哪个地址所在域 |
 
@@ -142,7 +144,7 @@
 |---|---|---|---|
 | GET | `/api/backup/kept` | 否 | 服务器上留存的备份条目清单（手机导出的 .zip 里那几段，段级存下来了） |
 | GET | `/api/backup/kept/{name}` | 否 | 取其中一个条目的 JSON 原文（name 用清单里给的那个，别自己拼） |
-| POST | `/api/backup/import` | 是 | 上传手机导出的 .zip 备份包入库（multipart）；请求体：file=multipart 文件字段，必须是 .zip，password=可选，加密包用的 |
+| POST | `/api/backup/import` | 是 | 上传备份入库（multipart）：手机/兄弟项目导出的 zip，或裸 JSON（分享书源数组、{bookSource:[…],bookshelf:[…]} 合并导出）；容器按内容判别，不看扩展名；请求体：file=multipart 文件字段，zip 或 .json（≤64 MiB），password=可选，只用于解开 zip 里的 cookies.json |
 
 ## RSS（7）
 
@@ -156,13 +158,14 @@
 | POST | `/api/rss/articles` | 是 | 取某一栏某一页的文章列表；请求体：sourceUrl=哪家，url=栏目地址，page=默认 1 |
 | POST | `/api/rss/content` | 是 | 取一篇文章的正文；请求体：sourceUrl=哪家，link=文章地址 |
 
-## 阅读（5）
+## 阅读（6）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
 | POST | `/api/books/details` | 是 | 取一本书的详情（顺带把封面异步抓进缓存）；请求体：sourceId=书源地址，bookUrl=书页地址 |
 | POST | `/api/books/chapters` | 是 | 取这本书的目录（有缓存先给缓存；在线书挂了可能回落到按正文切章）；请求体：sourceId=书源地址，bookUrl=书页地址 |
-| POST | `/api/books/content` | 是 | 取一章正文（净化规则已套上；离线缓存命中就直接给缓存；有 AI 覆盖就回覆盖版）；请求体：sourceId=书源地址，chapterUrl=章节地址，bookUrl=可选，用于查缓存与套书级净化规则 |
+| POST | `/api/books/content` | 是 | 取一章正文（净化规则已套上；离线缓存命中就直接给缓存；有 AI 覆盖就回覆盖版）；请求体：sourceId=书源地址，chapterUrl=章节地址，bookUrl=可选，用于查缓存与套书级净化规则，force=可选，true = 跳过缓存强制回源重取并覆盖（失败不回旧正文） |
+| POST | `/api/books/content-refresh` | 是 | 批量刷新正文：只回源列出的这些章并覆盖缓存（单次最多 60 章，并发 3）；请求体：sourceId=书源地址，bookUrl=书页地址，chapterUrls=["章节地址数组"] |
 | POST | `/api/books/content-process` | 是 | AI 闭环：落一份「AI 净化/润色覆盖正文」，下一次读这一章就回覆盖版（正文实时重载）；请求体：sourceId=哪本书，bookUrl=哪本书，chapterUrl=哪一章，kind=ai_clean（净化）/ ai_rewrite（润色），original=原始正文，processed=AI 处理后的正文 |
 | DELETE | `/api/books/content-process` | 是 | 撤掉某一章的 AI 覆盖（恢复原始正文）；query：sourceId=哪本书（必填），bookUrl=哪本书（必填），chapterUrl=哪一章（必填），kind=ai_clean/ai_rewrite，缺省 ai_clean |
 
@@ -261,17 +264,21 @@
 | POST | `/api/tts/speak` | 是 | 一次性把一段文本合成完整音频（整章文本走会话那条更好）；请求体：text=要念的文本，不许空，voice=音色，rate=语速，pitch=音高，engine=引擎，customUrl=自建引擎才填，customHeader=可选，customMethod=可选 |
 | GET | `/api/tts/speak` | 否 | 同样的一次性合成，参数走查询串（给 audio 标签这种没法发 POST 的地方用）；query：text=文本（必填），voice=音色，rate=语速，pitch=音高 |
 
-## AI 自定义接入（9）
+## AI 自定义接入（13）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
 | GET | `/api/agent/manifest` | 否 | 列出 AI 能力的清单（工具名 / 分组 / 是否写库），以及是否登记了外部连接 |
 | GET | `/api/agent/connections` | 否 | 列出当前已登记的外部连接（没有就是空列表） |
-| POST | `/api/agent/connections` | 是 | 注册或更新一个外部连接（OpenAI 兼容），落到 agent-profiles.json，重启仍生效；需同源写门；请求体：id=可选，缺则按 name 生成，name=连接名（必填），kind=openai-compatible（唯一支持），baseUrl=模型网关地址，apiKey=可选，model=可选模型名，options=可选键值对 |
+| POST | `/api/agent/connections` | 是 | 注册或更新一个外部连接（OpenAI 兼容），落到 agent-profiles.json，重启仍生效；需同源写门；请求体：id=可选，缺则按 name 生成，name=连接名（必填），kind=openai-compatible \| anthropic \| openai-responses（缺省 openai-compatible），baseUrl=模型网关地址，apiKey=可选，model=可选模型名，options=可选键值对 |
 | DELETE | `/api/agent/connections/{id}` | 是 | 删除一个外部连接，清掉对应 agent-profiles.json 记录；需同源写门 |
 | POST | `/api/agent/sources` | 是 | 新建或覆盖一份书源（AI 也能写库）：json 是整份书源字符串，带 version 防并发覆盖；需同源写门；请求体：json=整份书源 JSON 字符串，version=可选，版本不符回 409 version_conflict |
 | POST | `/api/agent/sources/validate` | 否 | 只校验书源合法性不落库（AI 接入前的探针）：结构能解析就 valid=true；请求体：json=整份书源 JSON 字符串 |
 | POST | `/api/agent/comprehend` | 否 | 文章阅读理解：必须有外部模型连接，不落库；请求体：text=文章正文（必填），question=可选问题，给出则返回答案句，summarySentences=默认 3，topKeywords=默认 8 |
-| POST | `/api/agent/chat` | 否 | 自由对话（多轮）：必须有外部模型连接，不落库；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空 |
-| POST | `/api/agent/models` | 否 | 拉取一个 OpenAI 兼容网关可用的模型清单（服务端代发 GET {baseUrl}/v1/models），登记连接时用来自动补全模型名；不落库、不保存 key；请求体：baseUrl=接口地址（必填，带不带 /v1 都行），apiKey=可选，仅本次请求使用，options=可选额外请求头 |
+| POST | `/api/agent/chat` | 否 | 自由对话（多轮）：必须有外部模型连接，不落库；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空，toolGroups=可选，限定可用工具组，skills=可选，显式指定技能 id（不给则按关键词自动挑） |
+| POST | `/api/agent/models` | 否 | 拉取一个 OpenAI 兼容网关可用的模型清单（服务端代发 GET {baseUrl}/v1/models），登记连接时用来自动补全模型名；不落库、不保存 key；请求体：baseUrl=接口地址（必填，带不带 /v1 都行），apiKey=可选，仅本次请求使用，options=可选额外请求头，kind=可选，协议类型（缺省 openai-compatible）；anthropic 不提供模型清单 |
+| POST | `/api/agent/chat/stream` | 否 | 流式自由对话（SSE）：与 /chat 同一套工具循环，边跑边推 start/delta/tool_start/tool_end/usage/end/error 事件；客户端断开即取消，不再继续烧模型额度。；请求体：messages=[{role:system\|user\|assistant, content:string}]，至少一条非空，toolGroups=可选，限定可用工具组，skills=可选，显式指定技能 id（不给则按关键词自动挑） |
+| GET | `/api/agent/skills` | 否 | 列出技能库（内置 + 用户自建）：技能按关键词命中注入 system，一次最多 3 条。 |
+| POST | `/api/agent/skills` | 是 | 新建或覆盖一个技能（落盘 agent-skills/<id>.md，需同源写入）；同 id 覆盖内置技能会生成用户版本。；请求体：id=可选，缺省由 name 生成，name=技能名称（必填），description=一句话说明，keywords=关键词数组，命中才注入，content=技能正文（必填，注入 system），enabled=默认 true |
+| DELETE | `/api/agent/skills/{id}` | 是 | 删除一个用户技能（移入 agent-skills/.trash，不直接删文件）；内置技能拒绝删除。 |
 

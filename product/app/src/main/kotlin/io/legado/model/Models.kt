@@ -80,6 +80,54 @@ data class SourceLoginUiResponse(
     val loginCanOpenBrowser: Boolean = false,
     /** 这份书源实际会带凭据去访问的域名，登录页那个排最前（粘贴 Cookie 要能选对地方）。 */
     val cookieDomains: List<String> = emptyList(),
+    /**
+     * 登录表单位于书源本地渲染的版本：1 = 上游 `loginUi` 数组；2 = `{"version":2}` +
+     * `loginUrl` 里的 `loginUi(state)` / `loginAction(action,state,form)` 脚本（上游 v2 协议）。
+     */
+    val loginUiVersion: Int = 1,
+    /** v2 表单首次渲染失败时的原因（脚本抛错 / 返回结构不合法），界面要如实显示。 */
+    val loginUiError: String? = null,
+)
+
+@Serializable
+data class SourceLoginUiRenderRequest(
+    val state: String = "{}",
+)
+
+/** v2 表单的一次渲染结果：rows 是脚本给的字段，loginInfo 是库里已存的键值（界面用来回填）。 */
+@Serializable
+data class SourceLoginUiRenderResponse(
+    val rows: List<SourceLoginUiItem> = emptyList(),
+    val state: String = "{}",
+    val loginInfo: Map<String, String> = emptyMap(),
+    val error: String? = null,
+)
+
+@Serializable
+data class SourceLoginUiActionRequest(
+    val action: String,
+    val state: String = "{}",
+    val form: Map<String, String> = emptyMap(),
+    /** 界面已经展示过一次 `startBrowserAwait` 的本地页面并把整页 HTML 交回来了。 */
+    val browserCompleted: Boolean = false,
+    val browserBody: String? = null,
+)
+
+/** v2 `loginAction` 的返回命令；语义与上游 `LoginUiV2.parseActionResult` 一致。 */
+@Serializable
+data class SourceLoginUiActionResponse(
+    val ok: Boolean = true,
+    val state: String? = null,
+    val error: Map<String, String> = emptyMap(),
+    val close: Boolean = false,
+    val unknownKeys: List<String> = emptyList(),
+    val malformed: Boolean = false,
+    val message: String? = null,
+    val toastMessages: List<String> = emptyList(),
+    val updatedLoginInfo: Map<String, String>? = null,
+    val openUrl: String? = null,
+    val inlineHtml: String? = null,
+    val inlineTitle: String? = null,
 )
 
 @Serializable
@@ -96,6 +144,11 @@ data class SourceLoginActionRequest(
     val isLongClick: Boolean = false,
     /** 内置浏览器那一轮已经关掉：让 startBrowserAwait 改为服务端自己抓页面 */
     val browserCompleted: Boolean = false,
+    /**
+     * 本地渲染的 `data:text/html` 设置页关闭时，界面交回来的整页 HTML。
+     * 登录脚本靠 `startBrowserAwait(...).body()` 从页面里读用户选的值，没这一项就永远拿到空串。
+     */
+    val browserBody: String? = null,
 )
 
 /** 删掉某个域名下的 Cookie 后，把剩下的罐子概况一起回给界面，省一次往返。 */
@@ -118,6 +171,9 @@ data class SourceLoginActionResult(
     val updatedVariable: String? = null,
     val reRenderUi: Boolean = false,
     val error: String? = null,
+    /** 登录动作要求打开一个 `data:text/html` 本地页面（书源自己拼的设置页），界面用 iframe 渲染。 */
+    val inlineHtml: String? = null,
+    val inlineTitle: String? = null,
 )
 
 @Serializable
@@ -341,7 +397,29 @@ data class SourceLoginStateRecord(
     val imageStyle: String? = null,
 )
 @Serializable data class Chapter(val index: Int, val title: String, val url: String, val isVolume: Boolean = false)
-@Serializable data class ContentRequest(val sourceId: String, val chapterUrl: String = "", val bookUrl: String? = null)
+@Serializable data class ContentRequest(
+    val sourceId: String,
+    val chapterUrl: String = "",
+    val bookUrl: String? = null,
+    /**
+     * 强制回源重取并覆盖缓存。用户手动「刷新本章正文」时才带 ——
+     * 平时阅读命中缓存就直接回，省一次站点请求；这里必须能表达"我不要缓存"。
+     */
+    val force: Boolean = false,
+)
+/** 批量刷新正文：只接受明确列出的章节地址，不在这里重取整本目录。 */
+@Serializable data class ContentRefreshRequest(
+    val sourceId: String,
+    val bookUrl: String,
+    val chapterUrls: List<String> = emptyList(),
+)
+@Serializable data class ContentRefreshFailure(val chapterUrl: String, val message: String)
+@Serializable data class ContentRefreshResult(
+    val refreshed: List<String> = emptyList(),
+    val failed: List<ContentRefreshFailure> = emptyList(),
+    /** 超过单次上限没处理的数量；前端按批再发，不把一次请求拖成整本爬取。 */
+    val remaining: Int = 0,
+)
 @Serializable data class ChapterContent(
     val title: String? = null,
     val content: String,

@@ -58,11 +58,13 @@ class LlmProviderFrameworkTest {
     // ========== 注册表本身 ==========
 
     @Test
-    fun `注册表 默认含 openai-compatible`() {
+    fun `注册表 默认含三种协议实现`() {
         val reg = LlmProviderRegistry()
         assertNotNull("默认应有 openai 兼容实现", reg.find("openai-compatible"))
         assertTrue(reg.find("openai-compatible") is OpenAiCompatibleProvider)
-        assertEquals(1, reg.size())
+        assertTrue("默认应有 Anthropic 实现", reg.find("anthropic") is io.legado.ai.AnthropicProvider)
+        assertTrue("默认应有 Responses 实现", reg.find("openai-responses") is io.legado.ai.OpenAiResponsesProvider)
+        assertEquals(3, reg.size())
     }
 
     @Test
@@ -70,7 +72,7 @@ class LlmProviderFrameworkTest {
         val reg = LlmProviderRegistry()
         val fake = FakeProvider("ollama")
         assertTrue("注册应成功", reg.register(fake))
-        assertEquals(2, reg.size())
+        assertEquals(4, reg.size())
         assertNotNull(reg.find("ollama"))
     }
 
@@ -79,9 +81,9 @@ class LlmProviderFrameworkTest {
         val reg = LlmProviderRegistry()
         assertTrue("首次注册应成功", reg.register(FakeProvider("ollama")))
         assertFalse("同 id 再注册应被拒", reg.register(FakeProvider("ollama", "第二版")))
-        assertEquals("被拒时不增加数量", 2, reg.size())
+        assertEquals("被拒时不增加数量", 4, reg.size())
         assertTrue("显式 replace 才覆盖", reg.register(FakeProvider("ollama", "第三版"), replace = true))
-        assertEquals("覆盖不增加数量", 2, reg.size())
+        assertEquals("覆盖不增加数量", 4, reg.size())
     }
 
     @Test
@@ -89,7 +91,7 @@ class LlmProviderFrameworkTest {
         val reg = LlmProviderRegistry()
         assertTrue(reg.unregister("openai-compatible"))
         assertNull(reg.find("openai-compatible"))
-        assertEquals(0, reg.size())
+        assertEquals(2, reg.size())
     }
 
     @Test

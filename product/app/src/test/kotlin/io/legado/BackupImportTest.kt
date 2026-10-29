@@ -12,6 +12,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import io.legado.backup.BackupAes
 import io.legado.backup.BackupImporter
+import io.legado.backup.BackupStore
 import io.legado.data.Database
 import io.legado.data.cookieBucketMentions
 import io.legado.data.createBookGroup
@@ -120,6 +121,12 @@ class BackupImportTest {
             val error = runCatching { BackupImporter(database).import(archive) }.exceptionOrNull()
 
             assertTrue("unexpected error: $error", error is IllegalArgumentException)
+
+            // 裸 JSON 同样不能"认不出就当空包成功"
+            val stray = directory.resolve("notes.json")
+            Files.writeString(stray, """{"notes":"hello"}""")
+            val jsonError = runCatching { BackupImporter(database).import(stray) }.exceptionOrNull()
+            assertTrue("unexpected error: $jsonError", jsonError is IllegalArgumentException)
         } finally {
             database.close()
             directory.toFile().deleteRecursively()
@@ -396,6 +403,130 @@ class BackupImportTest {
             // 以前这种包会被 require 判成"不是可识别的 Legado 备份"整包拒收
             val summary = BackupImporter(database).import(archive)
             assertNotNull("只含收下条目的包应当能导入", summary)
+        } finally {
+            database.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * 兄弟项目（MD3 / Max / Night-Reader…）在官方小节之外各有扩充：bookmark、readRecordSession、
+     * highlightTagRule、manifest…… 以前 [BackupStore.KEEP_NAMES] 只认官方那几样，多出来的条目
+     * 会被报"不承接"，但整包还能导；这里钉住的是**它们真的被原样收下**，而不是只出现在错误名单里。
+     */
+    @Test
+    fun `keeps sibling-specific sections instead of rejecting the whole backup`() {
+        val directory = Files.createTempDirectory("legado-backup-sibling")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        val store = BackupStore(directory.resolve("kept"))
+        try {
+            database.initialize()
+            val archive = directory.resolve("md3-backup.zip")
+            writeArchive(
+                archive,
+                mapOf(
+                    "bookSource.json" to
+                        """[{"bookSourceUrl":"https://sibling.example","bookSourceName":"兄弟项目源","enabled":true}]""",
+                    "bookmark.json" to """[{"bookName":"示例书名","chapterIndex":3,"content":"读到这"}]""",
+                    "readRecordSession.json" to """[{"bookName":"示例书名","duration":600}]""",
+                    "highlightTagRule.json" to """[{"name":"重点"}]""",
+                    "manifest.json" to """{"version":1,"app":"legado-md3"}""",
+                ),
+            )
+
+            val summary = BackupImporter(database, store).import(archive)
+
+            assertEquals(1, summary.sources)
+            assertEquals("兄弟项目多出来的条目都收下了，不该再报不承接", emptyList<String>(), summary.skippedSections)
+            assertEquals(
+                listOf("书签", "阅读会话", "高亮标签规则", "备份清单").sorted(),
+                summary.keptSections.map { it.label }.sorted(),
+            )
+            assertEquals("摘要说有，磁盘上就要真有", 4, store.list().size)
+            assertEquals(1, store.list().first { it.name == "bookmark.json" }.items)
+        } finally {
+            database.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * 分享书源是不套 zip 的裸 JSON；转存工具又常把 zip 的扩展名改成 .json。
+     * 入口必须按内容判别，否则这两种最常见的"从微信收来的文件"都会被扩展名挡在门外。
+     */
+    @Test
+    fun `imports raw json source shares and zip content renamed to json`() {
+        val directory = Files.createTempDirectory("legado-backup-raw")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        try {
+            database.initialize()
+            val share = directory.resolve("shareBookSource.json")
+            Files.writeString(
+                share,
+                """[{"bookSourceUrl":"https://share-a.example","bookSourceName":"分享甲","enabled":true},""" +
+                    """{"bookSourceUrl":"https://share-b.example","bookSourceName":"分享乙","enabled":false}]""",
+            )
+            val summary = BackupImporter(database).import(share)
+            assertEquals(2, summary.sources)
+            assertEquals(0, summary.books)
+            assertEquals(2, database.listSources(null).size)
+
+            // 扩展名是 .json，内容其实是 zip：仍按 zip 解包
+            val disguised = directory.resolve("backup-renamed.json")
+            writeArchive(
+                disguised,
+                mapOf("bookSource.json" to """[{"bookSourceUrl":"https://disguised.example","bookSourceName":"改名的包"}]"""),
+            )
+            val again = BackupImporter(database).import(disguised)
+            assertEquals(1, again.sources)
+            assertEquals(3, database.listSources(null).size)
+        } finally {
+            database.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * 合并导出的裸 JSON：`{bookSource:[…],bookshelf:[…],replaceRule:[…]}`。
+     * 条目按字段特征归类，同一个文件里混着书源、书架、规则、分组、RSS 与明文凭据都要各回各家；
+     * `bookmark` 这种本服务没有原生归宿的键则整个值原样收下。
+     */
+    @Test
+    fun `imports a raw json bundle that mixes sections and keeps the extra wrapper`() {
+        val directory = Files.createTempDirectory("legado-backup-bundle")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        val store = BackupStore(directory.resolve("kept"))
+        try {
+            database.initialize()
+            val bundle = directory.resolve("bundle.json")
+            Files.writeString(
+                bundle,
+                """
+                {
+                  "bookSource": [{"bookSourceUrl":"https://bundle.example","bookSourceName":"合并源"}],
+                  "bookshelf": [{"name":"合并书","bookUrl":"https://bundle.example/book/1","origin":"https://bundle.example","tocUrl":"https://bundle.example/book/1"}],
+                  "replaceRule": [{"id":"r1","name":"去广告","pattern":"广告.*","replacement":"","isRegex":true,"isEnabled":true}],
+                  "bookGroup": [{"groupId":9,"groupName":"合并组"}],
+                  "rssSources": [{"sourceUrl":"https://feed.example/","sourceName":"合并订阅"}],
+                  "cookies": [{"url":"bundle.example","cookie":"sid=raw-1"}],
+                  "bookmark": [{"bookName":"合并书","chapterIndex":1}]
+                }
+                """.trimIndent(),
+            )
+
+            val summary = BackupImporter(database, store).import(bundle)
+
+            assertEquals(1, summary.sources)
+            assertEquals(1, summary.rules)
+            assertEquals(1, summary.books)
+            assertEquals(1, summary.rssSources)
+            assertEquals(1, summary.bookGroups)
+            assertEquals(1, summary.cookies)
+            assertEquals(1, summary.keptSections.size)
+            assertEquals("书签", summary.keptSections.single().label)
+            assertEquals("https://bundle.example", database.listBookshelf().single().sourceId)
+            assertEquals("合并组", database.listBookGroups().single().name)
+            assertTrue(database.getCookieForUrl("https://bundle.example/x")!!.contains("sid=raw-1"))
         } finally {
             database.close()
             directory.toFile().deleteRecursively()

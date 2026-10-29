@@ -26,6 +26,9 @@ import io.legado.model.BookDetails
 import io.legado.model.BookRequest
 import io.legado.model.ChapterContent
 import io.legado.model.ContentProcessRequest
+import io.legado.model.ContentRefreshFailure
+import io.legado.model.ContentRefreshRequest
+import io.legado.model.ContentRefreshResult
 import io.legado.model.ContentRequest
 import io.legado.rules.JsSandbox
 import io.legado.rules.RuleExecutionException
@@ -33,6 +36,11 @@ import io.legado.rules.RuleRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
@@ -156,7 +164,9 @@ fun Route.readingRoutes(
                 call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在"))
                 return@post
             }
-            if (cached != null && cached.content.isNotBlank()) {
+            // 手动刷新（force）必须真的回源：上面这段缓存命中分支对它一律不算数。
+            // 失败也不回旧正文 —— 用户点的是「刷新」，拿旧正文冒充成功等于骗人，交给前端报错。
+            if (!request.force && cached != null && cached.content.isNotBlank()) {
                 call.respond(override(cached))
             } else call.respondCatching {
                 try {
@@ -166,8 +176,39 @@ fun Route.readingRoutes(
                     }
                     }
                 } catch (error: Throwable) {
-                    if (cached != null && cached.content.isNotBlank()) override(cached)
+                    if (!request.force && cached != null && cached.content.isNotBlank()) override(cached)
                     else throw error
+                }
+            }
+        }
+        // 批量刷新正文：目录里勾选若干章，一次只回源这些章并覆盖缓存。
+        // 上限与并发都压住 —— 这是用户手动动作，不是把书源当爬虫靶子；剩下的用 remaining 告诉前端。
+        post("/books/content-refresh") {
+            if (!call.requireSameOriginWrite()) return@post
+            val request = call.receive<ContentRefreshRequest>()
+            if (request.sourceId.isBlank() || request.bookUrl.isBlank() || request.chapterUrls.isEmpty()) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_refresh", "缺少书源、书籍地址或章节列表"))
+                return@post
+            }
+            if (request.sourceId == LocalBookParser.LOC_BOOK_SOURCE_ID) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_refresh", "本地书籍的正文来自文件本身，不需要刷新"))
+                return@post
+            }
+            val source = database.getSource(request.sourceId) ?: run {
+                call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在"))
+                return@post
+            }
+            val bookName = database.listBookshelf().firstOrNull { it.sourceId == request.sourceId && it.bookUrl == request.bookUrl }?.name
+            call.respondCatching {
+                withContext(Dispatchers.IO) {
+                    val outcome = refreshChapterBatch(
+                        chapterUrls = request.chapterUrls,
+                        fetch = { chapterUrl -> runner.content(source.json, chapterUrl, bookName, request.bookUrl) },
+                        store = { chapterUrl, content ->
+                            database.cacheBookContent(request.sourceId, request.bookUrl, chapterUrl, content)
+                        },
+                    )
+                    ContentRefreshResult(outcome.refreshed, outcome.failed, outcome.remaining)
                 }
             }
         }
@@ -202,6 +243,59 @@ fun Route.readingRoutes(
             if (database.deleteContentProcess(sourceId, bookUrl, chapterUrl, kind)) call.respond(HttpStatusCode.NoContent)
             else call.respond(HttpStatusCode.NotFound, ApiError("not_found", "这一章没有对应的 AI 覆盖"))
         }
+}
+
+/** 单次批量刷新最多多少章：前端每批 5 章、并发 3，再大批也只是多几趟请求。 */
+private const val MAX_REFRESH_CHAPTERS = 60
+private const val REFRESH_CONCURRENCY = 3
+private const val MAX_REFRESH_BYTES = 2 * 1024 * 1024
+
+/** 批量刷新的结果：`refreshed` 已落缓存，`failed` 逐章带原因，`remaining` 是超过单批上限没做的部分。 */
+internal data class ChapterRefreshOutcome(
+    val refreshed: List<String>,
+    val failed: List<ContentRefreshFailure>,
+    val remaining: Int,
+)
+
+/**
+ * 批量刷新正文的调度（[refreshChapterBatch]）：去重 → 截到单批上限 → 限并发回源 → 逐章落缓存。
+ *
+ * 单独抽出来是为了能在测试里用假 fetch 验「去重、上限、失败只影响该章、超大正文不覆盖」；
+ * 真实回源在测试环境会被 SSRF 闸门挡在回环地址之外，路由层只负责取书源和传这两个闭包。
+ */
+internal suspend fun refreshChapterBatch(
+    chapterUrls: List<String>,
+    fetch: suspend (String) -> ChapterContent,
+    store: suspend (String, ChapterContent) -> Unit,
+    maxChapters: Int = MAX_REFRESH_CHAPTERS,
+    concurrency: Int = REFRESH_CONCURRENCY,
+    maxBytes: Int = MAX_REFRESH_BYTES,
+): ChapterRefreshOutcome = coroutineScope {
+    val distinct = chapterUrls.filter { it.isNotBlank() }.distinct()
+    val urls = distinct.take(maxChapters)
+    val remaining = (distinct.size - urls.size).coerceAtLeast(0)
+    val refreshed = java.util.Collections.synchronizedList(mutableListOf<String>())
+    val failed = java.util.Collections.synchronizedList(mutableListOf<ContentRefreshFailure>())
+    val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+    urls.map { chapterUrl ->
+        async {
+            semaphore.withPermit {
+                try {
+                    val content = fetch(chapterUrl)
+                    if (content.content.toByteArray(Charsets.UTF_8).size > maxBytes) {
+                        failed += ContentRefreshFailure(chapterUrl, "正文超过 ${maxBytes / (1024 * 1024)}MB，未覆盖缓存")
+                    } else {
+                        store(chapterUrl, content)
+                        refreshed += chapterUrl
+                    }
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    failed += ContentRefreshFailure(chapterUrl, error.message ?: "刷新失败")
+                }
+            }
+        }
+    }.awaitAll()
+    ChapterRefreshOutcome(refreshed.toList(), failed.toList(), remaining)
 }
 
 

@@ -80,7 +80,18 @@ object AgentModule {
                 }.take(20)
                 AgentResult("ok", data = mapOf(
                     "total" to hits.size,
-                    "items" to hits.map { mapOf("id" to it.id, "group" to it.group, "writes" to it.writes, "description" to it.description) },
+                    "items" to hits.map {
+                        mapOf(
+                            "id" to it.id,
+                            "group" to it.group,
+                            "writes" to it.writes,
+                            "description" to it.description,
+                            // 参数名/类型/必填一起给出：模型搜到工具后不必再猜怎么填。
+                            "params" to it.params.map { p ->
+                                mapOf("name" to p.name, "type" to p.type, "required" to p.required, "description" to p.description)
+                            },
+                        )
+                    },
                 ))
             })
         }

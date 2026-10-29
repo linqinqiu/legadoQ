@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { api, ExternalLoginStatus, SourceBrowserCookies, SourceLoginUiResponse } from '../lib/api'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { SourceLoginUiPanel, SourceLoginUiPanelHandle } from './SourceLoginUiPanel'
 
 interface SourceLoginModalProps {
   sourceId: string
@@ -9,6 +10,19 @@ interface SourceLoginModalProps {
   onClose: () => void
   onToast: (message: string, type?: 'info' | 'success' | 'error') => void
 }
+
+/**
+ * 书源自己带可渲染的登录界面吗？
+ *
+ * 只有网址的源（番茄 v3.4.2）服务端也会造一个「打开登录网页」按钮当兜底，
+ * 那不算本地界面 —— 仍然推荐真浏览器。v2 协议固定是本地界面。
+ */
+function hasLocalLoginUi(res: SourceLoginUiResponse | null): boolean {
+  if (!res) return false
+  if ((res.loginUiVersion ?? 1) === 2) return true
+  return (res.loginUi || []).some(row => row.type !== 'button' || !/^https?:/i.test(row.action || ''))
+}
+
 
 /** 输入框里可能填 `https://x.com/path` 也可能只填 `x.com`，取主机部分去和罐子里的键对。 */
 function hostOfInput(value: string): string {
@@ -47,7 +61,7 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
   /** 粘贴的 Cookie 要落到哪个域名/地址：默认取书源自己的登录域，而不是书源主域。 */
   const [cookieDomain, setCookieDomain] = useState('')
   /** 当前选择的登录方式；null 表示还没按书源能力自动选过。 */
-  const [method, setMethod] = useState<'external' | 'cookie' | null>(null)
+  const [method, setMethod] = useState<'external' | 'cookie' | 'form' | null>(null)
   /** 真浏览器登录：服务端拉起的本机 Chromium 状态。 */
   const [external, setExternal] = useState<ExternalLoginStatus | null>(null)
   /**
@@ -62,6 +76,8 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
   const [jar, setJar] = useState<SourceBrowserCookies | null>(null)
   const [expandedDomain, setExpandedDomain] = useState<string | null>(null)
   const userPickedRef = useRef(false)
+  /** 本地书源界面的命令式入口：顶栏「保存并登录」复用它，保证读到的是当前屏幕的字段。 */
+  const panelRef = useRef<SourceLoginUiPanelHandle | null>(null)
 
   const refreshExternal = useCallback(async () => {
     try {
@@ -136,9 +152,9 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
     }
   }, [sourceId])
 
-  const loadLoginUi = useCallback(async () => {
+  const loadLoginUi = useCallback(async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const res = await api.getSourceLoginUi(sourceId)
       setUiResponse(res)
       setHeaderEditText(res.loginHeader || '')
@@ -159,15 +175,15 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
       setJar(cookies)
       setCookieDomain(current => current || (res.cookieDomains ?? [])[0] || '')
       // 用户没手动切过分段时，按书源能力自动选推荐方式：
-      // 有登录入口（URL / 脚本 / jsLib 里的 startBrowserAwait）就开真浏览器，
-      // 否则只剩粘贴 Cookie 一条路。
+      // 有 loginUi（APK 那种本地界面）就优先它；只有登录入口（URL / 脚本 /
+      // jsLib 里的 startBrowserAwait）才开真浏览器，否则只剩粘贴 Cookie 一条路。
       if (!userPickedRef.current) {
-        setMethod((res.loginUrl || res.loginCanOpenBrowser) ? 'external' : 'cookie')
+        setMethod(hasLocalLoginUi(res) ? 'form' : (res.loginUrl || res.loginCanOpenBrowser) ? 'external' : 'cookie')
       }
     } catch (err: any) {
       onToast(err.message || '获取登录界面失败', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [sourceId, onToast])
 
@@ -175,9 +191,38 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
     loadLoginUi()
   }, [loadLoginUi])
 
+  /** 本地书源界面里的动作要开真浏览器（注册页 / 用户后台 / http 动作）时走这里。 */
+  const handlePanelOpenExternal = useCallback(async (url: string) => {
+    setExternalBusy(true)
+    try {
+      const res = await api.externalLoginStart(sourceId, url)
+      setExternal(res)
+      setExternalStored([])
+      onToast(
+        res.opened ? `已在 ${res.browser || '本机浏览器'} 打开页面，完成后再回到这里` : '浏览器没能打开',
+        res.opened ? 'success' : 'error',
+      )
+    } catch (error) {
+      onToast(`打开页面失败：${(error as Error).message}`, 'error')
+    } finally {
+      setExternalBusy(false)
+    }
+  }, [onToast, sourceId])
+
+  const handlePanelRefresh = useCallback(async () => {
+    await loadLoginUi(true)
+  }, [loadLoginUi])
+
+  const handlePanelLoginInfoChanged = useCallback((info: Record<string, string>) => {
+    setUiResponse(prev => (prev ? { ...prev, loginInfo: info } : prev))
+    setFormData(prev => ({ ...prev, ...info }))
+  }, [])
+
   // Esc 一次只关一层：登录头编辑 → 凭据菜单 → 登录浮层本身。
   // 全站其它浮层都吃 Esc，这个浮层以前不吃，键盘用户只能点 ✕。
   useEscapeClose(() => {
+    // 书源生成的本地页面是最上面那层，Esc 先关它（panel 自己会处理）
+    if (panelRef.current?.hasInlinePage()) return
     if (headerEditOpen) { setHeaderEditOpen(false); return }
     if (menuOpen) { setMenuOpen(false); return }
     onClose()
@@ -198,6 +243,14 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
     if (executing || loading) return
     try {
       setExecuting(true)
+      const active = method ?? (hasLocalLoginUi(uiResponse)
+        ? 'form'
+        : (uiResponse?.loginUrl || uiResponse?.loginCanOpenBrowser) ? 'external' : 'cookie')
+      if (active === 'form' && panelRef.current) {
+        // 本地界面的字段在面板自己手里（v2 还会换屏），顶栏只负责触发它。
+        await panelRef.current.submitLogin()
+        return
+      }
       await api.saveSourceLoginInfo(sourceId, formData)
       if (uiResponse?.loginIsScript) {
         const res = await api.executeSourceLoginAction(sourceId, 'login(true)', formData, false)
@@ -357,6 +410,14 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
     }
   }
 
+  const hasLocalUi = hasLocalLoginUi(uiResponse)
+  // 登录入口不再只看"是不是一个 http 地址"：相对路径、登录脚本、jsLib 里的
+  // startBrowserAwait，服务端都能解析成真正的登录页。
+  const hasLoginUrl = !!(uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl)
+  const recommended: 'form' | 'external' | 'cookie' = hasLocalUi ? 'form' : hasLoginUrl ? 'external' : 'cookie'
+  const active: 'form' | 'external' | 'cookie' = method ?? recommended
+  const isV2Ui = (uiResponse?.loginUiVersion ?? 1) === 2
+
   return (
     <div className="overlay-backdrop" onClick={onClose}>
       <div className="dialog-shell size-s source-login-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="书源登录">
@@ -370,16 +431,19 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
             )}
           </div>
           <div className="source-login-actions">
-            <button
-              type="button"
-              className="source-login-action-btn primary"
-              title={uiResponse?.loginIsScript ? '保存并登录' : (uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl) ? '保存并打开登录页' : '保存登录信息'}
-              aria-label={uiResponse?.loginIsScript ? '保存并登录' : (uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl) ? '保存并打开登录页' : '保存登录信息'}
-              disabled={executing || loading}
-              onClick={handleSaveAndLogin}
-            >
-              <Icon name="check" />
-            </button>
+            {/* v2 的上游对话框没有顶栏确定键：登录完全由登录界面里的按钮驱动 */}
+            {!(active === 'form' && isV2Ui) && (
+              <button
+                type="button"
+                className="source-login-action-btn primary"
+                title={uiResponse?.loginIsScript ? '保存并登录' : (uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl) ? '保存并打开登录页' : '保存登录信息'}
+                aria-label={uiResponse?.loginIsScript ? '保存并登录' : (uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl) ? '保存并打开登录页' : '保存登录信息'}
+                disabled={executing || loading}
+                onClick={handleSaveAndLogin}
+              >
+                <Icon name="check" />
+              </button>
+            )}
             <div className="source-login-menu-container">
               <button
                 type="button"
@@ -435,11 +499,8 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
           ) : (() => {
             // 登录入口不再只看"是不是一个 http 地址"：相对路径、登录脚本、jsLib 里的
             // startBrowserAwait，服务端都能解析成真正的登录页。
-            const hasLoginUrl = !!(uiResponse?.loginCanOpenBrowser || uiResponse?.loginUrl)
             const hasCredential = (jar?.count ?? 0) > 0 || !!uiResponse?.loginHeader
-            const recommended = hasLoginUrl ? 'external' : 'cookie'
-            const active = method ?? recommended
-            const tab = (key: 'external' | 'cookie', label: string) => (
+            const tab = (key: 'form' | 'external' | 'cookie', label: string) => (
               <button
                 key={key}
                 type="button"
@@ -453,6 +514,7 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
             return (
               <>
                 <div className="source-login-method-tabs" role="tablist">
+                  {hasLocalUi && tab('form', '书源界面')}
                   {tab('external', '真浏览器')}
                   {tab('cookie', '粘贴 Cookie')}
                 </div>
@@ -531,6 +593,22 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
                       )
                     })}
                   </div>
+                )}
+
+                {active === 'form' && (
+                  <SourceLoginUiPanel
+                    ref={panelRef}
+                    sourceId={sourceId}
+                    version={uiResponse?.loginUiVersion ?? 1}
+                    rows={uiResponse?.loginUi ?? []}
+                    uiError={uiResponse?.loginUiError}
+                    storedLoginInfo={uiResponse?.loginInfo ?? {}}
+                    onToast={onToast}
+                    onRefresh={handlePanelRefresh}
+                    onClose={onClose}
+                    onOpenExternal={handlePanelOpenExternal}
+                    onLoginInfoChanged={handlePanelLoginInfoChanged}
+                  />
                 )}
 
                 {active === 'external' && (

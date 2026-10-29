@@ -45,6 +45,69 @@ interface LlmProvider {
         val text = chat(profile, messages) ?: return null
         return LlmReply(content = text)
     }
+
+    /**
+     * 带工具的**流式**对话。默认实现退回 [chatWithTools]，拿到完整回复后一次性回调。
+     *
+     * 这样没有实现流式的 provider（Anthropic/Responses 的第一版）也能被同一条 SSE 通路
+     * 服务：界面不会逐字出现，但事件序列、工具调用、用量统计完全一致。
+     * 想真正逐字输出的 provider 覆盖它。
+     *
+     * 约束与 [chatWithTools] 相同：拿不到返回 null，**不要抛异常之外的"半个结果"**。
+     */
+    fun chatWithToolsStream(
+        profile: AgentProfileStore.Profile,
+        messages: List<LlmMessage>,
+        tools: List<ToolMeta>,
+        callbacks: LlmStreamCallbacks,
+    ): LlmReply? {
+        val reply = chatWithTools(profile, messages, tools) ?: return null
+        if (reply.content.isNotBlank()) callbacks.onDelta(reply.content)
+        reply.usage?.let(callbacks.onUsage)
+        return reply
+    }
+
+    /**
+     * 拉这个连接可用的模型清单。默认 null = 这个协议不提供/不实现。
+     * 界面的「拉取模型」按钮据此决定显示模型下拉还是自由输入。
+     */
+    fun listModels(profile: AgentProfileStore.Profile): List<String>? = null
+}
+
+/**
+ * 流式回调。**在 IO 线程上调用**，实现里只做"塞进队列/累加"，不要在这里做重活或切线程。
+ *
+ * 三个回调都可缺省：`onReasoning` 给带思考过程的模型（DeepSeek-R1 / o 系列）用，
+ * 收到的内容与正文分开显示，不混进最终回答。
+ */
+data class LlmStreamCallbacks(
+    val onDelta: (String) -> Unit = {},
+    val onReasoning: (String) -> Unit = {},
+    val onUsage: (LlmUsage) -> Unit = {},
+)
+
+/** 上游报告的 token 用量。字段都可空 —— 不少中转站不返回 usage。 */
+data class LlmUsage(
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null,
+    val totalTokens: Int? = null,
+) {
+    fun plus(other: LlmUsage?): LlmUsage {
+        if (other == null) return this
+        return LlmUsage(
+            promptTokens = sum(promptTokens, other.promptTokens),
+            completionTokens = sum(completionTokens, other.completionTokens),
+            totalTokens = sum(totalTokens, other.totalTokens),
+        )
+    }
+
+    private fun sum(a: Int?, b: Int?): Int? = when {
+        a == null -> b
+        b == null -> a
+        else -> a + b
+    }
+
+    val isEmpty: Boolean get() = promptTokens == null && completionTokens == null && totalTokens == null
 }
 
 /**
@@ -74,10 +137,17 @@ data class LlmMessage(
  * 所以**插件注册的工具自动对模型可见**，不必额外登记。
  */
 data class LlmToolCall(
-    /** 工具 id（对应 [ToolMeta.id]）。 */
+    /**
+     * 本次调用的协议 id（`call_id`）。OpenAI 兼容协议里模型可以不回 id，此时退化成工具名；
+     * Anthropic / Responses 一定会回，且同一轮里**同一个工具可以被调多次** ——
+     * 这也是它必须与 [name] 分开的原因：旧实现把两者合成一个字段，
+     * 同一轮调两次 `source.get` 时两条 `tool_call_id` 会撞在一起。
+     */
     val id: String,
     /** 参数（扁平键值，与 [ToolArgs] 同形）。 */
     val args: Map<String, Any?> = emptyMap(),
+    /** 真正的工具 id（对应 [ToolMeta.id]）。默认等于 [id]，兼容老 provider/测试。 */
+    val name: String = id,
 )
 
 /**
@@ -90,6 +160,8 @@ data class LlmReply(
     val content: String = "",
     /** 要调的工具，可能为空。 */
     val toolCalls: List<LlmToolCall> = emptyList(),
+    /** 上游报告的 token 用量；没报就是 null。 */
+    val usage: LlmUsage? = null,
 )
 
 /**
@@ -103,7 +175,13 @@ data class LlmReply(
  * val agent = Agent(ctx, home, registry = registry) // 交给框架
  * ```
  */
-class LlmProviderRegistry(builtin: List<LlmProvider> = listOf(OpenAiCompatibleProvider())) {
+class LlmProviderRegistry(
+    builtin: List<LlmProvider> = listOf(
+        OpenAiCompatibleProvider(),
+        AnthropicProvider(),
+        OpenAiResponsesProvider(),
+    ),
+) {
 
     private val providers = java.util.concurrent.ConcurrentHashMap<String, LlmProvider>()
 
@@ -134,11 +212,12 @@ class LlmProviderRegistry(builtin: List<LlmProvider> = listOf(OpenAiCompatiblePr
     /**
      * 为某个档案挑 provider。
      *
-     * 匹配规则：档案的 `kind` 先按 provider id 找；找不到就用 `openai-compatible`（默认档）。
-     * 这样老档案（kind 写的是 `openai-compatible`）照常工作，新协议只要 kind 对上即可。
+     * 匹配规则：档案 `kind` 的 wire 值与 provider id 相等就用它；没有就回退 `openai-compatible`。
+     * 这样老档案（kind 写的是 `openai-compatible`）照常工作，新协议只要 kind 对上即可；
+     * kind 写错也不会让连接彻底不可用（回退默认档，行为与从前一致）。
      */
     fun forProfile(profile: AgentProfileStore.Profile): LlmProvider? {
-        val kind = profile.kind.name.lowercase().replace('_', '-')
+        val kind = profile.kind.wire
         return providers[kind] ?: providers["openai-compatible"]
     }
 

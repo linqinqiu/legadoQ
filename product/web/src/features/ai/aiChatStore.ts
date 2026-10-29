@@ -24,6 +24,10 @@ export type ChatLine = {
   engine?: string
   /** 这一轮 AI 实际执行过的工具（`工具id:结果码`） */
   toolRounds?: string[]
+  /** 上游报告的 token 用量（多轮累加） */
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+  /** 这一轮实际注入的技能 id */
+  skillsUsed?: string[]
   /** 这条消息产生的时间戳，用于显示与清理 */
   at: number
 }

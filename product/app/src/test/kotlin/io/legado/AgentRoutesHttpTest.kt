@@ -186,6 +186,98 @@ class AgentRoutesHttpTest {
         }
     }
 
+    @Test
+    fun `POST chat stream without connection returns 409 before opening the stream`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-stream", ".sqlite").toString()
+        val home = tempDir("home-stream")
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            val resp = c.post("/api/agent/chat/stream") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"messages":[{"role":"user","content":"ping"}]}""")
+            }
+            // 关键：缺连接时回的是普通 JSON 409，而不是一个"开了又立刻结束"的事件流 ——
+            // 前者前端能按 ApiError 读 code，后者只会看到空流 + 一句流意外结束。
+            assertEquals(HttpStatusCode.Conflict, resp.status)
+            val body = readJson(resp).jsonObject
+            assertEquals("no_connection", body["code"]?.jsonPrimitive?.content)
+        } finally {
+            cleanup(dbPath, home)
+        }
+    }
+
+    @Test
+    fun `GET skills lists builtin skills with content`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-skills", ".sqlite").toString()
+        val home = tempDir("home-skills")
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            val resp = c.get("/api/agent/skills")
+            assertEquals(HttpStatusCode.OK, resp.status)
+            val skills = readJson(resp).jsonObject["skills"]!!.jsonArray
+            assertTrue("内置技能应至少 3 条，实际 ${skills.size}", skills.size >= 3)
+            val debug = skills.map { it.jsonObject }.firstOrNull { it["id"]?.jsonPrimitive?.content == "source-debug" }
+            assertNotNull("应有内置技能 source-debug", debug)
+            assertEquals(true, debug!!["builtin"]?.jsonPrimitive?.boolean)
+            assertTrue("技能正文要下发给界面（可展开查看）", !debug["content"]?.jsonPrimitive?.content.isNullOrBlank())
+        } finally {
+            cleanup(dbPath, home)
+        }
+    }
+
+    @Test
+    fun `POST skill persists to disk and DELETE moves it to trash`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-skill-crud", ".sqlite").toString()
+        val home = tempDir("home-skill-crud")
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            val create = c.post("/api/agent/skills") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"name":"测试流程","keywords":["测试","排查"],"content":"先看日志，再复现，最后补测试。"}""")
+            }
+            assertEquals("create should be 200: ${create.status}", HttpStatusCode.OK, create.status)
+            val saved = readJson(create).jsonObject
+            val id = saved["id"]?.jsonPrimitive?.content ?: ""
+            assertTrue("id 不该为空", id.isNotBlank())
+            assertEquals(false, saved["builtin"]?.jsonPrimitive?.boolean)
+            assertTrue("技能应落盘到 agent-skills/<id>.md", Files.exists(home.resolve("agent-skills/$id.md")))
+
+            val listed = readJson(c.get("/api/agent/skills")).jsonObject["skills"]!!.jsonArray
+            assertTrue("新建的技能应出现在列表里", listed.any { it.jsonObject["id"]?.jsonPrimitive?.content == id })
+
+            val del = c.delete("/api/agent/skills/$id")
+            assertEquals(HttpStatusCode.OK, del.status)
+            assertEquals(false, Files.exists(home.resolve("agent-skills/$id.md")))
+            val trash = home.resolve("agent-skills/.trash")
+            assertTrue(".trash 里应留一份备份", Files.isDirectory(trash) && Files.list(trash).use { it.count() } > 0)
+
+            assertEquals("删掉的技能再删应 404", HttpStatusCode.NotFound, c.delete("/api/agent/skills/$id").status)
+        } finally {
+            cleanup(dbPath, home)
+        }
+    }
+
+    @Test
+    fun `DELETE builtin skill is rejected`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-skill-builtin", ".sqlite").toString()
+        val home = tempDir("home-skill-builtin")
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            val resp = c.delete("/api/agent/skills/source-debug")
+            assertEquals(HttpStatusCode.BadRequest, resp.status)
+            val body = readJson(resp).jsonObject
+            assertEquals("invalid_skill", body["code"]?.jsonPrimitive?.content)
+            assertTrue("内置技能仍应在列表里", readJson(c.get("/api/agent/skills")).jsonObject["skills"]!!.jsonArray
+                .any { it.jsonObject["id"]?.jsonPrimitive?.content == "source-debug" })
+        } finally {
+            cleanup(dbPath, home)
+        }
+    }
+
     private fun serverConfig(dbPath: String, home: Path) = ServerConfig(
         host = "127.0.0.1", port = 8080, databasePath = dbPath,
         coverCacheDirectory = Files.createTempDirectory("legado-agent-covers"),

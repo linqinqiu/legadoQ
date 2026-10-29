@@ -17,6 +17,7 @@ test('备份页静态渲染：主语是备份包，不是"手机恢复"，也不
   // 0.6.27 起备份是悬浮层：标题在层头（BackupPage 单独静态渲染看不到），正文只说清入口与动作
   assert.ok(html.includes('备份包'), '正文要点明这是备份包入口（标题在悬浮层头）')
   assert.ok(html.includes('选择备份包导入'), '主按钮必须能选本地 zip')
+  assert.ok(html.includes('accept=".zip,.json,.txt,application/zip,application/json"'), '裸 JSON 分享书源与兄弟备份也要能直接选')
   // 用户 2026-09-30：「手机恢复这个名词解释有些难听，咱们这是电脑啊，支持手机端阅读的备份，但是不要这么命名」
   assert.ok(!/手机恢复|手机端|手机导入|手机端恢复/.test(html), `不许把电脑上的页面命名成手机动作：${html.slice(0, 200)}`)
   // 备份密码只是 cookies.json 一件事的钥匙，不是导入的前置条件（#64）；折叠态下给一个可展开入口

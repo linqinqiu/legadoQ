@@ -55,6 +55,8 @@ import io.legado.model.SourceLoginCookieResponse
 import io.legado.model.SourceLoginCookieUpdateRequest
 import io.legado.model.SourceLoginHeaderUpdateRequest
 import io.legado.model.SourceLoginInfoUpdateRequest
+import io.legado.model.SourceLoginUiActionRequest
+import io.legado.model.SourceLoginUiRenderRequest
 import io.legado.model.SourceLoginUiResponse
 import io.legado.model.SourceOrderRequest
 import io.legado.model.SourceValidateRequest
@@ -394,7 +396,10 @@ fun Route.sourcesRoutes(
             }
             get("/login-ui") {
                 val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
-                val items = runner.parseLoginUi(source.json)
+                // v2 的字段由 loginUrl 里的 loginUi(state) 现算；v1 是静态（或 @js:）数组。
+                val version = runner.loginUiVersion(source.json)
+                val rendered = if (version == 2) runner.renderLoginUiV2(source.json) else null
+                val items = rendered?.rows ?: if (version == 2) emptyList() else runner.parseLoginUi(source.json)
                 val state = database.getSourceLoginState(source.id)
                 val sourceObj = runCatching { Json.parseToJsonElement(source.json).jsonObject }.getOrNull()
                 val sourceName = (sourceObj?.get("bookSourceName") as? JsonPrimitive)?.contentOrNull ?: source.id
@@ -412,7 +417,38 @@ fun Route.sourcesRoutes(
                         loginIsScript = runner.loginIsScript(source.json),
                         loginCanOpenBrowser = runner.loginCanOpenBrowser(source.json),
                         cookieDomains = WebViewProxy.credentialDomains(source.json),
+                        loginUiVersion = version,
+                        loginUiError = rendered?.error,
                     )
+                )
+            }
+            post("/login-ui/render") {
+                if (!call.requireSameOriginWrite()) return@post
+                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+                val req = runCatching { call.receive<SourceLoginUiRenderRequest>() }.getOrElse {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 JSON")); return@post
+                }
+                call.respond(runner.renderLoginUiV2(source.json, req.state))
+            }
+            post("/login-ui/action") {
+                if (!call.requireSameOriginWrite()) return@post
+                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+                val req = runCatching { call.receive<SourceLoginUiActionRequest>() }.getOrElse {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 JSON")); return@post
+                }
+                if (req.action.isBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("missing_action", "缺少要执行的动作"))
+                    return@post
+                }
+                call.respond(
+                    runner.executeLoginUiActionV2(
+                        source.json,
+                        req.action,
+                        req.state,
+                        req.form,
+                        browserCompleted = req.browserCompleted,
+                        browserBody = req.browserBody,
+                    ),
                 )
             }
             post("/login-info") {
@@ -489,7 +525,14 @@ fun Route.sourcesRoutes(
                 if (!call.requireSameOriginWrite()) return@post
                 val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
                 val req = call.receive<SourceLoginActionRequest>()
-                val outcome = runner.executeLoginAction(source.json, req.action, req.loginData, req.isLongClick, req.browserCompleted)
+                val outcome = runner.executeLoginAction(
+                    source.json,
+                    req.action,
+                    req.loginData,
+                    req.isLongClick,
+                    req.browserCompleted,
+                    req.browserBody,
+                )
                 call.respond(outcome)
             }
             get("/login-check") {

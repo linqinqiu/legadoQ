@@ -139,7 +139,7 @@ test('一张卡只有一个百分比口径，本地同步的进度分子只数�
     '反向对照：拿整本书的已缓存集合当分子，会念成「350 / 50 章」')
 })
 
-test('Esc 只挂一份、登录浮层只剩两条路、两个死导出不再长回来', () => {
+test('Esc 只挂一份、登录浮层保留本地界面与两条凭据路径、两个死导出不再长回来', () => {
   const logs = read('components', 'LogsModal.tsx')
   assert.doesNotMatch(logs, /addEventListener\('keydown'/, 'LogsModal 不该再自己挂一份 keydown')
   assert.match(logs, /useEscapeClose\(onClose\)/, '统一那一套要在')
@@ -148,11 +148,13 @@ test('Esc 只挂一份、登录浮层只剩两条路、两个死导出不再长�
   assert.match(debug, /useEffect\(\(\) => \(\) => \{ streamRef\.current\?\.close\(\) \}, \[\]\)/, '卸载要收 EventSource')
 
   // 内置浏览器抓不到需要站点脚本才写出的 Cookie、表单只对少数源有意义、书签脚本已被真浏览器取代：
-  // 登录浮层只留「真浏览器」与「粘贴 Cookie」两条真能拿到凭据的路（用户 2026-10-28）。
+  // 凭据路径只留「真浏览器」与「粘贴 Cookie」两条（用户 2026-10-28）。
+  // 2026-10-28 追加「书源界面」：有 loginUi 的源按 APK 的方式在本地渲染字段与按钮；
+  // 它不是第三条凭据路径，而是书源自己的登录界面。
   const login = read('sources', 'SourceLoginModal.tsx')
   assert.doesNotMatch(login, /SourceWebViewModal|bookmarkletCode/, '内置浏览器 / 书签同步不许回来')
   const tabs = [...login.matchAll(/tab\('(external|cookie|form|browser|bookmark)', '([^']+)'\)/g)].map(m => m[2])
-  assert.deepEqual(tabs, ['真浏览器', '粘贴 Cookie'], '登录方式只剩两条')
+  assert.deepEqual(tabs, ['书源界面', '真浏览器', '粘贴 Cookie'], '登录方式：书源界面 + 两条凭据路径')
   assert.match(login, /api\.externalLoginStart\(sourceId, res\.openUrl\)/,
     '登录脚本要浏览器时必须交给真浏览器，不能弹到日常浏览器或内嵌沙箱')
 

@@ -36,6 +36,10 @@ import io.legado.model.SourceLoginActionRequest
 import io.legado.model.SourceLoginActionResult
 import io.legado.model.SourceLoginCookieUpdateRequest
 import io.legado.model.SourceLoginInfoUpdateRequest
+import io.legado.model.SourceLoginUiActionRequest
+import io.legado.model.SourceLoginUiActionResponse
+import io.legado.model.SourceLoginUiRenderRequest
+import io.legado.model.SourceLoginUiRenderResponse
 import io.legado.model.SourceLoginUiResponse
 import io.legado.model.SourceSummary
 import io.legado.rules.RuleRunner
@@ -206,6 +210,141 @@ class SourceLoginTest {
     }
 
     @Test
+    fun `v2 login ui renders screens and dispatches commands`() {
+        val dbPath = Files.createTempFile("legado-login-v2", ".sqlite").toString()
+        val db = Database(dbPath)
+        db.initialize()
+        val runner = RuleRunner(database = db)
+        val sourceId = "https://v2.example"
+        val source = """{
+            "bookSourceUrl":"$sourceId",
+            "bookSourceName":"v2 登录源",
+            "loginUi":"{\"version\":2}",
+            "loginUrl":"function loginUi(state) { if (!state.step) { return { rows: [ { key: 'phone', name: '手机号', type: 'text' }, { name: '发送验证码', type: 'button', action: 'sendCode', countdown: 60 } ] }; } return { rows: [ { key: 'code', name: '验证码', type: 'text' }, { name: '提交', type: 'button', action: 'submit' } ] }; } function loginAction(action, state, form) { if (action == 'sendCode') { if (!form.phone) return { error: { phone: '手机号必填' } }; return { state: { step: 'code', phone: form.phone } }; } return { login: { token: 'tk-1' }, close: true, extra: 1 }; }"
+        }""".trimIndent()
+
+        assertEquals(2, runner.loginUiVersion(source))
+        val first = runner.renderLoginUiV2(source)
+        assertNull(first.error)
+        assertEquals(2, first.rows.size)
+        assertEquals("phone", first.rows[0].key)
+        assertEquals(60, first.rows[1].countdown)
+
+        // 校验失败不换屏，错误按字段交回界面
+        val invalid = runner.executeLoginUiActionV2(source, "sendCode", "{}", emptyMap())
+        assertTrue(invalid.ok)
+        assertEquals("手机号必填", invalid.error["phone"])
+        assertNull(invalid.state)
+
+        val next = runner.executeLoginUiActionV2(source, "sendCode", "{}", mapOf("phone" to "13800000000"))
+        assertTrue(next.ok)
+        assertNotNull(next.state)
+        assertTrue(next.state!!, next.state.contains("\"step\":\"code\""))
+
+        val second = runner.renderLoginUiV2(source, next.state!!)
+        assertNull(second.error)
+        assertEquals("code", second.rows[0].key)
+
+        val done = runner.executeLoginUiActionV2(source, "submit", next.state!!, mapOf("code" to "1234"))
+        assertTrue(done.ok)
+        assertTrue(done.close)
+        // 未知命令不执行，但如实回报
+        assertEquals(listOf("extra"), done.unknownKeys)
+        // login 结果直接落库，口径与 v1 的 loginInfo 一致
+        assertEquals("tk-1", db.getSourceLoginState(sourceId)?.loginInfo?.get("token"))
+    }
+
+    @Test
+    fun `v2 render rejects malformed rows instead of half a form`() {
+        val runner = RuleRunner { "" }
+        val duplicateKeys = """{
+            "bookSourceUrl":"https://v2-bad.example",
+            "loginUi":"{\"version\":2}",
+            "loginUrl":"function loginUi(state) { return { rows: [ { key: 'a', name: 'A', type: 'text' }, { key: 'a', name: 'B', type: 'text' } ] }; }"
+        }""".trimIndent()
+        val res = runner.renderLoginUiV2(duplicateKeys)
+        assertNotNull(res.error)
+        assertTrue(res.rows.isEmpty())
+
+        val missingKey = """{
+            "bookSourceUrl":"https://v2-bad2.example",
+            "loginUi":"{\"version\":2}",
+            "loginUrl":"function loginUi(state) { return { rows: [ { name: '没有 key 的输入框', type: 'text' } ] }; }"
+        }""".trimIndent()
+        assertNotNull(runner.renderLoginUiV2(missingKey).error)
+    }
+
+    @Test
+    fun `v1 login action renders inline data page and consumes the captured body`() {
+        val dbPath = Files.createTempFile("legado-login-inline", ".sqlite").toString()
+        val db = Database(dbPath)
+        db.initialize()
+        val runner = RuleRunner(database = db)
+        val sourceId = "https://inline.example"
+        // 聚合源真实形态：设置页是整页 HTML，经 java.startBrowserAwait(data:text/html;base64,…) 打开，
+        // 关闭后脚本从返回的 body 里正则取用户选的值。
+        val source = """{
+            "bookSourceUrl":"$sourceId",
+            "bookSourceName":"本地设置页",
+            "jsLib":"function getServerSettings() { let html = '<html><body><span id=\"serverValue\">v1</span></body></html>'; java.startBrowserAwait('data:text/html;base64,' + java.base64Encode(html), '线路设置'); java.toast('请点完成'); } function saveServerSettings() { let html = '<html><body><span id=\"serverValue\">v1</span></body></html>'; let r = java.startBrowserAwait('data:text/html;base64,' + java.base64Encode(html), '线路设置'); let m = String(r.body).match(/id=\"serverValue\"\\s*>\\s*([^<]*?)\\s*<\\/span>/); source.setVariable(JSON.stringify({ server: m ? m[1] : '' })); java.toast('picked=' + (m ? m[1] : 'none')); }"
+        }""".trimIndent()
+
+        val first = runner.executeLoginAction(source, "getServerSettings()", emptyMap())
+        assertTrue(first.error ?: "脚本失败", first.success)
+        assertEquals("线路设置", first.inlineTitle)
+        assertTrue(first.inlineHtml!!, first.inlineHtml.contains("id=\"serverValue\""))
+        assertNull("本地页面不该被当成远端地址", first.openUrl)
+        assertTrue(first.toastMessages.contains("请点完成"))
+
+        // 界面关掉 iframe 时把整页 HTML 交回来：这一轮 startBrowserAwait 直接返回它
+        val captured = "<html><body><span id=\"serverValue\">v2</span></body></html>"
+        val second = runner.executeLoginAction(
+            source,
+            "saveServerSettings()",
+            emptyMap(),
+            browserCompleted = true,
+            browserBody = captured,
+        )
+        assertTrue(second.error ?: "脚本失败", second.success)
+        assertTrue(second.toastMessages.joinToString("|"), second.toastMessages.contains("picked=v2"))
+        assertEquals("""{"server":"v2"}""", db.getSourceVariable(sourceId))
+    }
+
+    @Test
+    fun `jsLib top-level functions stay global so actions can call this getVariable`() {
+        val dbPath = Files.createTempFile("legado-login-this-scope", ".sqlite").toString()
+        val db = Database(dbPath)
+        db.initialize()
+        val runner = RuleRunner(database = db)
+        val sourceId = "https://this-scope.example"
+        db.saveSourceVariable(sourceId, """{"线路":"https://line2.example"}""")
+        // 光遇聚合真实形态：jsLib 顶层定义 getVariable(k) 等工具函数，动作却用 this.getVariable(...) 调用。
+        // 库必须先在全局作用域求值，函数声明才会成为全局属性；和动作拼进同一个 IIFE 会直接 TypeError。
+        val source = """{
+            "bookSourceUrl":"$sourceId",
+            "bookSourceName":"库函数全局可见",
+            "loginUrl":"// 登录\nfunction login(flag) { return true }",
+            "jsLib":"let lineDefault = 'https://line1.example'; function getVariable(k) { const { source } = this; let parsed = {}; try { parsed = JSON.parse(source.getVariable()); } catch (e) {} if (!k) { return parsed; } let v = parsed[k]; return v == undefined ? lineDefault : v; } function getServerSettings() { let host = this.getVariable('线路'); java.startBrowserAwait('data:text/html;base64,' + java.base64Encode('<html><body><span id=\"serverValue\">' + host + '</span></body></html>'), '线路设置'); }"
+        }""".trimIndent()
+
+        val out = runner.executeLoginAction(source, "getServerSettings()", emptyMap())
+        assertTrue(out.error ?: "脚本失败", out.success)
+        assertEquals("线路设置", out.inlineTitle)
+        assertTrue(out.inlineHtml!!, out.inlineHtml.contains("https://line2.example"))
+    }
+
+    @Test
+    fun `data url decoding keeps percent payloads intact`() {
+        val html = "<p>线路 A+B</p>"
+        // data URL 的百分号编码里空格是 %20（不是表单编码的 +），+ 本身是字面量。
+        val encoded = java.net.URLEncoder.encode(html, "UTF-8").replace("+", "%20")
+        assertEquals(html, io.legado.rules.decodeDataUrlText("data:text/html;charset=utf-8,$encoded"))
+        val base64 = java.util.Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
+        assertEquals(html, io.legado.rules.decodeDataUrlText("data:text/html;base64,$base64"))
+        assertNull(io.legado.rules.decodeDataUrlText("https://example.com/"))
+    }
+
+    @Test
     fun `login action on a URL-only source opens the login page instead of failing`() {
         val dbPath = Files.createTempFile("legado-login-url-only", ".sqlite").toString()
         val db = Database(dbPath)
@@ -357,6 +496,95 @@ class SourceLoginTest {
         val delInfoRes = client.delete("/api/sources/$encodedId/login-info") {
         }
         assertEquals(HttpStatusCode.OK, delInfoRes.status)
+    }
+
+    @Test
+    fun `v2 action hands back an inline page and continues with the captured body`() {
+        val dbPath = Files.createTempFile("legado-login-v2-inline", ".sqlite").toString()
+        val db = Database(dbPath)
+        db.initialize()
+        val runner = RuleRunner(database = db)
+        val sourceId = "https://v2-inline.example"
+        val source = """{
+            "bookSourceUrl":"$sourceId",
+            "bookSourceName":"v2 本地设置页",
+            "loginUi":"{\"version\":2}",
+            "loginUrl":"function loginUi(state) { return { rows: [ { name: '打开设置', type: 'button', action: 'open' } ] }; } function loginAction(action, state, form) { var r = java.startBrowserAwait('data:text/html;base64,' + java.base64Encode('<html><body><span id=\"pick\">A</span></body></html>'), '设置页'); if (!r.body) { return { state: { opened: true } }; } source.setVariable(JSON.stringify({ picked: String(r.body).indexOf('id=\"pick\"') >= 0 })); return { state: { opened: true, read: true } }; }"
+        }""".trimIndent()
+
+        val first = runner.executeLoginUiActionV2(source, "open")
+        assertTrue(first.ok)
+        assertEquals("设置页", first.inlineTitle)
+        assertTrue(first.inlineHtml!!, first.inlineHtml.contains("id=\"pick\""))
+
+        val second = runner.executeLoginUiActionV2(
+            source,
+            "open",
+            "{}",
+            emptyMap(),
+            browserCompleted = true,
+            browserBody = "<html><body><span id=\"pick\">B</span></body></html>",
+        )
+        assertTrue(second.ok)
+        assertNull(second.inlineHtml)
+        assertEquals("""{"picked":true}""", db.getSourceVariable(sourceId))
+    }
+
+    @Test
+    fun `v2 login endpoints expose render and action over HTTP`() = testApplication {
+        val dbPath = Files.createTempFile("legado-routes-login-v2", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-routes-login-v2-covers")
+        val config = ServerConfig(
+            host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+            coverCacheDirectory = tempDir
+        )
+        application { legadoApplication(config) }
+        val client = createClient {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+
+        val sourceJson = """{
+            "bookSourceUrl":"https://v2-api.example",
+            "bookSourceName":"v2 API 源",
+            "loginUi":"{\"version\":2}",
+            "loginUrl":"function loginUi(state) { return { rows: [ { key: 'phone', name: '手机号', type: 'text' }, { name: '下一步', type: 'button', action: 'next' } ] }; } function loginAction(action, state, form) { if (!form.phone) { return { error: { phone: '手机号必填' } }; } return { state: { step: 'done' } }; }"
+        }""".trimIndent()
+        val importRes = client.post("/api/sources/import") {
+            header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            setBody(ImportRequest(listOf(sourceJson)))
+        }
+        assertEquals(HttpStatusCode.OK, importRes.status)
+        val sourceRecord = client.get("/api/sources").body<List<SourceSummary>>()
+            .first { it.url == "https://v2-api.example" }
+        val encodedId = java.net.URLEncoder.encode(sourceRecord.id, "UTF-8")
+
+        val uiRes = client.get("/api/sources/$encodedId/login-ui")
+        assertEquals(HttpStatusCode.OK, uiRes.status)
+        val ui = uiRes.body<SourceLoginUiResponse>()
+        assertEquals(2, ui.loginUiVersion)
+        assertEquals(2, ui.loginUi.size)
+        assertEquals("phone", ui.loginUi[0].key)
+
+        val renderRes = client.post("/api/sources/$encodedId/login-ui/render") {
+            header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            setBody(SourceLoginUiRenderRequest())
+        }
+        assertEquals(HttpStatusCode.OK, renderRes.status)
+        assertEquals(2, renderRes.body<SourceLoginUiRenderResponse>().rows.size)
+
+        val missing = client.post("/api/sources/$encodedId/login-ui/action") {
+            header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            setBody(SourceLoginUiActionRequest(action = "next"))
+        }
+        assertEquals(HttpStatusCode.OK, missing.status)
+        assertEquals("手机号必填", missing.body<SourceLoginUiActionResponse>().error["phone"])
+
+        val next = client.post("/api/sources/$encodedId/login-ui/action") {
+            header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            setBody(SourceLoginUiActionRequest(action = "next", form = mapOf("phone" to "13800000000")))
+        }
+        assertEquals(HttpStatusCode.OK, next.status)
+        assertTrue(next.body<SourceLoginUiActionResponse>().state!!.contains("done"))
     }
 
     @Test
@@ -709,6 +937,42 @@ class SourceLoginTest {
         assertTrue(second.toastMessages.joinToString("|"), second.toastMessages.contains("len=22"))
         assertEquals(1, fetched)
         assertEquals("""{"Cookie":"tk=<html>token-abc</html>"}""", db.getSourceLoginState(sourceId)?.loginHeader)
+    }
+
+    @Test
+    fun `startBrowserAwait body is callable like upstream StrResponse`() {
+        val dbPath = Files.createTempFile("legado-browser-await-body", ".sqlite").toString()
+        val db = Database(dbPath)
+        db.initialize()
+        val sourceId = "https://await-body.example"
+        // 库内六处真实用法（含光遇聚合）都写 `.body()`；上游 StrResponse 同时有字段和方法。
+        val source = """{
+            "bookSourceUrl":"$sourceId",
+            "bookSourceName":"body() 探针",
+            "loginUrl":"function login() { var r = java.startBrowserAwait('https://await-body.example/qr', '扫码'); source.putLoginHeader(JSON.stringify({ v: r.body() })); }"
+        }"""
+        val runner = RuleRunner({ url -> if (url.contains("/qr")) "BODY-TEXT" else "" }, db)
+
+        val first = runner.executeLoginAction(source, "login(true, false)", emptyMap())
+        assertTrue(first.error ?: "第一次执行应当成功", first.success)
+        val second = runner.executeLoginAction(source, "login(true, false)", emptyMap(), browserCompleted = true)
+        assertTrue(second.error ?: "第二次执行应当成功", second.success)
+        assertEquals("""{"v":"BODY-TEXT"}""", db.getSourceLoginState(sourceId)?.loginHeader)
+    }
+
+    @Test
+    fun `java get network failure comes back as text instead of a Java exception`() {
+        // 上游 AnalyzeRule.ajax 把异常收成字符串；不这么做时 Rhino 会让 `'…' + e` 产出
+        // "UnreachableTargetException cannot be cast to java.lang.Error"，脚本自己的错误提示全丢。
+        val runner = RuleRunner({ throw java.io.IOException("boom") })
+        val source = """{
+            "bookSourceUrl":"https://net-fail.example",
+            "bookSourceName":"网络失败探针",
+            "loginUrl":"function login() { try { var r = java.get('https://net-fail.example/a'); java.toast('type=' + (typeof r)); } catch (e) { java.toast('caught=' + e); } }"
+        }"""
+        val out = runner.executeLoginAction(source, "login(true)", emptyMap())
+        assertTrue(out.error ?: "脚本失败", out.success)
+        assertTrue(out.toastMessages.joinToString("|"), out.toastMessages.any { it.startsWith("type=") })
     }
 
     @Test
