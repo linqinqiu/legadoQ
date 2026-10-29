@@ -42,6 +42,12 @@ test('该记的进对应小节，工程内部变化不记', () => {
   }
   // 改的就是更新日志本身的那条（docs(CHANGELOG)）不派生，否则日志会给自己记账
   assert.equal(classify('docs(CHANGELOG): 补三条用户可见变化').include, false)
+  // fix 的 scope 落在工程面时同样不进：类型是 fix，改的是流水线/判据，读者看不到
+  for (const header of ['fix(ci): 发布冒烟换个 action', 'fix(verify): 判据脚本入库', 'perf(test): 判据跑得更快']) {
+    const verdict = classify(header)
+    assert.equal(verdict.include, false, `${header} 不该进日志`)
+    assert.ok(String(verdict.reason ?? '').includes('工程内部'), '跳过理由要说清是工程内部变化')
+  }
 })
 
 test('显式覆盖优先于类型表', () => {

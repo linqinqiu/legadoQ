@@ -34,6 +34,15 @@ const TYPE_TO_SECTION = {
 /** 明确不进日志的类型（列出来是为了报错时能说出理由，而不是静默丢弃）。 */
 export const SILENT_TYPES = new Set(['docs', 'test', 'chore', 'build', 'ci', 'style', 'refactor'])
 
+/**
+ * 这些 scope 下的 fix / perf / revert 仍是工程内部变化，对读者不是"修好了什么"。
+ *
+ * 起因：0.1.8 发版后补了两笔 `fix(verify)` / `fix(ci)`，门禁把 main 判红，要求把它们
+ * 写进用户日志 —— 而日志的规矩是"只写用户能看见的变化"。类型表只挡住了 `ci:` 开头的
+ * 提交，没挡住 `fix(ci):`，同一个判断得看 scope 才准。
+ */
+export const ENGINEERING_SCOPES = new Set(['ci', 'build', 'docs', 'test', 'verify', 'tooling', 'changelog'])
+
 /** 一条日志建议的上限（超了说明提交标题在写工程细节，该人话重写）。 */
 export const MAX_ENTRY_CHARS = 120
 
@@ -79,6 +88,10 @@ export function classify(header, body = '') {
   // 在改 CHANGELOG 本身的提交（docs(CHANGELOG)）不派生条目：它就是在写日志。
   if (parsed.type === 'docs' && /changelog/i.test(parsed.scope)) {
     return { include: false, reason: '这条改的就是更新日志本身' }
+  }
+  // fix(ci) / fix(verify) 这类：类型是 fix，但改的是流水线与判据，读者看不到。
+  if (ENGINEERING_SCOPES.has(parsed.scope.toLowerCase())) {
+    return { include: false, reason: `${parsed.scope} 是工程内部变化，读者不关心` }
   }
   const text = (explicit?.[1] ?? '').trim() || parsed.subject
   return {
