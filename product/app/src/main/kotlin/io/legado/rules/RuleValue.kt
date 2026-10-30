@@ -19,11 +19,28 @@ import org.jsoup.select.Elements
  * 取值后端层：对应上游 AnalyzeByJSoup / AnalyzeByJSonPath / AnalyzeByXPath —— 一个节点对象把三种后端的分派收在一起。
  */
 
-internal class NodeValue private constructor(private val html: Element?, private val json: Any?) {
+internal class NodeValue private constructor(
+    private val html: Element?,
+    private val json: Any?,
+    /**
+     * 这个节点代表「整份响应文档」时，这里是它来自的原文（上游 AnalyzeRule 的 `content`）。
+     * 文档级 `@js:` 的 `result` 要绑它：JSON 源靠 `JSON.parse(String(result))` 自己解析。
+     * 注意 init 规则会把输出再包成文档节点，此时原文是 init 的输出而不是 HTTP 正文。
+     */
+    private val rootText: String? = null,
+    /**
+     * AllInOne 正则条目（上游 `AnalyzeByRegex.getElements` 的一次匹配）：下标就是字段规则里
+     * `$N` 的 N，`groups[0]` 是整个匹配。非 null 时这个节点**不代表文档片段**，字段规则改走
+     * [regexItemValue] —— 分组替换出来的字面量就是值，不再当选择器 / JSONPath 求值。
+     */
+    private val groups: List<String>? = null,
+) {
     private val ruleVariables = mutableMapOf<String, String>()
 
     fun value(rule: String?, jsSandbox: JsSandbox? = null, rawBody: String? = null, baseUrl: String? = null): String? {
         if (rule.isNullOrBlank()) return null
+        // `:` 起头的列表规则产出的条目：字段规则是 `$1`/`$2` 这种分组引用，另有一条链（见 regexItemValue）
+        groups?.let { return regexItemValue(rule.trim(), it, jsSandbox, rawBody, baseUrl) }
         var trimmedRule = rule.trim()
 
         // `@put:{key:规则}` 求值后存进变量表并从规则串里剔除，`@get:{key}` 再取回。
@@ -32,6 +49,25 @@ internal class NodeValue private constructor(private val html: Element?, private
         trimmedRule = storePutVariables(trimmedRule, jsSandbox, rawBody, baseUrl)
         trimmedRule = substituteGetVariables(trimmedRule)
         if (trimmedRule.isBlank()) return null
+
+        // `规则前段 + @js:` 要在切 `##` **之前**分开：`##"url":"(.*)"##$1###@js:…` 里
+        // `@js:` 之前的部分（连同它的正则替换段）先求值成字符串，作为 `result` 交给脚本收尾。
+        // 以前先按 ## 切替换段，`@js:` 被一起吞进替换串、主干变成空串，整条规则取不到值 ——
+        // 番茄短剧一类视频源（本机库 293 条字段规则是这种形状）的直链全丢。
+        if (!trimmedRule.contains("<js>")) {
+            val inlineMarker = findInlineJsMarker(trimmedRule)
+            if (inlineMarker != null && inlineMarker.first > 0) {
+                val preRule = trimmedRule.substring(0, inlineMarker.first).trim()
+                val jsCode = trimmedRule.substring(inlineMarker.first + inlineMarker.second).trim()
+                val base = value(preRule, jsSandbox, rawBody, baseUrl).orEmpty()
+                if (jsCode.isBlank()) return base
+                val src = rawBody ?: base
+                return jsSandbox?.eval(
+                    jsCode,
+                    mapOf("result" to base, "src" to src, "baseUrl" to (baseUrl ?: "")),
+                ) ?: base
+            }
+        }
 
         // Legado 的 `##正则##替换` 是整条规则的**最后一步**：先求值主规则，再拿结果做替换。
         // 必须在 `{{}}` 展开之前就把「花括号外」的替换段摘出来 —— 否则模板展开后整条
@@ -42,7 +78,12 @@ internal class NodeValue private constructor(private val html: Element?, private
         val replaceSuffix = if (hashCut >= 0) trimmedRule.substring(hashCut) else ""
         if (replaceSuffix.isNotEmpty()) trimmedRule = trimmedRule.substring(0, hashCut)
 
-        val result = evaluateRule(trimmedRule, jsSandbox, rawBody, baseUrl)
+        // 整条规则从 `##` 起头（本机库 458 条字段规则这么写，如起点 `##data-bid="([^"]+)"##…$1###`）：
+        // 上游此时 `rule` 为空、跳过取值，直接拿**当前内容原文**做替换。以前返回空值，
+        // 这些源的 bookUrl / coverUrl / 字段全取不到。
+        val result =
+            if (trimmedRule.isBlank() && replaceSuffix.isNotEmpty()) ruleContentText(rawBody)
+            else evaluateRule(trimmedRule, jsSandbox, rawBody, baseUrl)
         return if (replaceSuffix.isEmpty() || result == null) result else applyRegexReplace(result, replaceSuffix)
     }
 
@@ -72,23 +113,7 @@ internal class NodeValue private constructor(private val html: Element?, private
         }
 
         if (trimmedRule.contains("{{") && trimmedRule.contains("}}")) {
-            val templated = BRACE_TEMPLATE.replace(trimmedRule) { match ->
-                // 只去前导空白：`{{$.t##T|\+.*## }}` 的替换串就是那个空格，整串 trim 会把时间粘成 `2023-09-0100:00:33`。
-                // `@@` 前缀（上游常见写法，如 `{{@@#bookIntro@text}}`、`{{@@td.0@text}}`）只是标记，
-                // 不是选择器的一部分 —— 不剥掉的话整条规则会去选一个叫 `@@#bookIntro` 的东西，取值必空。
-                val raw = match.groupValues[1].trimStart()
-                val inner = if (raw.startsWith("@@")) raw.substring(2).trimStart() else raw
-                if (inner.isBlank()) return@replace ""
-                // 先查 `@put:` 存下的变量（上游 `{{}}` 与 `@get:{}` 是同一条正则匹配的）
-                ruleVariables[inner.trim()]?.let { return@replace it }
-                // 花括号里既可能写取值路径，也可能写一整段 JS（`{{java.timeFormat(...)}}`）。
-                // 只认 `$` 开头的话，实测语料里 1800 余行规则会被渲染成空白。
-                if (isJsExpression(inner)) evaluateJs(jsSandbox, inner.trim(), rawBody, baseUrl) ?: ""
-                else if (!inner.contains("||")) runCatching { valuePlain(inner) }.getOrNull() ?: ""
-                else splitLegadoAlternatives(inner).firstNotNullOfOrNull { branch ->
-                    runCatching { valuePlain(branch) }.getOrNull()?.takeIf { it.isNotBlank() }
-                } ?: ""
-            }
+            val templated = expandBraces(trimmedRule, jsSandbox, rawBody, baseUrl)
             // 上游语义：规则里只要出现 {{}}，整条就是文本模板 —— 展开的结果就是最终值。
             // 不早退的话 "都市" 这种纯文本会掉到函数末尾被再当一次 CSS 选择器求值，必空
             // （实测 65 个源的 intro/kind 全这么丢的；带 @js: / <js> 尾段的仍走后面的合成路径）。
@@ -100,7 +125,11 @@ internal class NodeValue private constructor(private val html: Element?, private
 
         if (trimmedRule.startsWith("@js:") || trimmedRule.startsWith("js:")) {
             val jsCode = trimmedRule.removePrefix("@js:").removePrefix("js:").trim()
-            return evaluateJs(jsSandbox, jsCode, rawBody, baseUrl) ?: documentText().ifBlank { rawBody ?: "" }
+            // 脚本失败不再拿整页正文冒充字段值：JSON 文档的兜底是 Java Map 的 toString
+            // （`{msg=0, ret=0, …}`），调用方会把它当**非空结果**继续用 —— 喜马拉雅（音频源）
+            // 的 nextTocUrl 脚本一失败，整段目录 JSON 就被当成「下一页地址」，
+            // 报「URL 格式无效或包含未解析变量」。留空让上层如实报「取到空值」。
+            return evaluateJs(jsSandbox, jsCode, rawBody, baseUrl)
         }
 
         // Legado 允许「文字模板 + @js: 代码」：前段先求值成字符串，作为 result 交给后段 JS 收尾。
@@ -119,6 +148,15 @@ internal class NodeValue private constructor(private val html: Element?, private
             val preRule = trimmedRule.substringBefore("<js>").trim()
             val jsCode = trimmedRule.substringAfter("<js>").substringBefore("</js>").trim()
             val postRule = trimmedRule.substringAfter("</js>").trim()
+            // **没有前缀段**时，`<js>` 与 `@js:` 在上游是同一件事（都是 Mode.Js，result 绑当前内容），
+            // 所以走同一条 evaluateJs：脚本没跑出结果就**如实为空**。以前这里回退成整页原文，
+            // 食在广州的 `name` 因此变成《<!doctype html> <html lang="zh-CN">…》，
+            // 书名、书架、搜索记录一起被这串脏掉，调试面板还显示成「取到值了」。
+            if (preRule.isBlank() && jsCode.isNotBlank()) {
+                val evaluated = evaluateJs(jsSandbox, jsCode, rawBody, baseUrl) ?: return null
+                return if (postRule.isBlank()) evaluated
+                else NodeValue.document(evaluated).value(postRule, jsSandbox, evaluated, baseUrl)
+            }
             // 无前缀时 result 就是当前条目本身。JSON 条目必须按**对象**传入（沙箱会把 Map 转成 JS 对象），
             // 若按 toString 传，书源里的 result.book_id 之类属性访问全部取不到值，条目会被整条丢弃。
             val intermediate: Any? = if (preRule.isNotBlank()) valuePlain(preRule) ?: ""
@@ -136,7 +174,136 @@ internal class NodeValue private constructor(private val html: Element?, private
         return valuePlain(trimmedRule)
     }
 
+    /**
+     * `{{…}}` 占位符展开（上游 `evalPattern` 里的 jsRuleType 分支）：花括号里既可以写取值路径，
+     * 也可以写一整段 JS（`{{java.timeFormat(…)}}`），还可能是 `@put:` 存下的变量名。
+     * 普通规则链与 AllInOne 正则条目共用这一份。
+     */
+    private fun expandBraces(rule: String, jsSandbox: JsSandbox?, rawBody: String?, baseUrl: String?): String =
+        BRACE_TEMPLATE.replace(rule) { match ->
+            // 只去前导空白：`{{$.t##T|\+.*## }}` 的替换串就是那个空格，整串 trim 会把时间粘成 `2023-09-0100:00:33`。
+            // `@@` 前缀（上游常见写法，如 `{{@@#bookIntro@text}}`、`{{@@td.0@text}}`）只是标记，
+            // 不是选择器的一部分 —— 不剥掉的话整条规则会去选一个叫 `@@#bookIntro` 的东西，取值必空。
+            val raw = match.groupValues[1].trimStart()
+            val inner = if (raw.startsWith("@@")) raw.substring(2).trimStart() else raw
+            if (inner.isBlank()) return@replace ""
+            // 先查 `@put:` 存下的变量（上游 `{{}}` 与 `@get:{}` 是同一条正则匹配的）
+            ruleVariables[inner.trim()]?.let { return@replace it }
+            // 花括号里既可能写取值路径，也可能写一整段 JS（`{{java.timeFormat(...)}}`）。
+            // 只认 `$` 开头的话，实测语料里 1800 余行规则会被渲染成空白。
+            if (isJsExpression(inner)) evaluateJs(jsSandbox, inner.trim(), rawBody, baseUrl) ?: ""
+            else if (!inner.contains("||")) runCatching { valuePlain(inner) }.getOrNull() ?: ""
+            else splitLegadoAlternatives(inner).firstNotNullOfOrNull { branch ->
+                runCatching { valuePlain(branch) }.getOrNull()?.takeIf { it.isNotBlank() }
+            } ?: ""
+        }
+
+    /**
+     * AllInOne 正则条目的字段取值（上游 `Mode.Regex`）。
+     *
+     * `bookList` / `chapterList` 以 `:` 起头时，上游把**整页原文**交给 `AnalyzeByRegex.getElements`，
+     * 一个条目就是「一次匹配的全部分组」；字段规则于是写成 `$1`/`$2`，`makeUpRule` 把它们替换成
+     * 分组文本之后，`getString` 的 `when(mode)` **没有 Regex 分支** —— 落到 `else -> rule`，
+     * 也就是「替换出来的字面量就是值」，不再当 CSS 选择器 / JSONPath 求值。
+     * `@put:`/`@get:{}`、`{{}}`、`##正则##替换`、`@js:`、`<js>…</js>` 照旧生效
+     * （上游同样先做这些、再拼字面量；连 JS 代码里的 `$N` 都会被替换，
+     * 起点中文的 `<js>java.timeFormat($3)</js>` 正是靠这一步拿到时间戳）。
+     *
+     * 为什么要做：本机 23 个启用源是这种形状（天涯知识 `:a href="(.*?)"\s+target="_blank">(.*?)<`、
+     * 起点中文 `:\{"C":(\d+),…`、黑岩 `:(?s)(\d+)" class="…`），以前一律报
+     * `SelectorParseException：Could not parse query ':a href="(.*?)"…'`，整源搜索/目录 0 条。
+     */
+    private fun regexItemValue(
+        rule: String,
+        items: List<String>,
+        jsSandbox: JsSandbox?,
+        rawBody: String?,
+        baseUrl: String?,
+    ): String? {
+        // `<js>…</js>` 段（上游 JS_PATTERN 先切分）：主段的值作为 result 交给脚本，`</js>` 之后还能再接规则
+        if (rule.contains("<js>") && rule.contains("</js>")) {
+            val preRule = rule.substringBefore("<js>").trim()
+            val jsCode = substituteGroups(rule.substringAfter("<js>").substringBefore("</js>"), items)
+            val postRule = rule.substringAfter("</js>").trim()
+            val base = if (preRule.isEmpty()) "" else regexLiteral(preRule, items, jsSandbox, rawBody, baseUrl).orEmpty()
+            // 无前缀段时上游交给脚本的 `result` 是**这个条目本身**（一次匹配的全部分组），
+            // 不是空串 —— 脚本里 `result[1]` 取的就是 1 号分组。有前缀段时才用前缀替出来的字面量。
+            val binding: Any = if (preRule.isEmpty()) items else base
+            val evaluated = jsSandbox?.eval(
+                jsCode,
+                mapOf("result" to binding, "src" to (rawBody ?: base), "baseUrl" to (baseUrl ?: "")),
+            ) ?: base
+            if (postRule.isBlank()) return evaluated
+            return NodeValue.document(evaluated).value(postRule, jsSandbox, evaluated, baseUrl)
+        }
+        val marker = findInlineJsMarker(rule)
+        if (marker != null && marker.first > 0) {
+            val preRule = rule.substring(0, marker.first).trim()
+            val jsCode = rule.substring(marker.first + marker.second).trim()
+            val base = regexLiteral(preRule, items, jsSandbox, rawBody, baseUrl).orEmpty()
+            if (jsCode.isBlank()) return base
+            return jsSandbox?.eval(
+                jsCode,
+                mapOf("result" to base, "src" to (rawBody ?: base), "baseUrl" to (baseUrl ?: "")),
+            ) ?: base
+        }
+        if (rule.startsWith("@js:") || rule.startsWith("js:")) {
+            val jsCode = substituteGroups(rule.removePrefix("@js:").removePrefix("js:").trim(), items)
+            return jsSandbox?.eval(
+                jsCode,
+                // 同上：`@js:` 段的 result 也是条目本身（全部分组），脚本可用 `result[1]`
+                mapOf("result" to items, "src" to (rawBody ?: ""), "baseUrl" to (baseUrl ?: "")),
+            )
+        }
+        return regexLiteral(rule, items, jsSandbox, rawBody, baseUrl)
+    }
+
+    /**
+     * 正则条目的「主段」：`@put:` → `@get:{}` → `##` 替换段摘出 → `{{}}` 展开 → `$N` 替换 → 正则替换。
+     * 分组替换刻意排在 `{{}}` 之后：分组文本是站点原文，不能让它再被当成模板 / 脚本展开一次。
+     */
+    private fun regexLiteral(
+        rule: String,
+        items: List<String>,
+        jsSandbox: JsSandbox?,
+        rawBody: String?,
+        baseUrl: String?,
+    ): String? {
+        var text = substituteGetVariables(storePutVariables(rule, jsSandbox, rawBody, baseUrl))
+        // 替换段要在 `{{}}` 展开**之前**摘出来（与 value() 同一口径，见那里的注释）
+        val hashCut = if (text.contains("##")) firstTopLevelHashIndex(text) else -1
+        val replaceSuffix = if (hashCut >= 0) text.substring(hashCut) else ""
+        if (hashCut >= 0) text = text.substring(0, hashCut)
+        if (text.contains("{{") && text.contains("}}")) text = expandBraces(text, jsSandbox, rawBody, baseUrl)
+        val literal = substituteGroups(text, items)
+        // 整条从 `##` 起头（上游此时拿 `content.toString()` 做替换）：正则条目就用整个匹配（`$0`）
+        val base = if (text.isBlank() && replaceSuffix.isNotEmpty()) items.firstOrNull().orEmpty() else literal
+        val result = if (replaceSuffix.isEmpty()) base else applyRegexReplace(base, replaceSuffix)
+        return result.ifBlank { null }
+    }
+
+    /**
+     * `$N` → 第 N 个分组（上游 `regexPattern = \$\d{1,2}`，所以 `$0`…`$99` 都认，`$0` 是整个匹配）。
+     * 越界按空串：上游 `makeUpRule` 是 `if (this.size > regType)` 才插入，否则什么都不插。
+     */
+    private fun substituteGroups(rule: String, items: List<String>): String =
+        GROUP_REF.replace(rule) { match -> items.getOrNull(match.value.substring(1).toInt()) ?: "" }
+
     private fun documentText(): String = html?.html() ?: json?.toString() ?: ""
+
+    /**
+     * 规则主干为空（`##正则##替换` 起头）时，正则作用的对象 —— 上游 `AnalyzeRule` 里的 `content`。
+     * 文档节点优先用建节点时收到的**原文**（`rootText`）：`html.html()` 会把属性引号等重新序列化，
+     * `##data-bid="([^"]+)"##` 这种按源码写的正则就对不上了。
+     */
+    private fun ruleContentText(rawBody: String?): String = when {
+        rootText != null -> rootText
+        json != null -> json.toString()
+        // 条目节点用 outerHtml：上游 `replaceRegex(result.toString(), …)`，Element.toString 就是 outerHtml。
+        // 用 innerHtml 会漏掉条目自身的属性（`##data-bid="…"##` 正是从条目标签上取的）。
+        html != null -> html.outerHtml()
+        else -> rawBody.orEmpty()
+    }
 
     /**
      * `%%` 组合（上游 `AnalyzeByJSoup.getStringList` 的 `elementsType == "%%"` 分支）：
@@ -171,10 +338,23 @@ internal class NodeValue private constructor(private val html: Element?, private
     }
 
     private fun evaluateJs(jsSandbox: JsSandbox?, code: String, rawBody: String?, baseUrl: String?): String? {
-        val doc = documentText()
+        // 上游 AnalyzeRule 把 `result` 绑成「当前被解析的内容」：**文档级**规则拿到响应正文原文
+        // （JSON 源正是靠 `JSON.parse(String(result))` 自己解析），条目级规则才拿到条目对象。
+        //
+        // 以前一律传 documentText()：JSON 文档得到的是 Java Map 的 toString（`{msg=0, ret=0, …}`），
+        // 既不是合法 JSON 也不是原文 —— 喜马拉雅（音频源）的 nextTocUrl 里
+        // `JSON.parse(String(result)).tracks.maxPageId` 必抛 SyntaxError，脚本失败后
+        // 整段目录 JSON 又被当成「下一页地址」，目录直接取不到。
+        val docText = documentText()
+        val result: Any? = when {
+            rootText != null -> rootText
+            json != null -> json
+            html != null -> html.html()
+            else -> rawBody ?: docText
+        }
         return jsSandbox?.eval(
             code,
-            mapOf("result" to doc, "src" to (rawBody ?: doc), "baseUrl" to (baseUrl ?: "")),
+            mapOf("result" to result, "src" to (rawBody ?: docText), "baseUrl" to (baseUrl ?: "")),
         )
     }
 
@@ -223,13 +403,26 @@ internal class NodeValue private constructor(private val html: Element?, private
                 currentList
             }
             if (elements.isEmpty()) return null
-            val texts = elements.mapNotNull { el ->
-                when (rawMode) {
-                    "html" -> el.html().takeIf { it.isNotBlank() }
-                    "text" -> el.text().takeIf { it.isNotBlank() }
-                    "textNodes", "textNode" -> el.ownText().takeIf { it.isNotBlank() }
-                    else -> el.attr(rawMode).takeIf { it.isNotBlank() }
+            val texts = when (rawMode) {
+                // 上游 `AnalyzeByJSoup.getResultLast`：html 是**整组元素的 outerHtml**
+                // （克隆后去掉 script/style），不是逐个元素的 innerHtml。
+                // `<img src=…>` 的 innerHtml 恒为空，以前漫画源 `#cp_img@img@html`
+                // 取回空串，整章图一张都出不来；文本源的外壳标签也会丢。
+                "html" -> {
+                    val clean = Elements(elements.map { it.clone() })
+                    clean.select("script").remove()
+                    clean.select("style").remove()
+                    listOf(clean.outerHtml()).filter { it.isNotBlank() }
                 }
+                "all" -> listOf(Elements(elements).outerHtml()).filter { it.isNotBlank() }
+                "text" -> elements.mapNotNull { it.text().takeIf(String::isNotBlank) }
+                // 上游按文本节点取，再逐元素用换行拼（`<div>a<br>b</div>` 是两行）。
+                "textNodes", "textNode" -> elements.mapNotNull { el ->
+                    el.textNodes().map { it.text().trim() }.filter { it.isNotEmpty() }
+                        .joinToString("\n").takeIf { it.isNotBlank() }
+                }
+                // 属性值按上游去重（同一张封面被选到两次时只留一条）。
+                else -> elements.mapNotNull { el -> el.attr(rawMode).takeIf { it.isNotBlank() } }.distinct()
             }
             if (texts.isEmpty()) return null
             val resultText = applyRegexReplace(texts.joinToString("\n"), lastSegment)
@@ -310,18 +503,21 @@ internal class NodeValue private constructor(private val html: Element?, private
     /** Legado 的 `##正则##替换` 语法：成对出现，替换串缺省为空串。 */
     private fun applyRegexReplace(value: String, rule: String): String {
         if (!rule.contains("##")) return value
+        // 上游 `makeUpRule` 只认前两段：parts[1] 是正则、parts[2] 是替换串；
+        // **parts.size > 3（写成 `###` 收尾）是「只取第一个匹配段再做替换」的标记**，
+        // 第四段本身不是第二条替换。以前把 `###` 尾巴又当正则跑一遍：617 个源的这类规则
+        // 得到的是「全部匹配替换后的整段文字」（如 bookUrl 取到 `addToShelf(123,456)`），不是那个 id。
         val parts = rule.split("##")
-        var result = value
-        var index = 1
-        while (index < parts.size) {
-            val pattern = parts[index]
-            val replacement = if (index + 1 < parts.size) parts[index + 1] else ""
-            if (pattern.isNotBlank()) {
-                result = runCatching { result.replace(Regex(pattern), replacement) }.getOrDefault(result)
-            }
-            index += 2
+        val pattern = parts.getOrNull(1).orEmpty()
+        if (pattern.isBlank()) return value
+        val replacement = parts.getOrNull(2).orEmpty()
+        val regex = runCatching { Regex(pattern) }.getOrNull() ?: return value
+        return if (parts.size > 3) {
+            val match = regex.find(value) ?: return ""
+            runCatching { match.value.replace(regex, replacement) }.getOrDefault("")
+        } else {
+            runCatching { value.replace(regex, replacement) }.getOrDefault(value)
         }
-        return result
     }
 
     /**
@@ -363,14 +559,19 @@ internal class NodeValue private constructor(private val html: Element?, private
         private val JS_IDENT_PREFIX = Regex("^(?:java|cookie|source|book|chapter|result|baseUrl|key|page)\\b")
         private val PUT_VARIABLE = Regex("@put:\\{([^{}]*?)\\}", RegexOption.IGNORE_CASE)
         private val GET_VARIABLE = Regex("@get:\\{([^{}]*?)\\}", RegexOption.IGNORE_CASE)
+        /** 上游 `AnalyzeRule.regexPattern`：字段规则里的分组引用 `$0`…`$99`。 */
+        private val GROUP_REF = Regex("\\$\\d{1,2}")
 
         fun html(element: Element) = NodeValue(element, null)
         fun document(body: String) = if (body.trimStart().startsWith("{") || body.trimStart().startsWith("[")) {
-            NodeValue(null, JsonPath.parse(body).json<Any>())
+            NodeValue(null, JsonPath.parse(body).json<Any>(), rootText = body)
         } else {
-            NodeValue(Jsoup.parse(body), null)
+            NodeValue(Jsoup.parse(body), null, rootText = body)
         }
         fun json(value: Any?) = NodeValue(null, value)
+
+        /** AllInOne 正则条目：[groups] 是一次匹配的全部分组，下标对应字段规则里的 `$N`。 */
+        fun regexItem(groups: List<String>) = NodeValue(null, null, groups = groups)
     }
 }
 

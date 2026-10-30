@@ -5205,8 +5205,8 @@ input[type="checkbox"] {
 .backup-panel { margin-top: var(--s-5); padding: var(--s-5); border: 1px solid var(--line); border-radius: var(--r-2); background: var(--surface); }
 .backup-panel h2 { font-family: Georgia, "Noto Serif SC", serif; font-size: var(--t-xl); font-weight: 600; }
 .backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-.backup-password { flex: 1; min-width: 220px; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-muted); color: var(--ink); outline: none; }
-.backup-password::placeholder { color: var(--muted); }
+.backup-password, .backup-url { flex: 1; min-width: 220px; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-muted); color: var(--ink); outline: none; }
+.backup-password::placeholder, .backup-url::placeholder { color: var(--muted); }
 .backup-actions .primary-button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 16px; }
 .backup-actions .primary-button svg { width: 15px; height: 15px; }
 /* 备份密码不是导入的前置条件，所以不占主操作行：收在「包里有登录凭据？」后面 */

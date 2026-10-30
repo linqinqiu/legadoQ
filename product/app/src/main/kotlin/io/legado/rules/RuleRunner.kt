@@ -40,9 +40,12 @@ import java.time.Duration
 import java.util.zip.GZIPInputStream
 import java.util.zip.InflaterInputStream
 import io.legado.AppConfig
+import io.legado.charsetOf
 import io.legado.content.ContentProcessor
 import io.legado.content.LooseJson
 import io.legado.content.applyReplaceEntry
+import io.legado.decodeStrict
+import io.legado.decodeTextAuto
 import io.legado.data.Database
 import io.legado.data.cookieBucketsForHosts
 import io.legado.data.getCookieForUrl
@@ -105,9 +108,19 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
 
     private fun recallRuleData(key: String?): Map<String, String> = key?.let { ruleData[it] } ?: emptyMap()
 
-    fun search(sourceJson: String, keyword: String): List<SearchResult> {
+    fun search(sourceJson: String, keyword: String): List<SearchResult> = searchWithReason(sourceJson, keyword).first
+
+    /**
+     * [search] 的调试版本：除书籍列表外，再带一句「上游这次到底回了什么」。
+     * 0 命中时界面只能说「多半是规则没匹配上」，可实测里三种情况长得一样：
+     * 域名过期（66yy.net 回「域名已过期，暂无法访问」）、JS 验证拦截（hdzyk 回一段
+     * `document.cookie=…; window.location.reload()`）、站点确实没这本书。
+     */
+    fun searchWithReason(sourceJson: String, keyword: String): Pair<List<SearchResult>, String> {
         val source = sourceJson.objectValue()
-        source.string("mainJs")?.takeIf { it.isNotBlank() }?.let { return JsSourceRunner(this, source).search(keyword) }
+        source.string("mainJs")?.takeIf { it.isNotBlank() }?.let {
+            return JsSourceRunner(this, source).search(keyword) to "JS 书源：条目由 mainJs 组装，响应线索不适用"
+        }
         val rawSearchUrl = source.string("searchUrl") ?: throw RuleExecutionException("该书源未配置 searchUrl")
         val sourceUrl = source.string("bookSourceUrl") ?: throw RuleExecutionException("书源缺少 bookSourceUrl")
         // 整个搜索流程都在书源上下文内执行：规则里的 <js> 依赖 source.getVariable() 与 jsLib 工具函数
@@ -127,8 +140,30 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             val rendered = renderUrl(urlTemplate, keyword, sourceUrl, page = 1).absolute(sourceUrl)
             val body = fetchUrl(rendered, mergedOptions, keyword, sourceUrl, database)
             val rule = source.objectValue("ruleSearch") ?: throw RuleExecutionException("该书源未配置 ruleSearch")
-            bookItems(body, rule, sourceUrl, source.sourceType())
+            bookItems(body, rule, sourceUrl, source.sourceType()) to responseClue(body)
         }
+    }
+
+    /**
+     * 从响应本身摘一句给人看的线索：HTML 取 `<title>`，JSON 取 `msg`/`message` 那一类字段，
+     * 都没有就给个字节数（「响应 0 字节」与「响应 280 字节」本身就有信息）。
+     * 只给**一行**、截到 90 字 —— 这东西会进调试面板和报错，整页正文塞进去只会挤掉有用的信息。
+     */
+    private fun responseClue(body: String): String {
+        fun oneLine(text: String): String = text.replace(Regex("\\s+"), " ").trim()
+        val head = body.trimStart()
+        if (head.startsWith("{") || head.startsWith("[")) {
+            val msg = runCatching {
+                val root = head.objectValue()
+                listOf("msg", "message", "error", "errmsg", "info", "detail", "reason")
+                    .firstNotNullOfOrNull { key -> root.string(key)?.takeIf { it.isNotBlank() && it.any(Char::isLetter) } }
+            }.getOrNull()
+            if (!msg.isNullOrBlank()) return "上游说：「${oneLine(msg).take(90)}」"
+            return "JSON 响应 ${body.length} 字节"
+        }
+        val title = Regex("(?is)<title[^>]*>(.*?)</title>").find(body)?.groupValues?.get(1)
+            ?.let { oneLine(Jsoup.parse(it).text()) }
+        return if (title.isNullOrBlank()) "HTML 响应 ${body.length} 字节" else "页面标题：「${title.take(90)}」"
     }
 
     /**
@@ -152,7 +187,12 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
 
     /** 把 `ruleSearch` / `ruleExplore` 这类「列表规则 + 字段规则」解析成书籍条目。 */
     private fun bookItems(body: String, rule: JsonObject, sourceUrl: String, sourceType: Int): List<SearchResult> {
-        val listRule = rule.string("bookList") ?: throw RuleExecutionException("缺少 bookList 规则")
+        val rawListRule = rule.string("bookList") ?: throw RuleExecutionException("缺少 bookList 规则")
+        // `-`/`+` 本是目录规则的排序标记，可真实源也把它写进搜索与发现（uu书盟 `+@css:.item`、
+        // 免费小说 `-@JSon:$.data.bookList`、笔下文学③ `+@js:…`、🖼微博博主 `+<js>…</js>`）：
+        // 不剥掉的话 `isJsRule` 认不出这是 JS 列表规则（前缀占了首字符），
+        // 于是整段脚本被丢给 Jsoup 当选择器，整个源一条都出不来。
+        val listRule = stripListPrefixMarkers(rawListRule)
         // 与 chapters() 一致：`<js>…</js>` 形式的列表规则要先过沙箱预处理，直接丢给 Jsoup/json-path 会解析失败
         val items = try {
             if (isJsRule(listRule)) jsListNodes(NodeValue.document(body), listRule, body, sourceUrl) else nodes(body, listRule)
@@ -268,7 +308,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             val pageUrl = renderUrl(path, "", sourceUrl, page).absolute(sourceUrl)
             val body = fetchUrl(pageUrl, mergedOptions, null, sourceUrl, database)
             val reverse = rawListRule.startsWith("-")
-            val listRule = rawListRule.removePrefix("-").trim()
+            val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
             val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body), listRule, body, pageUrl) else nodes(body, listRule)
             val items = nodes0.mapNotNull { item ->
                 val title = item.value(source.string("ruleTitle"), jsSandbox, body, pageUrl)?.trim().orEmpty()
@@ -463,7 +503,12 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         traces: MutableList<DebugTrace>? = null,
     ): BookDetails {
         val sourceUrl = source.string("bookSourceUrl")
-        val rule = source.objectValue("ruleBookInfo") ?: throw RuleExecutionException("该书源未配置 ruleBookInfo")
+        // 上游对「没配 ruleBookInfo」的源是**逐字段跳过**：书名/作者沿用搜索结果、`tocUrl` 退回书页地址
+        // （`BookInfo.analyzeBookInfo` 里每条规则都包在 `if (rule.isNotEmpty())` 里）。
+        // 以前这里直接抛异常，而本机 189 个启用源连 `ruleBookInfo` 这个键都没有 ——
+        // `/api/books/chapters` 直取失败时正是靠 `details()` 回落拿 tocUrl 的，一抛整本目录就取不到；
+        // 体检也只看到「该书源未配置 ruleBookInfo」，看不到这些源真实的目录与正文表现。
+        val rule = source.objectValue("ruleBookInfo") ?: JsonObject(emptyMap())
         val initRule = rule.string("init")
 
         // 聚合源把 bookUrl 当作参数载体（data:;base64,<载荷>,{"type":"qingtian"}），
@@ -500,16 +545,23 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         fun value(key: String): String? {
             val ruleText = rule.string(key).orEmpty()
             val outcome = runCatching { root.value(rule.string(key), jsSandbox, body, bookUrl) }
+            val result = outcome.getOrNull()
             traces?.add(
                 DebugTrace(
                     field = key,
                     rule = ruleText,
-                    value = outcome.getOrNull()?.take(MAX_TRACE_CHARS) ?: "",
-                    failure = outcome.exceptionOrNull()?.let { it.javaClass.simpleName + "：" + (it.message ?: "") }
-                        ?: outcome.getOrNull()?.let { "取到空值" }.orEmpty(),
+                    value = result?.take(MAX_TRACE_CHARS) ?: "",
+                    // 以前只要没抛异常就填「取到空值」，成功取到值的行也带着这句，
+                    // 排查时会误以为字段没取到。现在只在真为空/未配置时才给提示。
+                    failure = when {
+                        outcome.isFailure -> outcome.exceptionOrNull()!!.let { it.javaClass.simpleName + "：" + (it.message ?: "") }
+                        ruleText.isBlank() -> "未配置"
+                        result.isNullOrBlank() -> "取到空值"
+                        else -> ""
+                    },
                 )
             )
-            return outcome.getOrNull()
+            return result
         }
         val name = (value("name") ?: "").trim()
         val tocUrl = value("tocUrl")?.absolute(bookUrl) ?: bookUrl
@@ -579,21 +631,41 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             val listRule = normalized.removePrefix("-").removePrefix("+").trim()
             val nextRule = rule.string("nextTocUrl").orEmpty().trim()
 
-            // 目录分页：`nextTocUrl` 可以返回 1 个下一页、也可以一次返回多个入口页。
-            // 上游用 visited 集合做回环守卫，这里再叠一层页数上限，避免坏规则把请求打成长尾。
+            // 目录分页按上游 BookChapterList 的两种形态走：
+            // - `nextTocUrl` 只给 **1 个** 下一页：顺着链一页页翻（visited 做回环守卫，页数另设上限）；
+            // - 一次给 **多个** 入口页：这些页只各取一页，**不再从它们继续翻页**（上游 getNextUrl=false）。
+            //   喜马拉雅（音频源）就是这种写法：第一页把 2..9 页一起推过来，而在第 2 页上同一条脚本
+            //   会算出 `…/2/2002/200`（`split('1/200')` 不命中，原样拼接）—— 以前递归翻页会去请求它，
+            //   一个 404 把整本目录带崩（实测「目录总页数」本该是 9 页、章节上千章，结果 0 章）。
             val collected = LinkedHashMap<String, Triple<String, String, Boolean>>()
-            val queue = ArrayDeque(listOf(tocUrl))
-            val visited = mutableSetOf(tocUrl)
-            var pages = 0
-            while (queue.isNotEmpty() && pages < MAX_TOC_PAGES) {
-                val pageUrl = queue.removeFirst()
-                val (pageChapters, nextUrls) = parseTocPage(source, sourceUrl, rule, listRule, nextRule, pageUrl)
-                pageChapters.forEach { (name, url, isVolume) ->
+            fun addPage(chapters: List<Triple<String, String, Boolean>>) {
+                chapters.forEach { (name, url, isVolume) ->
                     val key = if (url.isNotBlank()) url else "vol:$name"
                     if (!collected.containsKey(key)) collected[key] = Triple(name, url, isVolume)
                 }
-                nextUrls.forEach { if (visited.add(it)) queue.addLast(it) }
-                pages++
+            }
+            val (firstChapters, firstNextUrls) = parseTocPage(source, sourceUrl, rule, listRule, nextRule, tocUrl)
+            addPage(firstChapters)
+            when (firstNextUrls.size) {
+                0 -> Unit
+                1 -> {
+                    val visited = mutableSetOf(tocUrl)
+                    var nextUrl: String = firstNextUrls[0]
+                    var pages = 1
+                    while (nextUrl.isNotEmpty() && visited.add(nextUrl) && pages < MAX_TOC_PAGES) {
+                        val (pageChapters, pageNextUrls) =
+                            parseTocPage(source, sourceUrl, rule, listRule, nextRule, nextUrl)
+                        addPage(pageChapters)
+                        // 链式翻页时上游只认第一个（`chapterData.second.firstOrNull()`）。
+                        nextUrl = pageNextUrls.firstOrNull().orEmpty()
+                        pages++
+                    }
+                }
+                else -> firstNextUrls.take(MAX_TOC_PAGES).forEach { entryUrl ->
+                    val (pageChapters, _) =
+                        parseTocPage(source, sourceUrl, rule, listRule, nextRule, entryUrl, followNext = false)
+                    addPage(pageChapters)
+                }
             }
             val ordered = if (reverse) collected.values.reversed() else collected.values.toList()
             ordered.mapIndexed { index, (name, url, isVolume) ->
@@ -602,7 +674,12 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         }
     }
 
-    /** 解析目录的**一页**，返回（本页章节 名称→URL，本页声明的下一页地址）。 */
+    /**
+     * 解析目录的**一页**，返回（本页章节 名称→URL，本页声明的下一页地址）。
+     *
+     * [followNext] 为 false 表示这一页是「一次给多个入口页」里的一个：只取章节，不评估 `nextTocUrl`
+     * （上游 `getNextUrl=false`）—— 否则规则会在第 2 页上算出 `…/2/2002/200` 这类地址，请求即 404。
+     */
     private fun parseTocPage(
         source: JsonObject,
         sourceUrl: String?,
@@ -610,6 +687,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         listRule: String,
         nextRule: String,
         pageUrl: String,
+        followNext: Boolean = true,
     ): Pair<List<Triple<String, String, Boolean>>, List<String>> {
         val dataPayload = dataUrlPayload(pageUrl)
         // `chapterUrl` 常写 `@get:{bid}`（漫画源就是这样）：把搜索/详情那一次 @put 的变量灌进来
@@ -639,7 +717,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             if (chapterHref == null && !isVolume) return@mapNotNull null
             Triple(name, chapterHref ?: "", isVolume)
         }
-        val nextRaw = if (nextRule.isEmpty()) "" else NodeValue.document(body)
+        val nextRaw = if (!followNext || nextRule.isEmpty()) "" else NodeValue.document(body)
             .also { it.seedVariables(seedVars) }
             .value(nextRule, jsSandbox, body, pageUrl)
             .orEmpty()
@@ -668,6 +746,19 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
     private fun isJsRule(rule: String): Boolean {
         val trimmed = rule.trimStart()
         return trimmed.startsWith("@js:") || trimmed.startsWith("js:") || (rule.contains("<js>") && rule.contains("</js>"))
+    }
+
+    /**
+     * 剥掉列表规则开头的 `-` / `+` 排序标记。
+     *
+     * 这两个标记只有目录（chapters）与订阅（rssArticles）认，而且**都是先自己读走 `-` 的
+     * 反转语义再调到这里**。留着它们有两个坏处：`isJsRule` 认不出 `+@js:…` 是 JS 列表规则，
+     * `@css:` 这类模式标记也被挤到第二位而失效（selectLegadoSegments 只认开头的标记）。
+     */
+    private fun stripListPrefixMarkers(rule: String): String {
+        var text = rule.trim()
+        while (text.startsWith("-") || text.startsWith("+")) text = text.substring(1).trim()
+        return text
     }
 
     /** `<js>` 形式的列表规则：求值得到 JSON 数组后逐项包装成可继续取值的节点。 */
@@ -720,7 +811,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             bookAuthor = shelf.author,
             bookTocUrl = shelf.tocUrl,
             chapterIndex = index ?: shelf.chapterIndex,
-            chapterTitle = index?.let { chapters?.getOrNull(it)?.title },
+            chapterTitle = index?.let { chapters.getOrNull(it)?.title },
         )
     }
 
@@ -747,6 +838,15 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             // 不 trim 每条：`##正则##替换` 的替换串里前后空格是有意义的（上游也原样保留）
             val patterns = replaceRegex?.split(Regex("[\r\n]+|&&"))?.filter { it.isNotBlank() }.orEmpty()
 
+            // 章节地址本身就是媒体直链（音频源的 `chapterUrl` 常直接取 `playPath…`，如喜马拉雅
+            // 目录里的 `https://vod.xmcdn.com/…/xxx.m4a?buy_key=…`）：这一章的正文就是它**自己**。
+            // 以前这里照样去 fetch 章节地址 —— 等于把整段音频当文本拉，超过 2 MiB 响应上限直接失败
+            // （实测：目录 29 章全部取到，正文每章都报「上游响应超过 2 MiB 限制」）。
+            val (chapterDirectUrl, _) = splitUrlOptions(chapterUrl)
+            sniffMediaUrl(chapterDirectUrl, source.sourceType())?.let { media ->
+                return@withSourceContext ChapterContent(null, media, media)
+            }
+
             // 正文分页：`nextContentUrl` 非空的源实测 1,693 个，以前被整个忽略，长章只拿到第一页。
             // 与目录同一套走法：visited 回环守卫 + 页数上限，翻页文本按上游一样直接串接。
             val pageTexts = mutableListOf<String>()
@@ -759,7 +859,13 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
                 val (root, body) = contentPage(source, sourceUrl, pageUrl, recallRuleData(bookUrl))
                 if (firstRoot == null) { firstRoot = root; firstBody = body }
                 var pageText = root.value(contentRule, jsSandbox, body, pageUrl)?.preserveContentImages(pageUrl)?.cleanContent().orEmpty()
-                if (pageText.length < 500) {
+                // 「段落兜底」只给**规则没给出内容**的文本站救场。媒体源（音频/视频/文件）的正文
+                // 常态就是**一行短短的地址**，长度必然 < 500 —— 不加这道判断就会被整页段落顶掉：
+                // 实测番茄短剧正文规则明明取到了 `https:\/\/…\/master.m3u8`（88 字），
+                // 结果界面显示的是 368 字的页脚（「合作伙伴：腾讯视频 优酷视频 爱奇艺…」）。
+                if (pageText.length < 500 && sniffMediaUrl(pageText, source.sourceType()) == null &&
+                    !pageText.isBareUrlLine()
+                ) {
                     val paragraphs = Regex("(?i)<p[^>]*>([\\s\\S]*?)</p>").findAll(body)
                         .map { it.groupValues[1].cleanContent() }
                         .filter { it.length > 2 && !it.contains("按←键返回") && !it.contains("加入书签") && !it.contains("仅放置最近浏览") }
@@ -850,7 +956,11 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
      * 正常正文被误判成播放器，比播放器出不来更糟。
      */
     private fun sniffMediaUrl(text: String, sourceType: Int = 0): String? {
-        val trimmed = text.trim()
+        // 视频/音频源常把页面 JSON 里的**转义斜杠**原样带出来（`https:\/\/cdn…\/master.m3u8`）。
+        // 反斜杠不是合法 URL 字符：`URI()` 解析不了、`.m3u8` 后缀也判不出来，于是明明取到了直链
+        // 却不进播放器（实测番茄短剧整条链路就断在这儿）。书源自己在 JS 里写 `result.replace(/\\/g,'')`
+        // 就是为去掉它 —— 我们在嗅探处同样先还原，再把干净地址交出去。
+        val trimmed = unescapeUrlSlashes(text.trim())
         if (trimmed.isEmpty() || trimmed.length > 600) return null
         fun isMedia(url: String): Boolean {
             if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) return false
@@ -867,6 +977,20 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         }
         return null
     }
+
+    /**
+     * 正文规则取回的就**是一条链接**（媒体直链，或 `xxx.php?vid=…` 这种没有媒体后缀的播放页地址）。
+     * [content] 的「段落兜底」要先让路 —— 这种正文天生只有一行、不足 500 字，
+     * 不认的话会被整页 `<p>`（页脚、推荐位）覆盖掉。
+     */
+    private fun String.isBareUrlLine(): Boolean {
+        val trimmed = unescapeUrlSlashes(trim())
+        return '\n' !in trimmed &&
+            (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true))
+    }
+
+    /** 把页面 JSON 里的转义斜杠 `\/` 还原成 `/`（真实 URL 里不会出现反斜杠）。 */
+    private fun unescapeUrlSlashes(text: String): String = text.replace("\\/", "/")
 
     /**
      * 登录表单协议版本：上游 v2 的标记是 `loginUi` 恰好为 `{"version":2}`，
@@ -1253,7 +1377,14 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val method: String = "GET",
         val body: String? = null,
         val headers: Map<String, String> = emptyMap(),
-        val charset: Charset = Charsets.UTF_8,
+        /**
+         * 源在这次请求里**声明**的字符集；null = 没声明。
+         *
+         * 不能把「没声明」也记成 UTF-8：上游 `BookSource.getCharset` 的优先级是
+         * 声明 > 响应头 `charset=` > 页面 `<meta charset>` > UTF-8，
+         * 一律当 UTF-8 会让 GBK 站点整页变乱码（实测食在广州的书页取出《绗16绔》，本该是「第16章」）。
+         */
+        val charset: Charset? = null,
         /** 上游 `UrlOption.useWebView()`：非 false/空即视为要用 WebView 取渲染后的 HTML。服务端抓不到，但要如实标出来。 */
         val webView: Boolean = false,
     )
@@ -1291,7 +1422,8 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
                 else -> raw.toString()
             },
             headers = headerMapOf(options["headers"]),
-            charset = runCatching { Charset.forName(options.string("charset") ?: "UTF-8") }.getOrDefault(Charsets.UTF_8),
+            charset = options.string("charset")?.trim()?.takeIf { it.isNotEmpty() }
+                ?.let { runCatching { Charset.forName(it) }.getOrNull() },
             webView = when (val raw = options["webView"]) {
                 null, JsonNull -> false
                 is JsonPrimitive -> raw.contentOrNull?.trim()?.lowercase()?.let { it.isNotEmpty() && it != "false" } ?: false
@@ -1400,8 +1532,13 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
                     logNetwork("响应体过大", networkContext(url, sourceId) + mapOf("size" to bytes.size.toString()))
                     throw RuleExecutionException("上游响应超过 2 MiB 限制")
                 }
-                val charset = (options?.charset) ?: Charsets.UTF_8
-                return decodeBody(bytes, response.headers().firstValue("content-encoding").orElse(""), charset)
+                val charset = (options?.charset)
+                return decodeBody(
+                    bytes,
+                    response.headers().firstValue("content-encoding").orElse(""),
+                    charset,
+                    response.headers().firstValue("content-type").orElse(null),
+                )
             }
             runCatching { response.body().close() }
             val location = response.headers().firstValue("location").orElseThrow { 
@@ -1533,14 +1670,66 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         return merged.entries.joinToString("; ") { "${it.key}=${it.value}" }
     }
 
-    private fun decodeBody(bytes: ByteArray, contentEncoding: String, charset: Charset): String {
+    /**
+     * 响应字节的文本解码：**字符集按上游 `BookSource.getCharset` 的思路现推**，不是一律 UTF-8。
+     *
+     * 顺序见 [resolveBodyCharset]。选定之后先按它**严格**解；解不动（源声明错了、页面 meta 写错了、
+     * 响应头是服务器默认值）再走 `decodeTextAuto` 的自动识别 —— 这一层兜底很重要：
+     * 站点把 GBK 内容标成 `charset=iso-8859-1` 时，ISO-8859-1 解码**永不报错**、只会整页变乱码，
+     * 而严格判定失败后交给自动识别就能按 GB18030 正常读出来。
+     */
+    private fun decodeBody(
+        bytes: ByteArray,
+        contentEncoding: String,
+        declared: Charset?,
+        contentType: String?,
+    ): String {
         val encoding = contentEncoding.lowercase()
         val decoded = when {
             encoding.contains("gzip") -> GZIPInputStream(bytes.inputStream()).use(::readAll)
             encoding.contains("deflate") -> InflaterInputStream(bytes.inputStream()).use(::readAll)
             else -> bytes
         }
-        return decoded.toString(charset)
+        val charset = resolveBodyCharset(decoded, declared, contentType)
+        return runCatching { decodeStrict(decoded, charset) }
+            .getOrElse { decodeTextAuto(decoded, charset) }
+    }
+
+    /**
+     * 字符集判定（拆出来是为了能逐条钉用例；口径对齐上游 `BookSource.getCharset`）：
+     *
+     * 1. 源在这次请求里声明的 `charset` —— 书源作者最清楚这家站是什么编码；
+     * 2. 页面自己写的 `<meta charset>` / `<meta http-equiv="Content-Type" content="…;charset=">`；
+     * 3. 响应头 `Content-Type: …; charset=`；
+     * 4. UTF-8。
+     *
+     * **响应头排在页面自报之后**：中文老站的服务器默认值（`charset=iso-8859-1`、干脆不给 charset）
+     * 比页面里的 meta 更常出错，而 meta 是这份内容自己声明的。上游更极端 ——
+     * `getCharset` 里响应头那一支实际只在值是 `"utf-8,utf-8"` 这种垃圾串时才命中，
+     * 等于靠 meta 判定，我们保留读头的权利，但让它给 meta 让路。
+     */
+    internal fun resolveBodyCharset(bytes: ByteArray, declared: Charset?, contentType: String?): Charset {
+        declared?.let { return it }
+        metaCharset(bytes)?.let { return it }
+        charsetOf(contentType)?.let { return it }
+        return Charsets.UTF_8
+    }
+
+    /**
+     * 从页面头部嗅 `<meta>` 声明的字符集（只看前 4 KB，声明都在 `<head>` 前面）。
+     * 先按 ISO-8859-1 读：那一层是单字节保真的，ASCII 标签怎么都读得出来，
+     * 真正的编码要等这里拿到声明之后才用得上。
+     */
+    private fun metaCharset(bytes: ByteArray): Charset? {
+        if (bytes.isEmpty()) return null
+        // 只对**标记文档**做嗅探：JSON 接口里常带 HTML 片段（`"html": "<meta charset=gbk>…"`），
+        // 那是一段数据而不是这份响应的编码声明 —— 误判会把整份接口按错的字符集解，
+        // 且解得动（不报错），只在界面上留下满屏乱码。
+        val first = bytes.firstOrNull { it.toInt() > 0x20 } ?: return null
+        if (first != '<'.code.toByte()) return null
+        val head = String(bytes, 0, minOf(bytes.size, 4096), Charsets.ISO_8859_1)
+        val name = META_CHARSET.find(head)?.groupValues?.getOrNull(1) ?: return null
+        return runCatching { Charset.forName(name.trim().trim('"', '\'')) }.getOrNull()
     }
 
     private fun readAll(input: InputStream): ByteArray {
@@ -1648,6 +1837,18 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
     }
 
     private fun nodes(body: String, rule: String): List<NodeValue> {
+        // `-` / `+` 是目录规则的「倒序 / 顺序」标记，可真实书源把它也写进了搜索规则
+        // （🌸快眼看书™ `bookList: "+@css:.librarylist li"`）：这个前缀既不是 CSS 也不是方言，
+        // 还会把开头的 `@css:` 挡在第二位（selectLegadoSegments 只认开头的标记），
+        // 于是整条规则喂给 Jsoup 报回一句看不懂的「SelectorParseException：String must not be empty」，
+        // 整个源搜索 0 条。前缀在非目录路径没有语义，剥掉再走正常分发即可
+        // （chapters() / rssArticles() 自己会先剥好再进来，反转语义不受影响）。
+        if (rule.startsWith("-") || rule.startsWith("+")) return nodes(body, stripListPrefixMarkers(rule))
+        // AllInOne 正则列表（上游 `splitSourceRule(ruleStr, allInOne = true)` 的「首字符是 `:`」分支）：
+        // 整条规则是正则，一个条目 = 一次匹配的**全部分组**，字段规则用 `$1`/`$2` 取分组。
+        // 必须排在 `&&` 分支切分**之前** —— 正则模式里 `&&` 是「多级正则」的分隔符
+        // （快眼小说 `:正文卷[\s\S]*?/dl&&href ="([^"]+)">([^<]+)`），当成并集切整个语义就错了。
+        if (rule.startsWith(":")) return regexNodes(body, rule.substring(1))
         // @xpath 方言优先：xpath 里的 `|` 并集不能被当成 Legado 的 `||` 备选来切分
         if (isXpathRule(rule)) return xpathNodes(Jsoup.parse(body), stripXpathPrefix(rule))
         // @json: 前缀（对齐原版 ruleStr.startsWith("@Json:")）：去前缀后按 JSONPath 读列表
@@ -1690,6 +1891,33 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
     }
 
     /**
+     * AllInOne 正则列表（上游 `AnalyzeByRegex.getElements`）：`&&` 分隔的多级正则，
+     * 前一级把**所有匹配的整段文本串起来**交给下一级，只有最后一级产出条目
+     * （每条 = 分组 `0..groupCount`，未参与的可选分组按空串）。
+     *
+     * 写坏的正则如实抛出去（与选择器同一口径）：静默返回空列表的话，
+     * 「规则写坏了」和「站点真没内容」在体检与调试面板里就再也分不开。
+     */
+    private fun regexNodes(body: String, rule: String): List<NodeValue> {
+        val levels = rule.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
+        if (levels.isEmpty()) return emptyList()
+        return regexMatches(body, levels, 0).map { NodeValue.regexItem(it) }
+    }
+
+    private fun regexMatches(text: String, levels: List<String>, index: Int): List<List<String>> {
+        val pattern = levels[index]
+        val regex = runCatching { Regex(pattern) }.getOrElse { error ->
+            throw RuleExecutionException(
+                "正则列表规则无法编译：${pattern.take(160)}（${(error.message ?: error.javaClass.simpleName).take(160)}）"
+            )
+        }
+        val found = regex.findAll(text).toList()
+        if (found.isEmpty()) return emptyList()
+        if (index + 1 == levels.size) return found.map { it.groupValues }
+        return regexMatches(found.joinToString("") { it.value }, levels, index + 1)
+    }
+
+    /**
      * `cleanContent()` 会把所有标签抹掉，正文配图因此整张消失（上游是用 ImageGetter 渲染的）。
      * 先把 `<img>` 换成 `![图片](绝对地址)` 占位行，前端按行还原成 `<img>` —— 这样在线读、
      * 离线缓存、净化管道、TTS 走的仍然是同一条字符串链路，不用为图片另开一套数据结构。
@@ -1705,6 +1933,28 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             val src = IMG_SRC.find(match.value)?.groupValues?.get(1)?.imageSrcUrl() ?: return@replace ""
             if (src.startsWith("data:", ignoreCase = true)) "" else "\n![图片](${src.absolute(pageUrl)})\n"
         }
+
+    /**
+     * 脱掉正文片段最外层的 `<div>` 壳（只脱这一层）。
+     *
+     * `content` 规则用 `@html` 时拿到的是外层元素（上游语义），文本源最常见的
+     * `id.content@html` / `#content@html` 于是一进来就裹着一层 div；而 [cleanContent]
+     * 里的 DIV_BLOCK 会把整个 div 连文字一起删掉（那是屏蔽广告位的既有语义）。
+     * 只脱顶层 div：内层 div 留给 DIV_BLOCK 照常清理，`<img>`/`<p>` 这类片段原样不动。
+     */
+    private fun String.unwrapTopLevelDivs(): String {
+        val text = trim()
+        // 片段前面可能还有别的顶层节点（第一张图的占位行、前导文字），不能只看开头
+        if (!text.contains("<div", ignoreCase = true)) return this
+        return runCatching {
+            val body = Jsoup.parseBodyFragment(text).body()
+            // 先快照再脱：unwrap 会改写 body 的子节点列表
+            body.children().toList()
+                .filter { it.tagName().equals("div", ignoreCase = true) }
+                .forEach { it.unwrap() }
+            body.html()
+        }.getOrDefault(this)
+    }
 
     /** Legado 的 `<img src="地址,{"headers":"…"}">`：逗号后是这张图的请求选项，不是地址的一部分。 */
     private fun String.imageSrcUrl(): String {
@@ -1728,8 +1978,12 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         // 走完整条清洗，再还原成独占一行的占位。DIV_BLOCK 删块时把块内哨兵留在原地，
         // 于是"div 里的图保住、div 里的广告文字照旧丢掉"。嵌套 div 的非贪婪半截匹配
         // 也一并成立：被切成两段的 div，前一段返回哨兵，残壳交给 ANY_TAG。
+        //
+        // 另一半：`@html` 按上游取的是**外层元素**（`<img>` 只能这样取到），于是文本源
+        // `#content@html` 现在会带着 `<div id="content">` 这层壳进来，正好被 DIV_BLOCK 当广告整块删掉。
+        // 所以清洗前先把最外层的 div 脱掉一层；内层 div（真正的广告位）照旧交给 DIV_BLOCK。
         val saved = mutableListOf<String>()
-        val withSentinels = CONTENT_IMG_PLACEHOLDER.replace(this) { match ->
+        val withSentinels = CONTENT_IMG_PLACEHOLDER.replace(unwrapTopLevelDivs()) { match ->
             val url = match.groupValues[1]
             val token = "\u0001${saved.size}\u0001"
             saved += url
@@ -1788,6 +2042,13 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         /** 正文整段是直链时按这些后缀认媒体（音频 / 视频 / 播流）。`.m3u8` 与 `.ts` 是 HLS，`.m4a` 是音频站最常见的形态。 */
         val MEDIA_URL_SUFFIXES = setOf(".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac", ".mp4", ".m3u8", ".ts", ".webm", ".mkv", ".mov", ".flv", ".avi")
         val URL_VARIABLE_PATTERN = Regex("\\{\\{(.+?)}}")
+        /**
+         * 页面自报的字符集：`<meta charset="gbk">` 与
+         * `<meta http-equiv="Content-Type" content="text/html; charset=gb2312">` 都算
+         * （上游 `BookSource.getCharset` 用的就是这一类正则）。
+         * 限定在 `<meta` 开头的那个标签里，名字必须以字母起手，避免正文里的裸 "charset" 字样误判。
+         */
+        val META_CHARSET = Regex("""(?i)<meta[^>]{0,300}?charset\s*=\s*["']?([a-z][\w-]{1,20})""")
         /** `<…>` 翻页段（非贪婪，一段一段来）：见 `selectPageSegments`。 */
         val PAGE_SEGMENT_PATTERN = Regex("<(.*?)>")
         /** 登录动作是不是一次 `login(...)` 调用：`login`、`login()`、`login(true)`、`login(true, false)` 都算。 */

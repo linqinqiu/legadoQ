@@ -178,7 +178,7 @@ export function BackupPage() {
             <span>{busy ? '导入中…' : '选择备份包导入'}</span>
           </button>
           <input
-            className="backup-password"
+            className="backup-url"
             type="url"
             value={importUrl}
             onChange={event => setImportUrl(event.target.value)}

@@ -58,12 +58,27 @@ class IndexSelectorTest {
         assertEquals(listOf(2), parseIndexSpec("2", 5))
         assertEquals(listOf(4), parseIndexSpec("-1", 5))
         assertEquals(listOf(0, 2), parseIndexSpec("0,2", 5))
-        assertEquals(listOf(1, 2, 3), parseIndexSpec("1:4", 5))
+        // 区间两端闭，与上游 AnalyzeByJSoup 一致：[1:4] 是四个，[0:4] 是五个
+        assertEquals(listOf(1, 2, 3, 4), parseIndexSpec("1:4", 5))
+        assertEquals(listOf(0, 1, 2, 3, 4), parseIndexSpec("0:4", 5))
         assertEquals(listOf(0, 2, 4), parseIndexSpec("0:5:2", 5))
         assertEquals(listOf(3, 4), parseIndexSpec("-2:", 5))
-        // 越界索引由应用侧丢弃（上游也是取列表时拿不到就跳过），解析层不裁剪
-        assertEquals(listOf(9), parseIndexSpec("9", 5))
+        assertEquals(listOf(2), parseIndexSpec("2:2", 5))
+        assertEquals(listOf(0, 1, 2), parseIndexSpec("::", 3))
+        // 越界索引直接丢弃（上游也是取不到就跳过）
+        assertEquals(emptyList<Int>(), parseIndexSpec("9", 5))
+        assertEquals(emptyList<Int>(), parseIndexSpec("1", 0))
         assertEquals(emptyList<Int>(), applyIndexTokens(listOf("a", "b", "c"), listOf("9")))
+    }
+
+    @Test
+    fun `reverse ranges walk backwards and keep both ends`() {
+        // Legado 的整表反向惯用法：[start:end] 解析后 start > end 就倒着取，且包含 end
+        assertEquals(listOf(4, 3, 2, 1, 0), parseIndexSpec("-1:0", 5))
+        assertEquals(listOf(4, 3, 2), parseIndexSpec("-1:2", 5))
+        assertEquals(listOf(0, 1, 2, 3, 4), parseIndexSpec("0:-1", 5))
+        assertEquals(listOf("四", "三", "二", "一"), chapterList("a.item[-1:0]"))
+        assertEquals(listOf("一", "二", "三", "四"), chapterList("a.item[0:-1]"))
     }
 
     @Test
@@ -78,7 +93,7 @@ class IndexSelectorTest {
         assertEquals(listOf("三"), chapterList("a.item[2]"))
         assertEquals(listOf("四"), chapterList("a.item[-1]"))
         assertEquals(listOf("一", "三"), chapterList("a.item[0,2]"))
-        assertEquals(listOf("二", "三"), chapterList("a.item[1:3]"))
+        assertEquals(listOf("二", "三", "四"), chapterList("a.item[1:3]"))
     }
 
     @Test

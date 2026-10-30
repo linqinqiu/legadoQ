@@ -173,6 +173,245 @@ class RuleRunnerTest {
     }
 
     @Test
+    fun `以 ## 起头的规则对条目原文做替换`() {
+        // 起点（qidian.com）的 bookUrl / coverUrl 就写成 `##data-bid="([^"]+)"##…$1###`。
+        // 上游主干为空时直接拿**当前条目原文**（Element.toString = outerHtml）做替换；
+        // 以前整条返回空值，这类源的书籍地址与封面全丢，`###` 也只表示「取第一个匹配段」。
+        val source = """{
+            "bookSourceUrl":"https://bid.example",
+            "searchUrl":"https://bid.example/s?q={{key}}",
+            "ruleSearch":{"bookList":"class.item","name":"a@text",
+                          "bookUrl":"##data-bid=\"([^\"]+)\"##https://m.example/book/$1###"}
+        }"""
+        val page = """<html><body>
+            <div class="item" data-bid="12345"><a href="/book/1">剑来</a></div>
+            </body></html>"""
+        val runner = RuleRunner { url ->
+            if (url.startsWith("https://bid.example/s")) page else error("unexpected $url")
+        }
+        val result = runner.search(source, "剑").single()
+        assertEquals("https://m.example/book/12345", result.bookUrl)
+    }
+
+    @Test
+    fun `冒号起头的目录规则按 AllInOne 正则取章节`() {
+        // 天涯知识（3g.sbkk8.com）等 23 个启用源的 chapterList 以 `:` 起头 —— 上游 allInOne 语义：
+        // 整页原文交给正则，一个条目 = 一次匹配的**全部分组**，字段规则 `$1`/`$2` 取分组文本，
+        // 替换出来的字面量就是值（不再当选择器求值）。
+        // 以前这条规则被原样丢给 Jsoup，报 `Could not parse query ':a href="(.*?)"…'`，整源目录 0 章。
+        val source = """{
+            "bookSourceUrl":"http://3g.example",
+            "ruleToc":{"chapterList":":a href=\"(.*?)\"\\s+target=\"_blank\">(.*?)<","chapterName":"$2","chapterUrl":"$1"}
+        }"""
+        val page = """<html><body><ul>
+            <li><a href="/book/1.html" target="_blank">第一章 起风了</a></li>
+            <li><a href="/book/2.html" target="_blank">第二章 落雨</a></li>
+            </ul></body></html>"""
+        val runner = RuleRunner { url -> if (url == "http://3g.example/book/") page else error("unexpected $url") }
+
+        val chapters = runner.chapters(source, "http://3g.example/book/")
+
+        assertEquals(2, chapters.size)
+        assertEquals("第一章 起风了", chapters[0].title)
+        assertEquals("http://3g.example/book/1.html", chapters[0].url)
+        assertEquals("第二章 落雨", chapters[1].title)
+        assertEquals("http://3g.example/book/2.html", chapters[1].url)
+    }
+
+    @Test
+    fun `正则列表里的 && 是多级正则而不是并集`() {
+        // 快眼小说（www.kyxsw.org）：`:正文卷[\s\S]*?/ul&&href ="([^"]+)">([^<]+)`。
+        // 上游 AnalyzeByRegex 把前一级**所有匹配的整段文本串起来**交给下一级，只有最后一级产出条目。
+        // 当成 `&&` 并集切的话两级各自去选元素：不但取不到章节，广告位那条还会混进来。
+        val source = """{
+            "bookSourceUrl":"http://ky.example",
+            "ruleToc":{"chapterList":":正文卷[\\s\\S]*?/ul&&href=\"([^\"]+)\">([^<]+)","chapterName":"$2","chapterUrl":"$1"}
+        }"""
+        val page = """<html><body><div class="mulu"><h2>正文卷</h2><ul>""" +
+            """<li><a href="/n/1.html">第一章 起风</a></li><li><a href="/n/2.html">第二章 落雨</a></li></ul></div>""" +
+            """<div class="ad"><h2>推荐</h2><ul><li><a href="/ad.html">广告位</a></li></ul></div></body></html>"""
+        val runner = RuleRunner { url -> if (url == "http://ky.example/toc") page else error("unexpected $url") }
+
+        val chapters = runner.chapters(source, "http://ky.example/toc")
+
+        assertEquals(listOf("第一章 起风", "第二章 落雨"), chapters.map { it.title })
+        assertEquals("http://ky.example/n/1.html", chapters[0].url)
+        assertFalse(chapters.any { it.title.contains("广告") })
+    }
+
+    @Test
+    fun `正则条目的字段规则支持分组拼接与 @js 收尾`() {
+        // 起点中文（qidian.com）：`chapterName: "$4!$2@js:result.replace(/0!/,'').replace(/1!/,'🔒')"`、
+        // `chapterUrl: "https://vipreader.qidian.com/chapter/@get:{id}/$1"`。
+        // 分组引用可以拼在字面量里，`@js:` 段拿到的 result 是拼好的字符串。
+        val source = """{
+            "bookSourceUrl":"http://qd.example",
+            "ruleToc":{"chapterList":":\\{\"C\":(\\d+),\"N\":\"(.*?)\",\"V\":(\\d)","chapterName":"$3!$2@js:result.replace(/0!/,'').replace(/1!/,'🔒')","chapterUrl":"https://vip.example/chapter/$1"}
+        }"""
+        val body = """<html><body><script>var d={"C":1001,"N":"第一章 起风","V":0},{"C":1002,"N":"第二章 落雨","V":1};</script></body></html>"""
+        val runner = RuleRunner { url -> if (url == "http://qd.example/toc") body else error("unexpected $url") }
+
+        val chapters = runner.chapters(source, "http://qd.example/toc")
+
+        assertEquals(2, chapters.size)
+        assertEquals("第一章 起风", chapters[0].title)
+        assertEquals("🔒第二章 落雨", chapters[1].title)
+        assertEquals("https://vip.example/chapter/1001", chapters[0].url)
+        assertEquals("https://vip.example/chapter/1002", chapters[1].url)
+    }
+
+    @Test
+    fun `正则条目的字段规则支持井号替换与 js 段`() {
+        // 快眼看书 `$2##正文(_)?`、新浪小说 `$3<js>"https://book.sina.cn"+result</js>`：
+        // `##` 段作用在分组替换**之后**的字面量上，`<js>` 段拿主段的值当 result。
+        val source = """{
+            "bookSourceUrl":"http://sina.example",
+            "ruleToc":{"chapterList":":\\{\"n\":\"(.*?)\",\"u\":\"(.*?)\"\\}","chapterName":"$1##正文(_)","chapterUrl":"$2<js>'https://sina.example'+result</js>"}
+        }"""
+        val body = """<html><body>{"n":"正文_第一章","u":"/c/1"}{"n":"第二章","u":"/c/2"}</body></html>"""
+        val runner = RuleRunner { url -> if (url == "http://sina.example/toc") body else error("unexpected $url") }
+
+        val chapters = runner.chapters(source, "http://sina.example/toc")
+
+        assertEquals("第一章", chapters[0].title)
+        assertEquals("https://sina.example/c/1", chapters[0].url)
+        assertEquals("第二章", chapters[1].title)
+    }
+
+    @Test
+    fun `搜索的冒号列表规则同样按正则取条目`() {
+        // 蓝海搜书 / 食在广州 / 豆豆小说的 ruleSearch.bookList 也是这种形状（本机 6 个源）。
+        val source = """{
+            "bookSourceUrl":"http://lan.example",
+            "searchUrl":"http://lan.example/s?q={{key}}",
+            "ruleSearch":{"bookList":":href=\"([^\"]+)\" title=\"([^\"]+)\">([^<]+)","bookUrl":"$1","name":"$3##（全本）","author":"$2"}
+        }"""
+        val page = """<html><body><a href="/b/1" title="烽火戏诸侯">剑来（全本）</a></body></html>"""
+        val runner = RuleRunner { url -> if (url.startsWith("http://lan.example/s")) page else error("unexpected $url") }
+
+        val result = runner.search(source, "剑").single()
+
+        assertEquals("剑来", result.name)
+        assertEquals("烽火戏诸侯", result.author)
+        assertEquals("http://lan.example/b/1", result.bookUrl)
+    }
+
+    @Test
+    fun `写坏的正则列表规则如实报错而不是静默 0 条`() {
+        // 与选择器同一口径：规则写坏了必须报出来，否则「规则错」和「站点没内容」在体检里分不开。
+        val source = """{
+            "bookSourceUrl":"http://badregex.example",
+            "ruleToc":{"chapterList":":href=\"(","chapterName":"$1","chapterUrl":"$1"}
+        }"""
+        val runner = RuleRunner { url -> if (url == "http://badregex.example/toc") "<html></html>" else error("unexpected $url") }
+
+        val error = runCatching { runner.chapters(source, "http://badregex.example/toc") }.exceptionOrNull()
+
+        assertTrue(error is RuleExecutionException)
+        assertTrue(error?.message?.contains("正则列表规则无法编译") == true)
+    }
+
+    @Test
+    fun `列表规则带的目录前缀不再让选择器报错`() {
+        // 🌸快眼看书™（www.botaodz.com）把目录的 `+` 标记也写进了搜索规则：
+        // `bookList: "+@css:.librarylist li"`。这个前缀既不是 CSS 也挡住了开头的 `@css:` 标记，
+        // 以前整串喂给 Jsoup，报回来的是「SelectorParseException：String must not be empty」，
+        // 整个源一条都搜不到，而界面只说「0 条命中」。
+        val source = """{
+            "bookSourceUrl":"http://kyj.example",
+            "searchUrl":"http://kyj.example/s?q={{key}}",
+            "ruleSearch":{"bookList":"+@css:.librarylist li","bookUrl":"tag.a@href","name":"tag.a@text"}
+        }"""
+        val page = """<html><body><ul class="librarylist"><li><a href="/b/1">我有一剑</a></li>""" +
+            """<li><a href="/b/2">剑来</a></li></ul></body></html>"""
+        val runner = RuleRunner { url -> if (url.startsWith("http://kyj.example/s")) page else error("unexpected $url") }
+
+        val results = runner.search(source, "剑")
+
+        assertEquals(listOf("我有一剑", "剑来"), results.map { it.name })
+        assertEquals("http://kyj.example/b/1", results[0].bookUrl)
+    }
+
+    @Test
+    fun `js 列表规则带目录前缀也认`() {
+        // 笔下文学③🥉 / ④🥉、轮回小说、武道文学：`"+@js:…JSON.stringify(list)"`
+        // （它们写在 chapterList 上，chapters() 那一路本来就会剥前缀；这里验的是 bookItems）。
+        // `isJsRule` 只看开头那几个字符，前缀一占位就不认这是 JS 列表规则了，
+        // 于是整段脚本被当 CSS 选择器丢给 Jsoup —— 目录一条都不出，界面只说「0 章」。
+        val source = """{
+            "bookSourceUrl":"http://bx.example",
+            "searchUrl":"http://bx.example/s?q={{key}}",
+            "ruleSearch":{"bookList":"+@js:JSON.stringify([{u:'/b/1',n:'我有一剑'},{u:'/b/2',n:'剑来'}])","bookUrl":"u","name":"n"}
+        }"""
+        val runner = RuleRunner { url ->
+            if (url.startsWith("http://bx.example/s")) "<html><body>无所谓，条目由脚本给出</body></html>" else error("unexpected $url")
+        }
+
+        val results = runner.search(source, "剑")
+
+        assertEquals(listOf("我有一剑", "剑来"), results.map { it.name })
+        assertEquals("http://bx.example/b/2", results[1].bookUrl)
+    }
+
+    @Test
+    fun `纯 js 段的规则脚本失败时不返回整页原文`() {
+        // 🔖食在广州（www.gzmeal.com）的 `name` 写成 `<js>result.match(/"book">[^>]+>([^<]+)/)[1]</js>`：
+        // 页面上没这个结构时脚本抛 TypeError。以前这里回退成**整页原文**，
+        // 书名就成了《<!doctype html> <html lang="zh-CN">…》，书架与搜索记录一起被脏掉。
+        // 上游此时结果是空 —— 书名沿用搜索结果，不该是一页 HTML。
+        val source = """{
+            "bookSourceUrl":"https://gz.example",
+            "ruleBookInfo":{"name":"<js>result.match(/\"book\">[^>]+>([^<]+)/)[1]</js>"}
+        }"""
+        val page = """<html><body><h1>完全对不上的标题</h1></body></html>"""
+        val runner = RuleRunner { url -> if (url == "https://gz.example/b/1") page else error("unexpected $url") }
+
+        val details = runner.details(source, "https://gz.example/b/1")
+
+        // 脚本没跑出结果 → 名称为空 → 落到占位名；关键是**不能**是那一页 HTML。
+        // （本文件用的是 JUnit 的 assertEquals，三参形态是 (message, expected, actual)，别把说明写在最后。）
+        assertEquals("未命名书籍", details.name)
+    }
+
+    @Test
+    fun `正则条目的 js 段拿到的 result 是全部分组`() {
+        // 💫新浪小说网（book.sina.cn）的 `nextTocUrl` 是纯 `<js>` 段，脚本里用 `result` / `src`。
+        // 上游（`getString` 把 content 交给 evalJS）给脚本的是**这个条目本身**，
+        // 也就是「一次匹配的全部分组」—— 条目级脚本写 `result[2]` 就该拿到 2 号分组。
+        val source = """{
+            "bookSourceUrl":"http://sina2.example",
+            "ruleToc":{"chapterList":":href=\"([^\"]+)\"[^>]*>([^<]+)","chapterName":"@js:result[2]","chapterUrl":"@js:result[1]"}
+        }"""
+        val page = """<html><body><a href="/c/1">第一章</a><a href="/c/2">第二章</a></body></html>"""
+        val runner = RuleRunner { url -> if (url == "http://sina2.example/toc") page else error("unexpected $url") }
+
+        val chapters = runner.chapters(source, "http://sina2.example/toc")
+
+        assertEquals(listOf("第一章", "第二章"), chapters.map { it.title })
+        assertEquals("http://sina2.example/c/1", chapters[0].url)
+    }
+
+    @Test
+    fun `正则段后面的 @js 拿到的是正则结果`() {
+        // 番茄短剧的正文规则：`##"url":"(.*)","url_next"##$1###@js:…'✅直链:\n'+result`。
+        // 以前 `@js:` 连同 `###` 被当成替换段吞掉、主干为空 → 正文规则报「未提取到内容」。
+        // 脚本改成把地址改写一个字母：拿到 b.m3u8 才说明**正则结果真的进了脚本**
+        // （正文最终给的是那条直链本身，见「转义斜杠直链」那条判据）。
+        val source = """{
+            "bookSourceUrl":"https://drama.example",
+            "bookSourceType":4,
+            "ruleContent":{"content":"##\"url\":\"(.*)\",\"url_next\"##$1###@js:result.replace('a.m3u8','b.m3u8')"}
+        }"""
+        val page = """<html><body><script>var p={"url":"https:\/\/cdn.example\/a.m3u8","url_next":"x"}</script></body></html>"""
+        val runner = RuleRunner { url ->
+            if (url == "https://drama.example/c/1") page else error("unexpected $url")
+        }
+        val chapter = runner.content(source, "https://drama.example/c/1")
+        assertEquals("https://cdn.example/b.m3u8", chapter.content)
+        assertEquals("https://cdn.example/b.m3u8", chapter.mediaUrl)
+    }
+
+    @Test
     fun `@@ marks inside {{}} templates are stripped before evaluation`() {
         // 上游模板常写 `{{@@.k.0@text}}`：`@@` 只是标记不是选择器，不剥掉会去选一个叫 `@@.k.0`
         // 的东西，取值必空（实测 65 个源的 intro/kind 这么丢）。
@@ -676,7 +915,7 @@ class RuleRunnerTest {
         // `<div>…</div>`，而漫画页几乎普遍是"每张图包在一个 div 单元里"——
         // `preserveContentImages` 先换成 `![图片](…)` 占位行，紧接着就被 DIV_BLOCK 连图带壳吃掉，
         // 整章正文变空 → 抛「正文规则未提取到内容」。
-        // 上面那条夹具用 `#content@html` 取 innerHTML，图外层没有 div，正好绕过了这条路径。
+        // 上面那条夹具的图直接挂在 #content 下，没有 div 单元，正好绕过了这条路径。
         val source = """{
             "bookSourceUrl":"https://comic.example",
             "ruleContent":{"content":"@css:#content@html"}
@@ -694,6 +933,40 @@ class RuleRunnerTest {
         assertTrue("根相对地址应被绝对化并保住: $content", content.contains("![图片](https://comic.example/p/2.jpg)"))
         // 关键取舍：DIV_BLOCK「丢弃 div 里的文字」是文本站屏蔽广告位的既有语义，不能因为救图而放开。
         assertFalse("div 里的广告文字应照旧被丢掉: $content", content.contains("扫码关注微信公众号"))
+    }
+
+    @Test
+    fun `html value mode returns outer html so comic image rules work`() {
+        // 上游 `getResultLast` 的 html 是整组元素的 outerHtml；我们以前取 innerHtml，
+        // 而 `<img>` 的 innerHtml 恒为空 —— 漫画源 `#cp_img@img@html` 整章图一张都出不来。
+        val source = """{
+            "bookSourceUrl":"https://comic-html.example",
+            "bookSourceType":2,
+            "ruleContent":{"content":"#cp_img@img@html"}
+        }"""
+        val runner = RuleRunner {
+            """<div id="cp_img"><img src="/c/1.jpg"><img data-original="https://cdn.example/2.jpg"></div>"""
+        }
+        val content = runner.content(source, "https://comic-html.example/ch/1.html").content
+        assertTrue("第一张图丢了: $content", content.contains("![图片](https://comic-html.example/c/1.jpg)"))
+        assertTrue("第二张图丢了: $content", content.contains("![图片](https://cdn.example/2.jpg)"))
+    }
+
+    @Test
+    fun `html value mode on a text container still keeps paragraphs and drops ad divs`() {
+        // `#content@html` 是文本源最常见的写法（库里 150+ 条）。改成 outerHtml 后会带上
+        // `<div id="content">` 这层壳，cleanContent 必须只脱顶层壳，内层广告 div 照旧删掉。
+        val source = """{
+            "bookSourceUrl":"https://text-html.example",
+            "ruleContent":{"content":"#content@html"}
+        }"""
+        val runner = RuleRunner {
+            """<div id="content"><p>第一段。</p><div class="ad">扫码关注公众号</div><p>第二段。</p></div>"""
+        }
+        val content = runner.content(source, "https://text-html.example/c/1").content
+        assertTrue("正文第一段丢了: $content", content.contains("第一段。"))
+        assertTrue("正文第二段丢了: $content", content.contains("第二段。"))
+        assertFalse("内层广告 div 应照旧被丢掉: $content", content.contains("扫码关注公众号"))
     }
 
     @Test
@@ -927,6 +1200,102 @@ class RuleRunnerTest {
     }
 
     @Test
+    fun `文档级 @js 规则的 result 是响应正文原文`() {
+        // 喜马拉雅（音频源）的 nextTocUrl 是这么写的：
+        //   baseUrl = String(baseUrl).split('1/200')[0];
+        //   page = JSON.parse(String(result)).tracks.maxPageId
+        // 上游 AnalyzeRule 把 `result` 绑成响应正文原文，`JSON.parse(String(result))` 才解析得动。
+        // 以前把 JSON 文档的 Map.toString（`{msg=0, ret=0, …}`）当 result，JSON.parse 必抛 SyntaxError；
+        // 脚本失败后整段目录 JSON 又被当成「下一页地址」，报「URL 格式无效或包含未解析变量」，目录全废。
+        val source = """{
+            "bookSourceUrl":"https://audio.example",
+            "ruleToc":{
+                "chapterList":"$.tracks.list[*]",
+                "chapterName":"title",
+                "chapterUrl":"playPathAacv224",
+                "nextTocUrl":"@js:var base = String(baseUrl).split('1/200')[0]; var page = JSON.parse(String(result)).tracks.maxPageId; var list = []; if (page > 1 && base != String(baseUrl)) { list.push(String(base + '2/200')); } list"
+            }
+        }"""
+        val runner = RuleRunner { url ->
+            when (url) {
+                "https://audio.example/track/1/true/1/200" ->
+                    """{"tracks":{"maxPageId":2,"list":[{"title":"一","playPathAacv224":"https://media.example/1.m4a"}]}}"""
+                "https://audio.example/track/1/true/2/200" ->
+                    """{"tracks":{"maxPageId":2,"list":[{"title":"二","playPathAacv224":"https://media.example/2.m4a"}]}}"""
+                else -> throw AssertionError("不该请求 $url")
+            }
+        }
+        val chapters = runner.chapters(source, "https://audio.example/track/1/true/1/200")
+        assertEquals(listOf("一", "二"), chapters.map { it.title })
+    }
+
+    @Test
+    fun `一次给多个入口页时不再从这些页继续翻页`() {
+        // 喜马拉雅（音频源）的 nextTocUrl 一次把 2..9 页全推过来；在第 2 页上同一条脚本会算出
+        // `…/2/2002/200`（split('1/200') 不命中、原样拼接）。上游对这些入口页只各取一页
+        // （getNextUrl=false），以前我们递归翻页会去请求坏地址，一个 404 把整本目录带崩。
+        val source = """{
+            "bookSourceUrl":"https://audio.example",
+            "ruleToc":{
+                "chapterList":"$.tracks.list[*]",
+                "chapterName":"title",
+                "chapterUrl":"play",
+                "nextTocUrl":"@js:var list = []; if (String(baseUrl).indexOf('page=1') >= 0) { list.push('https://audio.example/toc?page=2'); list.push('https://audio.example/toc?page=3'); } else { list.push(String(baseUrl) + 'x'); } list"
+            }
+        }"""
+        val requested = mutableListOf<String>()
+        val runner = RuleRunner { url ->
+            requested += url
+            when (url) {
+                "https://audio.example/toc?page=1" ->
+                    """{"tracks":{"list":[{"title":"一","play":"https://audio.example/c/1"}]}}"""
+                "https://audio.example/toc?page=2" ->
+                    """{"tracks":{"list":[{"title":"二","play":"https://audio.example/c/2"}]}}"""
+                "https://audio.example/toc?page=3" ->
+                    """{"tracks":{"list":[{"title":"三","play":"https://audio.example/c/3"}]}}"""
+                else -> throw AssertionError("不该请求 $url")
+            }
+        }
+        val chapters = runner.chapters(source, "https://audio.example/toc?page=1")
+        assertEquals(listOf("一", "二", "三"), chapters.map { it.title })
+        assertEquals("入口页只各取一页", 3, requested.size)
+    }
+
+    @Test
+    fun `文档级 @js 脚本失败时不拿整页正文冒充取值`() {
+        // `@js:` 失败后的老兜底是 documentText()：JSON 文档得到的是 Map 的 toString，
+        // 调用方会把它当**非空结果**继续用（见上一条的分页地址）。失败就该是空，
+        // 让正文链路如实报「正文规则未提取到内容」。
+        val source = """{
+            "bookSourceUrl":"https://broken.example",
+            "ruleContent":{"content":"@js:throw new Error('boom')"}
+        }"""
+        val runner = RuleRunner { """{"msg":0,"data":{"x":1}}""" }
+        val error = runCatching { runner.content(source, "https://broken.example/c/1") }.exceptionOrNull()
+        assertNotNull("脚本异常时应报正文为空", error)
+        assertTrue("应是规则执行异常：$error", error is RuleExecutionException)
+        val message = error?.message ?: ""
+        assertTrue("应报正文未提取到内容：$message", message.contains("正文规则未提取到内容"))
+        assertFalse("整段 JSON 不该被当成正文：$message", message.contains("msg=0"))
+    }
+
+    @Test
+    fun `章节地址本身是媒体直链时不去下载它`() {
+        // 喜马拉雅（音频源）的 chapterUrl 直接是 `…m4a?buy_key=…`；以前正文阶段照样 fetch
+        // 章节地址，把整段音频当文本拉 —— 超 2 MiB 上限，每章都报错。
+        val source = """{
+            "bookSourceUrl":"https://audio.example",
+            "bookSourceType":1,
+            "ruleContent":{"content":"@js:baseUrl"}
+        }"""
+        val media = "https://vod.example.com/storages/a/b/x.m4a?buy_key=1&sign=2"
+        val runner = RuleRunner { throw AssertionError("不该请求媒体地址 $media") }
+        val chapter = runner.content(source, media)
+        assertEquals(media, chapter.mediaUrl)
+        assertEquals(media, chapter.content)
+    }
+
+    @Test
     fun `img 里的 Legado 图片选项（地址,{headers}）不留在正文里`() {
         // 漫画源把 `<img src="地址,{"headers":"…"}">` 整串塞进 src（引号没转义）。
         // 老正则从 `src="` 取到第一个引号为止 → 地址被截成 `地址,{`，标签后半截还留在正文里。
@@ -1017,5 +1386,47 @@ class RuleRunnerTest {
         assertEquals("回落到搜索规则", books.single().name)
         assertEquals("https://empty-explore.example/b/1", books.single().bookUrl)
         assertEquals("某某", books.single().author)
+    }
+
+    @Test
+    fun `正文规则给的转义斜杠直链不被页面段落顶掉`() {
+        // 番茄短剧（视频源）实测：正文规则 `##"url":"(.*)","url_next"##$1###` 明明取到了直链，
+        // 界面上却是 368 字的页脚。两处叠加：① 直链来自页面 JSON，斜杠是转义过的
+        // （`https:\/\/cdn…\/master.m3u8`），`URI()` 解析不了、后缀判不出 → 没当媒体；
+        // ② 「段落兜底」只看长度（< 500 字就用整页 `<p>` 覆盖），把这行短正文顶掉了。
+        val source = """{
+            "bookSourceUrl":"https://www.shanhuzs.com/",
+            "bookSourceType":4,
+            "ruleContent":{"content":"##\"url\":\"(.*)\",\"url_next\"##${'$'}1###"}
+        }"""
+        val body = """<html><body>
+            <script>var p={"url":"https:\/\/cdn.example\/m3u8\/4094267\/master.m3u8","url_next":"","from":"vip"};</script>
+            <p>大家正在搜</p><p>短剧</p><p>全65集</p><p>网站地图</p><p>RSS订阅</p><p>合作伙伴：腾讯视频 优酷视频 爱奇艺</p>
+            </body></html>"""
+
+        val chapter = RuleRunner { _ -> body }.content(source, "https://www.shanhuzs.com/fqsanpy/118982-1-1.html")
+
+        assertEquals("https://cdn.example/m3u8/4094267/master.m3u8", chapter.mediaUrl)
+        assertEquals("https://cdn.example/m3u8/4094267/master.m3u8", chapter.content)
+        assertFalse("页面段落把直链顶掉了: ${chapter.content}", chapter.content.contains("合作伙伴"))
+    }
+
+    @Test
+    fun `正文规则给的播放页地址不被页面段落顶掉`() {
+        // 一批视频源的正文是不带媒体后缀的播放页地址（`xxx.php?vid=…`）：媒体嗅探认不出，
+        // 但那**就是一行链接**，同样不该被整页 `<p>` 覆盖。
+        val source = """{
+            "bookSourceUrl":"https://v.example",
+            "bookSourceType":4,
+            "ruleContent":{"content":"class.player@data-src"}
+        }"""
+        val body = """<html><body>
+            <div class="player" data-src="https://v.example/player/m3u8.php?vid=9527"></div>
+            <p>猜你喜欢</p><p>热播榜</p><p>本周演员</p><p>网友评论</p><p>下一页</p>
+            </body></html>"""
+
+        val chapter = RuleRunner { _ -> body }.content(source, "https://v.example/play/1.html")
+
+        assertEquals("https://v.example/player/m3u8.php?vid=9527", chapter.content)
     }
 }

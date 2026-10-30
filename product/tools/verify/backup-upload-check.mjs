@@ -71,7 +71,10 @@ function multipart(filename, bytes, password) {
     `--${boundary}\r\nContent-Disposition: form-data; name="${name}"${extra}\r\n\r\n`
   const parts = []
   if (password) parts.push(Buffer.from(head('password') + password + '\r\n', 'utf8'))
-  parts.push(Buffer.from(head('file', `; filename="${filename}"`) + '\r\n', 'utf8'))
+  // 与 `multipart.mjs` 同一个坑：`head()` 结尾已经是头体分界的 `\r\n\r\n`，
+  // 再补 `\r\n` 就把两个字节塞到 zip 前面，导入如实判「不是 zip」。
+  // （这条与那条各写一份组装，正是同一个 bug 能活在地方的原因 —— 以后统一走 multipart.mjs。）
+  parts.push(Buffer.from(head('file', `; filename="${filename}"`), 'utf8'))
   parts.push(bytes)
   parts.push(Buffer.from('\r\n' + `--${boundary}--\r\n`, 'utf8'))
   return { body: Buffer.concat(parts), type: `multipart/form-data; boundary=${boundary}` }

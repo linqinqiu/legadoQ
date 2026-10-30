@@ -206,27 +206,62 @@ internal fun <T> applyIndexTokens(input: List<T>, tokens: List<String>): List<T>
     return current
 }
 
-/** `3` 单个、`0,2` 多选、`1:4` 区间、`0:6:2` 带步长；负数从尾部数。 */
+/**
+ * `3` 单个、`0,2` 多选、`1:4` 区间、`0:6:2` 带步长；负数从尾部数。
+ *
+ * **区间两端都闭**，与上游 `AnalyzeByJSoup.ElementsSingle` 完全一致：
+ * `[0:4]` 是 0…4 五个，`[1:]` 从 1 到末尾，`[0:-1]` 是整张表，`[-1:0]` 是整张表倒序
+ * （上游注释里的「特殊用法 tag.div[-1:0] 可在任意地方让列表反向」）。
+ * 越界的两端先夹到 `[0, size-1]`，两端同侧越界则整段作废；结果去重且保持书写顺序。
+ *
+ * 以前按「右端开区间」实现，`[-1:0]` 解析成 `size-1 … 0` 又走 `while (index < stop)`
+ * 一次都不进，目录直接 0 章；`[0:-1]`/`[1:-2]` 这类写法也都会少取一条 ——
+ * 真库 200+ 处区间规则是按 Legado 语义写的，必须按闭区间展开。
+ */
 internal fun parseIndexSpec(spec: String, size: Int): List<Int> {
-    val out = mutableListOf<Int>()
+    if (size <= 0) return emptyList()
+    val picked = LinkedHashSet<Int>()
     for (raw in spec.split(',')) {
         val part = raw.trim()
         if (part.isEmpty()) continue
         if (':' in part) {
             val bits = part.split(':').map { it.trim() }
-            val start = bits.getOrNull(0)?.toIntOrNull() ?: 0
-            val end = bits.getOrNull(1)?.toIntOrNull() ?: size
-            val step = bits.getOrNull(2)?.toIntOrNull()?.takeIf { it > 0 } ?: 1
-            var index = if (start < 0) start + size else start
-            val stop = if (end < 0) end + size else end
-            while (index < stop && index < size) {
-                if (index >= 0) out += index
-                index += step
+            var start = bits.getOrNull(0)?.toIntOrNull() ?: 0
+            var end = bits.getOrNull(1)?.toIntOrNull() ?: (size - 1)
+            val rawStep = bits.getOrNull(2)?.toIntOrNull() ?: 1
+            if (start < 0) start += size
+            if (end < 0) end += size
+            if ((start < 0 && end < 0) || (start >= size && end >= size)) continue
+            start = start.coerceIn(0, size - 1)
+            end = end.coerceIn(0, size - 1)
+            if (start == end || rawStep >= size) {
+                picked += start
+                continue
+            }
+            // 上游把负步长折成正间隔（-10 在 20 条的表里等于 10）；0 折成 size 即只取一个。
+            val step = when {
+                rawStep > 0 -> rawStep
+                -rawStep < size -> rawStep + size
+                else -> 1
+            }
+            if (end > start) {
+                var index = start
+                while (index <= end) {
+                    picked += index
+                    index += step
+                }
+            } else {
+                var index = start
+                while (index >= end) {
+                    picked += index
+                    index -= step
+                }
             }
         } else {
-            val value = part.toIntOrNull() ?: continue
-            out += if (value < 0) value + size else value
+            var value = part.toIntOrNull() ?: continue
+            if (value < 0) value += size
+            if (value in 0 until size) picked += value
         }
     }
-    return out
+    return picked.toList()
 }
