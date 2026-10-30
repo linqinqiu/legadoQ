@@ -20,6 +20,7 @@ import java.nio.file.Files
 import io.legado.cache.BookCacheService
 import io.legado.cache.CoverCache
 import io.legado.data.Database
+import io.legado.data.MentionsWarmer
 import io.legado.data.getCookieForUrl
 import io.legado.http.SameOriginWriteGate
 import io.legado.http.ServerIdentity
@@ -94,6 +95,11 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     
     val database = Database(config.databasePath)
     database.initialize()
+    // 启动时把「每个凭据桶被多少书源提到」的统计提前算好（全库扫描，冷 JVM 实测 2~3 秒）。
+    // 不预热的话，进程起来后第一次打开凭据管理要等这么久；预热放在低优先级守护线程里，
+    // 和界面首屏那些请求并行，用户基本感知不到。见 CookieDao.kt 的 MentionsWarmer。
+    // 启动这一跑不等防抖：Ktor 自己启动要 6 秒，扫得越早越能在"服务已就绪"之前算完。
+    MentionsWarmer.schedule(database, delayMs = 0)
     val subscriptions = SubscriptionService(database) { message -> log.info(message) }
     val runner = RuleRunner(database = database)
     // coverCache 要在 bookCache 之前建：离线缓存漫画章节时顺带把图抓进同一个磁盘缓存，

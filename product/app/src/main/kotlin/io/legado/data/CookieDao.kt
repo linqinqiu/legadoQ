@@ -4,6 +4,7 @@ import io.legado.model.CookieBucket
 import io.legado.source.WebViewProxy
 import java.nio.file.Path
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -70,22 +71,25 @@ private fun mergedCookieMap(bucket: String, persistent: Map<String, String>): Li
  * 最新那一条即使单条就超限也照发：全丢等于必然没有登录态，带着至少还有一次成功的机会；
  * 这种桶会被标成 [CookieBucketState.oversized]，不静默。
  */
-private fun composeCookieHeader(map: LinkedHashMap<String, String>): Pair<List<String>, List<String>> {
+private fun composeCookieHeader(map: LinkedHashMap<String, String>): CookieHeader {
     val entries = map.entries.toList()
     val newestFirst = ArrayList<String>(entries.size)
     var length = 0
     for (index in entries.indices.reversed()) {
         val key = entries[index].key
         val value = entries[index].value
-        // "k=v" 本身，加上与前一条之间的分隔符 "; "。
-        val cost = key.length + value.length + 2 + if (newestFirst.isEmpty()) 0 else 2
+        // "k=v" 是 key + "="(1) + value；与上一条之间还要加 "; "(2)，首条不加。
+        val cost = key.length + value.length + 1 + if (newestFirst.isEmpty()) 0 else 2
         if (newestFirst.isNotEmpty() && length + cost > MAX_COOKIE_HEADER_CHARS) break
         newestFirst += key
         length += cost
     }
     val kept = newestFirst.reversed()
-    return kept to map.keys.filterNot { kept.contains(it) }
+    return CookieHeader(kept, map.keys.filterNot { kept.contains(it) }, length)
 }
+
+/** [composeCookieHeader] 的结果。字符数直接算出来，省掉"只为数一数长度而拼一遍字符串"。 */
+private class CookieHeader(val kept: List<String>, val dropped: List<String>, val chars: Int)
 
 /** 读该请求地址所属注册域的凭据（持久 + 会话合并，并按 4096 淘汰）；没有则 null。跨书源共享，与上游一致。 */
 fun Database.getCookieForUrl(url: String): String? {
@@ -94,7 +98,7 @@ fun Database.getCookieForUrl(url: String): String? {
     val persistent = connect { db -> persistentCookiesIn(db, bucket) }
     val merged = mergedCookieMap(bucket, persistent)
     if (merged.isEmpty()) return null
-    val (kept, _) = composeCookieHeader(merged)
+    val kept = composeCookieHeader(merged).kept
     return kept.joinToString("; ") { "$it=${merged[it]}" }.takeIf { it.isNotBlank() }
 }
 
@@ -119,17 +123,39 @@ data class CookieBucketState(
 private fun bucketState(domain: String, persistent: Map<String, String>): CookieBucketState {
     val session = SessionCookies.get(domain)
     val merged = mergedCookieMap(domain, persistent)
-    val (kept, dropped) = composeCookieHeader(merged)
-    val header = kept.joinToString("; ") { "$it=${merged[it]}" }
+    val header = composeCookieHeader(merged)
     return CookieBucketState(
         domain = domain,
         persistentKeys = persistent.keys.toList(),
         sessionKeys = session.keys.toList(),
-        sentKeys = kept,
-        droppedKeys = dropped,
-        headerChars = header.length,
-        oversized = kept.size <= 1 && header.length > MAX_COOKIE_HEADER_CHARS,
+        sentKeys = header.kept,
+        droppedKeys = header.dropped,
+        headerChars = header.chars,
+        oversized = header.kept.size <= 1 && header.chars > MAX_COOKIE_HEADER_CHARS,
     )
+}
+
+/**
+ * 一次读**指定这几个域**的持久凭据。
+ *
+ * 为什么不复用"扫全表再挑"：`cookieBucketsForHosts` 站在书源登录判定这条热路径上
+ * （`checkLoginStatus` 按源逐个调，这台机器有 5598 本书源），全表扫 + 逐桶算状态会把
+ * 单次调用顶到 20ms 以上，乘上源数就是几十秒的白等。
+ */
+private fun persistentCookiesFor(db: java.sql.Connection, buckets: List<String>): Map<String, Map<String, String>> {
+    if (buckets.isEmpty()) return emptyMap()
+    val placeholders = buckets.joinToString(",") { "?" }
+    return db.prepareStatement("select url, cookie from cookie where url in ($placeholders)").use { stmt ->
+        buckets.forEachIndexed { index, bucket -> stmt.setString(index + 1, bucket) }
+        stmt.executeQuery().use { rs ->
+            val found = LinkedHashMap<String, Map<String, String>>()
+            while (rs.next()) {
+                val domain = rs.getString(1)?.takeIf { it.isNotBlank() } ?: continue
+                found[domain] = parseCookiePairs(rs.getString(2) ?: "")
+            }
+            found
+        }
+    }
 }
 
 /** 全部凭据桶的状态（含只有会话凭据的域）。一次读表，不逐桶查。 */
@@ -222,11 +248,6 @@ fun Database.removeCookieBucket(url: String): Boolean {
 }
 
 /**
- * 有多少本书源的配置里**写到过**这个域（SQL `instr` 的粗筛，不解析 JSON）。
- * 全局凭据列表用它提示"删掉这桶会影响面有多大" —— 措辞必须是"提到"，
- * 不能说成"会访问"：真正会带的域要解析每本书源才准，代价不该摊到一次列表请求上。
- */
-/**
  * 「每个凭据桶被多少书源真正用得上」——一次扫描算出全部桶。
  *
  * 以前是每个桶跑一遍 `instr(lower(payload), ?)`：213 个桶 × 4,876 源（payload 合计 37 MB）
@@ -234,21 +255,251 @@ fun Database.removeCookieBucket(url: String): Boolean {
  * 现在反过来：每个源的 payload 只扫一次，抽出其中出现过的 http(s) 主机名，归一到注册域再按桶累加。
  * 口径也顺带变准了 —— 老的子串匹配会把「注释里提了一句该域」的源也算进去，
  * 而这里数的是「配置里真有指向该域的地址」，与 `getCookieForUrl` 实际会不会发出去一致。
+ *
+ * "扫一次"在这台机器（5,598 本书源 / 24 MB payload）上实测约 0.7 秒，虽然已经比以前快了一个量级，
+ * 直接摊在打开凭据管理那一下仍然能感觉到。所以结果缓存在 [CookieMentions] 里，书源的任何一次写入
+ * 都让它作废（写入路径全部过 `invalidateSourceCaches()`，见 `Database.kt`）。
+ *
+ * 作废之后**不把旧值扔掉**：这只是「N 个书源提到」一句提示，多显示几秒旧数字没人会在意，
+ * 但让人点开面板等一下会。所以旧值先照发，后台线程（[MentionsWarmer]）重新算好再换上 ——
+ * 唯一会阻塞的情况是进程刚起来、还从没算过（那时只能现扫一次）。
+ *
+ * 试过用「表指纹」推断书源改没改（行数 + payload 总长度），被自己的测试逮住：
+ * 删掉一本、换上一本等长地址的书源，指纹一模一样，统计就停在旧值上、再也不会刷新。
+ *
+ * 结果还会**落盘**（`app_meta.cookie_mentions_json`，连同算它时的 `source_revision`）：
+ * 冷启动那次扫描在忙起来的机器上实测 3~13 秒，落在「服务已就绪」之后就会让第一下打开
+ * 凭据管理干等。书源版本对得上时直接读落盘结果，冷启动不再扫；版本是 source 表上的
+ * 触发器维护的，书源一写就变，不存在"数据改了、版本没动"的窗口。
  */
-fun Database.cookieBucketMentions(): Map<String, Int> = connect { db ->
-    val counts = HashMap<String, Int>()
-    db.prepareStatement("select payload from source").use { statement ->
+fun Database.cookieBucketMentions(): Map<String, Int> {
+    loadPersistedMentions()
+    val cache = cookieMentions
+    val snapshot = cache.snapshot()
+    if (snapshot.second == null) return cookieBucketMentionsNow()
+    if (snapshot.first == cache.currentGeneration()) return snapshot.second!!
+    // 书源刚改过：先把旧数字给出去，同时确保后台已经在重算（写入路径排过一次，这里兜个底）。
+    MentionsWarmer.schedule(this)
+    return snapshot.second!!
+}
+
+/**
+ * 真扫一遍（约 0.7 秒）。后台预热与"还从没算过"的第一次打开走这里；
+ * 平时开面板不会到这里 —— 有旧值就直接发旧值了。
+ */
+internal fun Database.cookieBucketMentionsNow(): Map<String, Int> {
+    loadPersistedMentions()
+    val cache = cookieMentions
+    synchronized(cache) {
+        // 排队期间别人可能已经算完了（并发请求），有新鲜的直接用。
+        cache.snapshot().let { (generation, counts) ->
+            if (counts != null && generation == cache.currentGeneration()) return counts
+        }
+        val generation = cache.currentGeneration()
+        // 版本号在扫描**之前**读：扫到的数据只会比它新，落盘时宁可标旧一版，
+        // 下次启动最多白扫一次，不会拿旧数字冒充新数字。
+        val revision = sourceRevision()
+        val counts = scanSourceMentions()
+        // 扫描要一会，期间书源可能被改过；[publish] 只在版本号没变时落地，
+        // 否则这份结果作废 —— 下次再算，不能把过期数字当新鲜的存起来。
+        if (cache.publish(generation, counts)) persistMentions(revision, counts)
+        return counts
+    }
+}
+
+/**
+ * 启动后第一次用到统计时，先看库里有没有上次算好的结果。
+ *
+ * 书源没变（`app_meta.source_revision` 对得上）就直接用落盘的那份 —— 进程冷启动本来要
+ * 先扫 24 MB payload（冷 JVM 实测 3~13 秒，取决于同时还在忙什么），现在读一行 JSON 就完事。
+ * 书源改过、或者库是第一次装这个功能，落盘的东西不可信，留给真正扫描的路径重算。
+ *
+ * @return 是否用上了落盘结果（只有第一次调用可能为 true）。
+ */
+internal fun Database.loadPersistedMentions(): Boolean {
+    val cache = cookieMentions
+    if (cache.loadedFromDisk) return false
+    synchronized(cache) {
+        if (cache.loadedFromDisk) return false
+        cache.loadedFromDisk = true
+        if (cache.snapshot().second != null) return false
+        val stored = readPersistedMentions() ?: return false
+        if (stored.first != sourceRevision()) return false
+        // 用当前版本号落地：此刻内存里还没有任何结果，等同于刚算完。
+        cache.publish(cache.currentGeneration(), stored.second)
+        return true
+    }
+}
+
+private const val MENTIONS_REVISION_KEY = "cookie_mentions_revision"
+private const val MENTIONS_JSON_KEY = "cookie_mentions_json"
+
+private fun Database.readPersistedMentions(): Pair<Long, Map<String, Int>>? = connect { db ->
+    val values = HashMap<String, String>(2)
+    db.prepareStatement("select key, value from app_meta where key in (?, ?)").use { statement ->
+        statement.setString(1, MENTIONS_REVISION_KEY)
+        statement.setString(2, MENTIONS_JSON_KEY)
         statement.executeQuery().use { rs ->
-            while (rs.next()) {
-                rs.getString(1)
-                    .let { text -> HOST_IN_URL.findAll(text).map { it.groupValues[1].substringBefore(':').lowercase() }.toSet() }
-                    .map { cookieBucket(it) }
-                    .distinct()
-                    .forEach { bucket -> counts.merge(bucket, 1, Int::plus) }
+            while (rs.next()) values[rs.getString(1)] = rs.getString(2)
+        }
+    }
+    val revision = values[MENTIONS_REVISION_KEY]?.toLongOrNull() ?: return@connect null
+    val json = values[MENTIONS_JSON_KEY] ?: return@connect null
+    val counts = runCatching { Json.decodeFromString<Map<String, Int>>(json) }.getOrNull() ?: return@connect null
+    revision to counts
+}
+
+/**
+ * 把统计连同「算它时的书源版本」一起落盘。先写 JSON 再写版本号：中途崩溃/断电时
+ * 版本号还是旧的，下次启动对不上就会重算 —— 顺序反过来的话，可能读到一半新一半旧。
+ * 落盘失败不影响本次结果，只是下次启动得多扫一遍。
+ */
+private fun Database.persistMentions(revision: Long, counts: Map<String, Int>) {
+    val json = Json.encodeToString(counts)
+    runCatching {
+        write { db ->
+            db.prepareStatement("insert or replace into app_meta(key, value) values(?, ?)").use { statement ->
+                statement.setString(1, MENTIONS_JSON_KEY)
+                statement.setString(2, json)
+                statement.executeUpdate()
+            }
+            db.prepareStatement("insert or replace into app_meta(key, value) values(?, ?)").use { statement ->
+                statement.setString(1, MENTIONS_REVISION_KEY)
+                statement.setString(2, revision.toString())
+                statement.executeUpdate()
             }
         }
     }
-    counts
+}
+
+private fun Database.scanSourceMentions(): Map<String, Int> = connect { db ->
+    val result = HashMap<String, Int>()
+    // 同一台主机的桶在各书源里反复出现，跨源记一份「主机 → 注册域」，
+    // 让 8,899 次主机归桶里的大部分变成一次哈希查表。
+    val bucketOf = HashMap<String, String>()
+    db.prepareStatement("select payload from source").use { statement ->
+        statement.executeQuery().use { rs ->
+            while (rs.next()) {
+                val payload = rs.getBytes(1) ?: continue
+                sourceBucketsIn(payload, bucketOf).forEach { bucket -> result.merge(bucket, 1, Int::plus) }
+            }
+        }
+    }
+    result
+}
+
+/**
+ * 从书源 JSON 的 UTF-8 字节里抽出「它指向哪些注册域」。
+ *
+ * 原先用 `HOST_IN_URL.findAll(text)`：正则每命中一次还要走一趟 `URI` 解析。全库 24 MB
+ * 实测 4~5 秒，其中光正则就要 2.8 秒 —— 大小写不敏感让 java.util.regex 走了最慢的路径。
+ * 现在直接扫字节：认 `http`/`https` + `://` 前缀，主机名按与正则同一套结束符收边
+ * （`/ \ 空白 " ' < > : ? #`，非 ASCII 字节照收），边扫边归桶，不再把 24 MB 解成字符串。
+ *
+ * 与正则版逐桶对照过整库 5,598 本书源，差异为 0；耗时约 0.3 秒（加上读库约 0.7 秒）。
+ * [bucketOf] 是跨书源共享的「主机 → 注册域」备忘，调用方给一个空 Map 即可。
+ */
+internal fun sourceBucketsIn(bytes: ByteArray, bucketOf: MutableMap<String, String> = HashMap()): Set<String> {
+    val buckets = HashSet<String>(4)
+    val size = bytes.size
+    var index = 0
+    while (index + 7 <= size) {
+        val h = bytes[index].toInt() or 0x20
+        if (h != 'h'.code) { index++; continue }
+        if ((bytes[index + 1].toInt() or 0x20) != 't'.code ||
+            (bytes[index + 2].toInt() or 0x20) != 't'.code ||
+            (bytes[index + 3].toInt() or 0x20) != 'p'.code
+        ) { index++; continue }
+        var schemeEnd = index + 4
+        if ((bytes[schemeEnd].toInt() or 0x20) == 's'.code) schemeEnd++
+        if (schemeEnd + 2 >= size ||
+            bytes[schemeEnd].toInt() != ':'.code ||
+            bytes[schemeEnd + 1].toInt() != '/'.code ||
+            bytes[schemeEnd + 2].toInt() != '/'.code
+        ) { index++; continue }
+        val start = schemeEnd + 3
+        var end = start
+        while (end < size) {
+            when (bytes[end].toInt()) {
+                0x2F, 0x5C, 0x20, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+                0x22, 0x27, 0x3C, 0x3E, 0x3A, 0x3F, 0x23 -> break
+                else -> end++
+            }
+        }
+        if (end > start) {
+            val host = String(bytes, start, end - start, Charsets.UTF_8).lowercase()
+            buckets.add(bucketOf.getOrPut(host) { WebViewProxy.registrableDomain(host) })
+        }
+        index = end
+    }
+    return buckets
+}
+
+/**
+ * 一个 `Database` 实例的统计缓存。挂在实例上而不是进程全局：测试会同时开好几个临时库，
+ * 按实例隔离就不会出现「这个库读到那个库的数」。
+ */
+internal class CookieMentions {
+    private val generation = java.util.concurrent.atomic.AtomicLong()
+    /** `(书源版本号, 统计结果)`；结果为 `null` = 还没算过或书源刚改过。 */
+    private val state = java.util.concurrent.atomic.AtomicReference<Pair<Long, Map<String, Int>?>>(0L to null)
+
+    fun snapshot(): Pair<Long, Map<String, Int>?> = state.get()
+
+    fun currentGeneration(): Long = generation.get()
+
+    /**
+     * 书源改了：旧结果就此"过期"（版本号对不上），但**留着当旧值**继续给人看，
+     * 直到重算完成换掉。只动一个原子量，写入路径不会因此等待。
+     */
+    fun invalidate() { generation.incrementAndGet() }
+
+    /**
+     * 只有版本号没变才落地；扫描期间书源被改过就丢弃，交给下一次请求或预热重算。
+     *
+     * 注意比的是 `generation`（当前版本）—— 不是 `state` 里那个版本号：
+     * [invalidate] 只递增计数、不动 state（旧值还要留着给人看），拿 state 比会永远对不上。
+     *
+     * @return 是否真的落地（调用方据此决定要不要把结果写进库；没落地就别存）。
+     */
+    fun publish(forGeneration: Long, counts: Map<String, Int>): Boolean {
+        // 这里有个极小的窗口：检查通过之后、state.set 之前又被 invalidate。
+        // 那种情况下这份结果会带着旧版本号落地，读的人一看版本对不上就当旧值处理，
+        // 并排一次后台重算 —— 不会把过期数字冒充成新鲜的。
+        if (generation.get() != forGeneration) return false
+        state.set(forGeneration to counts)
+        return true
+    }
+
+    /** 是否已经看过库里的落盘结果。只看一次：之后以内存里的版本号为准。 */
+    @Volatile internal var loadedFromDisk = false
+}
+
+/**
+ * 后台预热：书源写入后（`invalidateSourceCaches`）或启动时把统计提前算好，
+ * 免得「刚改完书源就打开凭据管理」正好撞上那次全量扫描。
+ * 书源写入走 1.5 秒防抖，把批量导入的连续写入合并成一次；线程是守护线程，进程退出不用管。
+ */
+internal object MentionsWarmer {
+    private val scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "cookie-mentions-warm").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
+    }
+    private var pending: java.util.concurrent.ScheduledFuture<*>? = null
+
+    /**
+     * @param delayMs 启动时传 0：这一跑要跟 Ktor 自身启动并行，晚 1.5 秒开始就可能拖到
+     *   「服务已就绪」之后才扫完，正好让第一下打开凭据管理撞上那次冷扫描。
+     */
+    fun schedule(db: Database, delayMs: Long = 1500) {
+        synchronized(this) {
+            if (pending?.isDone == false) return
+            pending = scheduler.schedule(
+                // 一定要走 "Now"：普通入口在有过期旧值时会把旧值原样返回，永远等不到重算。
+                { runCatching { db.cookieBucketMentionsNow() } },
+                delayMs, java.util.concurrent.TimeUnit.MILLISECONDS,
+            )
+        }
+    }
 }
 
 /**
@@ -366,14 +617,19 @@ fun Database.removeCookieKey(url: String, key: String): Boolean {
  */
 fun Database.cookieBucketsForHosts(hosts: List<String>): List<CookieBucket> {
     if (hosts.isEmpty()) return emptyList()
+    // 这本书源实际会访问的那几个域（通常一两个），不是全部 500+ 个桶 —— 所以按域点名查。
+    val buckets = hosts.map { cookieBucket(it) }.filter { it.isNotBlank() }.distinct()
+    if (buckets.isEmpty()) return emptyList()
+    val persistent = connect { db -> persistentCookiesFor(db, buckets) }
     // 会话层也算"有凭据"：只看库会让发现页在明明带着会话凭据时误报"这一栏要登录"。
-    val buckets = listCookieBucketStates().associateBy { it.domain }
-    return hosts.mapNotNull { host ->
-        val state = buckets[cookieBucket(host)] ?: return@mapNotNull null
+    return buckets.mapNotNull { bucket ->
+        val stored = persistent[bucket] ?: emptyMap()
+        val session = SessionCookies.get(bucket)
+        if (stored.isEmpty() && session.isEmpty()) return@mapNotNull null
         CookieBucket(
-            domain = state.domain,
-            keys = (state.persistentKeys + state.sessionKeys).distinct(),
-            sessionKeys = state.sessionKeys,
+            domain = bucket,
+            keys = (stored.keys + session.keys).distinct().toList(),
+            sessionKeys = session.keys.toList(),
         )
     }
 }

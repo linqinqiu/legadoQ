@@ -154,6 +154,23 @@ class Database(private val path: String) : Closeable, AutoCloseable {
                 );
                 create index if not exists source_name_idx on source(name);
                 create index if not exists idx_source_name_nocase on source(name collate nocase);
+                -- 键值小仓库：目前放「书源表被写过几次」（source_revision）和凭据统计的落盘结果。
+                create table if not exists app_meta (
+                  key text primary key, value text not null
+                );
+                insert or ignore into app_meta(key, value) values ('source_revision', '0');
+                -- 书源一变，凭据管理里「N 个书源用到」的统计就该重算。用触发器计数而不是在
+                -- 各条写入路径上手动 +1：导入、单个保存、批量改组、删除都走同一张表，
+                -- 触发器不会漏，也不怕"改完数据忘了作废旧数"——那个旧数现在会带到下次启动。
+                create trigger if not exists source_revision_insert after insert on source begin
+                  update app_meta set value = cast(cast(value as integer) + 1 as text) where key = 'source_revision';
+                end;
+                create trigger if not exists source_revision_update after update on source begin
+                  update app_meta set value = cast(cast(value as integer) + 1 as text) where key = 'source_revision';
+                end;
+                create trigger if not exists source_revision_delete after delete on source begin
+                  update app_meta set value = cast(cast(value as integer) + 1 as text) where key = 'source_revision';
+                end;
                 create table if not exists reading_progress (
                   source_id text not null, book_url text not null, chapter_url text not null,
                   chapter_index integer not null, updated_at integer not null,
@@ -385,7 +402,28 @@ class Database(private val path: String) : Closeable, AutoCloseable {
     // 就是「部分情景加载缓慢」的主因。所有写入路径统一走 invalidateSourceCaches()。
     @Volatile internal var sourceSummariesCache: List<SourceSummary>? = null
     @Volatile internal var exploreSourcesCache: List<SourceSummary>? = null
-    internal fun invalidateSourceCaches() { sourceSummariesCache = null; exploreSourcesCache = null }
+    /** 凭据桶「被多少书源提到」的统计缓存，定义与说明见 `CookieDao.kt`。 */
+    internal val cookieMentions = CookieMentions()
+    internal fun invalidateSourceCaches() {
+        sourceSummariesCache = null; exploreSourcesCache = null
+        // 凭据管理的「N 个书源提到」也是从 source 表算出来的，同样在这里失效；
+        // 接着让后台线程提前重算（全库扫描要 0.7 秒，摊在打开凭据管理那一下太贵）。
+        cookieMentions.invalidate()
+        MentionsWarmer.schedule(this)
+    }
+
+    /**
+     * 书源表被写过几次（`app_meta.source_revision`，由 source 表上的触发器维护）。
+     *
+     * 凭据统计落盘时带上它：下次启动读到「落盘时的版本 == 现在的版本」就直接用，
+     * 不必再把 24 MB payload 扫一遍。触发器让这个数**在同一个事务里**跟着书源走，
+     * 不存在"数据改了、计数没来得及加"的窗口 —— 那正是启动时能安全跳过扫描的前提。
+     */
+    internal fun sourceRevision(): Long = connect { db ->
+        db.prepareStatement("select value from app_meta where key = 'source_revision'").use { statement ->
+            statement.executeQuery().use { rs -> if (rs.next()) rs.getString(1)?.toLongOrNull() ?: 0L else 0L }
+        }
+    }
 
 
     // —— 建表迁移（initialize 是唯一调用方）——

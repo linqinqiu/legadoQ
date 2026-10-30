@@ -5,6 +5,7 @@ import io.legado.data.SessionCookies
 import io.legado.data.SetCookieOutcome
 import io.legado.data.classifySetCookie
 import io.legado.data.cookieBucketState
+import io.legado.data.cookieBucketsForHosts
 import io.legado.data.getCookieForUrl
 import io.legado.data.listCookieBucketStates
 import io.legado.data.parseCookieString
@@ -200,6 +201,24 @@ class CookieLayersTest {
             assertTrue(db.removeCookieKey("example.com", "a"))
             assertEquals("b=2", db.getCookieForUrl(url))
             assertFalse("不存在的键返回 false，别让调用方以为删成功了", db.removeCookieKey(url, "nope"))
+        } finally { db.close() }
+    }
+
+    @Test
+    fun `按域取凭据只回请求的那几个域，且只有会话凭据的域也算数`() {
+        // 这条从"扫全表再挑"改成"按域点名查"之后必须有：热路径（checkLoginStatus 按源逐个跑）
+        // 一旦开始串桶或漏掉会话层，界面上就是"明明登录了却说没凭据"。
+        val db = tempDatabase()
+        try {
+            db.setCookieForUrl("https://a.example/x", "k=1")
+            db.setCookieForUrl("https://b.other.test/x", "k=2")
+            db.setCookieFromSetCookie("https://c.example/x", "temp=3; Path=/")
+
+            val found = db.cookieBucketsForHosts(listOf("a.example", "c.example", "none.example")).associateBy { it.domain }
+            assertEquals("不该把别的域带回来", setOf("a.example", "c.example"), found.keys)
+            assertEquals(listOf("k"), found["a.example"]?.keys)
+            assertEquals("只有会话凭据的域也算有凭据", listOf("temp"), found["c.example"]?.keys)
+            assertEquals(listOf("temp"), found["c.example"]?.sessionKeys)
         } finally { db.close() }
     }
 
