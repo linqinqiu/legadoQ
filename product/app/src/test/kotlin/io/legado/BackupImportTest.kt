@@ -6,6 +6,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.charset.Charset
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipEntry
@@ -76,6 +77,37 @@ class BackupImportTest {
             val progress = database.getProgress("https://example.com/", "https://example.com/book/1")
             assertNotNull(progress)
             assertEquals(261, progress!!.chapterIndex)
+        } finally {
+            database.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `GB18030 编码的备份包导入后中文不变乱码`() {
+        // 老备份/网盘转存常见 GB18030。上一版 `runCatching { String(bytes, UTF_8) }` 从不抛异常，
+        // GB18030 回退是死代码：整包中文被替换成 U+FFFD，书源名字变成一串问号一样的方块。
+        val directory = Files.createTempDirectory("legado-backup-gb18030")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        try {
+            database.initialize()
+            val archive = directory.resolve("backup-gbk.zip")
+            writeArchive(
+                archive,
+                mapOf(
+                    "bookSource.json" to
+                        """[{"bookSourceUrl":"https://gbk.example/##聚合","bookSourceName":"中文书源","enabled":true}]""",
+                    "replaceRule.json" to
+                        """[{"id":"r-gbk","name":"去广告","pattern":"广告.*","replacement":"替换文案","isRegex":true,"isEnabled":true}]""",
+                ),
+                charset = Charset.forName("GB18030"),
+            )
+
+            val summary = BackupImporter(database).import(archive)
+
+            assertEquals(1, summary.sources)
+            assertEquals("中文书源", database.listSources(null).single().name)
+            assertEquals("替换文案", database.listReplaceRules().single().replacement)
         } finally {
             database.close()
             directory.toFile().deleteRecursively()
@@ -533,11 +565,11 @@ class BackupImportTest {
         }
     }
 
-    private fun writeArchive(target: Path, sections: Map<String, String>) {
+    private fun writeArchive(target: Path, sections: Map<String, String>, charset: Charset = Charsets.UTF_8) {
         ZipOutputStream(Files.newOutputStream(target)).use { zip ->
             sections.forEach { (name, body) ->
                 zip.putNextEntry(ZipEntry(name))
-                zip.write(body.toByteArray(Charsets.UTF_8))
+                zip.write(body.toByteArray(charset))
                 zip.closeEntry()
             }
         }

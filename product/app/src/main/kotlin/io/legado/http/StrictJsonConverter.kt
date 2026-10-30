@@ -9,14 +9,13 @@ import io.ktor.server.plugins.BadRequestException
 import io.ktor.util.reflect.TypeInfo
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readRemaining
+import io.legado.decodeStrict
 import kotlinx.io.readByteArray
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.InternalSerializationApi
 import kotlinx.serialization.json.Json
-import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
-import java.nio.charset.CodingErrorAction
 
 /**
  * JSON 请求体的解码闸门：**字节不是声明的编码就 400，绝不带着替换字符入库**。
@@ -47,16 +46,9 @@ class StrictJsonConverter(private val format: Json) : ContentConverter {
     override suspend fun deserialize(charset: Charset, typeInfo: TypeInfo, content: ByteReadChannel): Any? {
         val bytes = content.readRemaining().readByteArray()
         val text = try {
-            charset.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
-                .toString()
+            decodeStrict(bytes, charset)
         } catch (error: CharacterCodingException) {
-            throw BadRequestException(
-                "请求体不是有效的 ${charset.name()} 文本：里面有无法解码的字节（最常见的原因是用 GBK/GB2312 " +
-                    "发送了中文）。请按 UTF-8 重新发送；如果确实要用其它编码，请在 Content-Type 里写明 charset。"
-            )
+            throw BadRequestException(invalidBodyEncodingMessage(charset))
         }
         // 不是 kotlinx 能识别的类型（由别的转换器/原始字节负责）时，交回 Ktor 原路径，行为保持不变。
         val serializer = try {

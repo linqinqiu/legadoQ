@@ -66,8 +66,42 @@ export async function fetchImportUrl(url: string): Promise<{ blob: Blob }> {
   return { blob: await response.blob() }
 }
 
+/**
+ * 把导入内容的字节解成文本。
+ *
+ * `response.text()` / `File.text()` 永远按 UTF-8 解，遇到 GBK 的老书源 JSON 会静默变成
+ * 一串 U+FFFD（服务端 0.2.3 之前的请求体事故是同一个病根，只是换到了浏览器这一侧）。
+ * 这里按 BOM → 严格 UTF-8 → GB18030 逐档试探，与后端 `decodeTextAuto` 同一套口径：
+ * 整份能通过 UTF-8 校验的几乎肯定是 UTF-8；GBK 中文的字节基本落在 UTF-8 的非法区。
+ */
+export function decodeImportText(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  if (bytes.length === 0) return ''
+  // BOM 是内容自己写的声明，优先于任何猜测。
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(bytes.subarray(3))
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(bytes.subarray(2))
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(bytes.subarray(2))
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    // 不是合法的 UTF-8，继续往下试
+  }
+  try {
+    return new TextDecoder('gb18030', { fatal: true }).decode(bytes)
+  } catch {
+    // GB18030 也解不出来：多半不是文本
+  }
+  return new TextDecoder('utf-8').decode(bytes)
+}
+
 /** 按文本取回地址内容（书源 JSON 用）。 */
 export async function fetchImportText(url: string): Promise<string> {
   const response = await requestImport(url)
-  return await response.text()
+  return decodeImportText(await response.arrayBuffer())
 }

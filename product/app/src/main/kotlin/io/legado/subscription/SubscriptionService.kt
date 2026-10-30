@@ -21,12 +21,14 @@ import java.net.http.HttpResponse
 import java.security.MessageDigest
 import java.time.Duration
 import io.legado.AppConfig
+import io.legado.charsetOf
 import io.legado.data.Database
 import io.legado.data.getSubscription
 import io.legado.data.importSources
 import io.legado.data.listSubscriptions
 import io.legado.data.recordSubscriptionFailure
 import io.legado.data.recordSubscriptionSuccess
+import io.legado.decodeTextAuto
 import io.legado.http.NetworkSecurity
 import io.legado.model.ImportResponse
 import io.legado.model.SourceSubscription
@@ -92,7 +94,11 @@ class SubscriptionService(private val database: Database, private val log: (Stri
                 // 体积封顶：坏/超大订阅源不该整包读进内存。读满「上限+1」字节即判定超限并拒绝。
                 val bytes = body.readNBytes(MAX_BODY_BYTES + 1)
                 require(bytes.size <= MAX_BODY_BYTES) { "订阅内容超过 ${MAX_BODY_BYTES / (1024 * 1024)}MB 上限，已拒绝" }
-                return bytes.toString(Charsets.UTF_8)
+                // 订阅源不一定按 UTF-8 存：老站点/老工具导出的 GBK 清单直接按 UTF-8 读会整份乱码，
+                // 然后 json 解析失败被记成「订阅内容不是有效 JSON」—— 用户看到的是一句莫名其妙的报错。
+                // 按 `Content-Type` 声明 + 自动探测解（与备份导入、TXT 同一套口径）。
+                val declared = charsetOf(response.headers().firstValue("Content-Type").orElse(null))
+                return decodeTextAuto(bytes, declared)
             }
         }
         throw IllegalArgumentException("订阅重定向次数超过限制")

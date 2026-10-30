@@ -9,10 +9,12 @@ import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import io.legado.cache.CoverCache
+import io.legado.charsetOf
 import io.legado.data.Database
 import io.legado.data.coverContentType
 import io.legado.data.getCookieForUrl
 import io.legado.data.getSource
+import io.legado.decodeTextAuto
 import io.legado.model.ApiError
 import io.legado.model.RefreshedImage
 import io.legado.ops.LogService
@@ -226,7 +228,7 @@ private suspend fun respondMedia(call: ApplicationCall, database: Database, head
                     call.respond(HttpStatusCode.OK)
                     return@withContext
                 }
-                val text = readBoundedText(media.stream, media.contentEncoding, HLS_PLAYLIST_LIMIT)
+                val text = readBoundedText(media.stream, media.contentEncoding, HLS_PLAYLIST_LIMIT, charsetOf(media.contentType))
                 val rewritten = rewriteHlsPlaylist(text, media.finalUrl, referer)
                 call.response.headers.append("Cache-Control", "no-store")
                 call.response.headers.append("X-Content-Type-Options", "nosniff")
@@ -243,7 +245,7 @@ private suspend fun respondMedia(call: ApplicationCall, database: Database, head
                     call.respond(HttpStatusCode.OK)
                     return@withContext
                 }
-                val html = readBoundedText(media.stream, media.contentEncoding, HTML_PAGE_LIMIT)
+                val html = readBoundedText(media.stream, media.contentEncoding, HTML_PAGE_LIMIT, charsetOf(media.contentType))
                 call.response.headers.append("Cache-Control", "no-store")
                 call.response.headers.append("X-Content-Type-Options", "nosniff")
                 call.respondText(injectBaseHref(html, media.finalUrl), ContentType.Text.Html.withCharset(Charsets.UTF_8))
@@ -360,7 +362,17 @@ private fun attachmentDisposition(url: String): String {
     return "attachment; filename=\"download\"; filename*=UTF-8''$encoded"
 }
 
-private fun readBoundedText(stream: java.io.InputStream, contentEncoding: String?, limit: Int): String {
+/**
+ * 读播放列表 / 播放页并解码。**必须按上游声明的编码解**：不少视频站是 GBK 页面，
+ * 以前一律当 UTF-8 读，中文标题和脚本里的提示全变成替换字符，再以 UTF-8 重新发出就再也救不回来。
+ * [declared] 从上游 `Content-Type` 的 charset 取；自动探测的优先级见 [io.legado.decodeTextAuto]。
+ */
+private fun readBoundedText(
+    stream: java.io.InputStream,
+    contentEncoding: String?,
+    limit: Int,
+    declared: java.nio.charset.Charset? = null,
+): String {
     val raw = stream.use { input ->
         val out = java.io.ByteArrayOutputStream()
         val chunk = ByteArray(16 * 1024)
@@ -382,7 +394,7 @@ private fun readBoundedText(stream: java.io.InputStream, contentEncoding: String
         else -> raw
     }
     require(bytes.size <= limit) { "播放列表超过 ${limit / 1024 / 1024} MiB 限制" }
-    return bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF")
+    return decodeTextAuto(bytes, declared).removePrefix("\uFEFF")
 }
 
 /**

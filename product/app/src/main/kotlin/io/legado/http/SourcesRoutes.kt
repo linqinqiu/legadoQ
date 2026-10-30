@@ -644,8 +644,11 @@ fun Route.sourcesRoutes(
                         val sourceId = call.parameters["id"]!!
                         val source = database.getSource(sourceId)
                             ?: return@post call.respond(HttpStatusCode.NotFound, ApiError("source_not_found", "书源不存在"))
+                        // 请求体是可选的小 JSON（`{"url": ...}`）。严格解码放在 runCatching 之外：
+                        // 编码错了要回 400 说清楚，不能被"解析失败就当没传"吞掉。
+                        val bodyText = call.receiveStrictText()
                         val requested = runCatching {
-                            Json.parseToJsonElement(call.receiveText().ifBlank { "{}" }).jsonObject["url"]
+                            Json.parseToJsonElement(bodyText.ifBlank { "{}" }).jsonObject["url"]
                                 ?.jsonPrimitive?.contentOrNull
                         }.getOrNull()
                         // 与内置浏览器同一条入口求法：脚本/静态 loginUrl/书源首页都能落到一个真地址。

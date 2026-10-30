@@ -1,15 +1,12 @@
 package io.legado.localbook
 
+import io.legado.decodeTextAuto
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.net.URLDecoder
-import java.nio.ByteBuffer
-import java.nio.charset.Charset
-import java.nio.charset.CodingErrorAction
-import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -264,7 +261,7 @@ object LocalBookParser {
             ?: entries.entries.firstOrNull { it.key.equals("META-INF/container.xml", ignoreCase = true) }?.value
             ?: throw IllegalArgumentException("无效的 EPUB 文件：缺少 META-INF/container.xml")
 
-        val containerDoc = Jsoup.parse(String(containerXmlBytes, StandardCharsets.UTF_8), "", Parser.xmlParser())
+        val containerDoc = Jsoup.parse(decodeTextAuto(containerXmlBytes), "", Parser.xmlParser())
         val rootfile = containerDoc.select("rootfiles > rootfile").firstOrNull()
             ?: containerDoc.select("rootfile").firstOrNull()
             ?: throw IllegalArgumentException("无效的 EPUB 文件：未找到 rootfile")
@@ -275,7 +272,7 @@ object LocalBookParser {
             ?: throw IllegalArgumentException("未找到 OPF 描述文件：$opfPath")
 
         val opfBaseDir = if (opfPath.contains('/')) opfPath.substringBeforeLast('/') + "/" else ""
-        val opfDoc = Jsoup.parse(String(opfBytes, StandardCharsets.UTF_8), "", Parser.xmlParser())
+        val opfDoc = Jsoup.parse(decodeTextAuto(opfBytes), "", Parser.xmlParser())
 
         // 2. 提取元数据
         val (fileTitle, fileAuthor) = extractTitleAndAuthorFromFilename(filename)
@@ -330,7 +327,7 @@ object LocalBookParser {
             val ncxBytes = findZipEntry(entries, ncxItem.href)
             if (ncxBytes != null) {
                 val ncxBaseDir = if (ncxItem.href.contains('/')) ncxItem.href.substringBeforeLast('/') + "/" else ""
-                val ncxDoc = Jsoup.parse(String(ncxBytes, StandardCharsets.UTF_8), "", Parser.xmlParser())
+                val ncxDoc = Jsoup.parse(decodeTextAuto(ncxBytes), "", Parser.xmlParser())
                 val navPoints = ncxDoc.select("navMap > navPoint, navPoint")
                 for (np in navPoints) {
                     val label = np.select("navLabel > text").firstOrNull()?.text()?.trim() ?: "章节"
@@ -356,7 +353,7 @@ object LocalBookParser {
                 val navBytes = findZipEntry(entries, navItem.href)
                 if (navBytes != null) {
                     val navBaseDir = if (navItem.href.contains('/')) navItem.href.substringBeforeLast('/') + "/" else ""
-                    val navDoc = Jsoup.parse(String(navBytes, StandardCharsets.UTF_8))
+                    val navDoc = Jsoup.parse(decodeTextAuto(navBytes))
                     val links = navDoc.select("nav[epub|type=toc] a, nav a")
                     for (a in links) {
                         val label = a.text().trim().ifBlank { "章节" }
@@ -439,7 +436,9 @@ object LocalBookParser {
     private fun bodyText(doc: Document): String = doc.body()?.wholeText() ?: doc.wholeText()
 
     private fun extractHtmlContent(bytes: ByteArray, entryPath: String, bookId: String): String {
-        val html = String(bytes, StandardCharsets.UTF_8)
+        // EPUB 规范只保证 UTF-8/UTF-16，但中文 EPUB 里 GBK 的 XHTML 确实存在；
+        // 这里先解成字符串交给 jsoup，编码认错就是整章乱码，所以走与 TXT 同一套自动探测。
+        val html = decodeTextAuto(bytes)
         val doc = Jsoup.parse(html)
         doc.select("script, style, link, meta").remove()
         // 先换图片再取文本：`body().text()` 会把 `<img>` 整个吞掉，这就是"EPUB 有图也看不见"的原因
@@ -450,7 +449,7 @@ object LocalBookParser {
     }
 
     private fun extractHtmlTitleAndContent(bytes: ByteArray, defaultIndex: Int, entryPath: String, bookId: String): Pair<String, String> {
-        val html = String(bytes, StandardCharsets.UTF_8)
+        val html = decodeTextAuto(bytes)
         val doc = Jsoup.parse(html)
         doc.select("script, style, link, meta").remove()
         val titleCandidate = doc.select("h1, h2, title").firstOrNull()?.text()?.trim()
@@ -501,48 +500,10 @@ object LocalBookParser {
     }
 
     /**
-     * 智能编码探测：UTF-8, UTF-8 BOM, UTF-16, GB18030/GBK
+     * 智能编码探测：BOM → UTF-8 → GB18030/GBK。
+     * 口径与备份导入、订阅源同一份（[io.legado.decodeTextAuto]），别再各写一套。
      */
-    fun decodeText(bytes: ByteArray): String {
-        if (bytes.isEmpty()) return ""
-
-        // 1. 检查 BOM
-        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
-            return String(bytes, 3, bytes.size - 3, StandardCharsets.UTF_8)
-        }
-        if (bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()) {
-            return String(bytes, 2, bytes.size - 2, StandardCharsets.UTF_16BE)
-        }
-        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
-            return String(bytes, 2, bytes.size - 2, StandardCharsets.UTF_16LE)
-        }
-
-        // 2. 尝试严格 UTF-8 解码
-        try {
-            val decoder = StandardCharsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-            val charBuffer = decoder.decode(ByteBuffer.wrap(bytes))
-            return charBuffer.toString()
-        } catch (_: Throwable) {
-            // UTF-8 严格解码失败
-        }
-
-        // 3. 尝试 GB18030 (向下兼容 GBK, GB2312)
-        try {
-            val gbkCharset = Charset.forName("GB18030")
-            val decoder = gbkCharset.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-            val charBuffer = decoder.decode(ByteBuffer.wrap(bytes))
-            return charBuffer.toString()
-        } catch (_: Throwable) {
-            // GB18030 严格解码失败
-        }
-
-        // 4. 容错回退
-        return String(bytes, StandardCharsets.UTF_8)
-    }
+    fun decodeText(bytes: ByteArray): String = decodeTextAuto(bytes)
 
     /**
      * 从文件名中提取书名与作者

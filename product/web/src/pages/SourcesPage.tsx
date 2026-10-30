@@ -12,7 +12,7 @@ import { SourceLoginModal } from '../sources/SourceLoginModal'
 import { SourceShareModal } from '../sources/SourceShareModal'
 import { SourceSummary, api } from '../lib/api'
 import { parseSourceJsonText } from '../sources/sourceImport'
-import { fetchImportText } from '../lib/importFromUrl'
+import { decodeImportText, fetchImportText } from '../lib/importFromUrl'
 import { showContextMenu } from '../components/ContextMenu'
 import { toast } from '../components/Toast'
 import { useDragSort } from '../shelf/dragSort'
@@ -420,7 +420,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     if (!file) return
     setImporting(true)
     try {
-      await applySourceImport(await file.text())
+      await applySourceImport(decodeImportText(await file.arrayBuffer()))
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : '导入失败'
       toast.error(errMsg)

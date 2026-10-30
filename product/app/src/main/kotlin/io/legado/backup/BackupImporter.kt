@@ -9,7 +9,6 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
-import java.nio.charset.Charset
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -25,6 +24,7 @@ import io.legado.data.importReplaceRules
 import io.legado.data.importRssSources
 import io.legado.data.importSources
 import io.legado.data.setCookieForUrl
+import io.legado.decodeTextAuto
 import io.legado.model.BackupImportSummary
 import io.legado.model.BackupShelfEntry
 import io.legado.model.KeptBackupEntry
@@ -380,9 +380,12 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         return decode(bytes)
     }
 
-    /** 少数老备份是 GB18030 存的：UTF-8 严格解不出来再退一档，免得整包中文变乱码。 */
-    private fun decode(bytes: ByteArray): String =
-        runCatching { String(bytes, Charsets.UTF_8) }.getOrElse { String(bytes, Charset.forName("GB18030")) }
+    /**
+     * 老备份的编码不一定是我们写出去的 UTF-8：手机端、网盘转存、手工整理都可能留下 GB18030 / 带 BOM 的文件。
+     * 统一走 [decodeTextAuto]（BOM → UTF-8 → GB18030），别再用「`String(bytes, UTF_8)` 解不出来再换」——
+     * 它从不抛异常，GB18030 那一档是永远走不到的死代码（上一版就是这样，老包整包中文变成 U+FFFD）。
+     */
+    private fun decode(bytes: ByteArray): String = decodeTextAuto(bytes)
 
     private fun parseSources(text: String): List<String> =
         LegacyBackup.elementsOf(text).mapNotNull(::sourceOf)

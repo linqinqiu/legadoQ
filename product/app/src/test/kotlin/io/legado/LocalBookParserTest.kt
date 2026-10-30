@@ -242,12 +242,33 @@ class LocalBookParserTest {
         tempDir.toFile().deleteRecursively()
     }
 
+    @Test
+    fun `parseEpub 能读 GBK 编码的 XHTML 章节`() {
+        // EPUB 规范只保证 UTF-8/UTF-16，但中文 EPUB 里 GBK 的 XHTML 确实存在：
+        // 一律按 UTF-8 解会让整章正文变成替换字符，且没有任何报错。
+        val epubBytes = createSampleEpub(
+            title = "旧格式书",
+            author = "作者",
+            intro = "简介",
+            coverBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()),
+            chapters = listOf(
+                "第一章 开始" to "<html><body><h1>第一章 开始</h1><p>这是一段用 GBK 保存的正文。</p></body></html>",
+            ),
+            chapterCharset = Charset.forName("GBK"),
+        )
+
+        val parsed = LocalBookParser.parseEpub("旧格式.epub", epubBytes)
+        assertEquals("第一章 开始", parsed.chapters.single().title)
+        assertTrue(parsed.chapters.single().content.contains("这是一段用 GBK 保存的正文。"))
+    }
+
     private fun createSampleEpub(
         title: String,
         author: String,
         intro: String,
         coverBytes: ByteArray,
-        chapters: List<Pair<String, String>>
+        chapters: List<Pair<String, String>>,
+        chapterCharset: Charset = StandardCharsets.UTF_8,
     ): ByteArray {
         val baos = ByteArrayOutputStream()
         ZipOutputStream(baos).use { zos ->
@@ -332,7 +353,7 @@ class LocalBookParserTest {
             // Chapters
             chapters.forEachIndexed { idx, (_, html) ->
                 zos.putNextEntry(ZipEntry("OEBPS/chapter_${idx + 1}.xhtml"))
-                zos.write(html.toByteArray(StandardCharsets.UTF_8))
+                zos.write(html.toByteArray(chapterCharset))
                 zos.closeEntry()
             }
         }

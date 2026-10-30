@@ -7,6 +7,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import io.legado.charsetOf
 import io.legado.content.ContentProcessor
 import io.legado.data.Database
 import io.legado.data.deleteReplaceRule
@@ -18,6 +19,7 @@ import io.legado.data.importReplaceRules
 import io.legado.data.listReplaceRules
 import io.legado.data.saveReplaceRule
 import io.legado.data.toggleReplaceRules
+import io.legado.decodeTextAuto
 import io.legado.model.ApiError
 import io.legado.model.ReplaceRule
 import io.legado.model.ReplaceRulePreviewRequest
@@ -98,7 +100,8 @@ fun Route.replaceRulesRoutes(
             }
             post("/import") {
                 if (!call.requireSameOriginWrite()) return@post
-                val bodyText = call.receiveText()
+                // 规则里全是中文（模式/替换文案），用 GBK 发过来时以前会静默变成一串替换字符再入库。
+                val bodyText = call.receiveStrictText()
                 val parsedRules = parseImportedReplaceRules(bodyText)
                 val response = database.importReplaceRules(parsedRules)
                 call.respond(response)
@@ -141,8 +144,10 @@ private suspend fun parseImportedReplaceRules(bodyText: String, depth: Int = 0):
             validateSubscriptionUrl(url)
             val req = java.net.http.HttpRequest.newBuilder().uri(java.net.URI(url))
                 .timeout(java.time.Duration.ofSeconds(20)).GET().build()
-            val resp = withContext(Dispatchers.IO) { importFetchClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString(Charsets.UTF_8)) }
-            return parseImportedReplaceRules(resp.body(), depth + 1)
+            // 远端规则文件同样可能是 GBK 存的：先拿字节，再按响应头声明 + 自动探测解，别硬按 UTF-8 读。
+            val resp = withContext(Dispatchers.IO) { importFetchClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofByteArray()) }
+            val declared = charsetOf(resp.headers().firstValue("Content-Type").orElse(null))
+            return parseImportedReplaceRules(decodeTextAuto(resp.body(), declared), depth + 1)
         }
     }
 

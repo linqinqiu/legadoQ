@@ -15,6 +15,7 @@ import io.ktor.http.content.ByteArrayContent
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
 import io.legado.model.ImportRequest
+import io.legado.model.ReplaceRule
 import io.legado.model.SourceSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -107,6 +108,38 @@ class StrictJsonRequestTest {
                 }
                 assertEquals(HttpStatusCode.OK, resp.status)
                 assertEquals(listOf<String?>("体检异常"), client.sourceGroups())
+            }
+        } finally { cleanup(config) }
+    }
+
+    @Test
+    fun `GBK 的净化规则导入请求返回 400 而不是静默导入乱码`() {
+        val config = tempConfig()
+        try {
+            testApplication {
+                application { legadoApplication(config) }
+                val client = createClient { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) } }
+                val rulesJson =
+                    """[{"id":"gbk-rule","name":"去广告","pattern":"广告.*","replacement":"替换文案"}]"""
+                val gbkBody = rulesJson.toByteArray(charset("GBK"))
+
+                // 按原始文本读的接口以前走 receiveText：非法字节变成 U+FFFD 后照常 200 入库。
+                val rejected = client.post("/api/replace-rules/import") {
+                    header(HttpHeaders.ContentType, "application/json")
+                    setBody(ByteArrayContent(gbkBody, ContentType.Application.Json))
+                }
+                assertEquals(HttpStatusCode.BadRequest, rejected.status)
+                assertTrue(rejected.bodyAsText().contains("UTF-8"))
+                assertTrue(client.get("/api/replace-rules").body<List<ReplaceRule>>().isEmpty())
+
+                // 把编码说明白就照常导入，且中文一字不差。
+                val contentType = ContentType.parse("application/json; charset=gbk")
+                val accepted = client.post("/api/replace-rules/import") {
+                    header(HttpHeaders.ContentType, contentType.toString())
+                    setBody(ByteArrayContent(gbkBody, contentType))
+                }
+                assertEquals(HttpStatusCode.OK, accepted.status)
+                assertEquals("替换文案", client.get("/api/replace-rules").body<List<ReplaceRule>>().single().replacement)
             }
         } finally { cleanup(config) }
     }
