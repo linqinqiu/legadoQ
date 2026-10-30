@@ -24,6 +24,7 @@ import io.legado.data.MentionsWarmer
 import io.legado.data.getCookieForUrl
 import io.legado.http.SameOriginWriteGate
 import io.legado.http.ServerIdentity
+import io.legado.http.StrictJsonConverter
 import io.legado.http.apiRoutes
 import io.legado.http.requireLoopbackBind
 import io.legado.model.HealthStatus
@@ -72,6 +73,20 @@ fun main(args: Array<String>) {
     val config = ServerConfig.fromEnvironment()
     createLegadoEngine(config, cdsDump = args.contains("--cds-dump")).start(wait = true)
 }
+
+/**
+ * 从异常链里取**最内层** `BadRequestException` 的可读原因。
+ *
+ * Ktor 的 ContentNegotiation 会把转换阶段抛出的异常再包一层
+ * `BadRequestException("Failed to convert request body to …")`；版本不同包几层也不固定
+ * （3.4.3 实测是两层）。只取链条上第一个，拿到的正好是最外层那句毫无信息量的类名，
+ * 所以要往里走到底 —— 越深越具体。
+ */
+private fun Throwable.deepBadRequestMessage(): String? =
+    generateSequence(this as Throwable?) { it.cause }
+        .filterIsInstance<BadRequestException>()
+        .mapNotNull { it.message }
+        .lastOrNull()
 
 fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnvironment(), cdsDump: Boolean = false) {
     // 绑定闸门：非回环地址必须显式放行（LEGADO_ALLOW_EXTERNAL_BIND=1），否则直接拒绝启动。
@@ -165,7 +180,10 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     install(ContentNegotiation) {
         // encodeDefaults 必须开：kotlinx 默认 false 会把「取值等于默认值」的字段整个省掉，
         // 于是 replacement/isRegex/isEnabled 在响应里消失，前端按非空类型直接用就会白屏。
-        json(Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true })
+        // 用 StrictJsonConverter 而不是 json()：请求体要严格按声明的编码解，不能用替换字符
+        // 兜底 —— 否则 GBK 客户端发来的中文会以 U+FFFD 静默改写用户数据（见该类的注释）。
+        val jsonFormat = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
+        register(ContentType.Application.Json, StrictJsonConverter(jsonFormat))
     }
     // 接口 JSON 压一层 gzip：书源清单 5,574 条实测 1,063,255 字节 → gzip -9 只有 100,436 字节，
     // 发现页书源 540KB 同理。这些对象重复度极高，压缩几乎白赚；此前只有 `/assets` 那批
@@ -185,12 +203,21 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     install(StatusPages) {
         // 请求体解析失败是客户端错误。没有这几条时它落进下面的 Throwable 分支 → 500 + 整段堆栈刷日志。
         exception<BadRequestException> { call, cause ->
+            // Ktor 的 ContentNegotiation 会把转换阶段抛出的任何异常包成
+            // BadRequestException("Failed to convert request body to …")（实测两层），
+            // 内层才是真正的原因：① StrictJsonConverter 的编码错误（"请按 UTF-8 发送"）；
+            // ② kotlinx 的字段校验错误。原样回外层只会把类名念给用户听。
+            val detail = cause.deepBadRequestMessage()
             this@legadoApplication.log.warn("bad request: {}", cause.message)
-            call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", cause.message ?: "请求内容无法解析"))
+            call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", detail ?: cause.message ?: "请求内容无法解析"))
         }
         exception<ContentTransformationException> { call, cause ->
+            // 转换失败的原因有时是**我们想让人看到**的（如 StrictJsonConverter 判定请求体编码不对，
+            // 报错里写着"请按 UTF-8 发送"）；Ktor 会把它包一层 ContentTransformationException，
+            // 原样回 cause.message 只剩一句 "Failed to convert..."，所以先把内层的 BadRequest 捞出来。
+            val detail = cause.deepBadRequestMessage()
             this@legadoApplication.log.warn("request transform failed: {}", cause.message)
-            call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", cause.message ?: "请求内容格式错误"))
+            call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", detail ?: "请求内容格式错误"))
         }
         exception<SerializationException> { call, cause ->
             this@legadoApplication.log.warn("request serialization failed: {}", cause.message)
