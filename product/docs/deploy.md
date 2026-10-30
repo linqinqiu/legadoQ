@@ -14,7 +14,9 @@
 | 源码 | `cd web && npm install && npm run dev` + `./gradlew :app:run` | 本机 JDK | dev server 5174 代理到 1234（可用 `LEGADO_PROXY_TARGET` 换） | 改代码的人 |
 
 **当前 Releases 上有的**：`latest`（流水线连续构建）给 `legado.jar` + `legado-dist.zip`；
-按版本号打的 tag 给 `legadoq-<版本>.zip`。**桌面包还没上传**，所以现在要用桌面版只能自己打（`dist/legadoq-desktop-<版本>.zip`）。
+按版本号打的 tag 给 `legadoq-<版本>.zip` 与桌面版 `legadoq-desktop-<版本>.zip`。
+桌面包**不在 CI 里打**（流水线跑在 ubuntu 上，Windows 镜像要在本机 jpackage），
+流程是 `node scripts/package-desktop.mjs` 打完再传上 tag 的发行版 —— 忘了传，发行版就只有 jar。
 
 桌面壳为什么是 jlink + jpackage 而不是 Tauri / GraalVM，见
 [`研究-桌面外壳与Tauri.md`](研究-桌面外壳与Tauri.md)：结论是现有外壳已经满足"免装 JDK、只跑一个进程、
