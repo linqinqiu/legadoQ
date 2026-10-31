@@ -14,6 +14,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { makeZip } from './zip-make.mjs'
+import { recycleOwnFixture } from './recycle.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -140,8 +141,19 @@ async function main() {
     `${imported.status} ${JSON.stringify(imported.json ?? imported.text).slice(0, 420)}`)
   ok('包内 RSS 源与分组一并恢复', (imported.json?.rssSources ?? 0) === 1 && (imported.json?.bookGroups ?? 0) === 2,
     `rss=${imported.json?.rssSources} groups=${imported.json?.bookGroups}`)
-  ok('不承接的条目照实上报（keyboardAssists 既没有界面也不收文件）', (imported.json?.skippedSections ?? []).includes('keyboardassists.json'), (imported.json?.skippedSections ?? []).join(','))
-  ok('这个包没有把探针条目塞进用户的 data/backup_kept/', (imported.json?.keptSections ?? []).length === 0, (imported.json?.keptSections ?? []).map(k => k.name).join(','))
+  // 0.1.8 起口径变了：键位辅助这类**配置**不再算"不承接"，而是原样收进 backup_kept，
+  // 这样"导入 → 再导出"不会把用户没有界面的东西弄丢。判据跟着改成验这个设计行为。
+  ok('包里没有界面的配置项被收进 keptSections（不丢给用户）',
+    (imported.json?.keptSections ?? []).some(k => String(k.name ?? '').toLowerCase() === 'keyboardassists.json'),
+    `kept=${(imported.json?.keptSections ?? []).map(k => k.name).join(',')} skipped=${(imported.json?.skippedSections ?? []).join(',')}`)
+  // 收了就要能拿回来，而且同一份包再导一次不许在用户目录里堆第二份同名文件。
+  const keptBack = await raw('GET', '/api/backup/kept/keyboardAssists.json')
+  ok('收进去的配置能原样读回', keptBack.status === 200 && String(keptBack.text).includes('探针按键-' + STAMP),
+    `${keptBack.status} ${String(keptBack.text).slice(0, 60)}`)
+  const reimport = await raw('POST', '/api/backup/import', multipart(`probe-backup-${STAMP}.zip`, zip).body, { 'content-type': multipart(`probe-backup-${STAMP}.zip`, zip).type })
+  const keptList = await raw('GET', '/api/backup/kept')
+  const dup = (keptList.json ?? []).filter(name => String(typeof name === 'string' ? name : name?.name).toLowerCase() === 'keyboardassists.json')
+  ok('同一份包重复导入不堆第二份同名配置', reimport.status === 200 && dup.length === 1, `读到 ${dup.length} 份`)
 
   const after = await sources()
   const keep = after.find(s => s.id === KEEP_ID) ?? {}
@@ -209,6 +221,14 @@ main()
     ok('探针 RSS 源已回收', rssLeft.length === 0, rssLeft.map(r => r.sourceUrl).join(',') || '无')
     const strays = (await shelf()).filter(b => b.name.includes('探针上传书'))
     ok('没有留下别的垃圾', strays.length === 0, strays.map(b => b.name).join(',') || '无')
+    // 0.1.8 起配置类条目（keyboardAssists 等）不再算"不承接"，而是原样收进 data/backup_kept/，
+    // 那探针造的这一份就得探针自己收尾。两条护栏：内容逐字等于夹具才动，动是**送回收站**不是永久删——
+    // data/ 是用户的数据目录，用户对得上号的同名文件（内容对不上）这条门禁没有资格碰。
+    const keptFile = path.join(ROOT, 'data', 'backup_kept', 'keyboardAssists.json')
+    const ownFixture = JSON.stringify([{ name: '探针按键-' + STAMP, value: 'x' }])
+    const keptClean = recycleOwnFixture(keptFile, ownFixture)
+    ok('探针收进数据目录的 keyboardAssists.json 已回收（只动自己那份，且走回收站）',
+      !keptClean.stale, keptClean.detail)
     console.log(`\n结果：${pass} 通过 / ${fail} 失败`)
     if (fail > 0) process.exitCode = 1
   })

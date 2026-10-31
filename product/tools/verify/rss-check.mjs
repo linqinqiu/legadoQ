@@ -13,6 +13,7 @@ import { createRequire } from 'node:module'
 import { ROOT, SHOTS, BASE, launchOptions } from './env.mjs'
 import { multipartUpload } from './multipart.mjs'
 import { makeZip } from './zip-make.mjs'
+import { recycleOwnFixture } from './recycle.mjs'
 
 const require = createRequire(path.join(ROOT, 'web/package.json'))
 const puppeteer = require('puppeteer-core')
@@ -91,6 +92,8 @@ async function main() {
     { name: 'rssSources.json', data: JSON.stringify([rssA, rssB, rssC]) },
     { name: 'readRecord.json', data: JSON.stringify([{ bookName: '探针阅读记录-' + STAMP, readTime: 100 }]) },
     { name: 'keyboardAssists.json', data: JSON.stringify([{ name: `探针按键-${STAMP}`, value: 'x' }]) },
+    // 反向对照用 autotask.json：它是运行时缓存，服务端**只上报、不收下**（KEEP_EXCLUDED）
+    { name: 'autotask.json', data: JSON.stringify([{ name: `探针自动任务-${STAMP}`, enabled: false }]) },
   ])
   const upload = multipartUpload(STAMP, ZIP_NAME, zip)
 
@@ -99,10 +102,13 @@ async function main() {
     `${imported.status} rssSources=${imported.json?.rssSources}`)
   const skipped = imported.json?.skippedSections ?? []
   ok('rssSources.json 不再算"承接不了的条目"', !skipped.some(name => name.includes('rsssources')), skipped.join(','))
-  // 反向对照：真没承接的条目必须照旧报出来，否则上一条断言只是"整个列表都不报了"。
-  // 探针造包时先用的 readRecord.json 现在已经被服务端原样收进数据目录了（#66），
-  // 所以这一栏的反向对照换成 keyboardAssists.json —— 它在"只上报、不收下"那份名单里。
-  ok('其它不承接的条目照旧如实上报', skipped.includes('keyboardassists.json') && !skipped.includes('readrecord.json'), skipped.join(','))
+  // 反向对照：真不收下的条目必须照旧报出来，否则上面那条只是"整个列表都不报了"。
+  // keyboardAssists.json 从 0.1.8 起是**配置**，原样收进 backup_kept（导入→再导出不丢），
+  // 不再算"不承接"；这一栏换成 autotask.json（运行时缓存，服务端只上报不收下）。
+  ok('运行时缓存类条目只上报、不收下', skipped.includes('autotask.json') && !skipped.includes('readrecord.json'), skipped.join(','))
+  ok('键位辅助这类配置被收进 keptSections（导入再导出不丢东西）',
+    (imported.json?.keptSections ?? []).some(k => String(k.name ?? '').toLowerCase() === 'keyboardassists.json'),
+    (imported.json?.keptSections ?? []).map(k => k.name).join(','))
   const kept = imported.json?.keptSections ?? []
   const keptRecord = kept.find(item => String(item.name).toLowerCase() === 'readrecord.json')
   ok('阅读记录这类"没有原生界面"的条目改成原样收下并回报',
@@ -170,15 +176,16 @@ async function uiCheck() {
     await page.evaluateOnNewDocument((c) => { document.cookie = c }, cookie)
     await page.goto(`${BASE}/#subscriptions`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector('.rss-panel', { timeout: 40000 })
-    // 「订阅」这一页只剩 RSS（书源订阅搬到「书源」页的一档里，见 PROPOSAL-021 §3）。
-    // 页签这个类名现在**不该存在**，所以反扫用属性选择器写，避免钉一个死锚点。
+    // 「订阅」这一页**有意**并列两类订阅（RssPage.tsx 的注释写明：书源订阅与 RSS 文章源各一块、
+    // 各有标题，不让用户猜）。判据跟着改成验这个设计：标题、两块都在、且不分页签。
     const shape = await page.evaluate(() => ({
       pageHeading: document.querySelector('.rss-page > .page-title h1')?.textContent?.trim() ?? '',
       tabs: document.querySelectorAll('[class*="subscription-tabs"]').length,
-      subForm: !!document.querySelector('input[aria-label="书源订阅地址"]'),
+      blocks: [...document.querySelectorAll('.rss-page section[aria-label]')].map(n => n.getAttribute('aria-label')),
     }))
-    ok('订阅页是一张 RSS 页，没有页签、也没有书源订阅那一张',
-      shape.pageHeading === '订阅' && shape.tabs === 0 && !shape.subForm, JSON.stringify(shape))
+    ok('订阅页把两类订阅各摆一块（书源订阅 / RSS 文章源），且不用页签藏东西',
+      shape.pageHeading === '订阅' && shape.tabs === 0
+        && shape.blocks.includes('书源订阅') && shape.blocks.includes('RSS 文章源'), JSON.stringify(shape))
 
     // 这一页只发自己的那份请求，首帧不再被别处的条数预取拖延；等行出现，等不到才算失败
     await page.waitForFunction(() => document.querySelectorAll('.rss-panel .rss-source-main').length > 0, { timeout: 20000 }).catch(() => null)
@@ -258,18 +265,16 @@ main()
     ok('探针备份包没有落盘（直传读完即删）', goneZip.status === 404, `status=${goneZip.status}`)
     const strays = (await listRss()).filter(item => item.sourceUrl.includes(STAMP))
     ok('本探针没有留下 RSS 垃圾', strays.length === 0, strays.map(i => i.sourceUrl).join(',') || '无')
-    // #66 之后导入会把 readRecord.json 原样收进 data/backup_kept/ —— 探针造的条目探针自己收掉。
-    // 删之前先核对内容确实是自己的夹具：用户对得上号的真实阅读记录（同名文件）绝不许被这条门禁删掉。
-    const keptFile = path.join(ROOT, 'data', 'backup_kept', 'readRecord.json')
-    const ownFixture = JSON.stringify([{ bookName: '探针阅读记录-' + STAMP, readTime: 100 }])
-    if (fs.existsSync(keptFile)) {
-      const text = fs.readFileSync(keptFile, 'utf8')
-      if (text === ownFixture) fs.rmSync(keptFile)
-      ok('探针收进数据目录的 readRecord.json 已回收（只删内容是自己夹具的那份）',
-        !fs.existsSync(keptFile) || fs.readFileSync(keptFile, 'utf8') !== ownFixture,
-        text === ownFixture ? '内容不是本探针的夹具，保留不动' : '已删除')
-    } else {
-      ok('探针收进数据目录的 readRecord.json 已回收', true, '数据目录里没有这个条目')
+    // #66 之后导入会把 readRecord.json 原样收进 data/backup_kept/；0.1.8 起 keyboardAssists.json 也一样。
+    // 探针造的条目探针自己收掉。两条护栏：内容逐字等于自己的夹具才动，动是**送回收站**不是永久删——
+    // data/ 是用户的数据目录，用户对得上号的同名文件（真实阅读记录、真实键位辅助）这条门禁没有资格碰。
+    const fixtures = [
+      ['readRecord.json', JSON.stringify([{ bookName: '探针阅读记录-' + STAMP, readTime: 100 }])],
+      ['keyboardAssists.json', JSON.stringify([{ name: `探针按键-${STAMP}`, value: 'x' }])],
+    ]
+    for (const [name, ownFixture] of fixtures) {
+      const keptClean = recycleOwnFixture(path.join(ROOT, 'data', 'backup_kept', name), ownFixture)
+      ok(`探针收进数据目录的 ${name} 已回收（只动自己那份，且走回收站）`, !keptClean.stale, keptClean.detail)
     }
     console.log(`\n结果：${pass} 通过 / ${fail} 失败`)
     if (fail > 0) process.exitCode = 1

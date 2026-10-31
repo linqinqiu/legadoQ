@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { OUT, BASE, ROOT } from './env.mjs'
 import { makeZip } from './zip-make.mjs'
+import { recycleFile } from './recycle.mjs'
 
 const STAMP = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13)
 const results = []
@@ -308,11 +309,12 @@ try {
     }
   }
 
+  // 用户原本没有这条 → 探针自己造的这份也不能永久删：data/backup_kept 是用户数据目录，走回收站。
   if (keptBefore) fs.writeFileSync(keptFile, keptBefore)
-  else fs.rmSync(keptFile, { force: true })
-  check('收尾把 data/backup_kept 恢复原样（探针不在用户数据目录里留文件）',
+  else recycleFile(keptFile)
+  check('收尾把 data/backup_kept 恢复原样（探针不在用户数据目录里留文件，也不永久删）',
     keptBefore ? fs.existsSync(keptFile) && fs.readFileSync(keptFile).equals(keptBefore) : !fs.existsSync(keptFile),
-    keptBefore ? `放回 ${keptBefore.length} 字节` : '删掉探针那份（用户原本没有这条）')
+    keptBefore ? `放回 ${keptBefore.length} 字节` : '探针那份已送回收站（用户原本没有这条）')
 } catch (error) {
   check('探针自身异常', false, error.message)
 } finally {
