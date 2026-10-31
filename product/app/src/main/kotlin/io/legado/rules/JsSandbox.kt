@@ -173,8 +173,9 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // jsLib 必须先在**全局作用域**单独求值，动作脚本再在同一个 scope 里跑：
         // 书源库把工具函数写成顶层 `function getVariable(k){…}`，动作里却用 `this.getVariable('线路')`
         // 去调（this 在全局函数里指全局对象）。过去把库和动作拼成一段再包 IIFE，函数声明
-        // 全落进 IIFE 的局部作用域，`this.getVariable` 当场 TypeError——光遇聚合的设置页就卡在这。
-        val executableScript = if (Regex("""\breturn\b""").containsMatchIn(rawScript)) {
+        // 只在**顶层**有 return 时才包 IIFE（判断见 JsScriptShape）：按文本搜 return 会吞掉
+        // "只在嵌套函数里 return、末尾是表达式"这类脚本的结果（详见该文件注释，210 份源受影响）。
+        val executableScript = if (JsScriptShape.hasTopLevelReturn(rawScript)) {
             "(function(){\n$rawScript\n})()"
         } else {
             rawScript
@@ -202,10 +203,16 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                         "if (typeof value.valueOf === 'function' && typeof value.valueOf() === 'string')" +
                         "return __legadoOrigParse.call(JSON, value.valueOf());" +
                         "return value;}" +
-                        "return __legadoOrigParse.call(JSON, value);};}",
+                        "try { return __legadoOrigParse.call(JSON, value); } catch (e) {" +
+                            "throw new Error('脚本里的 JSON.parse 解析失败：内容不是合法 JSON（常见原因是没先 decodeURIComponent）—— '" +
+                            "(e && e.message ? e.message : e));}}}",
                     "sandbox-compat", 1, null,
                 )
             }
+
+            // 书源脚本里的 `org.jsoup.Jsoup.parse(...)`：给白名单包装（只解析、不给网络出口）。
+            // 不给的话 292 份源第一行就 ReferenceError: “org” 未定义，整源用不了。
+            ScriptableObject.putProperty(scope, "org", JsoupBridge.install(cx, scope))
 
             // Inject bindings (e.g. result, src, baseUrl, key, page, book, chapter, isLongClick)
             bindings.forEach { (key, value) ->
@@ -493,7 +500,11 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         null, Context.getUndefinedValue() -> null
         is CallableBody -> value.text
         is CharSequence -> value.toString()
-        is Number, is Boolean -> value.toString()
+        // Rhino 的 number 一律是 double：不处理的话 `@js: a.length`、`size()`、`页码*10`
+        // 这类结果会被印成 "2.0"，而它会**直接当字段值**显示到界面上（字数、页数最明显）。
+        // JS 的写法是整数不带小数点，这里对齐。
+        is Number -> value.toString().removeSuffix(".0")
+        is Boolean -> value.toString()
         else -> runCatching {
             NativeJSON.stringify(context, scope, value, null, null).toString()
         }.getOrNull() ?: value.toString()
@@ -1249,7 +1260,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // 就停在 `java.connect(url).raw().request().url()` 这一句上（rule.js#7）。
         // 这里给的是**字段名一致的 JS 替身**：不把任何 Java / OkHttp 对象递进沙箱
         //（`setClassShutter { false }` 那道防线不为几个源开口子）。
-        // 响应对象统一用 ResponseString（既是字符串又是响应），见该类的注释。
+        // 响应对象统一用 responseView（字符串形状的实例 + 挂上去的响应成员），见该函数的注释。
 
         // java.connect(地址[, 头JSON[, 超时]])：上游默认 GET；失败时上游把异常收成
         // `StrResponse(url, stackTrace)`，所以这里也**不抛**给脚本 —— 脚本自己判 `.body()` 空不空。

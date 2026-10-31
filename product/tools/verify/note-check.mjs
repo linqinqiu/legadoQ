@@ -79,17 +79,58 @@ try {
 
   const excerpt = await selectParagraph(page)
   check('选中了一段正文（否则后面都是空判）', excerpt.length >= 8, excerpt)
-  await page.waitForSelector('.reader-note-toolbar', { timeout: 8000 }).catch(() => null)
-  check('选中后摆出了笔记浮层', await page.evaluate(() => !!document.querySelector('.reader-note-toolbar')))
+  await page.waitForSelector('.reader-marking-menu', { timeout: 8000 }).catch(() => null)
+  // 没弹出来时，把 buildSelectionDraft 那几道判据的实测值一起打出来：
+  // 它任何一步 return null 表现都一样（没浮层 → 后面几条连锁红），只报"没找到"等于让人重新猜一遍。
+  const shown = await page.evaluate(() => !!document.querySelector('.reader-marking-menu'))
+  const why = await page.evaluate(() => {
+    const sel = window.getSelection()
+    const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null
+    const node = range ? (range.startContainer.nodeType === Node.TEXT_NODE ? range.startContainer.parentElement : range.startContainer) : null
+    const p = node ? node.closest('.reader-paragraph') : null
+    return `paragraph=${!!p} paragraphIndex=${p?.dataset?.paragraphIndex ?? '无'} ` +
+      `chapterIndex容器=${p?.closest('[data-chapter-index]')?.dataset?.chapterIndex ?? '无'} ` +
+      `collapsed=${sel?.isCollapsed} 选区长度=${(sel?.toString() ?? '').length}`
+  })
+  check('选中后摆出了标记快捷条', shown, shown ? '' : why)
+  // 0.0.6 起选中正文先摆的是「划线 / 笔记 / 复制 / AI」这条快捷条，点「笔记」才展开编辑器。
+  // 判据从前假定选中即弹编辑器，UI 改版后一直红着，把这条真实形状钉下来。
+  const menuLabels = await page.evaluate(() => [...document.querySelectorAll('.reader-marking-btn')]
+    .map(node => node.getAttribute('aria-label') ?? '').filter(Boolean).join(','))
+  check('快捷条给齐了那四个动作（外加关闭）',
+    ['划线', '笔记', '复制', 'AI', '关闭'].every(name => menuLabels.includes(name)), menuLabels)
 
-  // 留空直接保存 = 纯划线
-  await page.evaluate(() => document.querySelector('.reader-note-toolbar .primary-button')?.click())
+  // 点「划线」= 只留高亮、不写备注
+  await page.evaluate(() => [...document.querySelectorAll('.reader-marking-btn')]
+    .find(node => node.getAttribute('aria-label') === '划线')?.click())
   await page.waitForFunction(() => !!document.querySelector('.reader-note-highlight'), { timeout: 8000 }).catch(() => null)
-  check('保存后正文里出现了高亮', await page.evaluate(() => !!document.querySelector('.reader-note-highlight')))
-  check('浮层收掉了', await page.evaluate(() => !document.querySelector('.reader-note-toolbar')))
+  check('点划线后正文里出现了高亮', await page.evaluate(() => !!document.querySelector('.reader-note-highlight')))
+  check('划完快捷条自己收掉了', await page.evaluate(() => !document.querySelector('.reader-marking-menu')))
 
-  const stored = await (await fetch(`${BASE}/api/notes?sourceId=loc_book&bookUrl=${encodeURIComponent(probeBookUrl)}`)).json().catch(() => [])
-  check('服务端存下了这一条', Array.isArray(stored) && stored.length === 1, JSON.stringify(stored?.[0]?.excerpt ?? stored))
+  // 再走一遍「写笔记」那条：点笔记 → 编辑器展开 → 存文字
+  await selectParagraph(page)
+  await page.waitForSelector('.reader-note-toolbar', { timeout: 8000 }).catch(() => null)
+  const editorShown = await page.evaluate(() => {
+    const menu = [...document.querySelectorAll('.reader-marking-btn')]
+      .find(node => node.getAttribute('aria-label') === '笔记')
+    menu?.click()
+    return true
+  })
+  await page.waitForSelector('.reader-note-toolbar textarea, .reader-note-toolbar input', { timeout: 8000 }).catch(() => null)
+  const typed = await page.evaluate(() => {
+    const box = document.querySelector('.reader-note-toolbar textarea, .reader-note-toolbar input')
+    if (!box) return false
+    const proto = box.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype
+    Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(box, '这一句想记下来')
+    box.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  })
+  check('点「笔记」展开编辑器并能输入备注', editorShown && typed && await page.evaluate(() => !!document.querySelector('.reader-note-toolbar')))
+  await page.evaluate(() => document.querySelector('.reader-note-toolbar .primary-button')?.click())
+  await page.waitForFunction(() => !!document.querySelector('.reader-note-toolbar') === false, { timeout: 8000 }).catch(() => null)
+
+  let stored = await (await fetch(`${BASE}/api/notes?sourceId=loc_book&bookUrl=${encodeURIComponent(probeBookUrl)}`)).json().catch(() => [])
+  check('服务端存下了这两条', Array.isArray(stored) && stored.length === 2, `实际 ${Array.isArray(stored) ? stored.length : '?'} 条`)
   check('偏移是章节内字符偏移（数字、end ≥ start）',
     typeof stored?.[0]?.startOffset === 'number' && stored[0].endOffset >= stored[0].startOffset,
     `start=${stored?.[0]?.startOffset} end=${stored?.[0]?.endOffset}`)
@@ -110,7 +151,7 @@ try {
   })
   await page.waitForFunction(() => !!document.querySelector('.reader-notes-list'), { timeout: 8000 }).catch(() => null)
   const listed = await page.evaluate(() => document.querySelectorAll('.reader-note-item').length)
-  check('抽屉里有「笔记」面板，列得出这一条', panelOpened && listed === 1, `列出 ${listed} 条`)
+  check('抽屉里有「笔记」面板，两条都列得出（一条纯划线、一条带备注）', panelOpened && listed === 2, `列出 ${listed} 条`)
 
   check('全程没有页面异常', errors.length === 0, errors.slice(0, 2).join(' | '))
 } catch (error) {

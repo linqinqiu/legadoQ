@@ -36,6 +36,12 @@ fun Route.subscriptionsRoutes(
                 call.respond(database.saveSubscription(request))
             } catch (error: IllegalArgumentException) {
                 call.respond(HttpStatusCode.BadRequest, ApiError("invalid_subscription", error.message ?: "订阅地址无效"))
+            } catch (unreachable: NetworkSecurity.UnreachableTargetException) {
+                // 「地址形状没问题，但这台机器解析不到它」。闸门为此单独抛了一个类型（不是
+                // BlockedAddressException），可它继承 IOException，以前没在这里 catch ——
+                // 于是填错域名的用户看到 500「服务器内部错误」，去翻服务端日志，而该改的是自己填的地址。
+                // 注意只改**创建**这一条：已存的订阅去更新时连不上，仍是下面那条 502。
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_subscription", unreachable.message ?: "域名解析不了"))
             }
         }
         delete("/subscriptions/{id}") {
