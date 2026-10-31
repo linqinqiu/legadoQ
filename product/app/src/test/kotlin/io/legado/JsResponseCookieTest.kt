@@ -4,6 +4,7 @@ import io.legado.rules.JsExecutionContext
 import io.legado.rules.JsSandbox
 import io.legado.rules.RuleExecutionException
 import io.legado.rules.RuleRunner
+import io.legado.rules.fetchFailureText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -159,14 +160,13 @@ class JsResponseCookieTest {
 
     @Test
     fun `fetchFailureText 取因链上第一句非空说明`() {
-        val sandbox = JsSandbox()
-        assertEquals("抓取失败：重定向次数超过限制", sandbox.fetchFailureText(RuleExecutionException("重定向次数超过限制")))
+        assertEquals("抓取失败：重定向次数超过限制", fetchFailureText(RuleExecutionException("重定向次数超过限制")))
         assertEquals(
             "抓取失败：connection reset",
-            sandbox.fetchFailureText(RuntimeException(" ", java.io.IOException("connection reset"))),
+            fetchFailureText(RuntimeException(" ", java.io.IOException("connection reset"))),
         )
         // 连 message 都没有时才退回类名：总比给脚本一句空白强（脚本常 `if (r.body().length > 0)`）。
-        assertEquals("抓取失败：IllegalStateException", sandbox.fetchFailureText(IllegalStateException()))
+        assertEquals("抓取失败：IllegalStateException", fetchFailureText(IllegalStateException()))
     }
 
     // ── 内部来源名不露给用户 ──────────────────────────────────────

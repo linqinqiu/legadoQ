@@ -317,6 +317,17 @@ class Database(private val path: String) : Closeable, AutoCloseable {
                   checked_at integer not null default 0
                 );
                 create index if not exists idx_source_health_rank on source_health(ok desc, latency_ms asc);
+
+                -- 书源脚本的全局 `cache`（上游 CacheManager）。脚本拿它缓存接口响应、界面设置
+                -- （蓝批把那批 pixiv API 结果放这儿、书山聚合把图片样式放这儿）。键按书源隔离：
+                -- 上游是全局键空间，但同名键（如 `imgstyle`）在不同源之间本来就不该互相覆盖。
+                -- deadline=0 表示不过期；过期的行在读取时当作没有，不额外做后台清理。
+                create table if not exists script_cache (
+                  source_id text not null, key text not null, value text not null,
+                  deadline integer not null default 0, updated_at integer not null,
+                  primary key (source_id, key)
+                );
+                create index if not exists idx_script_cache_deadline on script_cache(deadline);
             """.trimIndent())
             // 不再有账号与会话：这台服务不设身份（写操作只留 Guard.kt 的同源闸门）。
             // 老库里的这两张表是死重量，启动时收掉。

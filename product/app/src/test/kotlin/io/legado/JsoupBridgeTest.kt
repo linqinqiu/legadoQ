@@ -94,11 +94,20 @@ class JsoupBridgeTest {
         assertEquals("undefined", eval("typeof doc.connection"))
         // className 这类只读属性正面验一次（证明"没给 connect"不是把整个包装都关掉了）
         assertEquals("list", eval("doc.select('.list').first().className()"))
-        // 反射口子必须仍然关着：包装不能把它带开
+        // 反射口子必须仍然关着：Packages 现在能解析白名单类了，但 Class / Runtime 不给，
+        // 假 System 也不带 getClass —— 拿不到任何反射入口。
         val blocked = sandbox()
-        assertNull(blocked.eval("Packages.java.lang.System.getProperty('user.home')", emptyMap(), null))
+        assertEquals(
+            "undefined|undefined|undefined",
+            blocked.eval(
+                "typeof Packages.java.lang.Class + '|' + typeof Packages.java.lang.Runtime + '|' + typeof Packages.java.lang.System.getClass",
+                emptyMap(),
+                null,
+            ),
+        )
+        assertNull(blocked.eval("Packages.java.lang.System.getClass()", emptyMap(), null))
         assertTrue("反射应当依旧被拒，实际「${blocked.lastError}」",
-            (blocked.lastError ?: "").contains("Packages") || (blocked.lastError ?: "").contains("未定义"))
+            (blocked.lastError ?: "").contains("getClass") || (blocked.lastError ?: "").contains("未找到"))
     }
 
     @Test

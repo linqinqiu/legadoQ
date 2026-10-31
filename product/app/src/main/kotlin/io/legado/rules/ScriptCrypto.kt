@@ -1,5 +1,8 @@
 package io.legado.rules
 
+import org.mozilla.javascript.Context
+import org.mozilla.javascript.Scriptable
+import org.mozilla.javascript.ScriptableObject
 import java.security.MessageDigest
 import java.util.Base64
 import javax.crypto.Cipher
@@ -156,14 +159,51 @@ internal object ScriptCrypto {
         }
     }
 
-    /** 脚本传来的值 → 字节数组（字符串按 UTF-8；JS 数组按元素取，兼容元素是 Number/字符串）。 */
+    /**
+     * 脚本传来的值 → 字节数组（字符串按 UTF-8；JS 数组按元素取，兼容元素是 Number/字符串）。
+     *
+     * JS 数组必须按 **int 下标**取：Rhino 1.8 的 NativeArray 在元素全是数字时走稠密存储，
+     * 字符串下标（`getProperty(array, "0")`）取不到元素、返回 NOT_FOUND —— 若当成 0 处理，
+     * `bytesToStr(base64DecodeToByteArray(...))` 会整串变成空白（实测 `[65,66,67]` 解出 `\u0000\u0000\u0000`）。
+     *
+     * `new String(正文)` 形状的响应对象在 Rhino 里是 NativeString —— 那个类在 1.8.0 是包私有的，
+     * Kotlin 代码引用不到，只能按 className=="String" 识别：它同样是文本，不能按数组读。
+     */
     fun toBytes(value: Any?): ByteArray = when (value) {
         null -> ByteArray(0)
         is ByteArray -> value
         is Number -> byteArrayOf(value.toByte())
+        is CharSequence -> value.toString().toByteArray(Charsets.UTF_8)
         is Iterable<*> -> value.map { (it as? Number)?.toByte() ?: it?.toString()?.toByteOrNull() ?: 0 }.toByteArray()
         is Array<*> -> toBytes(value.asList())
+        is Scriptable -> if (value.className == "String") {
+            value.toString().toByteArray(Charsets.UTF_8)
+        } else {
+            scriptableToBytes(value)
+        }
         else -> value.toString().toByteArray(Charsets.UTF_8)
+    }
+
+    private fun scriptableToBytes(value: Scriptable): ByteArray {
+        val length = runCatching { (ScriptableObject.getProperty(value, "length") as? Number)?.toInt() }.getOrNull() ?: 0
+        if (length <= 0) return ByteArray(0)
+        return ByteArray(length) { index ->
+            val element = elementAt(value, index)
+            val number = element as? Number
+            when {
+                number != null -> number.toByte()
+                element == null || element === Context.getUndefinedValue() -> 0
+                else -> element.toString().toByteOrNull() ?: 0
+            }
+        }
+    }
+
+    private fun elementAt(value: Scriptable, index: Int): Any? {
+        val byIndex = runCatching { ScriptableObject.getProperty(value, index) }.getOrNull()
+        if (byIndex != null && byIndex !== Scriptable.NOT_FOUND && byIndex !== Context.getUndefinedValue()) {
+            return byIndex
+        }
+        return runCatching { ScriptableObject.getProperty(value, index.toString()) }.getOrNull()
     }
 
     /** 字节数组 → JS 能用的数字数组（`[0,255]`，脚本会 `.slice()` / `[]` 取）。 */

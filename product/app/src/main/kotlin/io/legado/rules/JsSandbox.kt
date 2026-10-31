@@ -107,8 +107,44 @@ data class JsExecutionContext(
  * 桩只会看到裸 URL，headers 在桩里不可见 —— 唯一能钉住"UA 到底挂没挂"的位置就是这里。
  */
 internal fun reloadFetchUrl(url: String): String {
-    val browserHeaders = """{"headers":{"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36","Referer":"$url","Accept":"*/*"}}"""
+    val browserHeaders = """{"headers":{"User-Agent":"$RELOAD_BROWSER_USER_AGENT","Referer":"$url","Accept":"*/*"}}"""
     return "$url,$browserHeaders"
+}
+
+/** [reloadFetchUrl] 给 `Reload` 请求挂的桌面 Chrome UA（与 `java.getUserAgent()` 无关，后者见下）。 */
+internal const val RELOAD_BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+/**
+ * `java.getWebViewUA()` 与 `java.getUserAgent()` 共用的 WebView UA。
+ *
+ * 上游 Legado 里这两个方法返回同一个串（蓝批系列的 jsLib 正是用
+ * `java.getUserAgent() === java.getWebViewUA()` 判断"是否运行在阅读里"）。
+ * 如果让 getUserAgent 回桌面 Chrome、getWebViewUA 回 Android WebView，这个判定会变假，
+ * 那些源会走"非阅读宿主"的降级分支 —— 所以我们保持两者相等，模拟上游。
+ */
+internal const val JS_WEBVIEW_USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 13; Pixel 5 Build/TQ3A.230805.001; wv) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Version/4.0 Chrome/131.0.0.0 Mobile Safari/537.36"
+
+/**
+ * 抓取失败时**递给脚本**的东西。
+ *
+ * 原来是 `it.stackTraceToString()` —— 上游 `AnalyzeRule.ajax` 确实把 stackTrace 当字符串回给脚本，
+ * 但那在我们这儿会变成用户看得见的 `io.legado.rules.RuleExecutionException: 重定向次数超过限制
+ * at io.legado.rules.RuleRunner.fetchDetai…`：类名是我们的、行号是构建产物里的，谁都读不懂。
+ * 这里只留一句人话；仍然是一等字符串，脚本 `JSON.parse(它)` 照样失败，行为不变。
+ *
+ * 顶层函数：`JavaPackages` 里的 okhttp 桥与 `java.ajaxAll` 也要用同一句文案，
+ * 挂在实例上就只能互相复制一份。
+ */
+internal fun fetchFailureText(error: Throwable): String {
+    val reason = generateSequence(error) { it.cause }
+        .take(5)     // cause 理论上能成环（A→B→A），别指望它自己断
+        .mapNotNull { it.message?.takeIf { text -> text.isNotBlank() } }
+        .firstOrNull()
+        ?: error.javaClass.simpleName
+    return "抓取失败：$reason"
 }
 
 /**
@@ -133,6 +169,22 @@ internal fun decodeDataUrlText(url: String): String? {
 }
 
 class JsSandbox(private val runner: RuleRunner? = null) {
+    private companion object {
+        /** `cache.putFile/getFile` 在同一个缓存表里用前缀与 `put/get` 分开（上游本来就是两套存储）。 */
+        const val FILE_CACHE_PREFIX = "file:"
+
+        /**
+         * `java.ajaxAll` 的有界并发池。上游用 `threadCount` 设置、默认 8 左右；
+         * 这里是**守护线程池**，进程退出不会因为它在等网络而挂住。
+         * 池子全局共享：多个书源同时 ajaxAll 时总并发仍然有上限，不会把 HttpClient 打穿。
+         */
+        val ajaxAllPool: java.util.concurrent.ExecutorService by lazy {
+            java.util.concurrent.Executors.newFixedThreadPool(8) { task ->
+                Thread(task, "legado-ajax-all").apply { isDaemon = true }
+            }
+        }
+    }
+
     private val sessionStore = ConcurrentHashMap<String, Any>()
 
     /** `java.put` / `java.get` 的临时 KV 必须按书源隔离：整个沙箱只有一份，之前所有书源共用一个键空间。 */
@@ -237,10 +289,11 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 }
             })
 
-            // Legado 书源的 jsLib 惯用 `new JavaImporter()` + `with(importer){ ... }` 组织工具函数库。
-            // 沙箱禁用了真实 Java 反射，此处提供空实现的安全替身：只要不再抛 ReferenceError，
-            // 整个 with 块就能正常完成函数定义，后续登录动作才可能执行。
-            ScriptableObject.putProperty(scope, "JavaImporter", createJavaImporterStub(scope))
+            // Legado 书源的 jsLib 惯用 `new JavaImporter()` + `with(importer){ ... }` 组织工具函数库，
+            // 以及直接用 `Packages.javax.crypto.Cipher` / 全局 `importPackage(...)`。
+            // 沙箱禁用了真实 Java 反射，这里装一份**白名单实现**：加解密、Base64、String/Arrays、
+            // 签名、GZIP、hutool 与 okhttp3 同步调用（见 JavaPackages 的说明），其余包名照旧 undefined。
+            JavaPackages(cx, scope, runner, context).install()
 
             // Inject 'source' and 'cookie' bridge objects if sourceId is available
             val sourceId = context?.sourceId ?: bindings["sourceId"]?.toString() ?: bindings["baseUrl"]?.toString() ?: bindings["bookSourceUrl"]?.toString()
@@ -259,6 +312,15 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 )).filter { it.isNotBlank() }
                 ScriptableObject.putProperty(scope, "cookie", createCookieBridge(scope, sourceId, db, scriptHosts))
             }
+
+            // Legado 全局 `cache`（上游 CacheManager）：启用库 49 份源在写、36 份在读，
+            // 蓝批拿它缓存 pixiv API 结果、书山聚合放图片样式、番茄系存 token。
+            // 没有它脚本第一行就 `ReferenceError: “cache” 未定义`，整源不可用。
+            ScriptableObject.putProperty(
+                scope,
+                "cache",
+                createCacheBridge(scope, sourceId, context?.database ?: runner?.database),
+            )
 
             // Legado 的 book 对象：书源 JS 会用 book.getVariable('custom') 读取书籍级变量
             ScriptableObject.putProperty(scope, "book", createBookBridge(scope, context))
@@ -370,29 +432,6 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         }
         ScriptableObject.putProperty(book, "setUseReplaceRule", noop)
         return book
-    }
-
-    /**
-     * `JavaImporter` 的安全替身。     *
-     * Legado 的 Rhino 环境提供 `JavaImporter`，大量书源的 jsLib 用它配合 `with` 语句组织工具函数库。
-     * 沙箱出于安全禁用真实 Java 反射，因此这里只返回一个**空的**导入器：importClass/importPackage
-     * 为空操作，不暴露任何 Java 能力，但足以让脚本不再抛 ReferenceError、正常完成函数定义。
-     */
-    private fun createJavaImporterStub(scope: Scriptable): BaseFunction = object : BaseFunction() {
-        override fun call(cx: Context, s: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
-            val importer = NativeObject()
-            importer.parentScope = scope
-            val noop = object : BaseFunction() {
-                override fun call(cx: Context, s: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any =
-                    Context.getUndefinedValue()
-            }
-            ScriptableObject.putProperty(importer, "importClass", noop)
-            ScriptableObject.putProperty(importer, "importPackage", noop)
-            return importer
-        }
-
-        override fun construct(cx: Context, s: Scriptable, args: Array<out Any?>): Scriptable =
-            call(cx, s, s, args) as Scriptable
     }
 
     /**
@@ -514,23 +553,6 @@ class JsSandbox(private val runner: RuleRunner? = null) {
     private val charsetParam = Regex("""(?i)\bcharset\s*=\s*["']?([^"';\s]+)""")
 
     /**
-     * 抓取失败时**递给脚本**的东西。
-     *
-     * 原来是 `it.stackTraceToString()` —— 上游 `AnalyzeRule.ajax` 确实把 stackTrace 当字符串回给脚本，
-     * 但那在我们这儿会变成用户看得见的 `io.legado.rules.RuleExecutionException: 重定向次数超过限制
-     * at io.legado.rules.RuleRunner.fetchDetai…`：类名是我们的、行号是构建产物里的，谁都读不懂。
-     * 这里只留一句人话；仍然是一等字符串，脚本 `JSON.parse(它)` 照样失败，行为不变。
-     */
-    internal fun fetchFailureText(error: Throwable): String {
-        val reason = generateSequence(error) { it.cause }
-            .take(5)     // cause 理论上能成环（A→B→A），别指望它自己断
-            .mapNotNull { it.message?.takeIf { text -> text.isNotBlank() } }
-            .firstOrNull()
-            ?: error.javaClass.simpleName
-        return "抓取失败：$reason"
-    }
-
-    /**
      * Rhino 把抛出点按 `(脚本名#行)` 缀在异常文本尾巴上。
      * `rule.js#3` / `jsLib.js#12` 是**书源自己的脚本**，行号对用户有用，留着；
      * `sandbox-compat#1` 是我们注入的 JSON.parse 兼容层，缀上去读起来像"引擎自己坏了"
@@ -558,10 +580,80 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         else -> true
     }
 
+    /**
+     * JS 数组（或单个字符串 / Java List）→ `List<String>`。
+     * 给 `java.ajaxAll` 用：脚本可能传真数组、`Array.from(...)`、也可能只传一个地址。
+     */
+    private fun jsStringList(value: Any?): List<String> = when {
+        value == null || value === Context.getUndefinedValue() -> emptyList()
+        value is CharSequence -> listOf(value.toString())
+        value is List<*> -> value.map { it?.toString() ?: "" }.filter { it.isNotBlank() }
+        value is Scriptable -> {
+            val length = runCatching { (ScriptableObject.getProperty(value, "length") as? Number)?.toInt() }.getOrNull() ?: 0
+            (0 until length).mapNotNull { index ->
+                // Rhino 1.8 的 NativeArray 全数字数组要按 int 下标取，字符串下标会取不到；
+                // 地址数组这里是字符串，但按 int 下标取对两种都成立，统一走第一条路。
+                val first = runCatching { ScriptableObject.getProperty(value, index) }.getOrNull()
+                val item = if (first != null && first !== Scriptable.NOT_FOUND && first !== Context.getUndefinedValue()) {
+                    first
+                } else {
+                    ScriptableObject.getProperty(value, index.toString())
+                }
+                item?.toString()?.takeIf { text -> text.isNotBlank() }
+            }
+        }
+        else -> listOf(value.toString())
+    }
+
     /** `isUrl=true` 时把取值按 baseUrl 补成绝对地址；补不上就原样给回（与 RuleRunner 的绝对化同一口径）。 */
     private fun absolute(base: String?, href: String): String {
         if (base.isNullOrBlank() || href.isBlank()) return href
         return runCatching { java.net.URI(base).resolve(href.trim()).toString() }.getOrDefault(href)
+    }
+
+    /** 上游 `MD5Utils.md5Encode16`：32 位 md5 的第 8..24 位（16 个字符），`cacheFile` 的键用它。 */
+    private fun md5Hex16(text: String): String {
+        val hex = MessageDigest.getInstance("MD5").digest(text.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return hex.substring(8, 24)
+    }
+
+    /**
+     * 上游 `JsURL` 的替身：脚本 `java.toURL(baseUrl).host` 取站点名（蓝海搜书按域名分支解密）。
+     * `origin` 按标准形状拼（上游源码那句 `"$protocol://$host:$url:$port"` 明显拼错了，不照抄）。
+     * `searchParams` 给 JsMapObject，`.get('k')` 与属性访问都能用。
+     */
+    private fun jsUrlView(scope: Scriptable, urlText: String, baseText: String?): NativeObject {
+        val uri = runCatching {
+            val base = baseText?.takeIf { it.isNotBlank() }?.let { java.net.URI(it) }
+            if (base != null) base.resolve(urlText) else java.net.URI(urlText)
+        }.getOrNull()
+        val view = NativeObject()
+        view.parentScope = topScope(scope)
+        val host = uri?.host ?: ""
+        val scheme = uri?.scheme ?: ""
+        val port = uri?.port ?: -1
+        ScriptableObject.putProperty(view, "host", host)
+        ScriptableObject.putProperty(
+            view,
+            "origin",
+            when {
+                scheme.isEmpty() || host.isEmpty() -> ""
+                port > 0 -> "$scheme://$host:$port"
+                else -> "$scheme://$host"
+            },
+        )
+        ScriptableObject.putProperty(view, "pathname", uri?.path ?: "")
+        val params = LinkedHashMap<String, Any?>()
+        fun decode(text: String): String =
+            runCatching { java.net.URLDecoder.decode(text, Charsets.UTF_8) }.getOrDefault(text)
+        uri?.rawQuery?.split('&')?.forEach { part ->
+            if (part.isNotBlank()) {
+                params[decode(part.substringBefore('='))] = decode(part.substringAfter('=', ""))
+            }
+        }
+        ScriptableObject.putProperty(view, "searchParams", JsMapObject(scope, params))
+        return view
     }
 
     private fun jsValueToString(context: Context, scope: Scriptable, value: Any?): String? = when (value) {
@@ -629,13 +721,14 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             }
         })
 
-        // source.getLoginInfoMap() -> NativeObject
+        // source.getLoginInfoMap() -> Map（上游是真 HashMap，脚本会 `.get('token')` / `.containsKey(...)`；
+        // 普通 NativeObject 只有属性没有方法，洋柿子/轻说/城堡这几份源就卡在这）。
         ScriptableObject.putProperty(api, "getLoginInfoMap", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val current = execContext?.initialLoginInfo?.takeIf { it.isNotEmpty() }
                     ?: db?.getSourceLoginState(sourceId)?.loginInfo
                     ?: emptyMap()
-                return toJsValue(current, scope) ?: NativeObject().also { it.parentScope = scope }
+                return JsMapObject(scope, current)
             }
         })
 
@@ -668,12 +761,12 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             }
         })
 
-        // source.getLoginHeaderMap()
+        // source.getLoginHeaderMap() -> Map（同上，给 Map 语义）
         ScriptableObject.putProperty(api, "getLoginHeaderMap", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val header = db?.getSourceLoginState(sourceId)?.loginHeader ?: ""
                 val map = runCatching { Json.decodeFromString<Map<String, String>>(header) }.getOrDefault(emptyMap())
-                return toJsValue(map, scope) ?: NativeObject().also { it.parentScope = scope }
+                return JsMapObject(scope, map)
             }
         })
 
@@ -796,6 +889,105 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         })
     }
 
+    /**
+     * Legado 全局 `cache`（上游 `CacheManager`）的替身。
+     *
+     * 参数与返回形状照上游：`put(key, value, saveTime秒)`、`get(key[, onlyDisk])`、
+     * `putMemory/getFromMemory/deleteMemory`、`putFile/getFile`、`delete`、`getInt/getLong/getDouble/getFloat`。
+     * 上游 `put` 只做 `value.toString()`；这里对对象/数组先 `JSON.stringify`，脚本 `JSON.parse(cache.get(…))`
+     * 才取得到东西（数组走 JS 的 `toString()` 会把值用逗号拼成一串，解析必失败）。
+     *
+     * 键按书源隔离、内存层认 deadline（与上游的差异见 ScriptCache 的注释）。
+     */
+    private fun createCacheBridge(scope: Scriptable, sourceId: String?, db: Database?): NativeObject = NativeObject().also { api ->
+        api.parentScope = scope
+        fun fn(read: (Context, List<Any?>) -> Any?) = object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any? =
+                read(cx, args.toList())
+        }
+        // 落库统一用文本：字符串原样，对象/数组 JSON 化，null 存 "null"（与 value.toString() 同观感）
+        fun storeText(cx: Context, value: Any?): String = when (value) {
+            null, Context.getUndefinedValue() -> "null"
+            is CharSequence -> value.toString()
+            is Number, is Boolean -> value.toString()
+            is CallableBody -> value.text
+            else -> runCatching {
+                NativeJSON.stringify(cx, topScope(scope), value, null, null)?.toString()
+            }.getOrNull() ?: value.toString()
+        }
+        // get 只认字符串（与上游 `if (it is String) return it` 一致）；非字符串的内存值（putMemory 放了对象）跳过内存去读盘。
+        fun readText(key: String, onlyDisk: Boolean): String? {
+            if (!onlyDisk) {
+                val mem = ScriptCache.getFromMemory(sourceId, key)
+                if (mem is CharSequence) return mem.toString()
+            }
+            return ScriptCache.get(sourceId, key, db, onlyDisk = true)?.toString()
+        }
+        fun number(key: String): Number? {
+            ScriptCache.getFromMemory(sourceId, key)?.let { if (it is Number) return it }
+            val text = readText(key, onlyDisk = false) ?: return null
+            return text.trim().toDoubleOrNull()
+        }
+        fun putEntry(cx: Context, args: List<Any?>, file: Boolean): Any {
+            val key = args.getOrNull(0)?.toString() ?: return false
+            val value = storeText(cx, args.getOrNull(1))
+            val saveTime = (args.getOrNull(2) as? Number)?.toInt() ?: 0
+            val storedKey = if (file) FILE_CACHE_PREFIX + key else key
+            ScriptCache.put(sourceId, storedKey, value, saveTime, db)
+            return true
+        }
+
+        ScriptableObject.putProperty(api, "put", fn { cx, a -> putEntry(cx, a, file = false) })
+        ScriptableObject.putProperty(api, "putFile", fn { cx, a -> putEntry(cx, a, file = true) })
+        ScriptableObject.putProperty(api, "putMemory", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn false
+            ScriptCache.putMemory(sourceId, key, a.getOrNull(1))
+            true
+        })
+        ScriptableObject.putProperty(api, "get", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn null
+            val onlyDisk = truthy(a.getOrNull(1))
+            readText(key, onlyDisk)
+        })
+        ScriptableObject.putProperty(api, "getFile", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn null
+            readText(FILE_CACHE_PREFIX + key, onlyDisk = false)
+        })
+        ScriptableObject.putProperty(api, "getFromMemory", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn null
+            ScriptCache.getFromMemory(sourceId, key)
+        })
+        ScriptableObject.putProperty(api, "getInt", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn null
+            ScriptCache.getFromMemory(sourceId, key)?.let { if (it is Number) return@fn it.toInt() }
+            number(key)?.toInt()
+        })
+        ScriptableObject.putProperty(api, "getLong", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn null
+            ScriptCache.getFromMemory(sourceId, key)?.let { if (it is Number) return@fn it.toLong() }
+            number(key)?.toLong()
+        })
+        ScriptableObject.putProperty(api, "getDouble", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn null
+            number(key)
+        })
+        ScriptableObject.putProperty(api, "getFloat", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn null
+            number(key)?.toFloat()
+        })
+        ScriptableObject.putProperty(api, "delete", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn Context.getUndefinedValue()
+            ScriptCache.delete(sourceId, key, db)
+            ScriptCache.delete(sourceId, FILE_CACHE_PREFIX + key, db)
+            Context.getUndefinedValue()
+        })
+        ScriptableObject.putProperty(api, "deleteMemory", fn { _, a ->
+            val key = a.getOrNull(0)?.toString() ?: return@fn Context.getUndefinedValue()
+            ScriptCache.deleteMemory(sourceId, key)
+            Context.getUndefinedValue()
+        })
+    }
+
     private fun createJavaBridge(
         scope: Scriptable,
         execContext: JsExecutionContext?,
@@ -815,6 +1007,33 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 // ClassCastException 文案，登录界面只剩「服务器错误」都算好的。
                 return runCatching { runner?.fetch(url, execContext?.sourceId, execContext?.database) ?: "" }
                     .getOrElse { fetchFailureText(it) }
+            }
+        })
+
+        // java.ajaxAll(urls[, skipRateLimit])：上游并发抓取、**按入参顺序**回响应对象数组。
+        // 启用库 23 份源在用（番茄系 multi-detail、书山/云端聚合 detail 批量、蓝批批量搜索）。
+        // 并发只发生在抓取这一层（工作线程不碰 Rhino）；responseView 回到调用线程再建。
+        ScriptableObject.putProperty(api, "ajaxAll", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val top = topScope(scope)
+                val urls = jsStringList(args.firstOrNull())
+                if (urls.isEmpty()) return cx.newArray(top, emptyArray<Any>())
+                val sourceId = execContext?.sourceId
+                val db = execContext?.database
+                val fetched = urls.map { url ->
+                    ajaxAllPool.submit(java.util.concurrent.Callable {
+                        runCatching {
+                            runner?.fetchResponse(url = url, sourceId = sourceId, database = db)
+                        }.getOrElse { RuleRunner.Fetched(url, fetchFailureText(it), 0, emptyMap()) }
+                            ?: RuleRunner.Fetched(url, "", 0, emptyMap())
+                    })
+                }.map { future ->
+                    // Future.get 保序：第 i 个结果一定对应第 i 个地址（上游 mapAsync 也是保序的）。
+                    runCatching { future.get() }.getOrElse {
+                        RuleRunner.Fetched("", fetchFailureText(it), 0, emptyMap())
+                    }
+                }
+                return cx.newArray(top, fetched.map { responseView(cx, scope, it) as Any }.toTypedArray())
             }
         })
 
@@ -952,8 +1171,81 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // java.getWebViewUA()：部分书源用它给站点请求伪装 WebView 的 UA
         ScriptableObject.putProperty(api, "getWebViewUA", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any =
-                "Mozilla/5.0 (Linux; Android 13; Pixel 5 Build/TQ3A.230805.001; wv) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Version/4.0 Chrome/131.0.0.0 Mobile Safari/537.36"
+                JS_WEBVIEW_USER_AGENT
+        })
+
+        // java.getUserAgent()：上游与 getWebViewUA 同一个串（见常量的注释），别改成桌面 UA：
+        // 蓝批系列的 `isSourceRead()` 用两者相等判断宿主，不等会走进降级分支。
+        ScriptableObject.putProperty(api, "getUserAgent", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any =
+                JS_WEBVIEW_USER_AGENT
+        })
+
+        // java.htmlFormat(html)：上游 `HtmlFormatter.formatKeepImg` —— 去标签、保留 img、整理缩进。
+        // 视频源（红牛资源、U酷资源）拿它把播放页里的 player 配置文本抠出来。
+        ScriptableObject.putProperty(api, "htmlFormat", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any =
+                ScriptHtml.formatKeepImg(args.firstOrNull()?.toString() ?: "")
+        })
+
+        // java.toURL(url[, baseUrl])：上游 `JsURL`，脚本读 `.host` / `.origin` / `.pathname` / `.searchParams`。
+        ScriptableObject.putProperty(api, "toURL", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val url = args.getOrNull(0)?.toString() ?: ""
+                val base = args.getOrNull(1)?.toString()
+                return jsUrlView(scope, url, base)
+            }
+        })
+
+        /**
+         * `cacheFile` 的真正实现（上游 CacheManager 存的是下载后的文件路径，我们直接把文本存缓存表）。
+         *
+         * 键用 `md5Encode16(url)` 与上游一致，外加 `dl:` 前缀，避免和普通 `cache.put` 撞键。
+         * `saveTime` 单位秒、0 表示不过期（上游默认值）。
+         */
+        fun cacheFileText(url: String, saveTime: Int): String {
+            if (url.isBlank()) return ""
+            val key = "dl:" + md5Hex16(url)
+            val sourceId = execContext?.sourceId
+            val db = execContext?.database
+            val cached = ScriptCache.get(sourceId, key, db)
+            if (cached is CharSequence && cached.isNotBlank()) return cached.toString()
+            val body = runCatching { runner?.fetch(url, sourceId, db) }.getOrNull().orEmpty()
+            if (body.isNotBlank()) ScriptCache.put(sourceId, key, body, saveTime, db)
+            return body
+        }
+
+        // java.cacheFile(url[, saveTime])：把远端文本（通常是 js）抓下来缓存后返回内容。
+        // 哔哩轻小说拿它取正文加密脚本，`importScript` 也走这条路。
+        ScriptableObject.putProperty(api, "cacheFile", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val url = args.firstOrNull()?.toString() ?: return ""
+                val saveTime = (args.getOrNull(1) as? Number)?.toInt() ?: 0
+                return cacheFileText(url, saveTime)
+            }
+        })
+
+        // java.importScript(path)：上游 http 走 cacheFile、本地路径读书源私有目录。
+        // 服务端没有那套私有目录，非 http 路径按书源地址相对解析 —— 对 `source.getKey()+"/js/x.js"`
+        // 这类拼法行为一致；真指向本地文件的调用会拿到空内容并抛错（与上游"内容为空则抛"同观感）。
+        ScriptableObject.putProperty(api, "importScript", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val path = args.firstOrNull()?.toString()?.trim() ?: return ""
+                if (path.isEmpty()) return ""
+                val resolved = if (path.startsWith("http", ignoreCase = true)) {
+                    path
+                } else {
+                    absolute(execContext?.sourceId, path)
+                }
+                val text = cacheFileText(resolved, 0)
+                // 上游对空内容抛的是 Java 异常；这里改成 Rhino 自己的 EvaluatorException，
+                // 脚本侧 `try/catch` 才接得住（实测 raw IllegalStateException 会穿透 JS catch，
+                // 最后变成「cannot be cast to java.lang.Error」的解释器崩溃）。
+                if (text.isBlank()) {
+                    throw org.mozilla.javascript.EvaluatorException("$path 内容获取失败或者为空")
+                }
+                return text
+            }
         })
 
         // java.copyText(text)
