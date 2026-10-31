@@ -84,6 +84,13 @@ import io.legado.model.SearchResult
 class RuleRunner(private val responseFetcher: ((String) -> String)? = null, internal var database: Database? = null) {
     constructor(database: Database) : this(null, database)
     constructor(responseFetcher: (String) -> String) : this(responseFetcher, null)
+
+    /**
+     * 测试与离线注入的**完整响应**替身：正文之外还要给状态码、响应头、Set-Cookie。
+     * `responseFetcher` 只能给一个正文字符串，脚本要读 `.cookie('hm')` / `.statusCode()`
+     * 这类形状时就没抓手，所以留这个口子（优先于 `responseFetcher`）。
+     */
+    internal var fetchedFetcher: ((String) -> Fetched)? = null
     private val client = io.legado.http.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
     private val json = Json { ignoreUnknownKeys = true }
     private val jsSandbox = JsSandbox(this)
@@ -1536,6 +1543,12 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val body: String,
         val status: Int,
         val headers: Map<String, String>,
+        /**
+         * 这一趟（含重定向各跳）收到的 `Set-Cookie` 原文，可以有多条。
+         * [headers] 里每个名字只留了第一个值，而 Cookie 恰恰是"同名多条"的 ——
+         * 脚本要 `java.get(url, header).cookie('hm')`（笔趣阁ai 拿它取反爬 Cookie）就得靠这个列表。
+         */
+        val setCookies: List<String> = emptyList(),
     )
 
     private fun fetchDetailed(
@@ -1545,9 +1558,13 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         sourceId: String? = null,
         database: Database? = null,
     ): Fetched {
+        fetchedFetcher?.let { return it(url) }
         responseFetcher?.let { return Fetched(url, it(url), 200, emptyMap()) }
         val db = database ?: this.database
         var request = buildRequest(parseUri(url), options, keyword, sourceId, db)
+        // 这一趟（跟随重定向的每一跳）收到的 Set-Cookie 原文，最后一起交给响应对象：
+        // 上游 Jsoup 的 Connection.Response 就是这个口径 —— 重定向那一跳给的 Cookie，落地时照样能读。
+        val cookieJarTrace = mutableListOf<String>()
         // 首次连接偶发失败（连接复用/握手抖动）时重试一次：书源 JS 常在内部 try/catch 吞掉 ajax 异常，
         // 不重试会表现为「规则执行成功但内容为空」这类极难排查的现象。
         var transientAttempt = 0
@@ -1567,6 +1584,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
                 }
             }
             val setCookies = response.headers().allValues("set-cookie")
+            cookieJarTrace += setCookies
             if (setCookies.isNotEmpty() && db != null && !sourceId.isNullOrBlank()) {
                 // 用「当前这一跳」的地址归档：重定向后落地的域名与入口域名可以完全不同，
                 // 按入口地址存会把 A 站的 Cookie 发给 B 站。
@@ -1608,6 +1626,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
                     headers = response.headers().map().mapNotNull { (name, values) ->
                         values.firstOrNull()?.let { name.lowercase() to it }
                     }.toMap(),
+                    setCookies = cookieJarTrace.toList(),
                 )
             }
             runCatching { response.body().close() }

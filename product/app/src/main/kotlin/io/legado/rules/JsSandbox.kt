@@ -288,7 +288,8 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         } catch (e: Exception) {
             // 不能静默吞掉：否则登录按钮全部「执行成功」却毫无动作，用户无从判断原因。
             // 记录到执行上下文，由调用方决定是展示还是忽略。
-            val detail = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            val raw = e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            val detail = scrubInternalSourceTag(raw)
             context?.lastError = detail
             lastError = detail
             return null
@@ -468,9 +469,76 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // `header(名)` / `headers()` / `headers(名)` 三种写法库里都有：不带名字给全表，带名字给那一个
         ScriptableObject.putProperty(view, "header", fn { lookup(it) })
         ScriptableObject.putProperty(view, "headers", fn { lookup(it) })
+        // 上游 `Connection.Response.cookie(名)` / `.cookies()`：脚本靠它取反爬 Cookie
+        // （实测「笔趣阁ai」写 `java.get(u, header).cookie('hm')`）。值来自这一趟收到的 Set-Cookie，
+        // 同名以**后到的那条**为准 —— 与浏览器覆盖同名 Cookie 的行为一致。
+        val responseCookies = LinkedHashMap<String, String>().apply {
+            fetched.setCookies.forEach { raw -> parseSetCookiePair(raw)?.let { (name, value) -> put(name, value) } }
+        }
+        val cookieTable = NativeObject().also { table ->
+            table.parentScope = top
+            responseCookies.forEach { (cookieName, cookieValue) ->
+                ScriptableObject.putProperty(table, cookieName, cookieValue)
+            }
+        }
+        ScriptableObject.putProperty(view, "cookie", fn { args ->
+            val wanted = args.firstOrNull()?.toString()?.trim()?.ifEmpty { null }
+            when {
+                wanted == null -> cookieTable
+                else -> responseCookies[wanted] ?: Context.getUndefinedValue()
+            }
+        })
+        ScriptableObject.putProperty(view, "cookies", fn { cookieTable })
+        ScriptableObject.putProperty(view, "charset", fn {
+            // 头值里的大小写不受保证（`Charset=UTF-8` 也见过），按不区分大小写取；
+            // 引号可有可无，`;` 或空白就是值的边界。
+            charsetParam.find(fetched.headers["content-type"].orEmpty())?.groupValues?.get(1) ?: ""
+        })
         ScriptableObject.putProperty(view, "raw", rawNode)
         return view
     }
+
+    /**
+     * 一条 `Set-Cookie` 原文 → `名字 to 值`。第一个 `;` 之前是 `name=value`，后面的
+     * Path/Domain/Expires/SameSite 都是属性，不参与值；值两侧的双引号要去掉（RFC 6265）。
+     */
+    private fun parseSetCookiePair(raw: String): Pair<String, String>? {
+        val pair = raw.substringBefore(';').trim()
+        if (pair.isEmpty() || !pair.contains('=')) return null
+        val name = pair.substringBefore('=').trim()
+        val value = pair.substringAfter('=').trim().removeSurrounding("\"")
+        return if (name.isEmpty()) null else name to value
+    }
+
+    /** `Content-Type` 里的 charset 参数，名字大小写不敏感、值两侧的引号可有可无。 */
+    private val charsetParam = Regex("""(?i)\bcharset\s*=\s*["']?([^"';\s]+)""")
+
+    /**
+     * 抓取失败时**递给脚本**的东西。
+     *
+     * 原来是 `it.stackTraceToString()` —— 上游 `AnalyzeRule.ajax` 确实把 stackTrace 当字符串回给脚本，
+     * 但那在我们这儿会变成用户看得见的 `io.legado.rules.RuleExecutionException: 重定向次数超过限制
+     * at io.legado.rules.RuleRunner.fetchDetai…`：类名是我们的、行号是构建产物里的，谁都读不懂。
+     * 这里只留一句人话；仍然是一等字符串，脚本 `JSON.parse(它)` 照样失败，行为不变。
+     */
+    internal fun fetchFailureText(error: Throwable): String {
+        val reason = generateSequence(error) { it.cause }
+            .take(5)     // cause 理论上能成环（A→B→A），别指望它自己断
+            .mapNotNull { it.message?.takeIf { text -> text.isNotBlank() } }
+            .firstOrNull()
+            ?: error.javaClass.simpleName
+        return "抓取失败：$reason"
+    }
+
+    /**
+     * Rhino 把抛出点按 `(脚本名#行)` 缀在异常文本尾巴上。
+     * `rule.js#3` / `jsLib.js#12` 是**书源自己的脚本**，行号对用户有用，留着；
+     * `sandbox-compat#1` 是我们注入的 JSON.parse 兼容层，缀上去读起来像"引擎自己坏了"
+     * （实测「丁斐」那条就这么顶着我们的内部模块名出去），所以只擦这一类。
+     */
+    private val internalSourceTag = Regex("""\s*\((?:sandbox-compat|json-compat|shape-probe)#\d+\)""")
+
+    internal fun scrubInternalSourceTag(message: String): String = internalSourceTag.replace(message, "")
 
     /** Rhino 建数组、查原型都要**顶层作用域**；BaseFunction 收到的 `scope` 是函数自己的激活作用域。 */
     private fun topScope(scope: Scriptable): Scriptable = ScriptableObject.getTopLevelScope(scope)
@@ -746,7 +814,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 // 自己的错误提示）。Java 异常直接穿过 Rhino 会让 `catch (e) { '…' + e }` 变成
                 // ClassCastException 文案，登录界面只剩「服务器错误」都算好的。
                 return runCatching { runner?.fetch(url, execContext?.sourceId, execContext?.database) ?: "" }
-                    .getOrElse { it.stackTraceToString() }
+                    .getOrElse { fetchFailureText(it) }
             }
         })
 
@@ -764,7 +832,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                         body = body,
                         sourceId = execContext?.sourceId,
                     )
-                }.getOrElse { RuleRunner.Fetched(url, it.stackTraceToString(), 0, emptyMap()) }
+                }.getOrElse { RuleRunner.Fetched(url, fetchFailureText(it), 0, emptyMap()) }
                     ?: RuleRunner.Fetched(url, "", 0, emptyMap())
                 return responseView(cx, scope, fetched)
             }
@@ -781,7 +849,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                     val headers = args.getOrNull(1)?.let { parseJsMapOrJson(it) } ?: emptyMap()
                     val fetched = runCatching {
                         runner?.fetchResponse(url = first, headers = headers, sourceId = execContext?.sourceId)
-                    }.getOrElse { RuleRunner.Fetched(first, it.stackTraceToString(), 0, emptyMap()) }
+                    }.getOrElse { RuleRunner.Fetched(first, fetchFailureText(it), 0, emptyMap()) }
                     return responseView(cx, scope, fetched ?: RuleRunner.Fetched(first, "", 0, emptyMap()))
                 }
                 return sessionStore[sessionKey(execContext?.sourceId, first)] ?: Context.getUndefinedValue()
@@ -1271,7 +1339,8 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val fetched = runCatching {
                     runner?.fetchResponse(url = url, headers = headers, sourceId = execContext?.sourceId)
                 }.getOrElse {
-                    return responseView(cx, scope, RuleRunner.Fetched(url.substringBefore(','), it.stackTraceToString(), 0, emptyMap()))
+                    // 与 ajax/get/post 同一个口径：只递一句人话（见 fetchFailureText 的注释）。
+                    return responseView(cx, scope, RuleRunner.Fetched(url.substringBefore(','), fetchFailureText(it), 0, emptyMap()))
                 }
                 return responseView(cx, scope, fetched ?: RuleRunner.Fetched(url, "", 0, emptyMap()))
             }
