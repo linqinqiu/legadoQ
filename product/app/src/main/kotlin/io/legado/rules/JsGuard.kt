@@ -25,6 +25,17 @@ private class BoundedContext : Context() {
 private object BoundedContextFactory : ContextFactory() {
     override fun makeContext(): Context = BoundedContext().apply {
         instructionObserverThreshold = GRANULARITY
+        /**
+         * 显式对齐上游的语言版本（`modules/rhino` 的 `RhinoScriptEngine` 与 `AnalyzeUrl`
+         * 都设 `Context.VERSION_ES6`）。
+         *
+         * 别误读成"这行修了个 bug"：把这行注掉跑 `JsEs6SyntaxTest` 照样绿 ——
+         * Rhino 当前的**默认版本已经能解析**箭头函数与模板字符串
+         * （启用库里 665 份源写 `=>`、429 份写 `${}`，它们本来就一直在跑）。
+         * 显式设它是不把行为押在库的默认值上：升级 Rhino 时默认版本可能变，
+         * 那时这批脚本会一夜之间全红，而没人想得起来原因。
+         */
+        languageVersion = Context.VERSION_ES6
     }
 
     private const val GRANULARITY = 20_000

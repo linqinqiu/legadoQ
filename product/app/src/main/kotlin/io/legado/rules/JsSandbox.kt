@@ -4,6 +4,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.jsoup.Jsoup
 import org.mozilla.javascript.BaseFunction
 import org.mozilla.javascript.ClassShutter
 import org.mozilla.javascript.Context
@@ -12,10 +13,12 @@ import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
 import java.security.MessageDigest
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Base64
 import java.util.Date
 import java.util.Locale
+import java.util.SimpleTimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import io.legado.data.Database
@@ -60,6 +63,14 @@ data class JsExecutionContext(
      * 音频源（如懒人听书）大量这么写；不认的话正文规则返回空、整章取不到。
      */
     var mediaUrl: String? = null,
+    /**
+     * `java.setContent(...)` 存下的内容。上游把脚本里的 `java` 绑成 `AnalyzeRule` 实例本身
+     * （`AnalyzeRule.evalJS`：`bindings["java"] = this`），`setContent` 换掉的就是它手上的 content，
+     * 之后的 `java.getString` / `java.getElements` / `java.getStringList` 都改成解析这一份内容。
+     * 挂在执行上下文（不是沙箱全局）上：一次调用一份，不会跨书源、跨调用互相污染。
+     */
+    var bridgeContent: String? = null,
+    var bridgeBaseUrl: String? = null,
     /** 脚本执行失败的原始原因，供登录动作回传给前端展示（否则按钮会「假成功」） */
     var lastError: String? = null,
     /**
@@ -368,6 +379,30 @@ class JsSandbox(private val runner: RuleRunner? = null) {
 
         override fun construct(cx: Context, s: Scriptable, args: Array<out Any?>): Scriptable =
             call(cx, s, s, args) as Scriptable
+    }
+
+    /** Rhino 建数组、查原型都要**顶层作用域**；BaseFunction 收到的 `scope` 是函数自己的激活作用域。 */
+    private fun topScope(scope: Scriptable): Scriptable = ScriptableObject.getTopLevelScope(scope)
+
+    /** 脚本显式传了内容就用它，没传才用 setContent/src（上游 `getString(rule, mContent)` 的口径）。 */
+    private fun contentOf(context: Context, scope: Scriptable, explicit: Any?, fallback: String): String {
+        if (explicit == null || explicit == Context.getUndefinedValue()) return fallback
+        return jsValueToString(context, scope, explicit) ?: fallback
+    }
+
+    /** JS 传进来的 true 在 Rhino 里可能是 Boolean、数字或字符串，判"真"要三种都认。 */
+    private fun truthy(value: Any?): Boolean = when (value) {
+        null, Context.getUndefinedValue() -> false
+        is Boolean -> value
+        is Number -> value.toDouble() != 0.0
+        is CharSequence -> value.toString().trim().let { it.isNotBlank() && it != "false" && it != "0" && it != "null" }
+        else -> true
+    }
+
+    /** `isUrl=true` 时把取值按 baseUrl 补成绝对地址；补不上就原样给回（与 RuleRunner 的绝对化同一口径）。 */
+    private fun absolute(base: String?, href: String): String {
+        if (base.isNullOrBlank() || href.isBlank()) return href
+        return runCatching { java.net.URI(base).resolve(href.trim()).toString() }.getOrDefault(href)
     }
 
     private fun jsValueToString(context: Context, scope: Scriptable, value: Any?): String? = when (value) {
@@ -966,12 +1001,148 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             }
         })
 
-        // java.getString(rule)
+        // java.encodeURI(值[, 字符集])：上游就是 URLEncoder.encode(str, enc)，默认 UTF-8。
+        // 启用库里有 91 处写在 searchUrl 的脚本里（把关键词拼进地址那一步），缺它整条搜索地址算不出来。
+        ScriptableObject.putProperty(api, "encodeURI", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val text = args.getOrNull(0)?.toString() ?: return ""
+                val charset = args.getOrNull(1)?.toString()?.takeIf { it.isNotBlank() } ?: "UTF-8"
+                return runCatching { URLEncoder.encode(text, charset) }.getOrDefault("")
+            }
+        })
+
+        // java.toNumChapter(标题)：「第一千二百三十四章」→「第1234章」，146 处在用。
+        // 算法逐分支照上游（见 ChapterNumbers）：差一点就跟上游 App 的目录顺序不一样。
+        ScriptableObject.putProperty(api, "toNumChapter", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val text = args.getOrNull(0)?.toString() ?: return ""
+                return ChapterNumbers.toNumChapter(text) ?: text
+            }
+        })
+
+        // java.timeFormatUTC(毫秒, 格式[, 时区偏移小时])：上游用 SimpleTimeZone(sh, "UTC") 格式化。
+        ScriptableObject.putProperty(api, "timeFormatUTC", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val arg = args.getOrNull(0) ?: return ""
+                val millis = when (arg) {
+                    is Number -> arg.toLong()
+                    is Date -> arg.time
+                    else -> arg.toString().toLongOrNull() ?: return ""
+                }
+                val pattern = args.getOrNull(1)?.toString()?.takeIf { it.isNotBlank() } ?: return ""
+                val format = SimpleDateFormat(pattern, Locale.getDefault())
+                // 第三个参数书源写的是**小时**（实测有 0 / 8 / 12 三种），而 SimpleTimeZone 要的是偏移毫秒。
+                // 上游 `SimpleTimeZone(sh, "UTC")` 把小时直接当毫秒传，等于永远按 UTC 出结果
+                //（番茄系那些 `timeFormatUTC(ts, 'yyyy-MM-dd HH:mm:ss', 8)` 在上游其实没生效）。
+                // 这里按作者意图换算成毫秒 —— 界面显示的时间错八小时，比"和上游一样"更糟。
+                val offsetHours = (args.getOrNull(2) as? Number)?.toInt() ?: 0
+                format.timeZone = SimpleTimeZone(offsetHours * 60 * 60 * 1000, "UTC")
+                return runCatching { format.format(Date(millis)) }.getOrDefault("")
+            }
+        })
+
+        // ── 规则再入 ────────────────────────────────────────────────
+        // 上游把脚本里的 `java` 绑成 AnalyzeRule 实例本身（`AnalyzeRule.evalJS`：
+        // `bindings["java"] = this`），所以书源 JS 能用同一套规则方言再解析一次内容。
+        // 启用库里：java.getElements 170 处、java.getElement 226 处、java.getStringList 72 处、
+        // java.setContent 72 处（城堡小说 init、太极小说 init、镇魂小说网 bookList 都是这形状）。
+        // 这几个方法原来完全没有：脚本一调用就 TypeError，界面上只剩「搜索失败」四个字。
+        val bridgeSource = { scope: Scriptable ->
+            execContext?.bridgeContent ?: ScriptableObject.getProperty(scope, "src")?.toString() ?: ""
+        }
+        val bridgeBase = { scope: Scriptable ->
+            execContext?.bridgeBaseUrl ?: ScriptableObject.getProperty(scope, "baseUrl")?.toString()
+        }
+
+        // java.setContent(内容[, 地址])：之后的 java.getXxx 都改成解析这份内容
+        ScriptableObject.putProperty(api, "setContent", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                execContext?.bridgeContent = jsValueToString(cx, scope, args.getOrNull(0))
+                (args.getOrNull(1) as? CharSequence)?.toString()?.takeIf { it.isNotBlank() }
+                    ?.let { url -> execContext?.bridgeBaseUrl = url }
+                return api
+            }
+        })
+
+        // java.getElements / java.getStringList：条目文本数组（HTML 给 outerHtml、JSON 给 JSON 文本）
+        val listItemsFn = object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                // `newArray` 要在**顶层作用域**上找 Array 原型：BaseFunction 收到的 `scope` 是函数自己的
+                // 激活作用域，直接拿去建数组会抛 IllegalArgumentException
+                //（表现又是那句「未找到对象默认值」—— 桥方法加了却照样红，最难查的一种）。
+                val top = ScriptableObject.getTopLevelScope(scope)
+                val rule = args.getOrNull(0)?.toString() ?: return cx.newArray(top, emptyArray<Any>())
+                val items = runCatching {
+                    runner?.listItemsByRule(bridgeSource(scope), rule, bridgeBase(scope)) ?: emptyList()
+                }.getOrDefault(emptyList())
+                return cx.newArray(top, items.map { toJsValue(it, top) }.toTypedArray())
+            }
+        }
+        ScriptableObject.putProperty(api, "getElements", listItemsFn)
+
+        // java.getElement：社区脚本把它当 jQuery 用，最常写 .exists / .text() / .html() / .attr()
+        ScriptableObject.putProperty(api, "getElement", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val rule = args.getOrNull(0)?.toString() ?: ""
+                val first = runCatching {
+                    runner?.listItemsByRule(bridgeSource(scope), rule, bridgeBase(scope))?.firstOrNull()
+                }.getOrNull()
+                val element = first?.let { html ->
+                    runCatching { Jsoup.parseBodyFragment(html).body().firstElementChild() }.getOrNull()
+                }
+                return NativeObject().also { obj ->
+                    obj.parentScope = scope
+                    ScriptableObject.putProperty(obj, "exists", element != null)
+                    ScriptableObject.putProperty(obj, "length", if (element == null) 0 else 1)
+                    fun putMethod(name: String, read: (org.jsoup.nodes.Element, String?) -> String) {
+                        ScriptableObject.putProperty(obj, name, object : BaseFunction() {
+                            override fun call(c: Context, s: Scriptable, t: Scriptable, a: Array<out Any?>): Any {
+                                val target = element ?: return ""
+                                return read(target, a.getOrNull(0)?.toString())
+                            }
+                        })
+                    }
+                    putMethod("text") { el, _ -> el.text() }
+                    putMethod("html") { el, _ -> el.outerHtml() }
+                    putMethod("attr") { el, name -> el.attr(name ?: "") }
+                }
+            }
+        })
+
+        // java.getString(规则[, 内容[, 是否当地址]])：上游签名 `getString(rule, mContent, isUrl)`，
+        // 100 处调用真的传第二个参数（`java.getString("text", r)` 这类）。
+        // 不接就等于把脚本明确指定的内容忽略，取到的是别的地方的值 —— 静默错比报错更难查。
         ScriptableObject.putProperty(api, "getString", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val rule = args.firstOrNull()?.toString() ?: return ""
-                val src = ScriptableObject.getProperty(scope, "src")?.toString() ?: ""
-                return NodeValue.document(src).value(rule) ?: ""
+                val text = NodeValue.document(contentOf(cx, scope, args.getOrNull(1), bridgeSource(scope))).value(rule) ?: return ""
+                return if (truthy(args.getOrNull(2))) absolute(bridgeBase(scope), text) else text
+            }
+        })
+
+        // java.getStringList(规则[, 内容[, 是否当地址]])：上游给的是**每个元素的取值**列表
+        //（末段是属性名时逐个取属性、去重、按行拼），正好等于我们 value() 结果按行拆开
+        // —— 与 getElements（给条目本身）不是一回事：`.dropDown@li@data-p` 要的是 data-p 的列表。
+        ScriptableObject.putProperty(api, "getStringList", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val rule = args.getOrNull(0)?.toString() ?: return cx.newArray(topScope(scope), emptyArray<Any>())
+                val content = contentOf(cx, scope, args.getOrNull(1), bridgeSource(scope))
+                val base = bridgeBase(scope)
+                val asUrl = truthy(args.getOrNull(2))
+                // 两种形状要分开：
+                // - 规则带取值尾段（`option@value`、`#b@a@href`）→ 上游给的是**每个元素的取值**列表；
+                // - 纯 JSONPath（`$.data.list[*]`）没有尾段可拆，上游给的是条目本身 → 保持条目文本（JSON），
+                //   脚本拿到后自己 `JSON.parse`。走上面那条路会把对象拼成没法解析的 Java toString。
+                val bareJsonPath = rule.startsWith("$") || isJsonPrefixedRule(rule)
+                val values = if (bareJsonPath) {
+                    runCatching { runner?.listItemsByRule(content, rule, base) ?: emptyList() }.getOrDefault(emptyList())
+                } else {
+                    runCatching { NodeValue.document(content).value(rule) ?: "" }
+                        .getOrDefault("")
+                        .lines().filter { it.isNotBlank() }
+                }
+                val out = if (asUrl) values.map { absolute(base, it) } else values
+                return cx.newArray(topScope(scope), out.map { toJsValue(it, topScope(scope)) }.toTypedArray())
             }
         })
 

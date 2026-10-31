@@ -1836,6 +1836,27 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         return out
     }
 
+    /**
+     * 给 JS 桥用的「再入」入口：对**任意内容**跑一次列表规则，把每条变成文本。
+     *
+     * 为什么必须有：上游把脚本里的 `java` 绑成 `AnalyzeRule` 实例本身
+     * （`AnalyzeRule.evalJS`：`bindings["java"] = this`），所以书源 JS 里可以直接用同一套
+     * 规则方言再解析一次页面 —— 全库有 170 处 `java.getElements(...)`、226 处 `java.getElement(...)`、
+     * 72 处 `java.getStringList(...)`，配合 `java.setContent(...)` 用
+     * （典型写法：`var so = java.ajax(url); java.setContent(so); java.getStringList(".dropDown@li@data-p")`，
+     * 城堡小说 / 太极小说 / 镇魂小说网都是这个形状）。我们原来没有这几个方法，
+     * 脚本一调用就是 `TypeError`，表现成「搜索失败」而完全看不出是少个桥方法。
+     *
+     * 条目文本的口径见 [NodeValue.bridgeText]：HTML 给 outerHtml、JSON 给 JSON 文本。
+     */
+    internal fun listItemsByRule(content: String, rule: String, baseUrl: String?): List<String> {
+        val listRule = stripListPrefixMarkers(rule)
+        if (listRule.isEmpty()) return emptyList()
+        val base = NodeValue.document(content)
+        val nodes = if (isJsRule(listRule)) jsListNodes(base, listRule, content, baseUrl ?: "") else nodes(content, listRule)
+        return nodes.map { it.bridgeText() }
+    }
+
     private fun nodes(body: String, rule: String): List<NodeValue> {
         // `-` / `+` 是目录规则的「倒序 / 顺序」标记，可真实书源把它也写进了搜索规则
         // （🌸快眼看书™ `bookList: "+@css:.librarylist li"`）：这个前缀既不是 CSS 也不是方言，

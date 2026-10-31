@@ -292,6 +292,21 @@ internal class NodeValue private constructor(
     private fun documentText(): String = html?.html() ?: json?.toString() ?: ""
 
     /**
+     * `java.getElements` / `java.getElement` 交给脚本的**条目文本**，按上游给对象的形状来：
+     * - HTML 条目 → `outerHtml`（上游给的是 Jsoup `Elements`，`toString` 就是 outerHtml，
+     *   脚本常拿它再 `java.setContent(...)` 或直接正则取属性，少了开闭标签就取不到）；
+     * - JSON 条目 → 合法 JSON 文本（脚本普遍 `JSON.parse` 再读字段）；
+     * - AllInOne 正则条目 → 整个匹配（`$0`）；
+     * - 文档节点 → 建节点时的原文。
+     */
+    internal fun bridgeText(): String = when {
+        html != null -> html.outerHtml()
+        json != null -> toJsonText(json)
+        groups != null -> groups.firstOrNull().orEmpty()
+        else -> rootText.orEmpty()
+    }
+
+    /**
      * 规则主干为空（`##正则##替换` 起头）时，正则作用的对象 —— 上游 `AnalyzeRule` 里的 `content`。
      * 文档节点优先用建节点时收到的**原文**（`rootText`）：`html.html()` 会把属性引号等重新序列化，
      * `##data-bid="([^"]+)"##` 这种按源码写的正则就对不上了。
