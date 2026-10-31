@@ -189,13 +189,19 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             // 书源规则里 `JSON.parse(result)` 和 `result.属性` 两种写法都有：沙箱把 JSON 条目作为**对象**注入
             // result（否则属性访问取不到值），于是前者会把对象转成 "[object Object]" 再解析失败，
             // 规则里的 try/catch 把它吞掉后整条记录消失，表现为「搜索完成：0 项」。让 JSON.parse 接受已解析对象即可两全。
+            // 但"是对象"不等于"已经解析过"：`java.get/post` 现在回的是**字符串形状的响应对象**
+            //（Rhino 的 `new String(正文)` 再挂 `.body()` / `.statusCode()`），`typeof` 一样是 "object"。
+            // 所以先问 `valueOf()`：能拿到字符串就按文本解析，只有真对象（我们注入的 Map/List）才原样返回。
             runCatching {
                 cx.evaluateString(
                     scope,
                     "if (typeof JSON !== 'undefined' && typeof JSON.parse === 'function') {" +
                         "var __legadoOrigParse = JSON.parse;" +
                         "JSON.parse = function(value) {" +
-                        "if (value !== null && typeof value === 'object') return value;" +
+                        "if (value !== null && typeof value === 'object') {" +
+                        "if (typeof value.valueOf === 'function' && typeof value.valueOf() === 'string')" +
+                        "return __legadoOrigParse.call(JSON, value.valueOf());" +
+                        "return value;}" +
                         "return __legadoOrigParse.call(JSON, value);};}",
                     "sandbox-compat", 1, null,
                 )
@@ -379,6 +385,84 @@ class JsSandbox(private val runner: RuleRunner? = null) {
 
         override fun construct(cx: Context, s: Scriptable, args: Array<out Any?>): Scriptable =
             call(cx, s, s, args) as Scriptable
+    }
+
+    /**
+     * 「当属性读也当方法调」的对象。
+     *
+     * 上游递给脚本的是 `StrResponse` / OkHttp `Response` / Jsoup `Connection.Response` 这些
+     * **真对象**，它们的 `raw`、`request`、`body` 既可能是字段也可能是同名方法，社区源两种写法都有。
+     * 我们不放 Java 对象进沙箱（`setClassShutter { false }` 是 RCE 防线），于是用这个替身：
+     * 调用时返回自己，读属性时按挂上去的成员取，转成字符串时给 [text]。
+     */
+    private class ChainedObject(scope: Scriptable, private val text: String = "") : BaseFunction() {
+        init {
+            parentScope = scope
+        }
+
+        override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any = this
+
+        override fun getDefaultValue(typeHint: Class<*>?): Any = text
+    }
+
+    /**
+     * 「既是字符串、又是响应对象」的替身。
+     *
+     * 为什么两边都要：`java.get/post` 的结果，启用库里有 **116 处**接着调字符串方法
+     *（`.split()`、`.indexOf()`、`.replace()`），另有 **115 处**接着调响应方法
+     *（`.body()`、`.statusCode()`、`.headers('Location')`）。上游回的是真对象
+     *（Jsoup `Connection.Response` / `StrResponse`，后者的 `body`、`url` 还是字段与方法同名）：
+     * 只回字符串，后一批就报"未找到函数"；只回对象，前一批就碎。
+     *
+     * 做法是让 Rhino 自己 `new String(正文)`（Rhino 的 `NativeString` 是包内私有、也不允许继承，
+     * 走构造函数是唯一干净的路），再把响应成员挂在这个实例上：
+     * 字符串该有的一切仍走 `String.prototype`（`length`、`indexOf`、拼接、`String(x)`），
+     * 响应成员由我们补。**不往沙箱里放任何 Java / OkHttp 对象**（`setClassShutter { false }` 是 RCE 底线）。
+     */
+    private fun responseView(cx: Context, scope: Scriptable, fetched: RuleRunner.Fetched): Scriptable {
+        val top = topScope(scope)
+        val view = cx.newObject(top, "String", arrayOf<Any?>(fetched.body))
+        fun fn(read: (List<Any?>) -> Any?) = object : BaseFunction() {
+            override fun call(c: Context?, s: Scriptable?, t: Scriptable?, a: Array<out Any?>): Any {
+                return runCatching { read(a.toList()) }.getOrElse { Context.getUndefinedValue() } ?: Context.getUndefinedValue()
+            }
+        }
+        // 链节点：`.raw()` 与 `.raw.request` 都要能读，所以"调用返回自己、属性另外挂"
+        fun chained(text: String): BaseFunction = object : BaseFunction() {
+            init {
+                parentScope = top
+            }
+
+            override fun call(c: Context, s: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any = this
+
+            override fun getDefaultValue(typeHint: Class<*>?): Any = text
+        }
+        val headerTable = NativeObject().also { table ->
+            table.parentScope = top
+            fetched.headers.forEach { (header, value) -> ScriptableObject.putProperty(table, header, value) }
+        }
+        fun lookup(args: List<Any?>): Any? {
+            val key = args.firstOrNull()?.toString()?.trim()?.lowercase()?.ifEmpty { null }
+            return key?.let { fetched.headers[it] ?: "" } ?: headerTable
+        }
+        val requestNode = chained(fetched.url).also { node ->
+            ScriptableObject.putProperty(node, "url", CallableBody(top, fetched.url))
+        }
+        val rawNode = chained(fetched.url).also { node ->
+            ScriptableObject.putProperty(node, "request", requestNode)
+            ScriptableObject.putProperty(node, "body", CallableBody(top, fetched.body))
+        }
+        ScriptableObject.putProperty(view, "body", CallableBody(top, fetched.body))
+        ScriptableObject.putProperty(view, "url", CallableBody(top, fetched.url))
+        ScriptableObject.putProperty(view, "contentType", CallableBody(top, fetched.headers["content-type"] ?: ""))
+        ScriptableObject.putProperty(view, "statusCode", fn { fetched.status })
+        ScriptableObject.putProperty(view, "statusMessage", fn { if (fetched.status in 200..299) "OK" else "" })
+        ScriptableObject.putProperty(view, "isSuccessful", fn { fetched.status in 200..299 })
+        // `header(名)` / `headers()` / `headers(名)` 三种写法库里都有：不带名字给全表，带名字给那一个
+        ScriptableObject.putProperty(view, "header", fn { lookup(it) })
+        ScriptableObject.putProperty(view, "headers", fn { lookup(it) })
+        ScriptableObject.putProperty(view, "raw", rawNode)
+        return view
     }
 
     /** Rhino 建数组、查原型都要**顶层作用域**；BaseFunction 收到的 `scope` 是函数自己的激活作用域。 */
@@ -661,9 +745,17 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val url = args.getOrNull(0)?.toString() ?: return ""
                 val body = args.getOrNull(1)?.toString() ?: ""
                 val headers = args.getOrNull(2)?.let { parseJsMapOrJson(it) } ?: emptyMap()
-                val fullUrl = "$url,${urlOptionsJson("POST", headers, body)}"
-                return runCatching { runner?.fetch(fullUrl, execContext?.sourceId, execContext?.database) ?: "" }
-                    .getOrElse { it.stackTraceToString() }
+                val fetched = runCatching {
+                    runner?.fetchResponse(
+                        url = url,
+                        method = "POST",
+                        headers = headers,
+                        body = body,
+                        sourceId = execContext?.sourceId,
+                    )
+                }.getOrElse { RuleRunner.Fetched(url, it.stackTraceToString(), 0, emptyMap()) }
+                    ?: RuleRunner.Fetched(url, "", 0, emptyMap())
+                return responseView(cx, scope, fetched)
             }
         })
 
@@ -676,8 +768,10 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val looksLikeUrl = first.startsWith("http://", ignoreCase = true) || first.startsWith("https://", ignoreCase = true)
                 if (args.size >= 2 || looksLikeUrl) {
                     val headers = args.getOrNull(1)?.let { parseJsMapOrJson(it) } ?: emptyMap()
-                    return runCatching { runner?.fetch("$first,${urlOptionsJson("GET", headers, null)}", execContext?.sourceId, execContext?.database) ?: "" }
-                        .getOrElse { it.stackTraceToString() }
+                    val fetched = runCatching {
+                        runner?.fetchResponse(url = first, headers = headers, sourceId = execContext?.sourceId)
+                    }.getOrElse { RuleRunner.Fetched(first, it.stackTraceToString(), 0, emptyMap()) }
+                    return responseView(cx, scope, fetched ?: RuleRunner.Fetched(first, "", 0, emptyMap()))
                 }
                 return sessionStore[sessionKey(execContext?.sourceId, first)] ?: Context.getUndefinedValue()
             }
@@ -1145,6 +1239,246 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 return cx.newArray(topScope(scope), out.map { toJsValue(it, topScope(scope)) }.toTypedArray())
             }
         })
+
+        // ── 响应对象 ───────────────────────────────────────────────
+        // `java.connect(地址[, 头JSON])`、`java.getStrResponse(地址)`、`java.head(地址[, 头对象])`：
+        // 上游回的是**响应对象**（`StrResponse` / Jsoup `Connection.Response`），脚本拿到后接着链式取
+        // `.body()`、`.url()`、`.statusCode()`、`.headers("Location")`，还有
+        // `String(x.raw().request().url())` —— 重定向落地的真实接口地址。
+        // 启用库份数：connect 53、head 13、getStrResponse 9。实测样本 奇书网络（导入）
+        // 就停在 `java.connect(url).raw().request().url()` 这一句上（rule.js#7）。
+        // 这里给的是**字段名一致的 JS 替身**：不把任何 Java / OkHttp 对象递进沙箱
+        //（`setClassShutter { false }` 那道防线不为几个源开口子）。
+        // 响应对象统一用 ResponseString（既是字符串又是响应），见该类的注释。
+
+        // java.connect(地址[, 头JSON[, 超时]])：上游默认 GET；失败时上游把异常收成
+        // `StrResponse(url, stackTrace)`，所以这里也**不抛**给脚本 —— 脚本自己判 `.body()` 空不空。
+        val connectFn = object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val url = args.getOrNull(0)?.toString() ?: return ""
+                val headers = args.getOrNull(1)?.let { parseJsMapOrJson(it) } ?: emptyMap()
+                val fetched = runCatching {
+                    runner?.fetchResponse(url = url, headers = headers, sourceId = execContext?.sourceId)
+                }.getOrElse {
+                    return responseView(cx, scope, RuleRunner.Fetched(url.substringBefore(','), it.stackTraceToString(), 0, emptyMap()))
+                }
+                return responseView(cx, scope, fetched ?: RuleRunner.Fetched(url, "", 0, emptyMap()))
+            }
+        }
+        ScriptableObject.putProperty(api, "connect", connectFn)
+        ScriptableObject.putProperty(api, "getStrResponse", connectFn)
+        ScriptableObject.putProperty(api, "getStrResponseAwait", connectFn)
+
+        // java.head(地址[, 头对象[, 超时]])：只要头与落地地址（拿文件大小、验重定向链），
+        // 所以正文一律给空串 —— 别让它看起来像"读到了空页面"。
+        ScriptableObject.putProperty(api, "head", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val url = args.getOrNull(0)?.toString() ?: return ""
+                val headers = args.getOrNull(1)?.let { parseJsMapOrJson(it) } ?: emptyMap()
+                val fetched = runCatching {
+                    runner?.fetchResponse(url = url, method = "HEAD", headers = headers, sourceId = execContext?.sourceId)?.copy(body = "")
+                }.getOrNull() ?: RuleRunner.Fetched(url, "", 0, emptyMap())
+                return responseView(cx, scope, fetched)
+            }
+        })
+
+        // ── 加密族（上游 help/crypto 那一套，参数顺序照 JsEncodeUtils）─────────────
+        // 启用库份数：base64DecodeToByteArray 115、createSymmetricCrypto 44、HMacHex 21、
+        // digestHex 12、strToBytes 7、hexDecodeToByteArray 4、HMacBase64 3、bytesToStr 2。
+        // 缺它们时脚本半路抛错，连带 jsLib 里后面赋值的 `sign`/`flag` 全部变成 ReferenceError，
+        // 看着像"源写了未定义变量"（实测 5 份源就是这个假象）。
+        fun simpleCrypto(name: String, block: (Array<out Any?>) -> Any?) = object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val result = runCatching { block(args) }
+                if (result.isFailure) {
+                    val detail = result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
+                    execContext?.lastError = "java.$name 失败：${detail ?: "未知原因"}"
+                    lastError = "java.$name 失败：${detail ?: "未知原因"}"
+                    return ""
+                }
+                return result.getOrNull() ?: ""
+            }
+        }
+        ScriptableObject.putProperty(api, "digestHex", simpleCrypto("digestHex") { args ->
+            ScriptCrypto.digestHex(args.getOrNull(0)?.toString() ?: "", args.getOrNull(1)?.toString() ?: "MD5")
+        })
+        ScriptableObject.putProperty(api, "digestBase64Str", simpleCrypto("digestBase64Str") { args ->
+            ScriptCrypto.digestBase64(args.getOrNull(0)?.toString() ?: "", args.getOrNull(1)?.toString() ?: "MD5")
+        })
+        ScriptableObject.putProperty(api, "HMacHex", simpleCrypto("HMacHex") { args ->
+            ScriptCrypto.hmacHex(
+                args.getOrNull(0)?.toString() ?: "",
+                args.getOrNull(1)?.toString() ?: "HmacMD5",
+                args.getOrNull(2)?.toString() ?: "",
+            )
+        })
+        ScriptableObject.putProperty(api, "HMacBase64", simpleCrypto("HMacBase64") { args ->
+            ScriptCrypto.hmacBase64(
+                args.getOrNull(0)?.toString() ?: "",
+                args.getOrNull(1)?.toString() ?: "HmacMD5",
+                args.getOrNull(2)?.toString() ?: "",
+            )
+        })
+        // 字节族：脚本会 `.slice(0,16)` 取 iv、按下标比对，所以给的是**真 JS 数组**，不是 Java 数组
+        fun bytesResult(name: String, read: (Array<out Any?>) -> ByteArray) = object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val bytes = runCatching { read(args) }
+                    .getOrElse {
+                        val detail = it.message ?: it.javaClass.simpleName
+                        execContext?.lastError = "java.$name 失败：$detail"
+                        lastError = "java.$name 失败：$detail"
+                        return cx.newArray(topScope(scope), emptyArray<Any>())
+                    }
+                return cx.newArray(topScope(scope), ScriptCrypto.unsigned(bytes).map { it as Any }.toTypedArray())
+            }
+        }
+        ScriptableObject.putProperty(api, "base64DecodeToByteArray", bytesResult("base64DecodeToByteArray") { args ->
+            ScriptCrypto.base64ToBytes(args.getOrNull(0)?.toString() ?: "")
+        })
+        ScriptableObject.putProperty(api, "hexDecodeToByteArray", bytesResult("hexDecodeToByteArray") { args ->
+            ScriptCrypto.hexToBytes(args.getOrNull(0)?.toString() ?: "")
+        })
+        ScriptableObject.putProperty(api, "strToBytes", bytesResult("strToBytes") { args ->
+            val text = args.getOrNull(0)?.toString() ?: ""
+            val charset = args.getOrNull(1)?.toString()?.takeIf { it.isNotBlank() }
+            text.toByteArray(charset?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8)
+        })
+        // java.bytesToStr(字节数组[, 字符集])：把上面那三类数组还原成文本
+        ScriptableObject.putProperty(api, "bytesToStr", simpleCrypto("bytesToStr") { args ->
+            val charset = args.getOrNull(1)?.toString()?.takeIf { it.isNotBlank() }
+            String(
+                ScriptCrypto.toBytes(args.getOrNull(0)),
+                charset?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8,
+            )
+        })
+
+        // java.createSymmetricCrypto(变换, 密钥[, iv]) —— 上游 `SymmetricCryptoAndroid` 的等价物。
+        // 启用库里有 44 处在用（蓝海、猫眼看书、书山聚合、同人小说…），脚本拿到对象后接着调
+        // `.decryptStr(...)` / `.encryptBase64(...)`；配套的 `java.base64DecodeToByteArray` 有 115 处
+        //（常见形状是先 base64 解码、`.slice(0,16)` 取 iv，再把剩下的喂给 decrypt）。
+        // 语义逐条照上游：变换里没有 `/` 就补成 `ALG/ECB/PKCS5Padding`、DES/DESede 超长密钥截断、
+        // `decrypt(String)` 先判十六进制再判 base64、hex 一律小写。
+        ScriptableObject.putProperty(api, "createSymmetricCrypto", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val transformation = args.getOrNull(0)?.toString()?.takeIf { it.isNotBlank() }
+                    ?: "AES/CBC/PKCS5Padding"
+                val crypto = ScriptCrypto.Symmetric(
+                    transformation,
+                    ScriptCrypto.toBytes(args.getOrNull(1)),
+                    args.getOrNull(2)?.let { ScriptCrypto.toBytes(it) }?.takeIf { it.isNotEmpty() },
+                )
+
+                // 失败要说得出是哪一步失败的：上游把加密数据当明文用、界面显示"正文为空"，
+                // 没人会想到是密钥不对。
+                fun describe(error: Throwable): String {
+                    val detail = "java.createSymmetricCrypto(…) 失败：${error.message ?: error.javaClass.simpleName}"
+                    execContext?.lastError = detail
+                    lastError = detail
+                    return ""
+                }
+                fun stringArg(a: Array<out Any?>): String = a.getOrNull(0)?.toString() ?: ""
+                // 文本入参按 UTF-8 取字节（上游 `encrypt(data: String)`），数组/列表入参按字节取
+                //（脚本会把 `base64DecodeToByteArray` 的结果原样传回来）。
+                fun byteArg(a: Array<out Any?>): ByteArray {
+                    val raw = a.getOrNull(0) ?: return ByteArray(0)
+                    return if (raw is CharSequence) raw.toString().toByteArray(Charsets.UTF_8)
+                    else ScriptCrypto.toBytes(raw)
+                }
+                fun textMethod(read: (String) -> Any?) = object : BaseFunction() {
+                    override fun call(c: Context?, s: Scriptable?, t: Scriptable?, a: Array<out Any?>): Any =
+                        runCatching { read(stringArg(a)) }.getOrElse { describe(it) } ?: ""
+                }
+                fun bytesMethod(read: (ByteArray) -> ByteArray) = object : BaseFunction() {
+                    // 成功路径给的是非空数组，所以这里不再挂 `?: ""`（挂了也是死分支，编译器会提醒）。
+                    override fun call(c: Context?, s: Scriptable?, t: Scriptable?, a: Array<out Any?>): Any =
+                        runCatching { ScriptCrypto.unsigned(read(byteArg(a))) }.getOrElse { describe(it) }
+                }
+                // `decryptStr` / `decrypt` 的入参两种形状都要收：
+                // 传字符串走上游的「十六进制优先、否则 base64」判别，传字节数组就直接用。
+                fun smartMethod(readString: (String) -> Any?, readBytes: (ByteArray) -> Any?) = object : BaseFunction() {
+                    override fun call(c: Context?, s: Scriptable?, t: Scriptable?, a: Array<out Any?>): Any {
+                        val raw = a.getOrNull(0)
+                        return runCatching {
+                            if (raw == null || raw is CharSequence) readString(stringArg(a)) else readBytes(ScriptCrypto.toBytes(raw))
+                        }.getOrElse { describe(it) } ?: ""
+                    }
+                }
+                return NativeObject().also { obj ->
+                    obj.parentScope = scope
+                    ScriptableObject.putProperty(obj, "setIv", object : BaseFunction() {
+                        override fun call(c: Context?, s: Scriptable?, t: Scriptable?, a: Array<out Any?>): Any =
+                            runCatching { crypto.setIv(byteArg(a)); "ok" }.getOrElse { describe(it) }
+                    })
+                    ScriptableObject.putProperty(obj, "encrypt", bytesMethod { crypto.encrypt(it) })
+                    ScriptableObject.putProperty(obj, "decrypt", smartMethod(
+                        readString = { crypto.decrypt(it) },
+                        readBytes = { bytes -> crypto.decrypt(bytes) },
+                    ))
+                    ScriptableObject.putProperty(obj, "decryptStr", smartMethod(
+                        readString = { crypto.decryptStr(it) },
+                        readBytes = { bytes -> String(crypto.decrypt(bytes), Charsets.UTF_8) },
+                    ))
+                    ScriptableObject.putProperty(obj, "encryptBase64", textMethod { crypto.encryptBase64(it) })
+                    ScriptableObject.putProperty(obj, "encryptHex", textMethod { crypto.encryptHex(it) })
+                    ScriptableObject.putProperty(obj, "encryptStr", textMethod { crypto.encryptStr(it) })
+                    ScriptableObject.putProperty(obj, "decryptBase64", textMethod {
+                        ScriptCrypto.unsigned(crypto.decryptBase64(it))
+                    })
+                    ScriptableObject.putProperty(obj, "decryptHex", textMethod {
+                        ScriptCrypto.unsigned(crypto.decryptHex(it))
+                    })
+                }
+            }
+        })
+
+
+        // ── 上游标了 @Deprecated、但社区源还在调的具名便捷函数 ──────────
+        // 实测启用库里真在用的只有 `java.desEncodeToBase64String`（8 处，全在阅友小说那两家
+        // goway.reader.yueyouxs.com —— 整条搜索地址的签名与参数就是这一行算出来的）。
+        // 参数顺序照上游原样收（数据、密钥、变换、iv），实现复用 ScriptCrypto.Symmetric；
+        // 3DES 那一对上游签名多两段（模式、补码），变换拼成 DESede/模式/补码。
+        fun symmetricOf(transformation: String, key: String, iv: String): ScriptCrypto.Symmetric =
+            ScriptCrypto.Symmetric(
+                transformation,
+                key.toByteArray(Charsets.UTF_8),
+                iv.toByteArray(Charsets.UTF_8).takeIf { it.isNotEmpty() },
+            )
+        fun desLike(name: String, read: (String, String, String, String) -> Any?) = object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                val result = runCatching {
+                    read(
+                        args.getOrNull(0)?.toString() ?: "",
+                        args.getOrNull(1)?.toString() ?: "",
+                        args.getOrNull(2)?.toString()?.takeIf { it.isNotBlank() } ?: "DES/CBC/PKCS5Padding",
+                        args.getOrNull(3)?.toString() ?: "",
+                    )
+                }
+                if (result.isFailure) {
+                    val message = "java.$name 失败：${result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }}"
+                    execContext?.lastError = message
+                    lastError = message
+                    return ""
+                }
+                return result.getOrNull() ?: ""
+            }
+        }
+        ScriptableObject.putProperty(api, "desEncodeToBase64String", desLike("desEncodeToBase64String") { d, k, t, iv ->
+            symmetricOf(t, k, iv).encryptBase64(d)
+        })
+        ScriptableObject.putProperty(api, "desEncodeToString", desLike("desEncodeToString") { d, k, t, iv ->
+            symmetricOf(t, k, iv).encryptStr(d)
+        })
+        // 上游 `desDecodeToString` 与 `desBase64DecodeToString` 是同一句 `decryptStr(data)`
+        //（decrypt(String) 自己会先判十六进制再判 base64），这里保持一样，不自己"纠正"成两套。
+        ScriptableObject.putProperty(api, "desDecodeToString", desLike("desDecodeToString") { d, k, t, iv ->
+            symmetricOf(t, k, iv).decryptStr(d)
+        })
+        ScriptableObject.putProperty(api, "desBase64DecodeToString", desLike("desBase64DecodeToString") { d, k, t, iv ->
+            symmetricOf(t, k, iv).decryptStr(d)
+        })
+        // 3DES 那一对（tripleDESEncodeBase64Str / tripleDESDecodeStr）没做：启用库里 0 处在用，
+        // 且上游签名是**五参**（数据、密钥、模式、补码、iv）；照上面四参的形状顺手写会留下
+        // "签名看着对、其实错了"的坑，等真有源要用再按五参补。
 
         // java.put(key, val)：读取由上面那个 java.get 分发器负责（KV 分支）。
         ScriptableObject.putProperty(api, "put", object : BaseFunction() {

@@ -1,6 +1,6 @@
 {
   "name": "legadoq-ai-framework",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "description": "legadoQ - 本地阅读服务（后端与内置 UI 在 product）",

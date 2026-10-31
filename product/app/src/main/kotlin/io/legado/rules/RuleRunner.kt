@@ -395,7 +395,18 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
                 append(it)
             }
         }.takeIf { it.isNotBlank() }
-        return JsExecutionContext(sourceId = sourceUrl, database = database, jsLib = library)
+        // `sourceName` / `sourceComment` 必须一起填：启用库里有 **69 处**脚本读
+        // `source.bookSourceComment`，其中 43 处是真的把可执行代码藏在注释里再
+        // `eval(String(source.bookSourceComment))`（繁星小说、满孟小说、顶通漫画、狸猫故事、猫眼看书…）。
+        // 不填时那句 eval 拿到空串，脚本后面用到的 `sign` / `flag` 全变成
+        // `ReferenceError: “sign” 未定义` —— 报错指向一个根本不存在的"源写错的变量"。
+        return JsExecutionContext(
+            sourceId = sourceUrl,
+            sourceName = source.string("bookSourceName"),
+            sourceComment = source.string("bookSourceComment"),
+            database = database,
+            jsLib = library,
+        )
     }
 
     /**
@@ -1349,6 +1360,31 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         return fetchUrl(cleanUrl, options, null, sourceId, database ?: this.database)
     }
 
+    /**
+     * [fetch] 的"带响应信息"版本，给 `java.connect` / `java.getStrResponse` / `java.head` 用：
+     * 上游那三个方法回的是响应对象，脚本会继续取 `.url()`、`.statusCode()`、`.header("Location")`
+     * 与重定向后的落地地址（`StrResponse.raw().request().url()`）。
+     */
+    internal fun fetchResponse(
+        url: String,
+        method: String = "GET",
+        headers: Map<String, String> = emptyMap(),
+        body: String? = null,
+        sourceId: String? = null,
+        database: Database? = null,
+    ): Fetched {
+        val (cleanUrl, parsed) = splitUrlOptions(url)
+        val verb = method.uppercase().takeIf { it == "POST" || it == "HEAD" } ?: "GET"
+        // URL 尾巴上 `,{...}` 里声明的字符集/请求方式要保留（GBK 站点的接口常写在那儿），
+        // 调用方给的 headers 覆盖同名项。
+        val options = (parsed ?: UrlOptions()).copy(
+            method = verb,
+            headers = parsed?.headers.orEmpty() + headers,
+            body = body ?: parsed?.body,
+        )
+        return fetchDetailed(cleanUrl, options, null, sourceId, database ?: this.database)
+    }
+
     /** 书源自己的 `header` 字段（`{"User-Agent":"...","Referer":"..."}`）。凭据不在这里合，见 [effectiveHeaders]。 */
     private fun parseSourceHeaders(source: JsonObject): Map<String, String> {
         val headers = mutableMapOf<String, String>()
@@ -1483,8 +1519,33 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         keyword: String?,
         sourceId: String? = null,
         database: Database? = null,
-    ): String {
-        responseFetcher?.let { return it(url) }
+    ): String = fetchDetailed(url, options, keyword, sourceId, database).body
+
+    /**
+     * 一次抓取的完整结果。
+     *
+     * 为什么要把「落地地址 + 状态码 + 响应头」带出来：上游给脚本的 `java.connect` /
+     * `java.getStrResponse` / `java.head` 是**响应对象**（`StrResponse` 与 Jsoup 的
+     * `Connection.Response`），启用库里有 53 + 9 + 13 处在链式取
+     * `.raw().request().url()`（重定向后的真实接口地址）、`.body()`、`.header("Location")`
+     * —— 我们只回正文，这些脚本就在字符串上调方法，报一句
+     * `TypeError: 在对象 …中未找到函数`，看着像源坏了。
+     */
+    internal data class Fetched(
+        val url: String,
+        val body: String,
+        val status: Int,
+        val headers: Map<String, String>,
+    )
+
+    private fun fetchDetailed(
+        url: String,
+        options: UrlOptions?,
+        keyword: String?,
+        sourceId: String? = null,
+        database: Database? = null,
+    ): Fetched {
+        responseFetcher?.let { return Fetched(url, it(url), 200, emptyMap()) }
         val db = database ?: this.database
         var request = buildRequest(parseUri(url), options, keyword, sourceId, db)
         // 首次连接偶发失败（连接复用/握手抖动）时重试一次：书源 JS 常在内部 try/catch 吞掉 ajax 异常，
@@ -1533,11 +1594,20 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
                     throw RuleExecutionException("上游响应超过 2 MiB 限制")
                 }
                 val charset = (options?.charset)
-                return decodeBody(
-                    bytes,
-                    response.headers().firstValue("content-encoding").orElse(""),
-                    charset,
-                    response.headers().firstValue("content-type").orElse(null),
+                return Fetched(
+                    // 落地地址：重定向是这一层自己一跳一跳跟的（`client` 不跟随），
+                    // 所以 `request.uri()` 就是最终那一跳的 URL —— 脚本正是靠它取真实接口地址。
+                    url = request.uri().toString(),
+                    body = decodeBody(
+                        bytes,
+                        response.headers().firstValue("content-encoding").orElse(""),
+                        charset,
+                        response.headers().firstValue("content-type").orElse(null),
+                    ),
+                    status = response.statusCode(),
+                    headers = response.headers().map().mapNotNull { (name, values) ->
+                        values.firstOrNull()?.let { name.lowercase() to it }
+                    }.toMap(),
                 )
             }
             runCatching { response.body().close() }
