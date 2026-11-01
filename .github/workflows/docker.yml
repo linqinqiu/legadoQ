@@ -52,6 +52,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 构建上下文是 product/，仓库根的 BUILD_NUMBER 不会进镜像；在这里读出来当构建参数传进去，
+      # 否则镜像里的「构建」永远显示“未注入”（0.2.10 的 tag 构建还因缺这个文件直接失败）。
+      - name: Read internal build number
+        id: build
+        run: |
+          number="$(tr -dc '0-9' < BUILD_NUMBER 2>/dev/null || true)"
+          echo "number=${number:-0}" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU for multi-arch build
         uses: docker/setup-qemu-action@v3
 
@@ -87,6 +95,8 @@ jobs:
           context: ./product
           file: ./product/Dockerfile
           platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
+          build-args: |
+            LEGADO_BUILD_NUMBER=${{ steps.build.outputs.number }}
           push: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.push }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

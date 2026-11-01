@@ -18,6 +18,10 @@ RUN npm run build
 FROM ${DOCKER_REGISTRY}gradle:8.13-jdk17 AS server-build
 # 构建镜像必须自带 JDK 17：app/build.gradle 把 toolchain 钉在 17，容器里只有别的版本时
 # Gradle 报 "Cannot find a Java installation ... languageVersion=17"（曾用 jdk21 镜像踩过）。
+# 构建上下文只有 product/，仓库根的 BUILD_NUMBER 进不来；构建号由参数补，缺省 0。
+# CI 会传仓库根的真实值，本地 `docker build` 不传也能构建（只是关于页显示“未注入”）。
+ARG LEGADO_BUILD_NUMBER=0
+ENV LEGADO_BUILD_NUMBER=${LEGADO_BUILD_NUMBER}
 WORKDIR /src
 COPY gradle/ gradle/
 COPY gradle/libs.versions.toml gradle/libs.versions.toml

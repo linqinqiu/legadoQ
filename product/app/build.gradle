@@ -121,10 +121,14 @@ version = '0.2.10'
  *
  * 唯一真源是安装根上一级的 `BUILD_NUMBER`：每完成一项改动由 `npm run build:bump` 递增，
  * 一个对外版本可以对应多个构建号。这里**只读**它并写进 jar 的 `meta/build-info.properties`，
- * 不在 Gradle、界面或 README 里另存一份。Docker/单独拷走 product 时读不到该文件，回落 0。
+ * 不在 Gradle、界面或 README 里另存一份。
+ *
+ * Docker 的构建上下文只有 `product/`，读不到仓库根那个文件；镜像构建时由 Dockerfile
+ * 的 `LEGADO_BUILD_NUMBER` 构建参数补上，取不到才回落 0。
  */
 def buildNumberFile = file("${rootProject.projectDir}/../BUILD_NUMBER")
-def buildNumber = buildNumberFile.exists() ? buildNumberFile.text.trim() : '0'
+def envBuildNumber = (System.getenv('LEGADO_BUILD_NUMBER') ?: '').trim()
+def buildNumber = buildNumberFile.exists() ? buildNumberFile.text.trim() : (envBuildNumber ?: '0')
 if (!(buildNumber ==~ /\d+/)) {
     logger.warn("BUILD_NUMBER 不是非负整数（${buildNumber}），按 0 处理")
     buildNumber = '0'
@@ -220,7 +224,12 @@ def generatedBuildInfo = layout.buildDirectory.dir('generated/build-info')
 tasks.register('generateBuildInfo') {
     group = 'build'
     description = '把 BUILD_NUMBER 写进 meta/build-info.properties'
-    inputs.file(buildNumberFile).optional()
+    // 文件不存在时**不能**登记成输入：Gradle 会先报 "input file doesn't exist"，
+    // 连 doLast 都进不去（`.optional()` 在这条路径上拦不住）。Docker 上下文里没有仓库根的
+    // BUILD_NUMBER，0.2.10 的镜像构建就是这样红的。
+    if (buildNumberFile.exists()) {
+        inputs.file(buildNumberFile)
+    }
     inputs.property('buildNumber', buildNumber)
     inputs.property('externalVersion', project.version.toString())
     outputs.file(generatedBuildInfo.map { it.file('meta/build-info.properties') })

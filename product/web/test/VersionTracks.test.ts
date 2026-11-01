@@ -47,6 +47,13 @@ test('构建号写进 jar 资源，并从 /healthz 与 /api/about 报出来', ()
   assert.match(gradle, /meta\/build-info\.properties/)
   assert.match(gradle, /inputs\.file\(buildNumberFile\)/, '构建号文件变了要重新生成资源')
   assert.match(gradle, /tasks\.named\('processResources'\)\s*\{\s*dependsOn 'generateBuildInfo'\s*\}/)
+  // 文件不存在时不能登记成输入：Gradle 会先报 "input file doesn't exist"，
+  // 而 Docker 的构建上下文只有 product/，没有仓库根的 BUILD_NUMBER（0.2.10 镜像红在这）。
+  assert.match(gradle, /if \(buildNumberFile\.exists\(\)\) \{\s*inputs\.file\(buildNumberFile\)/)
+  assert.match(gradle, /LEGADO_BUILD_NUMBER/, 'Docker 读不到文件时要用构建参数补号')
+  assert.match(read('product/Dockerfile'), /ARG LEGADO_BUILD_NUMBER/)
+  assert.match(read('.github/workflows/docker.yml'), /LEGADO_BUILD_NUMBER=\$\{\{ steps\.build\.outputs\.number \}\}/,
+    'CI 要把仓库根的真实构建号传进 Docker 构建')
 
   const buildInfo = read('product/app/src/main/kotlin/io/legado/BuildInfo.kt')
   assert.match(buildInfo, /meta\/build-info\.properties/)
