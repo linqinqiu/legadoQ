@@ -106,8 +106,9 @@ class JsoupBridgeTest {
             ),
         )
         assertNull(blocked.eval("Packages.java.lang.System.getClass()", emptyMap(), null))
-        assertTrue("反射应当依旧被拒，实际「${blocked.lastError}」",
-            (blocked.lastError ?: "").contains("getClass") || (blocked.lastError ?: "").contains("未找到"))
+        // 别对文案做断言：Rhino 的 TypeError 随 JVM 区域变（本机中文、CI 英文），
+        // 这里的判据是「调用确实失败、没把 Java 对象递出去」。
+        assertTrue("反射调用应当报错，实际「${blocked.lastError}」", blocked.lastError != null)
     }
 
     @Test
