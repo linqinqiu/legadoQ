@@ -94,6 +94,8 @@ test('发布脚本只记账：校验、追加 RELEASES、打 tag、推送，不�
   assert.match(release, /git\(\["tag", "-a", tag/)
   assert.match(release, /git\(\["push", "origin", "HEAD"\]/)
   assert.match(release, /git\(\["push", "origin", tag\]/)
+  // stdio: "inherit" 的 execFileSync 返回 null；提交/打 tag/推送都走这条，不能对返回值 trim。
+  assert.match(release, /return inherit \? "" : output\.trim\(\)/)
   // 注释里可以说「改版本是 set-external 的事」，代码里不能真的去改。
   const code = release
     .replace(/\/\*[\s\S]*?\*\//g, '')

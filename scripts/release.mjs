@@ -49,11 +49,13 @@ function fail(message) {
 }
 
 function git(args, { inherit = false } = {}) {
-  return execFileSync("git", args, {
+  const output = execFileSync("git", args, {
     cwd: ROOT,
     encoding: "utf8",
     stdio: inherit ? "inherit" : ["ignore", "pipe", "pipe"],
-  }).trim();
+  });
+  // stdio: "inherit" 时 execFileSync 返回 null：提交/打 tag/推送只关心退出码，不能对返回值 trim。
+  return inherit ? "" : output.trim();
 }
 
 function tryGit(args) {
