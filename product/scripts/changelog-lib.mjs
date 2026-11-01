@@ -40,8 +40,10 @@ export const SILENT_TYPES = new Set(['docs', 'test', 'chore', 'build', 'ci', 'st
  * 起因：0.1.8 发版后补了两笔 `fix(verify)` / `fix(ci)`，门禁把 main 判红，要求把它们
  * 写进用户日志 —— 而日志的规矩是"只写用户能看见的变化"。类型表只挡住了 `ci:` 开头的
  * 提交，没挡住 `fix(ci):`，同一个判断得看 scope 才准。
+ *
+ * `release` 同属这一类：发布脚本、打 tag、传资产出问题，读者手里的包没有区别。
  */
-export const ENGINEERING_SCOPES = new Set(['ci', 'build', 'docs', 'test', 'verify', 'tooling', 'changelog'])
+export const ENGINEERING_SCOPES = new Set(['ci', 'build', 'docs', 'test', 'verify', 'tooling', 'changelog', 'release'])
 
 /** 一条日志建议的上限（超了说明提交标题在写工程细节，该人话重写）。 */
 export const MAX_ENTRY_CHARS = 120
