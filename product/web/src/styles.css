@@ -1317,7 +1317,33 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .reader-text-input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13px; }
 .reader-text-input:focus { outline: none; border-color: var(--accent); }
 .bg-row { display: flex; align-items: center; gap: 10px; }
+.bg-row-label { font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
 .reader-bg-color { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+/* 阅读页内的皮肤库入口：一颗按钮 + 一行说明，不把整张浮窗常驻在抽屉里。 */
+.theme-custom-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.theme-custom-actions small { color: var(--muted); font-size: 11px; }
+/* 背景预设库：单行紧凑列表，长名字省略，动作靠右（与皮肤库同一套观感）。 */
+.bg-library-head { display: flex; align-items: baseline; justify-content: space-between; margin-top: 4px; }
+.bg-library-title { font-size: 12px; font-weight: 600; color: var(--ink); }
+.bg-library-count { font-size: 11px; color: var(--muted); }
+.bg-library-empty { margin: 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: 12px; }
+.bg-library { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.bg-library-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.bg-library-row.active { border-color: var(--accent); }
+.bg-library-swatch { width: 20px; height: 20px; flex: none; border: 1px solid var(--line); border-radius: 5px; background-image: linear-gradient(45deg, var(--surface-muted) 25%, transparent 25%, transparent 75%, var(--surface-muted) 75%), linear-gradient(45deg, var(--surface-muted) 25%, transparent 25%, transparent 75%, var(--surface-muted) 75%); background-size: 8px 8px; background-position: 0 0, 4px 4px; }
+/* 名字与元信息上下排：阅读设置抽屉只有三百来像素宽，压成一行会把三个动作挤出去。 */
+.bg-library-main { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.bg-library-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink); }
+.bg-library-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+.bg-library-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.bg-library-actions .subtle-button { padding: 4px 8px; font-size: 11px; }
+.bg-library-save { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.bg-library-save .reader-text-input { flex: 1 1 auto; min-width: 0; }
+.bg-library-note { margin: 0; color: var(--muted); font-size: 11px; }
+.bg-wallpaper-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.bg-wallpaper-main { min-width: 0; display: grid; gap: 3px; }
+.bg-wallpaper-main strong { font-size: 12px; font-weight: 600; color: var(--ink); }
+.bg-wallpaper-main small { color: var(--muted); font-size: 11px; }
 .segmented-control { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: var(--r-2, 12px); background: var(--surface-muted); }
 .segmented-option { min-height: 32px; padding: 0 12px; border: 0; border-radius: var(--r-1, 8px); background: transparent; color: var(--muted); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .segmented-option:hover { color: var(--accent-ink); }
@@ -5302,10 +5328,15 @@ input[type="checkbox"] {
 /* 自定义浮窗分左右：左边是外观（皮肤 + 皮肤库），右边是壁纸。窄屏回落成一列。 */
 .customize-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
 .customize-col { display: grid; gap: 20px; min-width: 0; }
+/* 阅读页只开皮肤库时没有右栏，别留半张空网格。 */
+.customize-body.is-single .customize-columns { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 900px) { .customize-columns { grid-template-columns: 1fr; } }
 /* 「服务端口」弹窗：一行现状 + 一个数字框 + 保存，比皮肤那套简单。 */
 .server-port-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px; display: grid; gap: 14px; }
 .server-port-current { margin: 0; font-size: 13px; color: var(--muted); }
+/* 绑定地址说明：回环是常态，非回环要让人一眼看见「同网段可访问」。 */
+.server-port-bind { margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-muted); color: var(--muted); font-size: 12px; line-height: 1.6; }
+.server-port-bind.is-exposed { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--danger); }
 /* 「应用名称与图标」与「服务端口」同族（都写安装根），排版直接复用 .server-port-body，
    只补这里多出来的三样：颜色取色器一行、图标一行、预览格。 */
 .brand-color-row { display: flex; align-items: center; gap: 8px; }

@@ -114,7 +114,21 @@ tasks.register('testCoverageReport', JacocoReport) {
 
 
 group = 'io.legado'
-version = '0.2.9'
+version = '0.2.10'
+
+/**
+ * 内部构建号（与对外版本解耦）。
+ *
+ * 唯一真源是安装根上一级的 `BUILD_NUMBER`：每完成一项改动由 `npm run build:bump` 递增，
+ * 一个对外版本可以对应多个构建号。这里**只读**它并写进 jar 的 `meta/build-info.properties`，
+ * 不在 Gradle、界面或 README 里另存一份。Docker/单独拷走 product 时读不到该文件，回落 0。
+ */
+def buildNumberFile = file("${rootProject.projectDir}/../BUILD_NUMBER")
+def buildNumber = buildNumberFile.exists() ? buildNumberFile.text.trim() : '0'
+if (!(buildNumber ==~ /\d+/)) {
+    logger.warn("BUILD_NUMBER 不是非负整数（${buildNumber}），按 0 处理")
+    buildNumber = '0'
+}
 
 base {
     // plain jar 与发行版统一叫 legado：Docker 构建层 `jar uf …/lib/legado-*.jar`
@@ -195,6 +209,29 @@ tasks.register('fatJar', Jar) {
 if (file("${rootProject.projectDir}/web/dist/index.html").exists()) {
     tasks.named('assemble') { dependsOn 'fatJar' }
 }
+
+/**
+ * 构建号资源：`BuildInfo.buildNumber` 从 classpath 的 `meta/build-info.properties` 读。
+ *
+ * 用生成目录而不是往源码树里写文件：`BUILD_NUMBER` 变更只触发这个任务与 `processResources`，
+ * 不产生"构建弄脏工作区"的副作用。inputs/outputs 都显式登记，改号后不会因为 UP-TO-DATE 留在旧值。
+ */
+def generatedBuildInfo = layout.buildDirectory.dir('generated/build-info')
+tasks.register('generateBuildInfo') {
+    group = 'build'
+    description = '把 BUILD_NUMBER 写进 meta/build-info.properties'
+    inputs.file(buildNumberFile).optional()
+    inputs.property('buildNumber', buildNumber)
+    inputs.property('externalVersion', project.version.toString())
+    outputs.file(generatedBuildInfo.map { it.file('meta/build-info.properties') })
+    doLast {
+        def target = generatedBuildInfo.get().file('meta/build-info.properties').asFile
+        target.parentFile.mkdirs()
+        target.text = "version=${project.version}\nbuild=${buildNumber}\n"
+    }
+}
+sourceSets.main.resources.srcDir(generatedBuildInfo)
+tasks.named('processResources') { dependsOn 'generateBuildInfo' }
 
 processResources {
     duplicatesStrategy = DuplicatesStrategy.INCLUDE

@@ -38,7 +38,8 @@
 | `{{(page-1)*20}}` 这类翻页表达式：Rhino 里所有数字都是 double，必须**去掉 `.0` 尾**再拼进网址 | `rules/RuleRunner.kt` 的 `trimJsNumberFraction()` |
 | **`<js>…</js>` 与 `@js:`** 由 Rhino 沙箱执行；列表规则里带 `<js>` 时必须**先过沙箱预处理**再交给选择器 | `rules/RuleRunner.kt` 的 `jsListNodes()` / `isJsRule()` |
 | 沙箱支持**顶级 `return`** 的脚本（Rhino 直接执行会 `return not in function`）：整段包进匿名函数 | `rules/JsSandbox.kt` 的 `eval()` |
-| `jsLib` 里惯用的 `new JavaImporter()` + `with(...)` 返回**空替身**：`importClass` / `importPackage` 是 no-op | `rules/JsSandbox.kt` 的 `createJavaImporterStub()` / `noop` —— 真实 Java 反射一律不给，这是 RCE 防线，代价是极少数依赖反射的书写工具函数会退化成拿不到值 |
+| `Packages.*`、`new JavaImporter()` + `with(...)`、`importClass` / `importPackage` **按白名单提供真实可用的替身**（加解密、Base64、Hash、UUID、String/Arrays、okhttp3 等）；未列入白名单的类仍是 `undefined` | `rules/JavaPackages.kt` 的命名空间树与 `ImporterObject`；`rules/JsSandbox.kt` 的 `setClassShutter { false }` 仍是 RCE 底线，任何 Java 对象都不会穿进沙箱 |
+| `java.ajaxAll` 有界并发抓取多个地址，按入参顺序返回响应对象；`cache` / `cacheFile` 按书源隔离 | `rules/JsSandbox.kt` 的 `createJavaBridge` / `createCacheBridge`；`.env` 与 `AppConfig.kt` 控制超时与缓存上限 |
 | 单次书源 JS 执行有墙钟上限（默认 30s，`LEGADO_JS_TIMEOUT_MS`）：只拦失控脚本，合法规则毫秒级 | `.env.example` 尾部与 `AppConfig.kt` |
 | 搜索地址读**顶层 `searchUrl`**，发现地址读**顶层 `exploreUrl`**；`ruleSearch.url` 全库皆空，**没有回退** | `source/SourceHealth.kt` 的 `probe()`（`searchUrl` / `exploreUrl` 顶层读取；空 searchUrl 单列定档，本机 5,574 个源里 652 个两者都空） |
 
@@ -78,7 +79,7 @@
 
 1. **需要执行 JS 过挑战/风控的站点**：服务端没有真浏览器，正文与目录都可能拿不到 → 体检给 `needs_webview`（§4 第一条），不是停用的理由。
 2. **`ruleReview` 类书源**：段评永远为空（§4）。
-3. **依赖 Java 反射的 `jsLib`**：`JavaImporter` 是空替身，这类工具函数取不到真实类 → 表现是某个字段恒空而不是报错。
+3. **依赖白名单外 Java 类的 `jsLib`**：`Packages` / `JavaImporter` 只提供声明的类，Java 反射被禁用；取不到的类表现为 `undefined`，通常是某个字段恒空而不是报错。
 4. **顶层没配 `searchUrl` 的源**：只能当发现页用，界面单列「未配搜索」一档，**不计入"连不上"**，也不参与一键停用/删除（`source/SourceHealth.kt` 的 `probe()` 中 `no_search` / `explore_only` 分支、`web/src/sources/sourceGrouping.ts`）。
 5. **纯前端渲染的登录页**：内置反代浏览器帮不上（表单挂在框架里、或先要过挑战），要改填表或粘 Cookie。
 6. **跨书源的"同一本书"身份**：只能是书名 + 作者，章节坐标只能是标题 —— 换源时 `sourceId + bookUrl` 两个都会变。这条目前只在前端有实现与判据，服务端侧没有对应实现。

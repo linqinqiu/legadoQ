@@ -4,9 +4,9 @@ import { parseScriptMode, type ScriptMode } from './scriptConvert'
 import type { PageTurnAnim } from './pageTurn'
 import { READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN } from './fontSizeControl'
 
-/** 内置三套皮肤；同时允许任意自定义 id —— 配合注入 `.theme-<id>` 的 CSS 变量即可加皮肤，不必改这个类型。 */
+/** 内置七套皮肤；同时允许任意自定义 id —— 配合注入 `.theme-<id>` 的 CSS 变量即可加皮肤，不必改这个类型。 */
 export type ReaderTheme = 'light' | 'paper' | 'dark' | (string & {})
-/** 内置那三档的 id（自定义皮肤要叠在其中一档之上，所以这个集合要能被类型化地表达）。 */
+/** 内置那七档的 id（内置列表要按类型逐个列出来，所以单独收一个联合类型）。 */
 export type BuiltinSkinId = 'light' | 'paper' | 'dark' | 'qingzhu' | 'mulan' | 'meigui' | 'shimo'
 /**
  * 内置字体栈（本机已装优先，逐级回落）；`custom` 表示用 `customFont` 里用户自己填的字体名。
@@ -29,42 +29,40 @@ export type ReaderColumnMode = 'auto' | 'single' | 'double'
 export type ReaderTextAlign = 'justify' | 'left'
 export type TtsEngineType = 'webSpeech' | 'edge' | 'custom'
 
-/** 一套自定义皮肤（用户可存许多套，见 `customSkins`）。 */
+/**
+ * 一套自定义皮肤（用户可存许多套，见 `customSkins`）。
+ *
+ * 只有三个字段：id（拼成 `.theme-<id>` 类名）、显示名、完整 CSS。
+ * **没有"叠在哪一档内置皮肤之上"这种半套语义**：自定义就是全权自定义，
+ * 没写到的变量落到 `styles.css` 最前面的 `:root` 中性基线，不跟随任何预设皮肤。
+ * 老数据里的 `base` / `mode` 字段读的时候直接忽略（`parseCustomSkin` 不接收它们）。
+ */
 export type CustomSkin = {
   id: string
   name: string
   css: string
-  base: BuiltinSkinId
-  /**
-   * 这一套怎么取"自己没写的那些变量"。
-   *
-   * - `'overlay'`（**老数据缺省这个**，逐字节保持历史行为）：叠在 `base` 那套内置皮肤之上，
-   *   没写到的变量沿用那一套的取值。
-   * - `'standalone'`：全权自定义 —— 只挂自己这一个类，没写到的变量落到 `styles.css`
-   *   里 `:root` 的中性颜色基线，**不沿用任何预设皮肤**。
-   *
-   * 用户原话：「自定义不是叠在哪一套之上（没写到的变量沿用那一套），是全权自定义」。
-   * 做成可选而不是直接改掉，是因为 `overlay` 是既有 12 套以内数据的现状语义；
-   * 老记录没有这个字段 → 解析成 `overlay` → 外观一个像素都不动，想要全权的那一套手动切。
-   */
-  mode?: SkinMode
 }
 
-/** 自定义皮肤的两种语义。 */
-export type SkinMode = 'overlay' | 'standalone'
-
-/** 没写 mode 的老数据按历史语义走（不改变既有外观）。 */
-export const DEFAULT_SKIN_MODE: SkinMode = 'overlay'
-
-export function parseSkinMode(mode: unknown): SkinMode {
-  return mode === 'standalone' ? 'standalone' : DEFAULT_SKIN_MODE
+/**
+ * 一套阅读背景预设（用户可存许多套）。
+ *
+ * 背景与皮肤是两件事：皮肤管整套界面的配色令牌，背景只铺在阅读区上。
+ * 预设保存"颜色 + 图片地址 + 压暗比例"三件套，点一下整体套用、可编辑可删除。
+ * 只存 localStorage，不进备份包。
+ */
+export type ReaderBackground = {
+  id: string
+  name: string
+  color: string
+  image: string
+  dim: number
 }
 
 export type ReaderSettings = {
   theme: ReaderTheme
   /**
    * 自定义皮肤**库**（用户 2026-10-11：「所有的自定义是可以自己定义保存……可以自定义许多个，并有记录保存」）：
-   * 每一套 = id（拼成 `.theme-<id>` 类名）+ 显示名 + 完整 CSS + 叠在哪一档内置皮肤之上。
+   * 每一套 = id（拼成 `.theme-<id>` 类名）+ 显示名 + 完整 CSS，可新增 / 编辑 / 删除 / 切换。
    * 全部只存 localStorage —— 这是这台机器自己的外观，不上传服务端，也不进备份包。
    * 当前启用哪一套由 `theme`（等于那一套的 id）决定；`theme` 是内置档时库里哪套都不生效。
    */
@@ -130,6 +128,8 @@ export type ReaderSettings = {
   readerBgColor: string
   readerBgImage: string
   readerBgDim: number
+  /** 背景预设库：把当前背景存成一条，之后一键套用；与皮肤库同样只存本机。 */
+  customBackgrounds: ReaderBackground[]
   /**
    * 点击分区（用户 2026-10-04：「可以自定义点击区域范围并设置，自定义管理」；
    * 2026-10-09：「区域设置改提供横竖虚线，自定义，但是要区分翻页方式的影响」）。
@@ -184,6 +184,7 @@ export const defaultReaderSettings: ReaderSettings = {
   readerBgColor: '',
   readerBgImage: '',
   readerBgDim: 0.25,
+  customBackgrounds: [],
   tapZones: { paginate: DEFAULT_MAPS.paginate, scroll: DEFAULT_MAPS.scroll },
   menuItems: DEFAULT_READER_MENU,
   scriptMode: 'off',
@@ -272,17 +273,10 @@ export function availableSkins(settings: ReaderSettings): Array<{ id: string; na
   return [...BUILTIN_SKINS.map(skin => ({ ...skin, builtin: true })), ...custom]
 }
 
-/** 自定义皮肤没写基档时的默认档。 */
-export const DEFAULT_SKIN_BASE: BuiltinSkinId = 'light'
-
-/** 自定义皮肤的**叠在哪一套之上**（只认内置档，别的值退回默认档）。 */
-export function parseSkinBase(base: unknown): BuiltinSkinId {
-  return BUILTIN_SKINS.some(skin => skin.id === base) ? base as BuiltinSkinId : DEFAULT_SKIN_BASE
-}
-
 /**
- * 清洗一套自定义皮肤：id 过 `parseSkinId`（拼类名用），name 去换行并限长，css 限长（注入走 textContent），
- * base 只认内置档。id 清洗后为空、或 css 为空 → 返回 null（这一套不成立，不进库）。
+ * 清洗一套自定义皮肤：id 过 `parseSkinId`（拼类名用），name 去换行并限长，css 限长（注入走 textContent）。
+ * 老数据里的 `base` / `mode` 字段直接忽略 —— 自定义皮肤不再有"叠一档"的语义。
+ * id 清洗后为空、或 css 为空 → 返回 null（这一套不成立，不进库）。
  */
 export function parseCustomSkin(value: unknown): CustomSkin | null {
   if (!value || typeof value !== 'object') return null
@@ -291,7 +285,7 @@ export function parseCustomSkin(value: unknown): CustomSkin | null {
   const css = typeof raw.css === 'string' ? raw.css.slice(0, 20000) : ''
   if (!id || !css.trim()) return null
   const name = typeof raw.name === 'string' ? raw.name.replace(/[\r\n]+/g, ' ').trim().slice(0, 40) : ''
-  return { id, name, css, base: parseSkinBase(raw.base), mode: parseSkinMode(raw.mode) }
+  return { id, name, css }
 }
 
 /** 清洗皮肤库：逐套过 `parseCustomSkin`，丢掉不成立的；同 id 只留最后一套。 */
@@ -316,26 +310,85 @@ export function activeCustomSkin(settings: ReaderSettings): CustomSkin | undefin
   return (settings.customSkins ?? []).find(skin => skin.id === id)
 }
 
+/** 背景预设 id 只用于列表 key 与内部标识，不拼选择器；仍收紧字符集，避免存进怪东西。 */
+export function parseBackgroundId(id: unknown): string {
+  return typeof id === 'string' ? id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(0, 40) : ''
+}
+
+/** 清洗一套背景预设：颜色 / 图片 / 压暗各过各自的清洗函数，空颜色 + 空图片是合法的"跟随主题"。 */
+export function parseReaderBackground(value: unknown): ReaderBackground | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const id = parseBackgroundId(raw.id)
+  if (!id) return null
+  const name = typeof raw.name === 'string' ? raw.name.replace(/[\r\n]+/g, ' ').trim().slice(0, 40) : ''
+  return {
+    id,
+    name,
+    color: parseBgColor(raw.color),
+    image: parseBgImage(raw.image),
+    dim: clampNumber(raw.dim, 0, .6, defaultReaderSettings.readerBgDim),
+  }
+}
+
+/** 清洗背景库：逐条过 `parseReaderBackground`，同 id 只留最后一条。 */
+export function parseReaderBackgrounds(value: unknown): ReaderBackground[] {
+  if (!Array.isArray(value)) return []
+  const byId = new Map<string, ReaderBackground>()
+  for (const item of value) {
+    const background = parseReaderBackground(item)
+    if (background) byId.set(background.id, background)
+  }
+  return [...byId.values()]
+}
+
 /**
- * 皮肤类名列表 —— 一套自定义皮肤到底挂几个类，由那一套的 `mode` 决定。
+ * 阅读区背景的 CSS 变量。压暗层同时作用于颜色与图片 —— 只压图片的话，滑杆在纯色背景上
+ * 是一个怎么拖都没反应的控件，而「背景压暗」这个名字承诺的是背景整体。
+ * 颜色与图片都没设时不铺任何东西，让阅读区回到主题画布。
+ */
+export function readerBackgroundVars(
+  settings: Pick<ReaderSettings, 'readerBgColor' | 'readerBgImage' | 'readerBgDim'>,
+): { '--reader-bg-color': string; '--reader-bg-image': string } {
+  const dimValue = clampNumber(settings.readerBgDim, 0, .6, 0)
+  const dim = (settings.readerBgColor || settings.readerBgImage) && dimValue > 0
+    ? `linear-gradient(rgb(0 0 0 / ${dimValue}), rgb(0 0 0 / ${dimValue}))`
+    : ''
+  return {
+    '--reader-bg-color': settings.readerBgColor || 'transparent',
+    '--reader-bg-image': settings.readerBgImage
+      ? (dim ? `${dim}, url("${settings.readerBgImage}")` : `url("${settings.readerBgImage}")`)
+      : (dim || 'none'),
+  }
+}
+
+/** 背景库里的显示名：用户没起名就用 id 兜底。 */
+export function backgroundLabel(background: ReaderBackground): string {
+  return background.name.trim() || `背景（${background.id}）`
+}
+
+/** 生成一个库里没占用的背景 id（时间戳 + 序号；只用于本机存储，不要求可读）。 */
+export function newBackgroundId(existing: ReaderBackground[]): string {
+  const base = `bg-${Date.now().toString(36)}`
+  const used = new Set(existing.map(item => item.id))
+  if (!used.has(base)) return base
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${base}-${i}`
+    if (!used.has(candidate)) return candidate
+  }
+  return `${base}-${used.size + 1}`
+}
+
+/**
+ * 皮肤类名列表。自定义皮肤**只挂自己这一个类**，不叠加任何内置皮肤。
  *
- * - `overlay`（老数据缺省）：**叠在内置皮肤上，不是替换它**。
- *   为什么当年必须叠：用户只写两三条变量（例如只改 `--canvas`）是常见用法，
- *   若页面上只有 `.theme-midnight` 一个类，而那时 `:root` 又没定义任何颜色令牌，
- *   其余 `--surface / --ink / --line` 全部落空，界面直接变成"字和底一个颜色"。
- * - `standalone`：**全权自定义**，只挂自己这一个类。没写到的变量落到 `styles.css`
- *   最前面那个 `:root` 里的中性颜色基线（本次一并补上的），**不沿用任何预设皮肤**。
- *   用户要的正是这个语义：「自定义不是叠在哪一套之上，是全权自定义」。
- *   这条能成立的前提就是那份 `:root` 基线 —— 没有它就会复现上面那个花屏事故。
+ * 没写到的变量落到 `styles.css` 最前面那个 `:root` 里的中性颜色基线 ——
+ * 那份基线与任何预设配色无关，所以切内置皮肤不会让自定义皮肤的外观跟着漂移。
+ * 这是用户 2026-10-23 定下的语义：「自定义不是叠在哪一套之上，是全权自定义」。
  */
 export function themeClassNames(settings: ReaderSettings): string[] {
   const active = activeCustomSkin(settings)
-  if (active) {
-    return active.mode === 'standalone'
-      ? [`theme-${active.id}`]
-      : [`theme-${parseSkinBase(active.base)}`, `theme-${active.id}`]
-  }
-  return [`theme-${settings.theme}`]
+  return [`theme-${active ? active.id : settings.theme}`]
 }
 
 export function parseColumnMode(mode: unknown): ReaderColumnMode {
@@ -461,6 +514,7 @@ export function loadReaderSettings(): ReaderSettings {
       readerBgColor: parseBgColor(saved.readerBgColor),
       readerBgImage: parseBgImage(saved.readerBgImage),
       readerBgDim: clampNumber(saved.readerBgDim, 0, .6, defaultReaderSettings.readerBgDim),
+      customBackgrounds: parseReaderBackgrounds(saved.customBackgrounds),
       // 缺项/写错都回落到出厂那张表（不清洗就会点到 undefined 上，表现为"这一格没反应"）；
       // 旧版存的是"格子表"，新版是"虚线表"，读的时候迁一次。
       tapZones: {

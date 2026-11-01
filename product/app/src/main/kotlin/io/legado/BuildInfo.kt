@@ -14,6 +14,28 @@ object BuildInfo {
         BuildInfo::class.java.`package`?.implementationVersion?.takeIf { it.isNotBlank() && it != "unknown" }
             ?: "dev"
 
+    /**
+     * 内部构建号（`BUILD_NUMBER`），与对外版本解耦。
+     *
+     * Gradle 在 `processResources` 阶段把安装根上一级的计数写进
+     * `meta/build-info.properties`。读不到（源码直接跑、只拷走 product、旧包）时回落 `0`，
+     * 表示“这个包不知道自己是第几次构建”，而不是编一个看起来合理的数字。
+     */
+    val buildNumber: String by lazy {
+        runCatching {
+            BuildInfo::class.java.getResourceAsStream("/meta/build-info.properties")
+                ?.bufferedReader()
+                ?.useLines { lines ->
+                    lines.map { it.trim() }
+                        .firstOrNull { it.startsWith("build=") }
+                        ?.substringAfter("build=")
+                        ?.trim()
+                }
+                ?.takeIf { it.matches(Regex("\\d+")) }
+                ?: "0"
+        }.getOrDefault("0")
+    }
+
     val title: String = "legadoQ"
 
     /**

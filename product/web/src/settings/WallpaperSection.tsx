@@ -43,21 +43,21 @@ export function WallpaperSection() {
     event.target.value = ''
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      toast.error('只能选图片文件（JPG / PNG / WebP / GIF）')
+      toast.error('仅支持图片文件（JPG / PNG / WebP / GIF）')
       return
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      toast.error('这张图片超过 20 MB，换一张小一点的吧')
+      toast.error('图片超过 20 MB 上限')
       return
     }
     setSaving(true)
     try {
       await saveWallpaper(file, file.type)
       updateWallpaperSettings({ source: 'upload', enabled: true })
-      toast.success('壁纸已保存到这台电脑')
+      toast.success('壁纸已保存到本机')
     } catch {
       // 隐私模式 / 配额满 / 没有 IndexedDB：明确告诉用户没存下，而不是静默失败
-      toast.error('没能把图片存到浏览器本地（可能是隐私模式或空间不足）')
+      toast.error('图片保存失败：浏览器存储不可用或空间不足')
     } finally {
       setSaving(false)
     }
@@ -77,7 +77,7 @@ export function WallpaperSection() {
     // 都在这里给出结论，而不是切过去之后只剩一块空白让人猜。
     const probe = new Image()
     probe.onload = () => updateWallpaperSettings({ url, source: 'url', enabled: true })
-    probe.onerror = () => toast.error('这张图加载失败：地址不可用、被防盗链挡住，或返回的不是图片')
+    probe.onerror = () => toast.error('图片加载失败：地址不可用、被防盗链拦截，或响应内容不是图片')
     probe.src = url
   }
 
@@ -108,7 +108,7 @@ export function WallpaperSection() {
       <div className="settings-row">
         <div className="settings-row-main">
           <strong>启用壁纸</strong>
-          <small>在整站内容背后铺一张图；关掉后回到原来的画布色。</small>
+          <small>在整站内容背后铺设图片；关闭后恢复主题画布。</small>
         </div>
         <button
           type="button"
@@ -123,7 +123,7 @@ export function WallpaperSection() {
       <div className="settings-row">
         <div className="settings-row-main">
           <strong>本地图片</strong>
-          <small>从这台电脑选一张图，存在浏览器本地（换图会覆盖上一张）。</small>
+          <small>从本机选择图片，保存在浏览器本地；重新选择会覆盖上一张。</small>
         </div>
         <button type="button" className="subtle-button" onClick={pickFile} disabled={saving}>
           {saving ? '正在保存…' : '选择图片'}
@@ -133,7 +133,7 @@ export function WallpaperSection() {
       <div className="settings-row">
         <div className="settings-row-main">
           <strong>图片地址</strong>
-          <small>填一个 http(s) 图片链接，回车或离开输入框后生效。</small>
+          <small>填写 http(s) 图片地址，按回车或离开输入框后生效。</small>
           <input
             className="settings-search"
             type="url"
@@ -235,7 +235,7 @@ export function WallpaperSection() {
       <div className="settings-row">
         <div className="settings-row-main">
           <strong>填充方式</strong>
-          <small>铺满会裁掉多出来的部分；完整会留白，但整张图都看得见。</small>
+          <small>铺满：裁剪超出部分并填满区域；完整：保留整张图片并接受留白。</small>
           <div className="page-modes" role="group" aria-label="填充方式">
             {(['cover', 'contain'] as const).map(fill => (
               <button
@@ -254,8 +254,8 @@ export function WallpaperSection() {
 
       <div className="settings-row">
         <div className="settings-row-main">
-          <strong>阅读器也使用</strong>
-          <small>开启后阅读器不再铺自己的阅读背景，直接透出这张壁纸；关闭即「壁纸与阅读背景分开用」。</small>
+          <strong>阅读区跟随壁纸</strong>
+          <small>开启后，阅读区透出整站壁纸，不使用独立阅读背景。</small>
         </div>
         <button
           type="button"
@@ -270,7 +270,7 @@ export function WallpaperSection() {
       <div className="settings-row">
         <div className="settings-row-main">
           <strong>清除壁纸</strong>
-          <small>删掉本地图片与地址，并关掉壁纸，恢复默认外观。</small>
+          <small>删除本地图片与地址，关闭壁纸并恢复默认外观。</small>
         </div>
         <button type="button" className="subtle-button" onClick={() => void clear()}>清除</button>
       </div>

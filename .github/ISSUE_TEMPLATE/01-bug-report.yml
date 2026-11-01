@@ -1,1 +1,98 @@
-﻿name: "🐛 Bug 报告 / Bug Report"description: "提交 legado 服务端或 Web 客户端的缺陷与异常"title: "[Bug]: "labels: ["bug"]body:  - type: markdown    attributes:      value: |        感谢提交 Bug 反馈！        在提交前，请先搜索 [Issues](./issues) 和 [Discussions](./discussions) 确保未有重复反馈。        如果是**特定书源的解析规则失效**，请使用专门的 [书源异常反馈模板](./issues/new?template=03-source-issue.yml)。  - type: checkboxes    attributes:      label: "前置核对 / Checklist"      description: "请确认以下事项"      options:        - label: "已在已关闭/开启的 Issues 中搜索过，未发现相同或相似的问题"          required: true        - label: "使用的是最新版本（Docker 镜像 `latest` 或最新源码构建）"          required: true        - label: "已查看服务端控制台日志与浏览器 F12 控制台，确认存在异常报错"          required: true  - type: dropdown    id: module    attributes:      label: "影响模块 / Affected Module"      description: "请选择发生问题的模块"      options:        - "Web 阅读器 (Reader / TOC / 排版 / 翻页)"        - "服务端核心 (Ktor API / SQLite / 数据持久化)"        - "TTS 朗读服务 (Edge-TTS / 浏览器语音 / 会话音频流)"        - "书源解析引擎 (Rhino 沙箱 / 搜索 / 换源)"        - "离线缓存 & PWA (IndexedDB / Service Worker)"        - "Docker 部署 & 容器环境"        - "其他 / 未知"    validations:      required: true  - type: textarea    id: description    attributes:      label: "问题描述 / Problem Description"      description: "清晰且简要地描述遇到的问题或异常表现"      placeholder: "例如：在开启 TTS 连续朗读时，切换到下一章后进度未自动更新..."    validations:      required: true  - type: textarea    id: reproduction    attributes:      label: "复现步骤 / Steps to Reproduce"      description: "请提供详细的最小复现步骤"      placeholder: |        1. 打开 Web 端阅读某本书        2. 点击 ...        3. 观察到 ...    validations:      required: true  - type: textarea    id: expected    attributes:      label: "期望行为 / Expected Behavior"      description: "描述期望的正常表现"      placeholder: "例如：正常情况下应该自动加载下一章音频并连续播放..."    validations:      required: false  - type: textarea    id: logs    attributes:      label: "错误日志与控制台输出 / Logs & Console Output"      description: "请粘贴服务端日志 (`docker logs` 输出) 或浏览器 F12 控制台报错信息"      placeholder: "```\n在此粘贴日志输出\n```"      render: shell  - type: textarea    id: environment    attributes:      label: "运行环境信息 / Environment"      description: "请填写您的运行与客户端环境"      value: |        - **部署方式**: [例如 Docker / 本地 JAR / 源码开发模式]        - **服务端版本 / Commit**: [例如 v0.1.0 / 镜像 latest / git commit hash]        - **服务端操作系统**: [例如 Linux Debian 12 x86_64 / Ubuntu ARM64 / macOS / Windows]        - **客户端浏览器 & 版本**: [例如 Chrome 129 / Edge 129 / Safari iOS 17.5]        - **客户端设备系统**: [例如 Windows 11 / macOS Sonoma / Android 14 / iOS 17]    validations:      required: true  - type: textarea    id: screenshots    attributes:      label: "截图或录屏 / Screenshots"      description: "如有相关截图或录屏，请直接拖拽粘贴至此处"
+name: "Bug 报告"
+description: "提交 legadoQ 服务端或 Web 界面的缺陷与异常"
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先搜索 Issues，确认不是重复问题。
+        如果问题只在**某一份书源**上出现（搜索为空、正文取不到、登录失败），请改用「书源兼容性反馈」模板。
+
+  - type: checkboxes
+    attributes:
+      label: "前置核对"
+      options:
+        - label: "已搜索现有 Issues，未发现相同或相似的问题"
+          required: true
+        - label: "使用的是最新版本（关于页显示的版本号）"
+          required: true
+        - label: "已查看服务端日志与浏览器控制台，确认存在报错或明确异常"
+          required: true
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: "影响模块"
+      options:
+        - "Web 阅读器（阅读、目录、排版、翻页、快捷键）"
+        - "服务端核心（Ktor API、SQLite、数据持久化）"
+        - "书源解析引擎（Rhino 沙箱、搜索、换源）"
+        - "TTS 朗读（音色、会话控制、音频流）"
+        - "离线缓存与 PWA（IndexedDB、Service Worker）"
+        - "外观（皮肤、壁纸、自定义背景）"
+        - "部署与启动（桌面版、本地 jar、Docker）"
+        - "其他 / 未知"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "问题描述"
+      description: "说明实际看到的现象，以及与预期不符之处。"
+      placeholder: "例如：开启连续朗读后切换到下一章，进度条没有更新。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "复现步骤"
+      description: "尽量给出最小、可重复的步骤。"
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 观察到……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "期望行为"
+      description: "正常情况下应该发生什么。"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "错误日志与控制台输出"
+      description: "服务端日志默认写在安装根的 `server.log`；浏览器报错请从开发者工具复制。"
+      placeholder: "```\n在此粘贴日志\n```"
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: "运行环境"
+      description: "版本号以「关于」页显示为准，不要凭印象填写。"
+      value: |
+        - 安装方式：桌面版 / 本地 jar / Docker / 源码运行
+        - 版本号：
+        - 操作系统：
+        - 浏览器与版本：
+        - 是否修改过端口或绑定地址：
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "截图或录屏"
+      description: "可以直接拖拽或粘贴到此处。"
+    validations:
+      required: false

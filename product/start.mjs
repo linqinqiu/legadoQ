@@ -11,20 +11,22 @@ import { bundleAssetName, childEnvironment, declaredVersion, ensureDirectories, 
  *   node start.mjs                 # 默认端口（.env / LEGADO_PORT / 1234），起来后自动开浏览器
  *   node start.mjs --port 1235     # 换端口
  *   node start.mjs --no-open       # 只起服务，不开浏览器
- *   node start.mjs --host 0.0.0.0  # 换绑定地址（默认只绑回环）
+ *   node start.mjs --host 0.0.0.0  # 换绑定地址（默认只绑回环；非回环须显式放行）
+ *   node start.mjs --host 0.0.0.0 --allow-external-bind  # 局域网/容器场景，风险自担
  * 传进来的值优先于 .env / 环境变量 / 默认值。
  */
 function parseArgs(argv) {
-  const out = { port: null, host: null, open: true, help: false };
+  const out = { port: null, host: null, open: true, help: false, allowExternalBind: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') out.help = true;
     else if (arg === '--no-open') out.open = false;
+    else if (arg === '--allow-external-bind') out.allowExternalBind = true;
     else if (arg === '--port') out.port = Number(argv[++i]);
     else if (arg.startsWith('--port=')) out.port = Number(arg.slice('--port='.length));
     else if (arg === '--host') out.host = argv[++i];
     else if (arg.startsWith('--host=')) out.host = arg.slice('--host='.length);
-    else if (arg.startsWith('-')) { console.error(`未知参数：${arg}（可用：--port N / --host H / --no-open）`); process.exit(2); }
+    else if (arg.startsWith('-')) { console.error(`未知参数：${arg}（可用：--port N / --host H / --no-open / --allow-external-bind）`); process.exit(2); }
     // 位置参数（如 `serve`）直接忽略，方便把它当子命令用
   }
   if (out.port !== null && (!Number.isInteger(out.port) || out.port < 1 || out.port > 65535)) {
@@ -34,10 +36,18 @@ function parseArgs(argv) {
   return out;
 }
 
+/** 与界面、服务端用同一套判定：这些写法只在本机可达。 */
+function isLoopbackHost(host) {
+  const value = String(host ?? '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  return value === '127.0.0.1' || value === '::1' || value === '0:0:0:0:0:0:0:1' || value === 'localhost';
+}
+
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
-  console.log('用法：node start.mjs [--port N] [--host H] [--no-open]');
+  console.log('用法：node start.mjs [--port N] [--host H] [--no-open] [--allow-external-bind]');
   console.log('  默认端口来自 .env / LEGADO_PORT，缺省 1234；起来后自动打开浏览器。');
+  console.log('  默认只绑 127.0.0.1。绑非回环地址（如 0.0.0.0）必须加 --allow-external-bind，');
+  console.log('  同一网络中的其它设备会因此能访问本服务。只在可信网络中临时使用。');
   process.exit(0);
 }
 
@@ -90,6 +100,28 @@ if (existsSync(distIndex)) {
   if (distAsset) console.log(`界面指纹 ${distAsset}${jarAsset && jarAsset !== distAsset ? `（jar 内是 ${jarAsset}，靠 LEGADO_ALLOW_STALE_JAR 放行）` : ''}`);
 }
 const env = childEnvironment(runtime);
+if (args.allowExternalBind) env.LEGADO_ALLOW_EXTERNAL_BIND = '1';
+
+/**
+ * 绑定地址的启动前防呆（用户要求：对 LEGADO_HOST 的修改强警告确认）。
+ *
+ * 服务端也有同一道闸门（`requireLoopbackBind`），但等 Java 起来才拒绝，用户会先盯两分钟
+ * "正在启动"；这里在 spawn 之前就说清楚，并给出两条明确的路：留在本机，或显式放行。
+ * `--allow-external-bind` 只是把同一个环境变量交出去，不是第二套开关。
+ */
+if (!isLoopbackHost(runtime.host)) {
+  if (env.LEGADO_ALLOW_EXTERNAL_BIND !== '1') {
+    console.error(`拒绝绑定到 ${runtime.host}：这不是回环地址。`);
+    console.error('同一网络中的其它设备将能访问本服务及其全部接口（没有登录口令）。');
+    console.error('仅本机使用：去掉 --host，或设置 LEGADO_HOST=127.0.0.1。');
+    console.error(`确实要从其它设备访问：node start.mjs --host ${runtime.host} --allow-external-bind`);
+    console.error('（等价于 LEGADO_ALLOW_EXTERNAL_BIND=1；只在可信网络中临时使用。）');
+    process.exit(1);
+  }
+  console.warn(`⚠️ 正在绑定非回环地址 ${runtime.host}：同一网络中的设备可以访问本服务的全部接口。`);
+  console.warn('   请确认处在可信网络；不需要对外时，改用默认的 127.0.0.1 重启。');
+}
+
 ensureDirectories(runtime);
 
 /** 浏览器地址：绑 0.0.0.0 时用回环地址访问自己。 */

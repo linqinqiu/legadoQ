@@ -1,1 +1,14 @@
-﻿blank_issues_enabled: falsecontact_links:  - name: "💬 社区讨论与答疑 / Discussions"    url: "./discussions"    about: "部署提问、日常交流、阅读心得与书源分享请前往 GitHub Discussions"  - name: "💡 功能想法与脑暴 / Ideas"    url: "./discussions/categories/ideas"    about: "在提交正式 Feature Request 前，欢迎在 Discussions 交流灵感与构想"  - name: "📖 项目文档与使用说明 / Documentation"    url: ".#readme"    about: "查看 Docker 部署、环境变量配置与快速开始指南"  - name: "📱 原版 Legado (开源阅读 Android)"    url: "https://github.com/gedoor/legado"    about: "本项目为 Legado 的无头服务端与 Web 客户端移植。如需反馈原版 Android 客户端问题请访问原项目"
+blank_issues_enabled: false
+contact_links:
+  - name: "使用提问与讨论"
+    url: "https://github.com/linqinqiu/legadoQ/discussions"
+    about: "部署、配置、日常使用与书源分享请到 Discussions。"
+  - name: "功能想法"
+    url: "https://github.com/linqinqiu/legadoQ/discussions/categories/ideas"
+    about: "在提交功能请求前，可以先在这里确认是否已有相似想法。"
+  - name: "文档与快速开始"
+    url: "https://github.com/linqinqiu/legadoQ#readme"
+    about: "安装、启动、端口与绑定地址、书源兼容性说明。"
+  - name: "原版 Legado（Android）"
+    url: "https://github.com/gedoor/legado"
+    about: "本项目是把书源规则搬到服务端的实现；原版 Android 客户端的问题请到原项目反馈。"

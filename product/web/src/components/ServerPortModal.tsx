@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { bindAddressLabel, browseHost, isLoopbackHost } from '../lib/serverHost'
 
 /**
  * 「服务端口」（用户 2026-10-09：「用户可以自定义端口……重启生效」）。
@@ -12,6 +13,7 @@ import { useEscapeClose } from '../lib/useEscapeClose'
 export function ServerPortModal({ onClose }: { onClose: () => void }) {
   useEscapeClose(onClose)
   const [current, setCurrent] = useState<number | null>(null)
+  const [host, setHost] = useState('')
   const [value, setValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState<number | null>(null)
@@ -19,8 +21,8 @@ export function ServerPortModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     void api.serverInfo()
-      .then(info => { setCurrent(info.port); setValue(String(info.port)) })
-      .catch(() => setError('没取到当前端口'))
+      .then(info => { setCurrent(info.port); setHost(info.host); setValue(String(info.port)) })
+      .catch(() => setError('未获取到当前端口'))
   }, [])
 
   const save = async () => {
@@ -50,7 +52,14 @@ export function ServerPortModal({ onClose }: { onClose: () => void }) {
         </header>
 
         <div className="server-port-body">
-          <p className="server-port-current">当前跑在 <b>{current === null ? '…' : current}</b></p>
+          <p className="server-port-current">当前绑定 <b>{bindAddressLabel(host, current)}</b></p>
+          {!!host && (
+            <p className={`server-port-bind ${isLoopbackHost(host) ? 'is-local' : 'is-exposed'}`} role="note">
+              {isLoopbackHost(host)
+                ? '仅回环地址可访问：只允许本机程序连接，局域网内其它设备无法访问。'
+                : '已绑定到非回环地址：同一网络中的其它设备可以访问本服务及其全部接口。仅在可信网络中临时使用；启动时需要设置 LEGADO_ALLOW_EXTERNAL_BIND=1。'}
+            </p>
+          )}
           <label className="customize-field">
             <span>改成（1–65535）</span>
             <input
@@ -65,7 +74,7 @@ export function ServerPortModal({ onClose }: { onClose: () => void }) {
           {!!error && <p className="customize-error" role="alert">{error}</p>}
           {saved !== null && (
             <p className="customize-note">
-              已记下 <b>{saved}</b>：重启 legadoQ 后生效，之后用 <code>http://127.0.0.1:{saved}/</code> 打开。
+              已记录 <b>{saved}</b>：重启 legadoQ 后生效，之后用 <code>http://{browseHost(host) || '127.0.0.1'}:{saved}/</code> 打开。
             </p>
           )}
           <div className="customize-actions">

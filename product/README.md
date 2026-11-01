@@ -162,6 +162,7 @@ cd web && npm install && npm run dev     # 前端开发服务器（热重载）
 | 变量 | 默认值 | 作用 |
 | --- | --- | --- |
 | `LEGADO_HOST` | `127.0.0.1` | 绑定地址。改成 `0.0.0.0` 就局域网可达，见下一节 |
+| `LEGADO_ALLOW_EXTERNAL_BIND` | 未设置 | 设为 `1` 才允许非回环绑定；`start.mjs --allow-external-bind` 等价于此项 |
 | `LEGADO_PORT` | `8080`（裸 jar）；启动脚本 / 桌面版 `1234` | HTTP 与 WebSocket 端口 |
 | `LEGADO_DATA_DIR` | `data` | 数据根目录，封面缓存与本地书都从它下面派生 |
 | `LEGADO_DATABASE` | `$LEGADO_DATA_DIR/legado.sqlite` | 单独指定库文件位置 |
@@ -170,11 +171,11 @@ cd web && npm install && npm run dev     # 前端开发服务器（热重载）
 | `LEGADO_HOME` | 当前目录 | 安装根：`port.txt`、`server.log`、`tmp/` 都从它下面派生。由启动器传入（`scripts/runtime.mjs`），裸跑 jar 一般不用管 |
 | `LEGADO_REPO` | `linqinqiu/legadoQ` | `owner/repo` 形状，供「关于」页检查更新；默认本项目自己的仓库，换 fork 时改它 |
 
-`start.mjs` / `stop.mjs` 是可选封装（后台拉起、按端口停进程），以脚本自己所在目录为安装根，整个文件夹可以改名或搬盘。`start.mjs` 支持 `--port 1235` 换端口、`--host 0.0.0.0` 换绑定地址、`--no-open` 只起服务不开浏览器（默认起来后自动打开浏览器）。端口也可以**在界面上改**（设置 → 服务 → 服务端口，重启后生效，写的是安装根下的 `port.txt`）；优先级 `--port` > `port.txt` > `.env` / 环境变量 > 1234。同目录的 `start.cmd` 是给双击用的门面：服务没跑就起、等就绪再开界面；已经在跑就直接开界面。
+`start.mjs` / `stop.mjs` 是可选封装（后台拉起、按端口停进程），以脚本自己所在目录为安装根，整个文件夹可以改名或搬盘。`start.mjs` 支持 `--port 1235` 换端口、`--host 0.0.0.0 --allow-external-bind` 换绑定地址（非回环必须显式放行）、`--no-open` 只起服务不开浏览器（默认起来后自动打开浏览器）。端口也可以**在界面上改**（设置 → 服务 → 服务端口，重启后生效，写的是安装根下的 `port.txt`）；优先级 `--port` > `port.txt` > `.env` / 环境变量 > 1234。同目录的 `start.cmd` 是给双击用的门面：服务没跑就起、等就绪再开界面；已经在跑就直接开界面。
 
 ## 想给手机用之前
 
-这个服务不设身份，绑定地址就是唯一的门。默认只绑回环，所以手机连不上是设计如此。要跨设备用，设 `LEGADO_HOST=0.0.0.0` 重启 —— 同时清楚这意味着同一张网里任何人都能读改这个库（书源、书架、登录凭据）。要认真做就在前面放一层带鉴权的反向代理，或者走隧道，别把服务直接暴露出去。
+这个服务不设身份，绑定地址就是唯一的门。默认只绑回环，所以手机连不上是设计如此。要跨设备用，设 `LEGADO_HOST=0.0.0.0` 并显式放行（`LEGADO_ALLOW_EXTERNAL_BIND=1`，或 `start.mjs --allow-external-bind`）后重启 —— 同时清楚这意味着同一张网里任何人都能读改这个库（书源、书架、登录凭据）。要认真做就在前面放一层带鉴权的反向代理，或者走隧道，别把服务直接暴露出去。
 
 ## 手机备份包
 

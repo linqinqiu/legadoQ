@@ -9,7 +9,8 @@ import {
 
 export type SourceSummary = { id: string; name: string; url: string; group?: string; enabled: boolean; isJsSource: boolean; hasLogin: boolean; updatedAt: number; version: number; /** 自定义排序位；null = 没拖过，按名称排在有序段之后 */ sortOrder?: number | null }
 export type SourceRecord = { id: string; json: string; version: number; updatedAt: number }
-export type AboutInfo = { title: string; version: string; repository: string }
+/** `build` 是内部构建号（与对外版本解耦）；旧包可能没有这个字段，按 `0` 理解。 */
+export type AboutInfo = { title: string; version: string; repository: string; build?: string }
 /** 服务自身：这次运行实际绑在哪（改 port.txt 不会让它变，要重启）。 */
 export type ServerInfo = { host: string; port: number }
 export type ServerPortResult = { port: number; restartRequired: boolean }

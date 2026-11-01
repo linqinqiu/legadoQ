@@ -115,6 +115,13 @@ export function AboutPage({
         <dl className="about-facts">
           {/* 取失败时不能一直挂着「载入中…」：那行字会永远停在屏幕上（notice 在旁边，但版本这一格在说谎） */}
           <div><dt>版本</dt><dd>{info?.version ?? (notice ? '没取到' : '载入中…')}</dd></div>
+          {/* 构建号与对外版本解耦：同一个版本可能打好几次包，`0` 表示这个包没读到 BUILD_NUMBER */}
+          <div>
+            <dt>构建</dt>
+            <dd>{info
+              ? (info.build && info.build !== '0' ? `#${info.build}` : '未注入')
+              : (notice ? '没取到' : '载入中…')}</dd>
+          </div>
           <div><dt>运行位置</dt><dd>{window.location.host}</dd></div>
           {/* 「开发者」这一格原来印的是仓库 slug，而 slug 的兜底值硬写着别人家的仓库
               （`lukelzlz/legado`，这份代码 clone 来的地方，不是本项目的归属）。

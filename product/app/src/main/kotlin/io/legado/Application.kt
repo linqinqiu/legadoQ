@@ -237,9 +237,10 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
                     title = BuildInfo.title,
                     version = BuildInfo.version,
                     status = "ok",
-                    // 版本号相同但包是旧的，光看 version 分不出来 —— 这两个字段就是为此而存在
+                    // 版本号相同但包是旧的，光看 version 分不出来 —— 这几个字段就是为此而存在
                     ui = BuildInfo.uiFingerprint,
                     startedAtMs = BuildInfo.startedAt,
+                    build = BuildInfo.buildNumber,
                 )
             )
         }

@@ -7,18 +7,21 @@ import { testFiles } from './discover.ts'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { CustomizeModal } from '../src/components/CustomizeModal'
+import { ColorTab } from '../src/reader/settingsPanel/ColorTab'
+import { BackgroundLibrary } from '../src/reader/settingsPanel/BackgroundLibrary'
 import {
   activeCustomSkin,
   availableSkins,
   BUILTIN_SKINS,
-  DEFAULT_SKIN_BASE,
-  DEFAULT_SKIN_MODE,
   defaultReaderSettings,
+  loadReaderSettings,
   parseCustomSkin,
   parseCustomSkins,
-  parseSkinBase,
+  parseReaderBackground,
+  parseReaderBackgrounds,
   parseSkinId,
-  parseSkinMode,
+  readerBackgroundVars,
+  saveReaderSettings,
   skinLabel,
   themeClassNames,
   type CustomSkin,
@@ -28,7 +31,7 @@ import {
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
 const settings = (patch: Partial<ReaderSettings> = {}): ReaderSettings => ({ ...defaultReaderSettings, ...patch })
 const skin = (patch: Partial<CustomSkin> = {}): CustomSkin => ({
-  id: 'midnight', name: '', css: '.theme-midnight { --canvas: #0f1213; }', base: 'light', ...patch,
+  id: 'midnight', name: '', css: '.theme-midnight { --canvas: #0f1213; }', ...patch,
 })
 
 /**
@@ -64,31 +67,20 @@ test('皮肤列表 - 内置七套 + 库里每一套自定义皮肤', () => {
   assert.equal(availableSkins(settings({ customSkins: [skin(), skin({ id: 'dawn' })] })).length, 9)
 })
 
-test('自定义皮肤两种语义：叠在内置之上（老数据缺省）或全权自定义', () => {
+test('自定义皮肤只挂自己的类，不再叠加任何内置档', () => {
   assert.deepEqual(themeClassNames(settings()), ['theme-light'])
   assert.deepEqual(themeClassNames(settings({ theme: 'dark' })), ['theme-dark'])
-  // 老数据没有 mode 字段 → 缺省 overlay：挂两个类，外观与历史逐字节一致。
-  const custom = settings({ customSkins: [skin({ base: 'dark' })], theme: 'midnight' })
-  assert.deepEqual(themeClassNames(custom), ['theme-dark', 'theme-midnight'],
-    'overlay 模式下只写两三条变量的皮肤仍要有一整套内置变量兜底')
-  // 全权自定义（用户 2026-10-23：「自定义不是叠在哪一套之上，是全权自定义」）：
-  // 只挂自己这一个类 —— 没写到的变量落到 styles.css 里 :root 那份与皮肤无关的中性基线，
-  // 不跟随任何预设皮肤，因此换内置皮肤不会让这一套的观感漂移。
-  const standalone = settings({ customSkins: [skin({ base: 'dark', mode: 'standalone' })], theme: 'midnight' })
-  assert.deepEqual(themeClassNames(standalone), ['theme-midnight'],
-    'standalone 必须只有自己的类，否则就还在叠预设')
-  // 基线与 mode 无关：同一套 skin，standalone 下 base 完全不参与类名。
-  assert.deepEqual(themeClassNames(settings({ customSkins: [skin({ base: 'paper', mode: 'standalone' })], theme: 'midnight' })),
-    ['theme-midnight'])
-  // 填了自定义皮肤但当前选的还是内置那档时，不要把基类和皮肤类同时挂上
-  assert.deepEqual(themeClassNames({ ...custom, theme: 'paper' }), ['theme-paper'])
-  assert.deepEqual(themeClassNames({ ...standalone, theme: 'paper' }), ['theme-paper'])
-  assert.equal(parseSkinBase('paper'), 'paper')
-  assert.equal(parseSkinBase('midnight'), DEFAULT_SKIN_BASE, '基档只认内置档')
-  assert.equal(parseSkinBase(undefined), DEFAULT_SKIN_BASE)
-  assert.equal(parseSkinMode('standalone'), 'standalone')
-  assert.equal(parseSkinMode(undefined), DEFAULT_SKIN_MODE, '缺省必须是 overlay（老皮肤外观不许变）')
-  assert.equal(parseSkinMode('乱写的值'), 'overlay', '非法值退回缺省，不许产生第三种语义')
+  // 用户 2026-10-23/2026-11-01：自定义不是叠在哪一套之上，是全权自定义。
+  // 即使老数据里还留着 base/mode，解析与类名都不再认它们。
+  const legacy = { id: 'midnight', name: '', css: '.theme-midnight { --canvas: #0f1213; }', base: 'dark', mode: 'overlay' }
+  const custom = settings({
+    customSkins: [legacy as unknown as CustomSkin],
+    theme: 'midnight',
+  })
+  assert.deepEqual(themeClassNames(custom), ['theme-midnight'])
+  assert.deepEqual(themeClassNames({ ...custom, theme: 'paper' }), ['theme-paper'], '没启用自定义时仍按所选内置皮肤')
+  // 内置皮肤列表本身不受影响
+  assert.equal(BUILTIN_SKINS.length, 7)
 })
 
 /**
@@ -119,12 +111,13 @@ test('styles.css 给了与皮肤无关的中性颜色基线，且排在预设皮
 test('皮肤库清洗：id 过白名单、空 id / 空 CSS 丢掉、同 id 只留最后一套', () => {
   assert.deepEqual(parseCustomSkins('不是数组'), [])
   assert.deepEqual(parseCustomSkins([{ id: 'MidNight', name: ' 午夜 ', css: 'a{b:c}' }]),
-    [{ id: 'midnight', name: '午夜', css: 'a{b:c}', base: 'light', mode: 'overlay' }])
+    [{ id: 'midnight', name: '午夜', css: 'a{b:c}' }])
   // id 清洗后为空（中文）、或 CSS 为空的那一套不成立 —— 不进库，也就不会多出一个选不中的项
   assert.deepEqual(parseCustomSkins([{ id: '中文', css: 'a{b:c}' }, { id: 'ok', css: '   ' }]), [])
   assert.equal(parseCustomSkins([{ id: 'dup', css: 'a{b:1}' }, { id: 'dup', css: 'a{b:2}' }])[0].css, 'a{b:2}')
-  // base 只认内置档
-  assert.equal(parseCustomSkin({ id: 'x', css: 'a{b:c}', base: '不存在的档' })?.base, DEFAULT_SKIN_BASE)
+  // 老数据的 base / mode 字段被忽略，不再进入新对象
+  assert.deepEqual(parseCustomSkin({ id: 'x', css: 'a{b:c}', base: 'dark', mode: 'overlay' }),
+    { id: 'x', name: '', css: 'a{b:c}' })
   assert.equal(parseCustomSkin(null), null)
   assert.equal(parseCustomSkin({ id: '', css: 'x' }), null)
 })
@@ -142,10 +135,102 @@ test('旧版单套皮肤会迁进皮肤库，不丢用户已存的皮肤', () =>
   // loadCustomSkins 是私有的，走公开的 loadReaderSettings 不便（要 window），
   // 所以这里直接验迁移的两半：旧字段能被 parseCustomSkin 收成一套，且空 CSS 的旧值不收。
   const migrated = parseCustomSkin({ id: 'midnight', css: '.theme-midnight { --canvas: #0f1213; }', base: 'dark' })
-  assert.deepEqual(migrated, { id: 'midnight', name: '', css: '.theme-midnight { --canvas: #0f1213; }', base: 'dark', mode: 'overlay' },
-    '旧版那一套没有 mode，迁过来必须落到 overlay（老皮肤的外观一个像素都不许变）')
-  assert.equal(parseCustomSkin({ id: 'm', css: 'a{b:c}', mode: 'standalone' })?.mode, 'standalone')
+  assert.deepEqual(migrated, { id: 'midnight', name: '', css: '.theme-midnight { --canvas: #0f1213; }' },
+    '旧版那一套只剩 id/name/css，base 不再保留')
   assert.equal(parseCustomSkin({ id: 'midnight', css: '' }), null, '旧版只填了 id 没填 CSS 的，迁过来也是空的，不收')
+})
+
+test('阅读背景预设：颜色 / 图片 / 压暗各自清洗，空颜色 + 空图片合法', () => {
+  const parsed = parseReaderBackground({ id: 'bg-1', name: ' 夜读 ', color: '#112233', image: 'https://example.com/a.jpg', dim: 3 })
+  assert.deepEqual(parsed, { id: 'bg-1', name: '夜读', color: '#112233', image: 'https://example.com/a.jpg', dim: 0.6 })
+  assert.deepEqual(parseReaderBackground({ id: 'bg-2' }), { id: 'bg-2', name: '', color: '', image: '', dim: 0.25 })
+  assert.equal(parseReaderBackground({ id: '中文', color: 'red' }), null, 'id 清洗后为空 → 这一套不成立')
+  assert.deepEqual(parseReaderBackground({ id: 'bg-3', color: 'red' })?.color, '', '非法颜色清成空，但 id 合法时仍是一套')
+  assert.deepEqual(parseReaderBackground({ id: 'bg-4', image: 'javascript:alert(1)' })?.image, '')
+  assert.deepEqual(parseReaderBackgrounds([
+    { id: 'bg-1', color: '#000' }, { id: 'bg-1', color: '#fff' }, { id: '', color: '#fff' }, null,
+  ]), [{ id: 'bg-1', name: '', color: '#fff', image: '', dim: 0.25 }], '同 id 留最后一条，坏条丢掉')
+})
+
+test('阅读背景样式：压暗同时作用于颜色与图片，空背景不铺黑层', () => {
+  assert.deepEqual(readerBackgroundVars({ readerBgColor: '', readerBgImage: '', readerBgDim: .25 }),
+    { '--reader-bg-color': 'transparent', '--reader-bg-image': 'none' },
+    '跟随主题时不能因为默认压暗把画布蒙黑')
+  assert.deepEqual(readerBackgroundVars({ readerBgColor: '#112233', readerBgImage: '', readerBgDim: .25 }),
+    { '--reader-bg-color': '#112233', '--reader-bg-image': 'linear-gradient(rgb(0 0 0 / 0.25), rgb(0 0 0 / 0.25))' },
+    '纯色背景的压暗要真的生效，否则滑杆是个没反应的控件')
+  assert.deepEqual(readerBackgroundVars({ readerBgColor: '', readerBgImage: 'https://example.com/a.jpg', readerBgDim: 0 }),
+    { '--reader-bg-color': 'transparent', '--reader-bg-image': 'url("https://example.com/a.jpg")' },
+    '压暗为 0 时不该多一层全透明渐变')
+  assert.deepEqual(readerBackgroundVars({ readerBgColor: '#000', readerBgImage: 'https://example.com/a.jpg', readerBgDim: .4 }),
+    { '--reader-bg-color': '#000', '--reader-bg-image': 'linear-gradient(rgb(0 0 0 / 0.4), rgb(0 0 0 / 0.4)), url("https://example.com/a.jpg")' })
+  assert.equal(readerBackgroundVars({ readerBgColor: '#000', readerBgImage: '', readerBgDim: 9 })['--reader-bg-image'],
+    'linear-gradient(rgb(0 0 0 / 0.6), rgb(0 0 0 / 0.6))', '越界压暗要夹到上限')
+})
+
+/** 用户 2026-11-01：「作为这外观怎么进阅读页面了还不能自定义」——
+ * 阅读页的「颜色与背景」标签页里必须能打开同一个皮肤库，并且背景预设也在同一处。
+ */
+test('阅读页「颜色与背景」：皮肤库入口 + 背景预设库都在同一个标签页', () => {
+  const html = renderToStaticMarkup(React.createElement(ColorTab, {
+    settings: settings(), onChange: () => undefined,
+  }))
+  assert.match(html, /管理自定义皮肤/)
+  assert.match(html, /阅读背景/)
+  assert.match(html, /我的背景/)
+  assert.match(html, /跟随整站壁纸/)
+  assert.match(html, /背景图地址/)
+  assert.match(html, /theme-choice/, '主题网格要真的渲染出来，不能只剩一个入口按钮')
+})
+
+test('背景预设库：当前套用的那套标「使用中」，图片预设带缩略图', () => {
+  const html = renderToStaticMarkup(React.createElement(BackgroundLibrary, {
+    settings: settings({
+      customBackgrounds: [
+        { id: 'bg-1', name: '夜读', color: '#112233', image: '', dim: .25 },
+        { id: 'bg-2', name: '远山', color: '#000', image: 'https://example.com/a.jpg', dim: .4 },
+      ],
+      readerBgColor: '#112233',
+      readerBgImage: '',
+      readerBgDim: .25,
+    }),
+    onChange: () => undefined,
+  }))
+  assert.equal((html.match(/使用中/g) ?? []).length, 1, '只有与当前背景完全一致的那一套才标使用中')
+  assert.match(html, /纯色 #112233 · 压暗 25%/)
+  assert.match(html, /图片 · 压暗 40%/)
+  assert.match(html, /example\.com\/a\.jpg/, '图片预设的色片要用图片本身，不能只显示一个色块')
+})
+
+/** 用户 2026-11-01：「做测试能否自定义并保存」—— 走真实的 load/save 往返。 */
+test('自定义皮肤与背景预设随阅读设置一起存取，刷新后仍在', () => {
+  const store = new Map<string, string>()
+  const previous = (globalThis as { window?: unknown }).window
+  ;(globalThis as { window?: unknown }).window = {
+    localStorage: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, value) },
+      removeItem: (key: string) => { store.delete(key) },
+    },
+  }
+  try {
+    const background = { id: 'bg-1', name: '夜读', color: '#112233', image: '', dim: 0.3 }
+    saveReaderSettings(settings({
+      theme: 'midnight',
+      customSkins: [skin({ name: '午夜' })],
+      customBackgrounds: [background],
+      readerBgColor: '#112233',
+      readerBgDim: 0.3,
+    }))
+    const loaded = loadReaderSettings()
+    assert.equal(loaded.theme, 'midnight', '主题选择要能保存下来')
+    assert.deepEqual(loaded.customSkins, [skin({ name: '午夜' })], '自定义皮肤库要能保存下来')
+    assert.deepEqual(loaded.customBackgrounds, [background], '背景预设要能保存下来')
+    assert.equal(loaded.readerBgColor, '#112233')
+    assert.equal(loaded.readerBgDim, 0.3)
+  } finally {
+    ;(globalThis as { window?: unknown }).window = previous
+  }
 })
 
 test('CustomizeModal 静态渲染：皮肤列表 + 皮肤库 + 编辑器', () => {
@@ -155,7 +240,8 @@ test('CustomizeModal 静态渲染：皮肤列表 + 皮肤库 + 编辑器', () =>
   assert.match(html, /皮肤/)
   assert.match(html, /自定义皮肤库/)
   assert.match(html, /localStorage/, '要说清楚只存本机：不上传服务端、不进备份包')
-  assert.match(html, /叠在哪一套之上/, '要问清自定义皮肤叠在哪一档上（只改一两个变量才不至于花屏）')
+  assert.doesNotMatch(html, /叠在哪一套之上|叠在哪一档/, '全权自定义：不该再问"叠在某一档之上"')
+  assert.match(html, /中性基线/, '要说清楚没写到的变量走中性基线，不跟预设配色联动')
   assert.match(html, /新建皮肤/)
   assert.ok(!html.includes('自定义（'), '库里没东西时，皮肤列表里不该出现一个用不了的自定义皮肤')
   assert.ok(!html.includes('界面布局'), '界面框架 v2 已撤销：这里不该再有一档"布局"可选')

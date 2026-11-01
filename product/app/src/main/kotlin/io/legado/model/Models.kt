@@ -7,9 +7,9 @@ import kotlinx.serialization.Serializable
 /**
  * 探活兼报版本：界面右上角显示的版本号就来自这里，保证"跑着的 == 构建的 == 界面说的"。
  *
- * `ui` 与 `startedAtMs` 是给"改了看不到"这类部署漂移准备的自证字段：版本号相同但包是旧的时，
- * 光看 `version` 分不出来，而 bundle 文件名带内容哈希、启动时刻只会随重启变。
- * 两者都带默认值 —— 序列化不写默认值，所以老客户端看到的形状与从前一致。
+ * `ui`、`startedAtMs` 与 `build` 是给"改了看不到"这类部署漂移准备的自证字段：版本号相同但包是旧的时，
+ * 光看 `version` 分不出来，而 bundle 文件名带内容哈希、启动时刻只会随重启变；`build` 是内部构建号，
+ * 与对外版本解耦（见 `BUILD_NUMBER`）。三者都带默认值，老客户端读旧包也不会缺字段。
  */
 @Serializable
 data class HealthStatus(
@@ -18,6 +18,7 @@ data class HealthStatus(
     val status: String,
     val ui: String = "",
     val startedAtMs: Long = 0L,
+    val build: String = "0",
 )
 
 @Serializable data class SourceSummary(
@@ -739,7 +740,13 @@ data class CachedBookRequest(
 @Serializable data class SourceOrderRequest(val ids: List<String>)
 
 /** 「关于」页顶部那三样：名字、版本、发布仓库。版本只有一个来源（清单），界面不许写死。 */
-@Serializable data class AboutInfo(val title: String, val version: String, val repository: String)
+@Serializable data class AboutInfo(
+    val title: String,
+    val version: String,
+    val repository: String,
+    /** 内部构建号；`0` 表示这个包读取不到 `meta/build-info.properties`。 */
+    val build: String = "0",
+)
 
 /**
  * 服务自身：当前绑在哪、界面里那个「服务端口」现在显示什么。

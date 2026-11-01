@@ -1,18 +1,51 @@
+import { useEffect, useState } from 'react'
 import { Icon } from '../../icons'
-import { availableSkins, type ReaderSettings } from '../readerSettings'
+import { CustomizeModal } from '../../components/CustomizeModal'
+import { availableSkins, parseBgImage, type ReaderSettings } from '../readerSettings'
+import { BackgroundLibrary } from './BackgroundLibrary'
 import { SettingGroup, SettingRange } from './SettingRow'
 
 /**
- * 「颜色与背景」标签页：主题网格 + 阅读背景。
+ * 「颜色与背景」标签页：主题网格 + 皮肤库入口 + 阅读背景。
  *
- * 主题网格一处渲染**内置七套 + customSkins 库**（P1 统一：原来内置在抽屉、自定义在
- * CustomizeModal 两处分裂，这里把它们放进同一张网格，启用哪套 = 点哪块）。
- * 自定义皮肤本体的创建/编辑仍在「我的 → 自定义皮肤」（CustomizeModal），这里只管选用。
+ * 皮肤与背景的编辑都收在这里，阅读页内即可完成，不必先回到「设置 → 皮肤与壁纸」。
+ * 自定义皮肤复用同一个 `CustomizeModal`（`only="skins"` 时只显示皮肤库），
+ * 没有第二套编辑器 —— 两处各写一份，迟早会各改各的。
  */
 export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onChange: (next: ReaderSettings) => void }) {
   const update = (value: Partial<ReaderSettings>) => onChange({ ...settings, ...value })
+  /** 皮肤库浮层：只在阅读页按需挂载，不占抽屉高度。 */
+  const [showSkinEditor, setShowSkinEditor] = useState(false)
+  /**
+   * 背景图地址的草稿：边打字边写会把半截 URL 当成图片去加载，
+   * 也会让 `url("…")` 在引号未闭合时拼坏样式。提交放在回车 / 失焦。
+   */
+  const [bgUrlDraft, setBgUrlDraft] = useState(settings.readerBgImage)
+  const [bgError, setBgError] = useState('')
+
+  useEffect(() => { setBgUrlDraft(settings.readerBgImage) }, [settings.readerBgImage])
+
+  const commitBgUrl = () => {
+    const raw = bgUrlDraft.trim()
+    if (!raw) {
+      update({ readerBgImage: '' })
+      setBgError('')
+      return
+    }
+    const image = parseBgImage(raw)
+    if (!image) {
+      setBgError('背景图地址仅支持 http(s)://、以 / 开头的站内路径或 data:image，且不能包含引号。')
+      return
+    }
+    update({ readerBgImage: image })
+    setBgUrlDraft(image)
+    setBgError('')
+  }
+
+  const customCount = (settings.customSkins ?? []).length
+
   return <>
-    <SettingGroup title="主题" hint="自定义皮肤在「我的 → 自定义皮肤」里创建/编辑；这里点哪块用哪套。内置七套按 T 键循环。">
+    <SettingGroup title="主题" hint="内置七套与自定义皮肤并列显示；自定义皮肤支持新增、编辑、删除，保存后立即应用。按 T 键循环切换内置皮肤。">
       <div className="theme-grid">
         {availableSkins(settings).map(skin => (
           <button
@@ -26,14 +59,61 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
           </button>
         ))}
       </div>
-    </SettingGroup>
-    <SettingGroup title="阅读背景" hint="颜色与背景图铺在阅读区上，压暗让文字保持可读；全部清空则跟随主题。背景图只存在这台浏览器里。">
-      <div className="bg-row">
-        <input type="color" className="reader-bg-color" value={settings.readerBgColor || '#ffffff'} onChange={event => update({ readerBgColor: event.target.value })} aria-label="背景颜色" />
-        <button type="button" className="ghost-button" onClick={() => update({ readerBgColor: '', readerBgImage: '' })}>清除背景</button>
+      <div className="theme-custom-actions">
+        <button type="button" className="subtle-button" onClick={() => setShowSkinEditor(true)}>
+          <Icon name="sliders" /> 管理自定义皮肤{customCount > 0 ? `（${customCount}）` : ''}
+        </button>
+        <small>自定义皮肤仅保存在本机；编辑器与「设置 → 皮肤与壁纸」共用同一份数据。</small>
       </div>
-      <input type="text" className="reader-text-input" value={settings.readerBgImage} placeholder="背景图 URL（http(s):// 或站内路径，可留空）" onChange={event => update({ readerBgImage: event.target.value })} />
-      <SettingRange label="背景压暗" value={settings.readerBgDim} min={0} max={0.6} step={0.05} display={`${Math.round(settings.readerBgDim * 100)}%`} onChange={dim => update({ readerBgDim: dim })} />
     </SettingGroup>
+
+    <SettingGroup title="阅读背景" hint="颜色与背景图铺在阅读区，压暗用于维持文字对比度；颜色与图片均未设置时跟随主题。">
+      <div className="bg-row">
+        <input
+          type="color"
+          className="reader-bg-color"
+          value={settings.readerBgColor || '#ffffff'}
+          onChange={event => update({ readerBgColor: event.target.value })}
+          aria-label="背景颜色"
+        />
+        <span className="bg-row-label">{settings.readerBgColor || '跟随主题'}</span>
+        <button
+          type="button"
+          className="ghost-button"
+          onClick={() => update({ readerBgColor: '', readerBgImage: '' })}
+        >
+          清除背景
+        </button>
+      </div>
+      <input
+        type="text"
+        className="reader-text-input"
+        value={bgUrlDraft}
+        placeholder="背景图地址（http(s):// 或站内路径；可留空）"
+        onChange={event => setBgUrlDraft(event.target.value)}
+        onBlur={commitBgUrl}
+        onKeyDown={event => { if (event.key === 'Enter') commitBgUrl() }}
+      />
+      {!!bgError && <p className="customize-error" role="alert">{bgError}</p>}
+      <SettingRange
+        label="背景压暗"
+        value={settings.readerBgDim}
+        min={0}
+        max={0.6}
+        step={0.05}
+        display={`${Math.round(settings.readerBgDim * 100)}%`}
+        onChange={dim => update({ readerBgDim: dim })}
+      />
+      <BackgroundLibrary settings={settings} onChange={onChange} />
+    </SettingGroup>
+
+    {showSkinEditor && (
+      <CustomizeModal
+        only="skins"
+        settings={settings}
+        onChange={onChange}
+        onClose={() => setShowSkinEditor(false)}
+      />
+    )}
   </>
 }

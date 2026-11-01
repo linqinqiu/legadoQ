@@ -30,7 +30,7 @@ import { MediaBlock } from './MediaBlock'
 import { IconButton } from './IconButton'
 import { ReaderContentSkeleton } from './ReaderContentSkeleton'
 import { ReaderSettingsControls } from './ReaderSettingsControls'
-import { clampScrollPosition, effectiveReaderFontFamily, ReaderSettings, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './readerSettings'
+import { clampScrollPosition, effectiveReaderFontFamily, readerBackgroundVars, ReaderSettings, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './readerSettings'
 import { stepFontSize } from './fontSizeControl'
 import { ReaderMenuAction } from './readerMenu'
 import { IDENTITY_CONVERTER, loadScriptConverter, type ScriptConverter } from './scriptConvert'
@@ -2095,11 +2095,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     '--reader-text-align': settings.textAlign,
     '--reader-sidebar-width': `${settings.sidebarWidth}px`,
     '--reader-font-family': effectiveReaderFontFamily(settings),
-    '--reader-bg-color': settings.readerBgColor || 'transparent',
-    // 背景图带一层压暗（readerBgDim）：再亮的图也不至于把墨色文字顶没。
-    '--reader-bg-image': settings.readerBgImage
-      ? `linear-gradient(rgb(0 0 0 / ${settings.readerBgDim}), rgb(0 0 0 / ${settings.readerBgDim})), url("${settings.readerBgImage}")`
-      : 'none',
+    ...readerBackgroundVars(settings),
   } as CSSProperties
 
   // Pointer & Gesture interactions

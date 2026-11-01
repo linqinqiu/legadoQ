@@ -2,7 +2,7 @@
 
 本地小说 / 漫画阅读服务：Kotlin + Ktor 后端、SQLite、内置 Web UI，默认只监听 `127.0.0.1:1234`。
 
-> 当前版本 **0.2.9**。实际运行版本以 `curl http://127.0.0.1:1234/healthz` 为准。
+> 当前版本 **0.2.10**。实际运行版本以 `curl http://127.0.0.1:1234/healthz` 为准。
 > 整个目录可整体移动或改名：启动脚本、数据目录、日志都按安装根相对解析，不依赖盘符。
 
 ---
@@ -35,6 +35,34 @@
 
 ---
 
+## 书源语法兼容性
+
+目标是让社区书源按作者意图跑出结果，而不是逐字节复刻 Android 客户端。下表是当前支持度；每条差异的源码依据与实测范围见 [`product/docs/compatibility.md`](product/docs/compatibility.md)。
+
+| 规则写法 | 支持 | 说明 |
+| :--- | :---: | :--- |
+| CSS 选择器（Jsoup） | 支持 | 列表、字段、属性与文本 |
+| XPath（`@xpath:`） | 支持 | 独立分支解析，不与 `\|\|` 备选混拆 |
+| JSONPath（`$.data.list[*]`、`@Json:`） | 支持 | JS 属性访问与 JSONPath 使用同一份数据形状 |
+| `\|\|` 备选规则 | 支持 | 在 XPath 与 `@Json:` 之后拆分 |
+| `<js>…</js>`、`@js:` | 支持 | Rhino 沙箱执行，允许顶层 `return` |
+| `{{…}}` 表达式 | 支持 | `{{page}}` 按字面量替换 |
+| 分页占位 `<1,2,3>` | 不支持 | 上游写法；请改用 `{{page}}` 或自行拼接 |
+| `:正则` 列表模式与 `$1` 分组 | 支持 | 0.2.4 起 |
+| `source.bookSourceComment` 中的脚本 | 支持 | 原文注入，可用 `eval` 执行 |
+| `Packages.*`、`JavaImporter`、`importPackage` | 支持（白名单） | 加解密、Base64、Hash、UUID、okhttp3 等；Java 反射禁用 |
+| `java.ajax`、`java.ajaxAll`、`cache`、`cookie()`、`jsLib` | 支持 | 远端 `jsLib` 会下载后求值；`ajaxAll` 按入参顺序返回 |
+| `ruleContent.imageDecode` | 支持 | 可返回 Base64 或 data URL |
+| 图片、音频、视频、文件源（`bookSourceType` 1–4） | 支持 | 按媒体类型展示与播放 |
+| 登录（`loginUrl`、`loginUi`、填表、Cookie） | 支持 | 五种入口；纯前端登录页需手动粘贴 Cookie |
+| `webView: true` 或依赖 WebView 过挑战 | 不支持 | 没有 Android WebView；体检标为 `needs_webview` |
+| `ruleReview` 段评 | 不支持 | 字段可存可备份，但不产出段评 |
+| 标准 RSS/Atom（未写 `ruleArticles`） | 不支持 | 必须提供列表规则，否则只能打开原页 |
+
+「不支持」不等于书源损坏：体检会把需要 WebView、没配搜索、只能用于发现的源单独分档，不与「连不上」混在一起。
+
+---
+
 ## 快速开始
 
 前置：Node.js 20+、Java 17+。
@@ -54,7 +82,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 
 ## API
 
-- 端点总数：**144**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
+- 端点总数：**154**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
 - 机器可读目录：`GET http://127.0.0.1:1234/api/catalog`。
 - 接入说明：[`product/AGENTS.md`](product/AGENTS.md)。
 
@@ -62,7 +90,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 
 - 只监听 `127.0.0.1`，没有身份认证；绑定地址就是唯一的门。
 - `GET` / `HEAD` 直接放行；`POST` / `PUT` / `DELETE` 要求同源 `Origin`。
-- 把 `LEGADO_HOST` 改成 `0.0.0.0` 等于把整库写权限交给局域网。
+- 把 `LEGADO_HOST` 改成 `0.0.0.0` 等于把整库写权限交给局域网。启动脚本会拒绝非回环地址，确认要暴露才加 `--allow-external-bind`。
 
 ---
 
@@ -78,8 +106,11 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 │   ├── CONTRIBUTING.md  # 中文协作约定（权威版见仓库根 .github/）
 │   └── SECURITY.md      # 中文安全基线（权威版见仓库根 .github/）
 ├── docs/                # 架构示意、API 参考、目录规划、文档索引（archive/ 存历史归档）
-├── scripts/             # start / stop 包装
+├── scripts/             # 版本 / 发布工具（start、stop 在 product/）
 ├── .github/             # CI 与治理文件（CONTRIBUTING / SECURITY 英文权威版）
+├── BUILD_NUMBER         # 内部构建号（与对外版本解耦）
+├── RELEASES.md          # 对外版本 ← 构建号 ← commit 的发布记录
+├── RELEASING.md         # 发布流程与清单
 ├── CHANGELOG.md         # 指向 product/CHANGELOG.md
 ├── LICENSE / NOTICE.md  # MIT（根）/ GPL-3.0（product）
 └── VERSION
@@ -92,5 +123,5 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 ## 许可
 
 - 根目录代码与文档：**MIT**（见 `LICENSE`）。
-- `legado/`：**GPL-3.0**（见 `legado/LICENSE`）。
+- `product/`：**GPL-3.0**（见 `product/LICENSE`）。
 - 分发包含后端的整合包时，必须遵守 GPL-3.0。详见 [`NOTICE.md`](NOTICE.md)。

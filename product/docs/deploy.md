@@ -58,7 +58,8 @@ node scripts/package-desktop.mjs    # ⑤ 可选：桌面包
 ```bash
 node start.mjs                 # 起服务并开浏览器
 node start.mjs --no-open       # 只起服务（后台、不占窗口）
-node start.mjs --port 1235     # 换端口        --host 0.0.0.0  换绑定地址
+node start.mjs --port 1235     # 换端口
+node start.mjs --host 0.0.0.0 --allow-external-bind   # 换绑定地址（非回环必须显式放行）
 node stop.mjs                  # 按端口停进程（换过端口还没重启时会按 jar 兜底找）
 start.cmd                      # 双击用：没跑就起、等就绪再开界面；已在跑就直接开界面
 ```
@@ -81,7 +82,9 @@ start.cmd                      # 双击用：没跑就起、等就绪再开界�
 
 服务**不设身份**，绑定地址就是唯一的门。默认只绑回环。
 `LEGADO_HOST=0.0.0.0` 之后，同一张网里任何设备都能读改这个库（书源、书架、登录凭据）——
-同源闸门只挡"别人网页里的脚本借你的浏览器动手"，挡不住直连。要认真做就在前面放一层带鉴权的反向代理，或者走隧道。
+同源闸门只挡"别人网页里的脚本借你的浏览器动手"，挡不住直连。
+启动脚本会直接拒绝非回环地址；确认要暴露时加 `--allow-external-bind`（或设 `LEGADO_ALLOW_EXTERNAL_BIND=1`），
+它只表示"我知道风险"，不提供任何保护。要认真做就在前面放一层带鉴权的反向代理，或者走隧道。
 反代还需要：`X-Accel-Buffering: no` 别被吞（朗读是长音频流）、别缓冲 SSE 进度通道。
 
 ## 6. 升级之后"界面还是旧版"

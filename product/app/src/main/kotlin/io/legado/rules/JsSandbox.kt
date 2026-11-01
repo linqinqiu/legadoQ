@@ -93,6 +93,30 @@ data class JsExecutionContext(
     val chapterTitle: String? = null,
     /** 该书源的 jsLib：所有规则 JS 都应能调用其中的工具函数 */
     val jsLib: String? = null,
+    /**
+     * `loginUrl` 写成整段 JS 的登录脚本（库里 195 个源这样写）。
+     *
+     * 以前把它拼在 jsLib 后面一起求值；但 jsLib 可能是
+     * `{"漫画柜":"https://qyyuapi.com/sy/js/漫画柜/jsLib.js"}` 这种**远端脚本映射**
+     * （28 份源），拼上登录脚本后整段既不是 JSON 也不是合法 JS。现在分开挂、依次求值。
+     */
+    val loginScript: String? = null,
+    /**
+     * `loginUrl` 的**原始字段**：远端脚本（qyyuapi 系）会自己写 `eval(String(source.loginUrl))`
+     * 决定何时执行登录脚本，上游 `BaseSource.loginUrl` 本来就是这个语义。
+     * 我们只在 `source` 桥上暴露原文，不替脚本执行它。
+     */
+    val loginUrl: String? = null,
+    /**
+     * 本次求值要不要顺带执行 [loginScript]。
+     *
+     * 上游只在登录流程里跑 loginUrl 里的 JS（`BaseSource.login()` / loginUi / 登录按钮），
+     * 普通搜索/详情/正文只注入 jsLib（`SharedJsScope`）。这里默认 **false**：
+     * qyyuapi 系脚本的 loginUrl 顶部有 `put($$$)`（登录时才需要的默认设置写回），
+     * 以前每次规则 eval 都预跑它，脚本一报错整源搜索就直接失败。
+     * 登录表单渲染、登录动作等入口显式置 true。
+     */
+    val includeLoginScript: Boolean = false,
 )
 
 /**
@@ -107,8 +131,33 @@ data class JsExecutionContext(
  * 桩只会看到裸 URL，headers 在桩里不可见 —— 唯一能钉住"UA 到底挂没挂"的位置就是这里。
  */
 internal fun reloadFetchUrl(url: String): String {
-    val browserHeaders = """{"headers":{"User-Agent":"$RELOAD_BROWSER_USER_AGENT","Referer":"$url","Accept":"*/*"}}"""
+    val browserHeaders = """{"headers":{"User-Agent":"$RELOAD_BROWSER_USER_AGENT","Referer":"${headerSafe(url)}","Accept":"*/*"}}"""
     return "$url,$browserHeaders"
+}
+
+/**
+ * JDK `HttpRequest` 只接受可打印 ASCII 的 header 值，非 ASCII 直接抛
+ * `IllegalArgumentException: invalid header value`。
+ *
+ * 外站脚本托管地址常带中文目录（`https://qyyuapi.com/sy/js/再漫画/jsLib.js`），
+ * 原样塞进 Referer 会让 jsLib / `Reload` 整条链路在发请求前就失败 —— 表现为
+ * 「URL 规则里的脚本执行失败：invalid header value: …」，看不出跟中文路径有关。
+ * 按 UTF-8 百分号编码后再挂，站点按 Referer 判来源时看到的仍是同一个地址。
+ */
+internal fun headerSafe(raw: String): String {
+    val hex = "0123456789ABCDEF"
+    val out = StringBuilder(raw.length)
+    for (ch in raw) {
+        if (ch.code in 0x20..0x7e) {
+            out.append(ch)
+        } else {
+            ch.toString().toByteArray(Charsets.UTF_8).forEach { byte ->
+                val value = byte.toInt() and 0xFF
+                out.append('%').append(hex[value shr 4]).append(hex[value and 0x0F])
+            }
+        }
+    }
+    return out.toString()
 }
 
 /** [reloadFetchUrl] 给 `Reload` 请求挂的桌面 Chrome UA（与 `java.getUserAgent()` 无关，后者见下）。 */
@@ -173,6 +222,9 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         /** `cache.putFile/getFile` 在同一个缓存表里用前缀与 `put/get` 分开（上游本来就是两套存储）。 */
         const val FILE_CACHE_PREFIX = "file:"
 
+        /** 远端 jsLib 正文的内存缓存条数上限（全库 28 份源，每份 1–2 个地址；超了整表清空重新拉）。 */
+        const val MAX_REMOTE_JS_LIB = 64
+
         /**
          * `java.ajaxAll` 的有界并发池。上游用 `threadCount` 设置、默认 8 左右；
          * 这里是**守护线程池**，进程退出不会因为它在等网络而挂住。
@@ -201,9 +253,12 @@ class JsSandbox(private val runner: RuleRunner? = null) {
     internal val threadContext = ThreadLocal<JsExecutionContext?>()
 
     /** 在指定的书源上下文内执行 block（inline 以便调用方直接 return）。 */
-    inline fun <T> withSourceContext(context: JsExecutionContext?, block: () -> T): T {
+    internal inline fun <T> withSourceContext(context: JsExecutionContext?, block: () -> T): T {
         val previous = threadContext.get()
         threadContext.set(context)
+        // 线程池会复用线程：上一条请求/上一个书源留下的失败原因不能算到这一次头上
+        // （正文规则本身没有脚本，却把别的源 JSON.parse 的错误报成「脚本异常」就是这么来的）。
+        clearLastError()
         try {
             return block()
         } finally {
@@ -313,6 +368,27 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 ScriptableObject.putProperty(scope, "cookie", createCookieBridge(scope, sourceId, db, scriptHosts))
             }
 
+            // 远端脚本生态（qyyuapi 等）的通用约定：裸 `put(对象)` = 把书源变量整份写回。
+            // 上游没有这个全局名（`java.put` 是键值对），但该生态的 loginUrl/searchUrl 一开头就
+            // `put($$$)` 落默认设置；缺了它整段 `eval(String(source.loginUrl))` 直接 ReferenceError，
+            // 表现为「URL 规则里的脚本执行失败：put 未定义」，搜索一行都发不出去。
+            ScriptableObject.putProperty(scope, "put", object : BaseFunction() {
+                override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
+                    val value = args.firstOrNull()
+                    if (value == null || value === Context.getUndefinedValue()) return ""
+                    val text = when {
+                        value is CharSequence -> value.toString()
+                        else -> runCatching { NativeJSON.stringify(cx, scope, value, null, null) as? String }
+                            .getOrNull() ?: value.toString()
+                    }
+                    if (sourceId != null && text.isNotBlank()) {
+                        // 与上游 `BaseSource.putVariable(String)` 同一份存储（source.variable）。
+                        (context?.database ?: runner?.database)?.saveSourceVariable(sourceId, text)
+                    }
+                    return text
+                }
+            })
+
             // Legado 全局 `cache`（上游 CacheManager）：启用库 49 份源在写、36 份在读，
             // 蓝批拿它缓存 pixiv API 结果、书山聚合放图片样式、番茄系存 token。
             // 没有它脚本第一行就 `ReferenceError: “cache” 未定义`，整源不可用。
@@ -328,8 +404,13 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             ScriptableObject.putProperty(scope, "chapter", createChapterBridge(scope, context))
 
             // 先求值书源脚本库；顶层 `function`/`let` 声明落成全局属性，动作里的 this.xxx 才解析得到。
-            if (library != null) {
-                cx.evaluateString(scope, library, "jsLib.js", 1, null)
+            if (library != null) evalLibrary(scope, cx, library, context)
+            // loginUrl 的 JS 只在登录流程里跑（上游 `BaseSource.login()` / loginUi / 登录按钮）。
+            // 普通规则求值时预跑它会让 qyyuapi 系脚本的 `put($$$)` 等登录期代码把搜索打断。
+            if (context?.includeLoginScript == true) {
+                context.loginScript?.takeIf { it.isNotBlank() }?.let {
+                    cx.evaluateString(scope, it, "loginScript.js", 1, null)
+                }
             }
 
             val result = cx.evaluateString(scope, executableScript, "rule.js", 1, null)
@@ -361,9 +442,53 @@ class JsSandbox(private val runner: RuleRunner? = null) {
     }
 
     /** 最近一次 eval 的失败原因，供无法拿到执行上下文的调用方读取。 */
-    @Volatile
-    var lastError: String? = null
-        private set
+    private val lastErrorLocal = java.lang.ThreadLocal<String?>()
+
+    /**
+     * 失败原因必须**按线程**存：服务端是多线程处理请求的，原来一个 `@Volatile` 字段
+     * 会让 A 书的脚本错误被 B 书的正文失败信息读走（实测并发抽样时，一本没有任何脚本的
+     * CSS 正文失败，提示里却带着另一本书源 JSON.parse 的报错）。
+     */
+    var lastError: String?
+        get() = lastErrorLocal.get()
+        private set(value) {
+            lastErrorLocal.set(value)
+        }
+
+    /** 清掉上一轮留下的失败原因：「脚本返回 undefined」不能误报成上一次的异常。 */
+    internal fun clearLastError() {
+        lastError = null
+        threadContext.get()?.lastError = null
+    }
+
+    /**
+     * jsLib 以 JSON 映射给出时，值是**远端脚本地址**：上游 `SharedJsScope` 会把每个绝对地址
+     * 下载回来再逐个求值（漫画柜、包子漫画等 28 份源这样写）。直接当 JS 跑会报
+     * 「在语句前面缺少 ";" (jsLib.js#2)」，整源不可用。
+     * 缓存按 URL 存正文：同一个源每次规则 JS 都会重建沙箱作用域，不缓存就是每句规则下载一遍。
+     */
+    private val remoteJsLibCache = ConcurrentHashMap<String, String>()
+
+    private fun evalLibrary(scope: Scriptable, cx: Context, library: String, execContext: JsExecutionContext?) {
+        val map = runCatching { Json.parseToJsonElement(library.trim()) as? JsonObject }.getOrNull()
+            ?.takeIf { obj -> obj.isNotEmpty() && obj.values.all { it is JsonPrimitive && it.isString } }
+        if (map == null) {
+            cx.evaluateString(scope, library, "jsLib.js", 1, null)
+            return
+        }
+        for (element in map.values) {
+            val url = (element as JsonPrimitive).content.trim()
+            // 上游只下载绝对地址；其余的键（说明文字之类）跳过。
+            if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) continue
+            val js = remoteJsLibCache[url] ?: runner?.fetch(reloadFetchUrl(url), execContext?.sourceId, execContext?.database)
+                ?.also {
+                    if (remoteJsLibCache.size >= MAX_REMOTE_JS_LIB) remoteJsLibCache.clear()
+                    remoteJsLibCache[url] = it
+                }
+                ?: throw RuleExecutionException("书源 jsLib 指向远端脚本，但没有抓取通道：$url")
+            cx.evaluateString(scope, js, "jsLib.js", 1, null)
+        }
+    }
 
     /** `chapter` 桥接对象：正文规则会引用 chapter.index / chapter.title，缺失会让整段脚本中断。 */
     private fun createChapterBridge(scope: Scriptable, execContext: JsExecutionContext?): NativeObject {
@@ -710,6 +835,9 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "key", sourceId)
         ScriptableObject.putProperty(api, "bookSourceName", execContext?.sourceName ?: sourceId)
         ScriptableObject.putProperty(api, "bookSourceComment", execContext?.sourceComment ?: "")
+        // 上游 `source.loginUrl` 是原样字段；qyyuapi 系脚本靠 `eval(String(source.loginUrl))`
+        // 在 searchUrl 里自己决定何时跑登录脚本（见 loginUrl.js 的 `put($$$)` 初始化）。
+        ScriptableObject.putProperty(api, "loginUrl", execContext?.loginUrl ?: "")
 
         // source.getLoginInfo() -> JSON string
         ScriptableObject.putProperty(api, "getLoginInfo", object : BaseFunction() {
@@ -794,14 +922,17 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             }
         })
 
-        // source.setVariable(val)
-        ScriptableObject.putProperty(api, "setVariable", object : BaseFunction() {
+        // source.setVariable(val) / source.putVariable(val)
+        // 上游 BaseSource 的整套变量写回方法就叫 putVariable（29 份源在用）；setVariable 是它的别名。
+        val saveVariable = object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val v = args.firstOrNull()?.toString() ?: ""
                 db?.saveSourceVariable(sourceId, v)
                 return v
             }
-        })
+        }
+        ScriptableObject.putProperty(api, "setVariable", saveVariable)
+        ScriptableObject.putProperty(api, "putVariable", saveVariable)
 
         // source.put(key, val)
         ScriptableObject.putProperty(api, "put", object : BaseFunction() {
@@ -846,12 +977,14 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         })
 
         // cookie.setCookie(url, cookie)
+        // 返回空串：上游 CookieStore.setCookie 是 Unit，脚本把整句写进地址占位符
+        // （`{{cookie.setCookie(...)}}/search...`）时插进去的必须是空串，不能是 cookie 正文。
         val setFn = object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val url = args.getOrNull(0)?.toString() ?: return ""
                 val c = args.getOrNull(1)?.toString() ?: return ""
                 if (allowed(url)) db?.setCookieForUrl(url, c)
-                return c
+                return ""
             }
         }
         ScriptableObject.putProperty(api, "setCookie", setFn)
@@ -859,11 +992,13 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "setWebCookie", setFn)
 
         // cookie.removeCookie(url)
+        // 返回空串（上游是 Unit）。这条以前返回 true，253 份源把整句写在 searchUrl 开头做副作用，
+        // 地址就变成 `true/search/...`，直接「URL 格式无效或包含未解析变量: true」。
         ScriptableObject.putProperty(api, "removeCookie", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
-                val url = args.firstOrNull()?.toString() ?: return true
+                val url = args.firstOrNull()?.toString() ?: return ""
                 if (allowed(url)) db?.removeCookieBucket(url)
-                return true
+                return ""
             }
         })
 

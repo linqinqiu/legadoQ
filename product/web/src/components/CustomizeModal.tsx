@@ -5,16 +5,10 @@ import { WallpaperSection } from '../settings/WallpaperSection'
 import {
   activeCustomSkin,
   availableSkins,
-  BUILTIN_SKINS,
-  DEFAULT_SKIN_BASE,
-  DEFAULT_SKIN_MODE,
-  parseSkinBase,
   parseSkinId,
-  parseSkinMode,
   skinLabel,
   type CustomSkin,
   type ReaderSettings,
-  type SkinMode,
 } from '../reader/readerSettings'
 
 /**
@@ -35,10 +29,13 @@ export function CustomizeModal({
   settings,
   onChange,
   onClose,
+  only,
 }: {
   settings: ReaderSettings
   onChange: (next: ReaderSettings) => void
   onClose: () => void
+  /** `skins`：只显示皮肤库（阅读页内打开时用），不重复壁纸那一栏。 */
+  only?: 'skins'
 }) {
   useEscapeClose(onClose)
   const skins = availableSkins(settings)
@@ -50,8 +47,6 @@ export function CustomizeModal({
   const [formId, setFormId] = useState('')
   const [formName, setFormName] = useState('')
   const [formCss, setFormCss] = useState('')
-  const [formBase, setFormBase] = useState<string>(DEFAULT_SKIN_BASE)
-  const [formMode, setFormMode] = useState<SkinMode>(DEFAULT_SKIN_MODE)
   const [error, setError] = useState('')
 
   const sanitized = parseSkinId(formId)
@@ -59,11 +54,11 @@ export function CustomizeModal({
 
   const startNew = () => {
     setEditingId(null)
-    setFormId(''); setFormName(''); setFormCss(''); setFormBase(DEFAULT_SKIN_BASE); setFormMode(DEFAULT_SKIN_MODE); setError('')
+    setFormId(''); setFormName(''); setFormCss(''); setError('')
   }
   const startEdit = (skin: CustomSkin) => {
     setEditingId(skin.id)
-    setFormId(skin.id); setFormName(skin.name); setFormCss(skin.css); setFormBase(skin.base); setFormMode(skin.mode ?? DEFAULT_SKIN_MODE); setError('')
+    setFormId(skin.id); setFormName(skin.name); setFormCss(skin.css); setError('')
   }
 
   const save = () => {
@@ -88,8 +83,6 @@ export function CustomizeModal({
       id: sanitized,
       name: formName.trim(),
       css: formCss,
-      base: parseSkinBase(formBase),
-      mode: parseSkinMode(formMode),
     }
     const rest = library.filter(skin => skin.id !== editingId && skin.id !== sanitized)
     const nextLibrary = [...rest, next].sort((a, b) => a.id.localeCompare(b.id))
@@ -101,8 +94,8 @@ export function CustomizeModal({
 
   const remove = (skin: CustomSkin) => {
     const nextLibrary = library.filter(item => item.id !== skin.id)
-    // 删掉的正好是当前这套时，退回它叠着的那一档内置皮肤，别把界面留在"没有基类"的状态
-    const theme = settings.theme === skin.id ? parseSkinBase(skin.base) : settings.theme
+    // 删掉的正好是当前这套时退回晓白：别让 theme 指向一套已经不存在的皮肤。
+    const theme = settings.theme === skin.id ? 'light' : settings.theme
     onChange({ ...settings, customSkins: nextLibrary, theme })
     if (editingId === skin.id) startNew()
   }
@@ -113,17 +106,17 @@ export function CustomizeModal({
     <div className="overlay-backdrop" onClick={onClose}>
       <div className="dialog-shell size-l customize-dialog" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="自定义">
         <header className="dialog-head customize-header">
-          <h2><Icon name="sliders" /> 自定义</h2>
+          <h2><Icon name="sliders" /> {only === 'skins' ? '自定义皮肤' : '自定义'}</h2>
           <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
         </header>
 
-        <div className="customize-body">
+        <div className={`customize-body${only === 'skins' ? ' is-single' : ''}`}>
           <div className="customize-columns">
             <div className="customize-col">
           <section className="customize-section">
             <h3>皮肤</h3>
             <p className="customize-hint">
-              皮肤改的是配色与标题栏，不改布局；下面皮肤库里存过的自定义皮肤也会出现在这里，点一下就换。
+              皮肤仅改变配色与标题栏，不改变布局。自定义皮肤与内置皮肤并列，点击即应用。
             </p>
             <div className="customize-skin-row" role="radiogroup" aria-label="皮肤">
               {skins.map(skin => {
@@ -151,24 +144,25 @@ export function CustomizeModal({
               <button type="button" className="subtle-button" onClick={startNew}>＋ 新建皮肤</button>
             </div>
             <p className="customize-hint">
-              存过多少套就有多少条，可**新增 / 编辑 / 删除 / 切换**。全部只存在这台浏览器的 localStorage，
-              <strong>不上传服务端、也不进备份包</strong>。CSS 要自己写完整选择器，例如
+              支持新增、编辑、删除与切换。数据仅保存在本机浏览器 localStorage，
+              <strong>不上传服务端，也不进入备份包</strong>。自定义皮肤完全由 CSS 决定：
+              未定义的变量使用与内置皮肤无关的中性基线，不叠加任何预设配色。
+              CSS 需包含完整选择器，例如
               <code>.theme-midnight &#123; --canvas: #0f1213; --surface: #171c1e; &#125;</code>。
             </p>
 
             {library.length === 0 ? (
-              <p className="customize-note">还没有自定义皮肤。点「＋ 新建皮肤」加一套。</p>
+              <p className="customize-note">暂无自定义皮肤。点击「新建皮肤」创建。</p>
             ) : (
               <ul className="skin-library">
                 {library.map(skin => {
                   const isActive = settings.theme === skin.id
-                  const baseName = BUILTIN_SKINS.find(base => base.id === skin.base)?.name ?? skin.base
                   return (
                     <li key={skin.id} className={`skin-library-row ${isActive ? 'active' : ''}`}>
                       <div className="skin-library-main">
                         <span className="skin-library-name">{skinLabel(skin)}</span>
                         <span className="skin-library-meta">
-                          <code>.theme-{skin.id}</code> · {skin.mode === 'standalone' ? '全权自定义' : `叠在 ${baseName} 上`} · {skin.css.length} 字符
+                          <code>.theme-{skin.id}</code> · {skin.css.length} 字符
                         </span>
                       </div>
                       <div className="skin-library-actions">
@@ -220,61 +214,9 @@ export function CustomizeModal({
                   onChange={event => setFormCss(event.target.value)}
                 />
               </label>
-              {/*
-                两种语义（用户 2026-10-23：「自定义不是叠在哪一套之上，是全权自定义」）：
-                - 全权自定义：只挂自己这一个类，没写到的变量落到 styles.css 里 `:root`
-                  那份与皮肤无关的中性颜色基线 —— 不会跟着换肤漂移。
-                - 叠在某一档之上：历史语义，没写到的变量沿用那一档预设（老数据缺省仍是它，
-                  这样既有皮肤的外观一个像素都不变）。
-              */}
-              <div className="customize-field">
-                <span>没写到的变量怎么补</span>
-                <div className="customize-base-row" role="radiogroup" aria-label="自定义皮肤的取值方式">
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={formMode === 'standalone'}
-                    className={`customize-base ${formMode === 'standalone' ? 'selected' : ''}`}
-                    onClick={() => setFormMode('standalone')}
-                  >
-                    <span>全权自定义</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={formMode === 'overlay'}
-                    className={`customize-base ${formMode === 'overlay' ? 'selected' : ''}`}
-                    onClick={() => setFormMode('overlay')}
-                  >
-                    <span>叠在某一档之上</span>
-                  </button>
-                </div>
-                <small className="customize-note">
-                  {formMode === 'standalone'
-                    ? '只用自己的 CSS；没写的变量走一份与皮肤无关的中性基线，不跟随任何预设配色。'
-                    : '沿用所选那一档预设里没写到的变量；切换内置皮肤时，这一套的观感会跟着变。'}
-                </small>
-              </div>
-              {formMode === 'overlay' && (
-              <div className="customize-field">
-                <span>叠在哪一套之上（没写到的变量沿用那一套）</span>
-                <div className="customize-base-row" role="radiogroup" aria-label="自定义皮肤的基础皮肤">
-                  {BUILTIN_SKINS.map(base => (
-                    <button
-                      key={base.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={formBase === base.id}
-                      className={`customize-base ${formBase === base.id ? 'selected' : ''}`}
-                      onClick={() => setFormBase(base.id)}
-                    >
-                      <span className={`theme-swatch theme-swatch-${base.id}`} />
-                      <span>{base.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              )}
+              <p className="customize-note">
+                保存后立即应用。未定义的变量使用中性基线，切换内置皮肤不会改变该套外观。
+              </p>
               {!!error && <p className="customize-error" role="alert">{error}</p>}
               <div className="customize-actions">
                 <button type="button" className="primary-button" onClick={save}>保存并套用</button>
@@ -286,16 +228,19 @@ export function CustomizeModal({
             </div>
           </section>
           </div>
-          <div className="customize-col">
-            {/* 壁纸与皮肤同一处改，但分左右两栏：左边调外观（皮肤/皮肤库），右边调背景图。 */}
-            <section className="customize-section customize-wallpaper">
-              <h3>壁纸</h3>
-              <p className="customize-hint">
-                整站背景图：从这台电脑选一张、或填图片地址，再调不透明度与模糊。只存在这台浏览器，不进备份包。
-              </p>
-              <WallpaperSection />
-            </section>
-          </div>
+          {only !== 'skins' && (
+            <div className="customize-col">
+              {/* 壁纸与皮肤同一处改，但分左右两栏：左边调外观（皮肤/皮肤库），右边调背景图。 */}
+              <section className="customize-section customize-wallpaper">
+                <h3>壁纸</h3>
+                <p className="customize-hint">
+                  整站背景图：从本机选择图片或填写地址，并调整不透明度、遮罩与模糊。
+                  图片仅保存在本机浏览器，不进入备份包。
+                </p>
+                <WallpaperSection />
+              </section>
+            </div>
+          )}
         </div>
         </div>
       </div>
@@ -306,6 +251,6 @@ export function CustomizeModal({
 /**
  * 这里改的东西要立刻看得见效果，不留"改了但没生效"的中间态：
  * `SkinStyle`（main.tsx）把**当前启用那一套**的 CSS 挂成 `<style id="legado-custom-skin">`，
- * `<html>` 与外壳同时带 `theme-<基档> theme-<id>` 两个类（叠加的理由见 `themeClassNames`）。
+ * `<html>` 与外壳只挂 `theme-<id>` 一个类（自定义皮肤不再叠加内置档，见 `themeClassNames`）。
  * 本组件只负责写 settings。
  */

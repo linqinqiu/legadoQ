@@ -138,7 +138,7 @@ fun Route.apiRoutes(
          *    那是把打包环节的问题说成产品事实。
          */
         get("/about") {
-            call.respond(AboutInfo(BuildInfo.title, BuildInfo.version, UpdateCheck.repository))
+            call.respond(AboutInfo(BuildInfo.title, BuildInfo.version, UpdateCheck.repository, BuildInfo.buildNumber))
         }
         post("/about/update-check") {
             if (!call.requireSameOriginWrite()) return@post

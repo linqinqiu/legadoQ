@@ -1133,7 +1133,14 @@ class RuleRunnerTest {
         assertNotNull("解析出来的 headers 里要有 User-Agent", ua)
         assertTrue("UA 必须是浏览器级，实际=$ua", ua!!.contains("Mozilla/5.0"))
         val referer = options.headers.entries.firstOrNull { it.key.equals("Referer", ignoreCase = true) }?.value
-        assertEquals("Referer 应指回脚本自身地址", scriptUrl, referer)
+        // 路径里的中文不能原样进 header：JDK HttpClient 见到非 ASCII 会在发请求前就抛
+        // `invalid header value`，qyyuapi 这批脚本源会整批 404。所以 Referer 是脚本地址的
+        // header-safe 形态（非 ASCII 百分号编码），站点侧解码后语义不变。
+        assertEquals("Referer 应指回脚本自身地址（非 ASCII 已编码）", io.legado.rules.headerSafe(scriptUrl), referer)
+        assertTrue("编码后的 Referer 必须仍是纯 ASCII；实际=$referer",
+            referer!!.all { it.code in 0x20..0x7e })
+        assertTrue("纯 ASCII 地址不该被改动；实际=${io.legado.rules.headerSafe("https://a.example/x.js")}",
+            io.legado.rules.headerSafe("https://a.example/x.js") == "https://a.example/x.js")
     }
 
     @Test

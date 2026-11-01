@@ -18,6 +18,7 @@ import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
 import io.legado.cache.CoverCache
+import io.legado.model.AboutInfo
 import io.legado.model.BatchSourceRequest
 import io.legado.model.BatchSourceResponse
 import io.legado.model.BookRequest
@@ -67,6 +68,15 @@ class ApiRoutesHttpTest {
             val resp = client.get("/healthz")
             assertEquals(HttpStatusCode.OK, resp.status)
             assertTrue(resp.bodyAsText().contains("ok"))
+            // 内部构建号与对外版本一起报：版本号相同但包是旧的时，只靠 version 分不出来。
+            // 读不到 meta/build-info.properties 时 BuildInfo 会回落 "0"，两边仍然一致。
+            val health = client.get("/healthz").body<io.legado.model.HealthStatus>()
+            assertEquals(BuildInfo.buildNumber, health.build)
+            assertTrue("build 应为非负整数，实际 ${health.build}", health.build.matches(Regex("\\d+")))
+
+            val about = client.get("/api/about").body<AboutInfo>()
+            assertEquals(BuildInfo.version, about.version)
+            assertEquals(BuildInfo.buildNumber, about.build)
         } finally {
             runCatching { Files.deleteIfExists(Path.of(dbPath)) }
             runCatching { tempDir.toFile().deleteRecursively() }

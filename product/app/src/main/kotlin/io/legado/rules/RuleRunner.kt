@@ -133,18 +133,14 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         // 整个搜索流程都在书源上下文内执行：规则里的 <js> 依赖 source.getVariable() 与 jsLib 工具函数
         val execContext = sourceContext(source, sourceUrl)
         return jsSandbox.withSourceContext(execContext) {
-            val searchUrl = if (rawSearchUrl.trimStart().startsWith("@js:") || rawSearchUrl.trimStart().startsWith("js:") || rawSearchUrl.contains("<js>")) {
-                val jsCode = if (rawSearchUrl.contains("<js>")) rawSearchUrl.substringAfter("<js>").substringBefore("</js>") else rawSearchUrl.removePrefix("@js:").removePrefix("js:")
-                jsSandbox.eval(jsCode, mapOf("key" to keyword, "keyword" to keyword, "page" to 1, "baseUrl" to sourceUrl, "sourceId" to sourceUrl), execContext)
-                    ?: throw RuleExecutionException("searchUrl JS 计算未返回有效地址：${execContext.lastError ?: "脚本无返回值"}")
-            } else {
-                rawSearchUrl
-            }
+            // URL 级的 `<js>…</js>` / `@js:` 要在切 `,{options}` **之前**执行（上游 `analyzeJs`）：
+            // 脚本可以把整串地址连同参数尾巴一起拼出来，先切尾巴会把返回的 options 留在地址里。
+            val searchUrl = applyUrlScripts(rawSearchUrl, keyword, 1, sourceUrl)
             val (urlTemplate, options) = splitUrlOptions(searchUrl)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             // 搜索永远只取第一页，但**页码要显式给**：`<a,b,c>` 那一段没有页码就不展开（本机 50 份源的
             // searchUrl 用这个写法），实测语料里另有 2,644 条栏目地址用它，不给页码等于留一串尖括号在网址里。
-            val rendered = renderUrl(urlTemplate, keyword, sourceUrl, page = 1).absolute(sourceUrl)
+            val rendered = renderUrl(urlTemplate, keyword, sourceUrl, page = 1, expandScripts = false).absolute(sourceUrl)
             val body = fetchUrl(rendered, mergedOptions, keyword, sourceUrl, database)
             val rule = source.objectValue("ruleSearch") ?: throw RuleExecutionException("该书源未配置 ruleSearch")
             bookItems(body, rule, sourceUrl, source.sourceType()) to responseClue(body)
@@ -194,6 +190,9 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
 
     /** 把 `ruleSearch` / `ruleExplore` 这类「列表规则 + 字段规则」解析成书籍条目。 */
     private fun bookItems(body: String, rule: JsonObject, sourceUrl: String, sourceType: Int): List<SearchResult> {
+        // 空响应交给 JSONPath 只会抛 `IllegalArgumentException：json string can not be null or empty`，
+        // 看着像引擎坏了。实测听姬的搜索接口匿名请求就是 200 + 0 字节，直接说清楚更好。
+        if (body.isBlank()) throw RuleExecutionException("上游响应为空（0 字节）：站点没有返回内容，多半要登录或被拦截")
         val rawListRule = rule.string("bookList") ?: throw RuleExecutionException("缺少 bookList 规则")
         // `-`/`+` 本是目录规则的排序标记，可真实源也把它写进搜索与发现（uu书盟 `+@css:.item`、
         // 免费小说 `-@JSon:$.data.bookList`、笔下文学③ `+@js:…`、🖼微博博主 `+<js>…</js>`）：
@@ -265,9 +264,10 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val sourceUrl = source.string("bookSourceUrl") ?: throw RuleExecutionException("书源缺少 bookSourceUrl")
         return jsSandbox.withSourceContext(sourceContext(source, sourceUrl)) {
             val resolved = if (isJsRule(urlTemplate)) evalRuleJs(urlTemplate, mapOf("baseUrl" to sourceUrl, "sourceId" to sourceUrl, "key" to "", "keyword" to "", "page" to page)) ?: urlTemplate else urlTemplate
-            val (path, options) = splitUrlOptions(resolved)
+            val analyzed = applyUrlScripts(resolved, "", page, sourceUrl)
+            val (path, options) = splitUrlOptions(analyzed)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
-            val body = fetchUrl(renderUrl(path, "", sourceUrl, page).absolute(sourceUrl), mergedOptions, null, sourceUrl, database)
+            val body = fetchUrl(renderUrl(path, "", sourceUrl, page, expandScripts = false).absolute(sourceUrl), mergedOptions, null, sourceUrl, database)
             /*
              * `ruleExplore` 常常**存在但是空的**：实测全库 5,574 个源里 2,857 个的
              * `ruleExplore.bookList` 是空串，其中 2,828 个的 `ruleSearch.bookList` 可用。
@@ -310,9 +310,10 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             ?: throw RuleExecutionException("该订阅源没有配置 ruleArticles，服务端无法解析列表")
         return jsSandbox.withSourceContext(sourceContext(source, sourceUrl)) {
             val resolved = if (isJsRule(urlTemplate)) evalRuleJs(urlTemplate, mapOf("baseUrl" to sourceUrl, "sourceId" to sourceUrl, "key" to "", "page" to page)) ?: urlTemplate else urlTemplate
-            val (path, options) = splitUrlOptions(resolved)
+            val analyzed = applyUrlScripts(resolved, "", page, sourceUrl)
+            val (path, options) = splitUrlOptions(analyzed)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
-            val pageUrl = renderUrl(path, "", sourceUrl, page).absolute(sourceUrl)
+            val pageUrl = renderUrl(path, "", sourceUrl, page, expandScripts = false).absolute(sourceUrl)
             val body = fetchUrl(pageUrl, mergedOptions, null, sourceUrl, database)
             val reverse = rawListRule.startsWith("-")
             val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
@@ -392,16 +393,11 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
      * 构造当前书源的 JS 执行上下文（含 jsLib，规则 JS 因此可以调用书源工具函数）。
      *
      * 注意：Legado 约定里 `loginUrl` 可以不是网址，而是**整段登录用 JS**（聚合源普遍如此），
-     * 其中的工具函数同样会被正文/目录规则调用，因此也要并入脚本库。
+     * 其中的工具函数同样会被正文/目录规则调用。但 jsLib 与它**必须分开传**：
+     * jsLib 可能是 `{"漫画柜":"https://…/jsLib.js"}` 这种远端脚本映射，拼在一起就不再是任何合法脚本。
+     * （两者由沙箱按 jsLib → loginScript 的顺序在同一作用域里求值。）
      */
     private fun sourceContext(source: JsonObject, sourceUrl: String?): JsExecutionContext {
-        val library = buildString {
-            source.string("jsLib")?.takeIf { it.isNotBlank() }?.let { append(it) }
-            loginScript(source)?.let {
-                if (isNotEmpty()) append("\n")
-                append(it)
-            }
-        }.takeIf { it.isNotBlank() }
         // `sourceName` / `sourceComment` 必须一起填：启用库里有 **69 处**脚本读
         // `source.bookSourceComment`，其中 43 处是真的把可执行代码藏在注释里再
         // `eval(String(source.bookSourceComment))`（繁星小说、满孟小说、顶通漫画、狸猫故事、猫眼看书…）。
@@ -412,7 +408,9 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             sourceName = source.string("bookSourceName"),
             sourceComment = source.string("bookSourceComment"),
             database = database,
-            jsLib = library,
+            jsLib = source.string("jsLib")?.takeIf { it.isNotBlank() },
+            loginScript = loginScript(source),
+            loginUrl = source.string("loginUrl"),
         )
     }
 
@@ -471,7 +469,9 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             (jsLib.contains("startBrowserAwait") && LOGIN_FUNCTION.containsMatchIn(jsLib))
         if (!hasLoginEntry) return null
         val sourceUrl = source.string("bookSourceUrl")
-        val execContext = sourceContext(source, sourceUrl)
+        // 登录入口解析属于登录流程：loginUrl 里的 JS 要跟着跑一遍，
+        // 它定义的 `login()` 才是真正告诉我们打开哪个地址的那段（上游 BaseSource.login() 同口径）。
+        val execContext = sourceContext(source, sourceUrl).copy(includeLoginScript = true)
         runCatching {
             jsSandbox.eval(
                 "if (typeof login === 'function') { login(true, false); }",
@@ -1035,7 +1035,11 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         }
         val state = stateJson.trim().takeIf { it.startsWith("{") } ?: "{}"
         val execContext = sourceContext(source, sourceUrl)
-            .copy(sourceName = source.string("bookSourceName") ?: sourceUrl)
+            .copy(
+                sourceName = source.string("bookSourceName") ?: sourceUrl,
+                // v2 的 loginUi/loginAction 就定义在 loginUrl 的 JS 里，必须一起求值。
+                includeLoginScript = true,
+            )
         val raw = runCatching {
             // 必须 `return`：执行器遇到脚本里有 return 就把整段包成 IIFE，
             // 只有显式 return 才能把表单对象带出来（否则最后一行表达式的值会被丢掉）。
@@ -1081,6 +1085,8 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val execContext = sourceContext(source, sourceUrl)
             .copy(
                 sourceName = source.string("bookSourceName") ?: sourceUrl,
+                // loginAction 与 loginUi 同在 loginUrl 的 JS 里。
+                includeLoginScript = true,
                 browserCompleted = browserCompleted,
                 browserBody = browserBody,
             )
@@ -1224,7 +1230,11 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         val rawJson = if (loginUiStr.startsWith("@js:") || loginUiStr.startsWith("js:") || loginUiStr.contains("<js>")) {
             val jsCode = if (loginUiStr.contains("<js>")) loginUiStr.substringAfter("<js>").substringBefore("</js>") else loginUiStr.removePrefix("@js:").removePrefix("js:")
             val execContext = sourceContext(source, sourceUrl)
-                .copy(sourceName = source.string("bookSourceName") ?: sourceUrl)
+                .copy(
+                    sourceName = source.string("bookSourceName") ?: sourceUrl,
+                    // v1 的 loginUi 脚本常直接调用 loginUrl 里定义的辅助函数。
+                    includeLoginScript = true,
+                )
             jsSandbox.eval(jsCode, mapOf("sourceId" to sourceUrl, "baseUrl" to sourceUrl), execContext) ?: "[]"
         } else {
             loginUiStr
@@ -1250,6 +1260,8 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         // 脚本库（jsLib + loginUrl 形式的 JS）由执行上下文统一注入，这里只拼动作本身
         val execContext = sourceContext(source, sourceUrl).copy(
             sourceName = sourceName,
+            // 登录动作要跑 loginUrl 里定义的 `login()`；普通规则求值不会预跑它。
+            includeLoginScript = true,
             initialLoginInfo = loginData.toMutableMap(),
             isLongClick = isLongClick,
             browserCompleted = browserCompleted,
@@ -1677,7 +1689,10 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         // （实测懒人听书源：搜索「失败」、什么都搜不到）。这些头由 HttpClient 自己管，过滤掉即可。
         headers
             .filterKeys { it.lowercase() !in RESTRICTED_HEADERS }
-            .forEach { (name, value) -> builder.header(name, value) }
+            // JDK HttpClient 只收可打印 ASCII 的 header 值：书源 header 脚本拼出中文
+            // （外站脚本路径作 Referer 最常见）时会在发请求前抛「invalid header value」，
+            // 整条搜索/正文直接失败。未越界的值原样发出，只有非 ASCII 与控制字符按 UTF-8 百分号编码。
+            .forEach { (name, value) -> builder.header(name, headerSafe(value)) }
         val method = options?.method?.uppercase() ?: "GET"
         val body = options?.body
         if (method != "GET" && body != null) {
@@ -1854,12 +1869,66 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
     }
 
     /**
+     * 地址规则里的整段 JS（上游 `AnalyzeUrl.analyzeJs` / `AppPattern.JS_PATTERN`）：
+     * `<js>…</js>` 或 `@js:`（一直吃到串尾）。
+     *
+     * 与字段规则不同，这里**可以前面写地址、后面挂脚本**：每段的返回值成为新的 `result`，
+     * 交给下一段；最后一段之后的文本用 `@result` 引用它（上游 `it.replace("@result", result)`）。
+     * 库里 360 份源的 searchUrl 用这个写法（猫耳：地址在前、`@js:java.put(...);result` 在后；
+     * 番茄/蓝批：整段 `@js:` 自己算地址），以前只认"整串以 @js 开头"，其余的
+     * 地址带着脚本正文去抓，报「URL 解析失败 … Illegal character」。
+     */
+    private fun applyUrlScripts(rawUrl: String, keyword: String?, page: Int?, sourceUrl: String): String {
+        if (!rawUrl.contains("@js:") && !rawUrl.contains("<js>", ignoreCase = true)) return rawUrl
+        val matches = URL_JS_PATTERN.findAll(rawUrl).toList()
+        if (matches.isEmpty()) return rawUrl
+        var start = 0
+        var result = rawUrl
+        for (match in matches) {
+            if (match.range.first > start) {
+                val prefix = rawUrl.substring(start, match.range.first).trim()
+                if (prefix.isNotEmpty()) result = prefix.replace("@result", result)
+            }
+            val code = match.groupValues[2].ifEmpty { match.groupValues[1] }
+            jsSandbox.clearLastError()
+            val value = jsSandbox.eval(
+                code,
+                mapOf(
+                    "result" to result,
+                    "key" to (keyword ?: ""),
+                    "keyword" to (keyword ?: ""),
+                    "page" to page,
+                    "baseUrl" to sourceUrl,
+                    "sourceId" to sourceUrl,
+                ),
+            ) ?: throw RuleExecutionException("URL 规则里的脚本执行失败：${jsSandbox.lastError ?: "脚本没有返回值"}")
+            result = value
+            start = match.range.last + 1
+        }
+        if (rawUrl.length > start) {
+            val tail = rawUrl.substring(start).trim()
+            if (tail.isNotEmpty()) result = tail.replace("@result", result)
+        }
+        return result
+    }
+
+    /**
      * 把书源地址里的占位写法换成真实值。`page` **只在调用方真给了页码时才传**：
      * `<页1,页2,…>` 这种翻页段要"有页码"才该被展开（上游 `AnalyzeUrl` 也是 `page?.let { … }`），
      * 详情/目录那几条没有页码，留着原样才是它的语义。
+     *
+     * [expandScripts] 对应上游 `analyzeJs` 这一步。调用方已经先执行过 URL 级 JS
+     * （为了在切 `,{options}` 之前拿到完整地址）时传 false，避免同一段脚本跑两遍。
      */
-    private fun renderUrl(template: String, keyword: String, sourceUrl: String, page: Int? = null): String {
-        val literals = template
+    private fun renderUrl(
+        template: String,
+        keyword: String,
+        sourceUrl: String,
+        page: Int? = null,
+        expandScripts: Boolean = true,
+    ): String {
+        val expanded = if (expandScripts) applyUrlScripts(template, keyword, page, sourceUrl) else template
+        val literals = expanded
             .replace("{{key}}", URLEncoder.encode(keyword, Charsets.UTF_8))
             .replace("{{keyword}}", URLEncoder.encode(keyword, Charsets.UTF_8))
             .replace("{{page}}", (page ?: 1).toString())
@@ -2120,23 +2189,38 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
             .filter { it.isNotBlank() }
             .joinToString("\n\n")
     }
-    private fun String.absolute(base: String): String = try {
-        val cleanBase = base.substringBefore("##").substringBefore("#").trim()
-        // 规则里常见这种写法：`a.0@href##book\/(.*)\/##https://站点/img/$1.jpg` ——
-        // 正则从 `book` 开始匹配，**吃不掉 href 前面那个 `/`**，于是值成了 `/https://站点/img/x.jpg`。
-        // 再拿它当"根相对路径"去 resolve，就拼成 `https://站点/https://站点/img/x.jpg`（实测 00小说网
-        // 30/30 封面全废）。所以：去掉前导斜杠后若已经是绝对地址，就原样用它。
-        // 注意别误伤另外两种：`/img/x.jpg`（根相对，仍要按 base 解析）与 `//cdn/x.jpg`（协议相对）。
-        val withoutSlash = trim().removePrefix("/")
-        if (withoutSlash.startsWith("http://", ignoreCase = true) || withoutSlash.startsWith("https://", ignoreCase = true)) {
-            return withoutSlash
+    private fun String.absolute(base: String): String {
+        // 章节地址常带着参数尾巴：`/vchannels/…/programs/1916,{"webView":"true"}`。
+        // `URI.resolve` 碰到 `{` 直接抛异常（以前整串原样返回），相对地址就永远拼不出绝对地址；
+        // 上游是**先切掉尾巴、解析地址、尾巴单独解析**（`AnalyzeUrl.analyzeUrl` 的 urlNoOption），
+        // 尾巴要原样留着 —— 后面 `splitUrlOptions` 还要靠它拿方法/请求头。
+        val (urlPart, tail) = LooseJson.extractTail(this)
+        val cleaned = urlPart.trim()
+        val resolved = try {
+            val cleanBase = base.substringBefore("##").substringBefore("#").trim()
+            // 规则里常见这种写法：`a.0@href##book\/(.*)\/##https://站点/img/$1.jpg` ——
+            // 正则从 `book` 开始匹配，**吃不掉 href 前面那个 `/`**，于是值成了 `/https://站点/img/x.jpg`。
+            // 再拿它当"根相对路径"去 resolve，就拼成 `https://站点/https://站点/img/x.jpg`（实测 00小说网
+            // 30/30 封面全废）。所以：去掉前导斜杠后若已经是绝对地址，就原样用它。
+            // 注意别误伤另外两种：`/img/x.jpg`（根相对，仍要按 base 解析）与 `//cdn/x.jpg`（协议相对）。
+            val withoutSlash = cleaned.removePrefix("/")
+            when {
+                withoutSlash.startsWith("http://", ignoreCase = true) ||
+                    withoutSlash.startsWith("https://", ignoreCase = true) -> withoutSlash
+                cleanBase.startsWith("http://", ignoreCase = true) ||
+                    cleanBase.startsWith("https://", ignoreCase = true) ->
+                    // URI 严格按 RFC 3986；有些相对地址带空格/中文（站点自己就这么写），
+                    // 退回 java.net.URL（与上游 `NetworkUtils.getAbsoluteURL` 同一条路）再试一次。
+                    runCatching { URI(cleanBase).resolve(cleaned).toString() }.getOrElse {
+                        runCatching { java.net.URL(java.net.URL(cleanBase), cleaned).toString() }.getOrDefault(cleaned)
+                    }
+                else -> cleaned
+            }
+        } catch (_: Exception) {
+            cleaned
         }
-        if (cleanBase.startsWith("http://", ignoreCase = true) || cleanBase.startsWith("https://", ignoreCase = true)) {
-            URI(cleanBase).resolve(this).toString()
-        } else {
-            this
-        }
-    } catch (_: Exception) { this }
+        return if (tail == null) resolved else "$resolved,$tail"
+    }
     private fun String.objectValue(): JsonObject = json.parseToJsonElement(this).jsonObject
     private fun JsonObject.objectValue(key: String): JsonObject? = get(key)?.jsonObject
     private fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.contentOrNull
@@ -2152,6 +2236,8 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
         /** 正文整段是直链时按这些后缀认媒体（音频 / 视频 / 播流）。`.m3u8` 与 `.ts` 是 HLS，`.m4a` 是音频站最常见的形态。 */
         val MEDIA_URL_SUFFIXES = setOf(".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac", ".mp4", ".m3u8", ".ts", ".webm", ".mkv", ".mov", ".flv", ".avi")
         val URL_VARIABLE_PATTERN = Regex("\\{\\{(.+?)}}")
+        /** 与上游 `AppPattern.JS_PATTERN` 一字不差：`<js>…</js>`，或 `@js:` 到串尾。 */
+        val URL_JS_PATTERN = Regex("<js>([\\w\\W]*?)</js>|@js:([\\w\\W]*)", RegexOption.IGNORE_CASE)
         /**
          * 页面自报的字符集：`<meta charset="gbk">` 与
          * `<meta http-equiv="Content-Type" content="text/html; charset=gb2312">` 都算

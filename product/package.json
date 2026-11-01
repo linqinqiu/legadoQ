@@ -1,6 +1,6 @@
 {
   "name": "legado",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "private": true,
   "license": "GPL-3.0-or-later",
   "description": "legadoQ — 本地阅读服务（Kotlin/Ktor 后端 + 内置 Web UI）",
@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "build": "node scripts/tasks.mjs build",
+    "build:bump": "node ../scripts/version.mjs bump-build",
     "test": "node scripts/tasks.mjs test",
     "check": "npm --prefix web run check",
     "dev": "npm --prefix web run dev",
@@ -36,6 +37,9 @@
     "changelog:dry": "node scripts/changelog.mjs --dry-run",
     "changelog:check": "node scripts/changelog.mjs --check",
     "version:check": "node scripts/version-check.mjs",
+    "version:show": "node ../scripts/version.mjs show",
+    "release": "node ../scripts/release.mjs",
+    "release:dry": "node ../scripts/release.mjs --dry-run",
     "hooks:install": "node scripts/install-hooks.mjs",
     "prepare": "node scripts/install-hooks.mjs"
   },
