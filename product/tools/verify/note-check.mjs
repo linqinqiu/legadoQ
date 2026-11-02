@@ -142,9 +142,11 @@ try {
   const afterReload = await page.evaluate(() => document.querySelectorAll('.reader-note-highlight').length)
   check('刷新之后高亮还在（划线存住了）', afterReload >= 1, `${afterReload} 处`)
 
-  // 「笔记」面板列得出来
+  // 「笔记」面板列得出来。入口只在顶栏（宽屏）/ 底栏（窄屏）各一份：
+  // 目录头那颗重复的「笔记」已按用户 2026-11-02 的要求删除。
   const panelOpened = await page.evaluate(() => {
-    const button = [...document.querySelectorAll('.reader-drawer-left button')].find(node => (node.getAttribute('aria-label') ?? '').startsWith('笔记'))
+    const button = document.querySelector('.md3-topbar-notes')
+      ?? document.querySelector('.md3-bottombar button[aria-label^="笔记"]')
     if (!button) return false
     button.click()
     return true

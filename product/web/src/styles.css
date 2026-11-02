@@ -995,15 +995,13 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .reader-drawer-right.open { transform: translateX(0); }
 .reader-drawer-backdrop { position: fixed; inset: 0; z-index: 28; background: rgba(0, 0, 0, .35); backdrop-filter: blur(2px); transition: opacity .25s ease; }
 /*
- * 抽屉标题栏：宽度可能是 250px（固定侧栏）也可能是 640px（浮层），
- * 里面要放「图标 + 目录 + 正在读：章名」和一排 6 颗按钮。
+ * 抽屉标题栏：宽度 340px（覆盖式抽屉），里面要放「图标 + 目录 + 正在读：章名」和一排 6 颗按钮。
  * 窄的时候若不允许换行，标题会被挤成 0 宽——「目录」两个字就竖着排了，按钮还会溢出到正文上。
  * 所以：标题永不换行、按需截断；按钮不压缩，放不下时整排换到第二行（右对齐）。
  */
 .drawer-header { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; row-gap: 2px; flex-wrap: wrap; min-height: 56px; padding: 4px 12px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .drawer-header-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
 .drawer-header .reader-icon-button { width: 32px; height: 32px; }
-.desktop-pin-btn { display: none; }
 .desktop-reverse-btn { display: none; }
 .drawer-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 650; min-width: 0; flex: 1 1 auto; }
 .drawer-title > svg { flex: none; }
@@ -1011,8 +1009,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .drawer-title small { font-size: 12px; color: var(--muted); font-weight: normal; margin-left: 4px; }
 /* 标题栏里的当前章名：长章名截断，全名放 title */
 .drawer-title-current { flex: 0 1 auto; min-width: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 固定成侧栏后空间只够「目录」+ 按钮；章名在下面的列表里本来就高亮着，这里不再重复占位。 */
-.reader-drawer.pinned .drawer-title-current { display: none; }
 /* 目录标题栏底部的「全书已读比例」细条（MD3 风格）：绝对定位贴底，不挤占左右布局。 */
 .drawer-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: color-mix(in srgb, var(--accent) 22%, transparent); pointer-events: none; }
 .drawer-progress > i { display: block; height: 100%; background: var(--accent); transition: width .15s linear; }
@@ -1400,71 +1396,17 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .agreement-body { overflow: auto; min-height: 0; padding-right: 6px; }
 .agreement-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
 .agreement-actions .primary-button[disabled] { opacity: .55; cursor: default; }
-.reader-paginated-footer { height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(20px, 5vw, 40px) 10px; color: var(--muted); font-size: 12px; user-select: none; }
-.reader-paginated-pager { display: flex; align-items: center; gap: 2px; }
-.reader-paginated-pager .md3-icon-btn { width: 28px; height: 28px; padding: 4px; }
-.reader-paginated-pager .md3-icon-btn svg { width: 18px; height: 18px; }
-.reader-paginated-pagecount { font-variant-numeric: tabular-nums; min-width: 56px; text-align: center; }
+/* 页脚只报状态（当前页属于哪一章 + 页码），不再放翻页键。
+   右内边距多留 64px：球固定在右下角（right 24 / 52px 见 .ai-fab），页码要让开它，
+   否则 1440×900 实测下一页箭头正被球压住。 */
+.reader-paginated-footer { height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 calc(clamp(20px, 5vw, 40px) + 64px) 10px clamp(20px, 5vw, 40px); color: var(--muted); font-size: 12px; user-select: none; }
+.reader-paginated-chapter { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-paginated-pagecount { flex: none; font-variant-numeric: tabular-nums; min-width: 56px; text-align: right; }
 
-/* Desktop Sidebar Pinning */
+/* 桌面端目录同样是覆盖式抽屉（不挤压正文）；只有倒序键在宽屏才显示。 */
 @media (min-width: 960px) {
-  .desktop-pin-btn { display: grid; }
-  .desktop-pin-btn.pinned { color: var(--accent); background: var(--accent-soft); }
   .desktop-reverse-btn { display: grid; }
   .desktop-reverse-btn.reversed { color: var(--accent); background: var(--accent-soft); }
-
-  .reader-workspace.sidebar-pinned .reader-drawer-left {
-    transform: translateX(0);
-    box-shadow: none;
-    width: var(--reader-sidebar-width, 300px);
-    border-right: 1px solid var(--line);
-    z-index: 21;
-  }
-  .reader-workspace.sidebar-pinned .reader-header {
-    left: var(--reader-sidebar-width, 300px);
-  }
-  .reader-workspace.sidebar-pinned .reader-main {
-    margin-left: var(--reader-sidebar-width, 300px);
-    width: calc(100% - var(--reader-sidebar-width, 300px));
-  }
-  .reader-workspace.sidebar-pinned .reader-drawer-backdrop {
-    display: none;
-  }
-  /* 固定目录栏时，MD3 顶/底栏也要让出左侧目录宽度 —— 否则它们横跨整屏、压在正文上
-   * （用户反馈：锁定目录后「仍然有信息在正文页面出现」「目录宽度变化时工具栏位置会乱」）。
-   * 与正文同用 --reader-sidebar-width，拖动改宽度时顶/底栏实时跟随。 */
-  .reader-workspace.sidebar-pinned .md3-topbar,
-  .reader-workspace.sidebar-pinned .md3-bottombar {
-    left: var(--reader-sidebar-width, 300px);
-  }
-}
-
-/* 目录与正文之间那条边界：固定目录时出现，可左右拖（用户 2026-10-09）。 */
-.reader-sidebar-resizer { display: none; }
-@media (min-width: 960px) {
-  .reader-sidebar-resizer {
-    display: block;
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    width: 12px;
-    margin-left: -6px;
-    z-index: 22;
-    cursor: col-resize;
-    touch-action: none;
-  }
-  .reader-sidebar-resizer::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 5px;
-    width: 2px;
-    background: transparent;
-    transition: background .15s ease;
-  }
-  .reader-sidebar-resizer:hover::before,
-  .reader-sidebar-resizer.is-dragging::before { background: var(--accent); }
 }
 
 .mobile-reader-nav { display: none; }
@@ -1602,7 +1544,8 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
     box-sizing: border-box;
   }
   .reader-paginated-viewport { width: calc(100% - 32px); height: calc(100% - 40px); margin: 10px auto 0; }
-  .reader-paginated-footer { padding: 0 16px max(8px, var(--safe-bottom)); }
+  /* 右侧同样给球留位：390px 下球占 right 14–60，页码右边缘停在 80px 处。 */
+  .reader-paginated-footer { padding: 0 calc(16px + 64px) max(8px, var(--safe-bottom)) 16px; }
   .mobile-reader-nav {
     position: fixed;
     z-index: 20;
@@ -2669,7 +2612,8 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 
 @media (max-width: 640px) {
   .tts-floating-bar {
-    bottom: 74px; /* above mobile bottom nav */
+    /* 旧导航 58px、MD3 底栏 84px；按更高的那条留位，两种外壳都不会糊住底栏。 */
+    bottom: 96px;
     gap: 8px;
     padding: 6px 8px 6px 12px;
   }
@@ -5380,6 +5324,25 @@ input[type="checkbox"] {
 .skin-library-meta code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .skin-library-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .skin-library-actions .is-danger { color: var(--danger); }
+.skin-library-name .customize-saved { margin-left: 8px; font-weight: 400; }
+.skin-library-row.is-hidden .skin-library-name { color: var(--muted); font-weight: 500; }
+.skin-library-foot { display: flex; justify-content: flex-end; padding-top: 4px; }
+/* 内置七套管理：默认折叠，不抢配色网格的注意力；展开后才摆每一套的编辑 / 删除 / 恢复。 */
+.builtin-skin-manage > summary {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; list-style: none;
+  font-size: 14px; font-weight: 600;
+}
+.builtin-skin-manage > summary::-webkit-details-marker { display: none; }
+.builtin-skin-manage > summary::before {
+  content: '▸'; flex: none;
+  color: var(--muted); font-size: 12px;
+  transition: transform .15s ease;
+}
+.builtin-skin-manage[open] > summary::before { transform: rotate(90deg); }
+.builtin-skin-manage > summary small { margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 400; }
+.builtin-skin-manage[open] > summary { margin-bottom: 8px; }
+.builtin-skin-manage > .customize-hint { margin-bottom: 4px; }
 .skin-editor { display: grid; gap: 10px; margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }
 .skin-editor h4 { margin: 0; font-size: 13px; font-weight: 600; }
 /* ==========================================================================
@@ -5682,6 +5645,16 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
   body:has(.reader-workspace:not(.toolbars-hidden) .mobile-reader-nav) .ai-fab-panel {
     bottom: calc(120px + var(--safe-bottom));
     max-height: calc(100vh - 170px);
+  }
+
+  /* MD3 外壳的底栏（84px + 安全区）同样要球让位：uiV2 下旧导航不再渲染，
+     没有这一条球会压在最右边的「设置」上。 */
+  body:has(.reader-workspace:not(.toolbars-hidden) .md3-bottombar) .ai-fab {
+    bottom: calc(92px + var(--safe-bottom));
+  }
+  body:has(.reader-workspace:not(.toolbars-hidden) .md3-bottombar) .ai-fab-panel {
+    bottom: calc(146px + var(--safe-bottom));
+    max-height: calc(100vh - 196px);
   }
 
   /* 安装提示条（z 999）在窄屏铺满底部，正好盖住默认位置的球（bottom 14）——
@@ -6122,9 +6095,8 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
  * 抽屉是盖在正文上的浮层（z-index 30 > 顶栏 20），而顶栏标题是整屏居中的 ——
  * 抽屉一开，标题正好被抽屉右缘切掉一半，看着像被裁了。
  * 抽屉打开时收起标题（抽屉自己的头部已经写着「正在读：第几章」），只留右侧动作。
- * 固定成侧栏时不算：那时顶栏已经让位到侧栏右边，不重叠。
  */
-.reader-workspace.drawer-open:not(.sidebar-pinned) .md3-topbar-title { visibility: hidden; }
+.reader-workspace.drawer-open .md3-topbar-title { visibility: hidden; }
 
 .md3-icon-btn {
   width: 40px; height: 40px; flex: none; display: grid; place-items: center; padding: 0;
@@ -6133,6 +6105,18 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 }
 .md3-icon-btn:hover { background: var(--accent-soft); color: var(--accent-ink); }
 .md3-icon-btn.is-active { background: var(--accent-soft); color: var(--accent-ink); }
+/* 窄屏：底栏（<960px 才显示）已经承载 目录 / 搜书 / 笔记 / 朗读 / 设置，
+   顶栏不再重复同一批动作；只保留底栏没有的「换源 / 全屏」。
+   390px 实测原来顶栏左右共十颗图标，标题被挤成一条缝，同一个动作上下各一份。
+   这条必须排在 `.md3-icon-btn` 之后：两者都是单类选择器，写在前面会被它的
+   `display: grid` 盖回去，窄屏照样十颗全在（2026-11-02 实拍确认过）。 */
+@media (max-width: 959px) {
+  .md3-topbar-toc,
+  .md3-topbar-search,
+  .md3-topbar-notes,
+  .md3-action-settings,
+  .md3-action-tts { display: none; }
+}
 
 .md3-actions-row { display: flex; justify-content: center; gap: 4px; }
 .md3-pill {

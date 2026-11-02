@@ -31,8 +31,6 @@ export type IconName =
   | 'menu'
   | 'more'
   | 'moon'
-  | 'pin'
-  | 'pinOff'
   | 'plus'
   | 'refresh'
   | 'rss'
@@ -85,8 +83,6 @@ const paths: Record<IconName, ReactNode> = {
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,
   more: <path d="M5 12h.01M12 12h.01M19 12h.01" />,
   moon: <path d="M20.4 15.4A8.8 8.8 0 0 1 8.6 3.6 9 9 0 1 0 20.4 15.4Z" />,
-  pin: <><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14l-2-6V4H7v7l-2 6Z" /></>,
-  pinOff: <><line x1="2" y1="2" x2="22" y2="22" /><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14l-2-6V7M9 4h6v2" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   refresh: <><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /></>,
   rss: <><path d="M4 11a9 9 0 0 1 9 9" /><path d="M4 4a16 16 0 0 1 16 16" /><circle cx="5" cy="19" r="1.6" /></>,

@@ -42,7 +42,7 @@ test('P1-T3 默认沉浸式：toolbarsVisible 初始为 false（顶/底栏默认
 
 test('P1-T3 顶/底栏为 overlay 不挤占正文，正文有顶部留白避开', () => {
   // 顶栏与底栏必须浮在正文之上（fixed），而非占文档流把正文往下挤。
-  // 精确匹配「.md3-topbar, .md3-bottombar { ... }」这一组（避免误命中 sidebar-pinned 之类的派生选择器）。
+  // 精确匹配「.md3-topbar, .md3-bottombar { ... }」这一组（避免误命中其它派生选择器）。
   const group = stylesSrc.match(/\.md3-topbar,\s*\.md3-bottombar\s*\{([^}]*)\}/s)
   assert.ok(group !== null, 'styles.css 应定义 .md3-topbar 与 .md3-bottombar 分组')
   assert.ok(/position:\s*fixed/.test(group![1]), '顶/底栏必须为 position: fixed（overlay，不挤占正文文档流）')

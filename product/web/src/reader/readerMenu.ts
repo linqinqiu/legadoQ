@@ -4,11 +4,14 @@
  * 这一份是**唯一来源**：工具栏按它渲染，设置抽屉里的「工具栏」配置也按它列 ——
  * 两处各写一份清单迟早漂移（顶栏导航当年就是三处三份清单，加一页必然漏一处）。
  * 默认顺序 = 改动前工具栏的顺序，用户不动就不变。
+ *
+ * 「切换书源」不在这里：目录抽屉顶部已经常年有「换源」，顶栏再放一份就是同一个动作的两个
+ * 可见入口（用户 2026-11-02：「有些功能重复比如换源」）。旧设置里存着的 `switchSource`
+ * 会在 `parseReaderMenu` 里被当作未登记项丢掉，不需要迁移。
  */
-export type ReaderMenuAction = 'switchSource' | 'settings' | 'fullscreen' | 'tts'
+export type ReaderMenuAction = 'settings' | 'fullscreen' | 'tts'
 
 export const READER_MENU_ITEMS: ReadonlyArray<{ id: ReaderMenuAction; label: string }> = [
-  { id: 'switchSource', label: '切换书源' },
   { id: 'settings', label: '阅读设置' },
   { id: 'fullscreen', label: '全屏' },
   { id: 'tts', label: '朗读' },

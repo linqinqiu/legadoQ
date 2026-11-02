@@ -6,7 +6,7 @@ import { ContextMenuLayer } from './components/ContextMenu'
 import { ReaderScreen } from './reader/ReaderScreen'
 import type { OpenBook } from './reader/openBook'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { activeCustomSkin, loadReaderSettings, ReaderSettings, saveReaderSettings, themeClassNames } from './reader/readerSettings'
+import { activeSkin, loadReaderSettings, ReaderSettings, saveReaderSettings, themeClassNames } from './reader/readerSettings'
 import { AppHeader } from './components/AppHeader'
 import { FirstRunAgreement } from './components/FirstRunAgreement'
 import { SkinModal } from './components/SkinModal'
@@ -69,16 +69,18 @@ const MODAL_DEEP_LINKS: Record<string, AppModal> = {
 }
 
 /**
- * 自定义皮肤的注入点（「皮肤」浮层里填的 CSS 真的挂上，不是摆个空控件）。
+ * 皮肤注入点（「皮肤」浮层里填的 CSS 真的挂上，不是摆个空控件）。
  *
+ * 内置七套与自定义皮肤共用这一条路：内置皮肤的出厂规则在 styles.css 里，
+ * 用户改过的那份作为**追加规则**挂到文档后部（同特异性后者胜），删掉改动即回到出厂配色。
  * 用 `document.createElement('style')` + `textContent` 而不是 `dangerouslySetInnerHTML`：
  * 用户写的 CSS 里出现 `</style>` 也不会拼出新标签（textContent 不走 HTML 解析）。
  * 规则按用户写的样子挂上去（要求他自己写 `.theme-<id> { … }` 这种完整选择器），
  * 因为把用户输入包进 `.theme-x{…}` 会依赖 CSS 嵌套语法，老浏览器上一条都不生效。
- * id 过一遍白名单（`parseSkinId`），只允许 `[a-z0-9-_]`。
+ * id 过一遍白名单（`parseSkinId`），只允许 `[a-z0-9-_]`；当前生效哪一套统一由 `activeSkin` 求。
  */
 function SkinStyle({ settings }: { settings: ReaderSettings }) {
-  const active = activeCustomSkin(settings)
+  const active = activeSkin(settings)
   const id = active?.id ?? ''
   const css = (active?.css ?? '').trim()
   useEffect(() => {
@@ -110,7 +112,7 @@ function App() {
   const [bootHint, setBootHint] = useState('')
   const [settings, setSettings] = useState<ReaderSettings>(loadReaderSettings)
   /**
-   * 当前要挂在根上的皮肤类名（自定义皮肤是**叠**在内置皮肤上的，所以可能有两个类；
+   * 当前要挂在根上的皮肤类名（自定义皮肤只挂自己那一个类，不叠任何内置档；
    * 理由见 `readerSettings.themeClassNames`）。收成一份，effect 与各处外壳同引，
    * 免得某一处忘了跟着改而少挂基类。
    */
@@ -510,6 +512,11 @@ function App() {
   if (page === 'reader' && reader) {
     return (
       <div className={`app-shell ${skinClasses}`}>
+        {/* 阅读器这一支也是自己那层 app-shell：壁纸层与自定义皮肤样式必须在这里再挂一遍。
+            主壳那支在下面提前 return 了，这里不挂的话——即便「跟随整站壁纸」已开——
+            `html[data-wallpaper]` 永远不会写上，阅读区就一直是自己的底色（2026-11-02 实测）。 */}
+        <WallpaperLayer />
+        <SkinStyle settings={settings} />
         <ToastContainer />
         {/* 阅读器这一支是自己那层 app-shell，浮层要自己挂一遍：
             不挂 ContextMenuLayer，卸载主壳时 publish 已被清成空函数，阅读器里右键就"什么都没发生"。 */}

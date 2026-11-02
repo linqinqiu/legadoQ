@@ -53,7 +53,7 @@ try {
         const defaults = {
           theme: 'light', fontSize: 19, lineHeight: 1.95, letterSpacing: 0, paragraphSpacing: 1.15,
           textIndent: 2, contentPadding: 80, font: 'song', pageMode: 'scroll', maxWidth: 860,
-          columnMode: 'single', sidebarPinned: false, ttsEngine: 'edge', ttsVoice: '', ttsSpeed: 1,
+          columnMode: 'single', ttsEngine: 'edge', ttsVoice: '', ttsSpeed: 1,
           ttsPitch: 1, ttsAutoNextChapter: false, ttsFilterSymbols: true,
         }
         window.localStorage.setItem(key, JSON.stringify({ ...defaults, ...body }))
@@ -136,26 +136,33 @@ try {
         `${phoneSmall?.contentWidth}px → ${phoneLarge?.contentWidth}px`)
       check('手机档：正文不撑出横向滚动', !!phoneLarge && phoneLarge.docOverflowX <= 1, `溢出 ${phoneLarge?.docOverflowX}px`)
 
-      // 抽屉是「排版 / 颜色 / 行为」三标签页（0.7.0 起），排版是默认档；
-      // 首行缩进行是 .setting-choice[aria-label=首行缩进]，按钮组沿用 .page-modes 观感。
-      // 点按钮当场生效（用户是从这里操作的，不是从 localStorage）。
+      // 抽屉分两层标签（合并两颗齿轮之后）：外层「阅读 / 其它」，内层「排版 / 颜色 / 行为」，
+      // 两层的默认档分别是「阅读」「排版」。首行缩进行是 .setting-choice[aria-label=首行缩进]，
+      // 按钮组沿用 .page-modes 观感；点按钮当场生效（用户是从这里操作的，不是从 localStorage）。
       await openWithSettings({ textIndent: 2 }, 1440)
       await page.evaluate(() => document.querySelector('[data-testid="reader-header"] button[aria-label="阅读设置"]')?.click())
       await sleep(900)
       const drawer = await page.evaluate(() => {
-        const tabs = [...document.querySelectorAll('.settings-tab')].map(node => ({
+        const readTabs = nav => [...(nav?.querySelectorAll('.settings-tab') ?? [])].map(node => ({
           label: node.textContent?.trim() ?? '',
           selected: node.getAttribute('aria-selected') === 'true',
         }))
+        const groups = readTabs(document.querySelector('.settings-tabs.is-two'))
+        const tabs = readTabs(document.querySelector('.settings-tabs:not(.is-two)'))
         const group = document.querySelector('.setting-choice[aria-label="首行缩进"]')
         return {
+          groups,
           tabs,
           typographySelected: tabs.find(tab => tab.label === '排版')?.selected === true,
           indentLabel: group?.getAttribute('aria-label') ?? '',
           buttons: [...(group?.querySelectorAll('button') ?? [])].map(node => ({ text: node.textContent?.trim() ?? '', selected: node.className.includes('selected') })),
         }
       })
-      check('设置抽屉是三标签页且「排版」默认选中',
+      check('设置抽屉外层是「阅读 / 其它」且阅读默认选中',
+        drawer.groups.map(tab => tab.label).join('/') === '阅读/其它'
+        && drawer.groups.find(tab => tab.label === '阅读')?.selected === true,
+        drawer.groups.map(tab => `${tab.label}${tab.selected ? '*' : ''}`).join(' '))
+      check('设置抽屉内层是「排版 / 颜色 / 行为」且排版默认选中',
         drawer.tabs.map(tab => tab.label).join('/') === '排版/颜色/行为' && drawer.typographySelected,
         drawer.tabs.map(tab => `${tab.label}${tab.selected ? '*' : ''}`).join(' '))
       check('排版页里有「首行缩进」三档按钮，且当前档是选中态',

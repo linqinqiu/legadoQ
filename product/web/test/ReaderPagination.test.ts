@@ -95,7 +95,6 @@ test('ReaderPagination - Settings: Font type and pageMode parsing safety', () =>
   assert.equal(defaultReaderSettings.font, 'song')
   assert.equal(defaultReaderSettings.maxWidth, 860)
   assert.equal(defaultReaderSettings.columnMode, 'auto')
-  assert.equal(defaultReaderSettings.sidebarPinned, false)
 })
 
 test('ReaderPagination - Settings: Max width and column mode parsing safety', () => {
@@ -243,14 +242,12 @@ test('ReaderPagination - Persistence: loadReaderSettings and saveReaderSettings 
     const initial = loadReaderSettings()
     assert.equal(initial.maxWidth, 860)
     assert.equal(initial.columnMode, 'auto')
-    assert.equal(initial.sidebarPinned, false)
 
     // Save customized settings
     saveReaderSettings({
       ...initial,
       maxWidth: 1100,
       columnMode: 'double',
-      sidebarPinned: true,
       fontSize: 22,
     })
 
@@ -258,21 +255,18 @@ test('ReaderPagination - Persistence: loadReaderSettings and saveReaderSettings 
     const loaded = loadReaderSettings()
     assert.equal(loaded.maxWidth, 1100)
     assert.equal(loaded.columnMode, 'double')
-    assert.equal(loaded.sidebarPinned, true)
     assert.equal(loaded.fontSize, 22)
 
     // Clamping invalid / out-of-range values
     mockStorage.setItem('legado-reader-settings-v2', JSON.stringify({
       maxWidth: 9999,
       columnMode: 'invalid',
-      sidebarPinned: 'yes',
       fontSize: 999,
     }))
 
     const clamped = loadReaderSettings()
     assert.equal(clamped.maxWidth, 1400, 'Max width clamped to 1400')
     assert.equal(clamped.columnMode, 'auto', 'Column mode fallback to auto')
-    assert.equal(clamped.sidebarPinned, false, 'Invalid sidebarPinned fallback to false')
     assert.equal(clamped.fontSize, 28, 'Font size clamped to 28')
   } finally {
     ;(globalThis as any).window = prevWindow

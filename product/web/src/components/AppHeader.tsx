@@ -5,7 +5,7 @@ import type { Page } from '../lib/nav'
 import { getBrand, subscribeBrand } from '../lib/brandStore'
 import { Logo } from './Logo'
 import { promptPwaInstall, subscribePwaInstall } from './PwaManager'
-import { availableSkins, BUILTIN_SKINS, type ReaderSettings } from '../reader/readerSettings'
+import { availableSkins, BUILTIN_SKINS, resolveTheme, type ReaderSettings } from '../reader/readerSettings'
 
 export interface AppHeaderProps {
   page: Page
@@ -46,6 +46,9 @@ export function AppHeader({
   // 品牌名单一来源（lib/brandStore）：此前这里硬编码「legadoQ」，
   // 用户改了名（设置 → 应用名称与图标）之后顶栏照旧，等于"改了个寂寞"。
   const brand = useSyncExternalStore(subscribeBrand, getBrand, getBrand)
+  // 选中态以**实际生效**的那套为准：内置皮肤被删掉或 theme 里存了脏值时，settings.theme
+  // 和界面上亮着的那张卡会不是同一个。
+  const activeTheme = resolveTheme(settings)
 
   useEffect(() => {
     const sync = () => setIsFullscreen(Boolean(document.fullscreenElement))
@@ -213,10 +216,10 @@ export function AppHeader({
                     </button>
                   )}
                 </div>
-                {/* 列表来自 availableSkins：内置七套 + 皮肤库里填过 CSS 的那些（同源，不会两处不一样） */}
+                {/* 列表来自 availableSkins：没被删掉的内置七套 + 皮肤库里填过 CSS 的那些（同源，不会两处不一样） */}
                 <div className="menu-theme-grid" role="radiogroup" aria-label="皮肤选择">
                   {availableSkins(settings).map(skin => {
-                    const isSelected = settings.theme === skin.id
+                    const isSelected = activeTheme === skin.id
                     return (
                       <button
                         key={skin.id}

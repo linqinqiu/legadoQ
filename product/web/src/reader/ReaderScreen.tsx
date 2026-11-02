@@ -30,7 +30,7 @@ import { MediaBlock } from './MediaBlock'
 import { IconButton } from './IconButton'
 import { ReaderContentSkeleton } from './ReaderContentSkeleton'
 import { ReaderSettingsControls } from './ReaderSettingsControls'
-import { clampScrollPosition, effectiveReaderFontFamily, readerBackgroundVars, ReaderSettings, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './readerSettings'
+import { clampScrollPosition, effectiveReaderFontFamily, isBuiltinSkinHidden, readerBackgroundVars, ReaderSettings, resolveTheme, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './readerSettings'
 import { stepFontSize } from './fontSizeControl'
 import { ReaderMenuAction } from './readerMenu'
 import { IDENTITY_CONVERTER, loadScriptConverter, type ScriptConverter } from './scriptConvert'
@@ -152,8 +152,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [activeDrawer, setActiveDrawer] = useState<'toc' | 'settings' | 'other' | null>(null)
   /** 「在正文上编辑点击区域」那层开着没有（见 TapZoneEditor）。 */
   const [tapZoneEditing, setTapZoneEditing] = useState(false)
-  /** 正在拖「目录 | 正文」那条边界（只为高亮它）。 */
-  const [resizingSidebar, setResizingSidebar] = useState(false)
   const [toolbarsVisible, setToolbarsVisible] = useState(false)
   // PROPOSAL-020：MD3 阅读外壳，**默认开启**；`?ui=legacy` 或 localStorage 置 0 时回旧界面（回退用）。
   const [uiV2] = useState(() => {
@@ -303,9 +301,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
 
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const bodyRef = useRef<HTMLDivElement | null>(null)
-  /** 正文区（.reader-main）：点击分区按它的矩形算，固定目录时不把目录栏算进去。 */
+  /** 正文区（.reader-main）：点击分区按它的矩形算，不按整窗算。 */
   const readerMainRef = useRef<HTMLElement | null>(null)
-  const resizingSidebarRef = useRef(false)
 
   const chapter = currentBook.chapters[chapterIndex]
   // 异步回调里判断「这一章还是不是当前章」必须用 ref：闭包捕获的 chapter 是发起请求那一刻的。
@@ -1137,8 +1134,9 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   changeChapterRef.current = changeChapter
 
   /**
-   * 顶栏的「上一章 / 下一章」：沿用旧底栏进度行那套动作（先落进度、再切章），
+   * legacy 顶栏的「上一章 / 下一章」：沿用旧底栏进度行那套动作（先落进度、再切章），
    * 判据只看 chapterIndex —— 首章禁用上一章、末章禁用下一章。
+   * 默认 MD3 界面不再摆这两颗键（2026-11-02 去重），键盘 ←→ / 点按区 / 目录仍走 changeChapter。
    */
   const goPrevChapter = useCallback(() => {
     if (chapterIndex <= 0) return
@@ -1651,7 +1649,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     settings.contentPadding,
     settings.maxWidth,
     settings.columnMode,
-    settings.sidebarPinned,
     settings.font,
     measurePagination,
   ])
@@ -2040,8 +2037,12 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           break
         case 'theme-next': {
           event.preventDefault()
-          // T 键在内置七套里循环（自定义皮肤不在轮换里，网格里点选）。
-          const next = BUILTIN_SKINS[(BUILTIN_SKINS.findIndex(skin => skin.id === settings.theme) + 1) % BUILTIN_SKINS.length]
+          // T 键只在**未删除**的内置皮肤间循环（自定义皮肤不在轮换里，网格里点选）。
+          // 以 resolveTheme 为起点：当前用的是自定义皮肤时，从第一套可见内置皮肤开始。
+          const visible = BUILTIN_SKINS.filter(skin => !isBuiltinSkinHidden(settings, skin.id))
+          if (!visible.length) break
+          const current = resolveTheme(settings)
+          const next = visible[(visible.findIndex(skin => skin.id === current) + 1) % visible.length]
           onSettingsChange({ ...settings, theme: next.id })
           break
         }
@@ -2093,7 +2094,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     '--reader-content-padding': `${settings.contentPadding}px`,
     '--reader-max-width': `${settings.maxWidth}px`,
     '--reader-text-align': settings.textAlign,
-    '--reader-sidebar-width': `${settings.sidebarWidth}px`,
     '--reader-font-family': effectiveReaderFontFamily(settings),
     ...readerBackgroundVars(settings),
   } as CSSProperties
@@ -2143,9 +2143,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   /**
    * 正文区的视口矩形。
    *
-   * 点击分区的范围必须按它算，不能按整窗 —— 目录固定在左侧时正文被 `margin-left` 挤到右边
-   * （用户 2026-10-09：「如果我左侧打开了目录那么你这规定范围会不会有问题」），
-   * 按整窗算的话"左边一列"有一半压在目录栏底下，点在正文左缘会算成别的区。
+   * 点击分区的范围必须按它算，不能按整窗 —— 版面内容居中时正文两侧留白，
+   * 按整窗算的话"左边一列"有一半落在留白或覆盖式抽屉下面，点在正文左缘会算成别的区。
    */
   const readingRect = () => {
     const el = readerMainRef.current
@@ -2159,30 +2158,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }
 
   /**
-   * 拖「目录 | 正文」那条边界改目录栏宽度（用户 2026-10-09：「我希望目录与正文边界能左右移动部分，
-   * 但是不影响功能和界面展示」）。宽度存进设置；正文区与点击分区的范围都跟着 CSS 变量走。
-   */
-  const onSidebarResizeDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    resizingSidebarRef.current = true
-    setResizingSidebar(true)
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-  const onSidebarResizeMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!resizingSidebarRef.current) return
-    const width = Math.round(Math.min(560, Math.max(220, event.clientX)))
-    if (width !== settings.sidebarWidth) onSettingsChange({ ...settings, sidebarWidth: width })
-  }
-  const onSidebarResizeUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    resizingSidebarRef.current = false
-    setResizingSidebar(false)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  /**
-   * 编辑层要盖在**正文区**上，不能压住固定的目录栏（用户 2026-10-09：「不要影响目录显示」）。
-   * 正文区左缘由布局决定（固定目录 / 拖出来的宽度），所以实测而不是猜。
+   * 编辑层要盖在**正文区**上，不压住两侧留白。正文区左缘由版面决定（最大宽度居中），实测而不是猜。
    */
   const [readingLeft, setReadingLeft] = useState(0)
   useEffect(() => {
@@ -2191,7 +2167,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [tapZoneEditing, settings.sidebarPinned, settings.sidebarWidth])
+  }, [tapZoneEditing])
 
   const onPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
     const start = pointerStartRef.current
@@ -2359,35 +2335,18 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     </>
   )
 
-  return <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${settings.sidebarPinned ? 'sidebar-pinned' : ''} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
+  return <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
     {/* 顶栏：MD3 外壳（PROPOSAL-020）或旧浮动工具栏，由 uiV2 开关切换 */}
     {uiV2 ? <Md3TopBar
       bookName={bookName}
       chapterTitle={chapter?.title ? convert(chapter.title) : null}
-      chapterIndex={chapterIndex}
-      totalChapters={currentBook.chapters.length}
       menuItems={settings.menuItems}
       isFullscreen={isFullscreen}
       mediaDisabled={!!mediaSrc}
       ttsActive={ttsActive}
       ttsPlayState={ttsPlayState}
       onBack={() => { persist(); stopTts(); onClose() }}
-      onToggleToc={() => {
-        if (settings.sidebarPinned) {
-          onSettingsChange({ ...settings, sidebarPinned: false })
-          setActiveDrawer(null)
-        } else if (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 960px)').matches) {
-          // 桌面端：点目录直接把目录 dock 成左侧常驻侧栏（推出版心），而不是盖一层遮罩的抽屉 —— 更像桌面阅读器。
-          // 移动端（<960px）仍走覆盖式抽屉；持久化默认值不变（仍是 false），所以门禁对默认值的断言不受影响。
-          onSettingsChange({ ...settings, sidebarPinned: true })
-          setActiveDrawer(null)
-        } else {
-          setActiveDrawer(d => d === 'toc' ? null : 'toc')
-        }
-      }}
-      onPrevChapter={goPrevChapter}
-      onNextChapter={goNextChapter}
-      onOpenSourceSwitch={() => setShowSourceSwitch(true)}
+      onToggleToc={() => setActiveDrawer(d => d === 'toc' ? null : 'toc')}
       onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
       onToggleFullscreen={toggleFullscreen}
       onToggleTts={toggleTts}
@@ -2405,29 +2364,17 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       ttsActive={ttsActive}
       ttsPlayState={ttsPlayState}
       onBack={() => { persist(); stopTts(); onClose() }}
-      onToggleToc={() => {
-        if (settings.sidebarPinned) {
-          onSettingsChange({ ...settings, sidebarPinned: false })
-          setActiveDrawer(null)
-        } else if (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 960px)').matches) {
-          // 桌面端：点目录直接把目录 dock 成左侧常驻侧栏（推出版心），而不是盖一层遮罩的抽屉 —— 更像桌面阅读器。
-          // 移动端（<960px）仍走覆盖式抽屉；持久化默认值不变（仍是 false），所以门禁对默认值的断言不受影响。
-          onSettingsChange({ ...settings, sidebarPinned: true })
-          setActiveDrawer(null)
-        } else {
-          setActiveDrawer(d => d === 'toc' ? null : 'toc')
-        }
-      }}
+      onToggleToc={() => setActiveDrawer(d => d === 'toc' ? null : 'toc')}
       onPrevChapter={goPrevChapter}
       onNextChapter={goNextChapter}
-      onOpenSourceSwitch={() => setShowSourceSwitch(true)}
       onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
       onToggleFullscreen={toggleFullscreen}
       onToggleTts={toggleTts}
       onResetTtsBar={resetTtsBarPosition}
     />}
 
-    {/* MD3 底栏：只剩窄屏那一排动作 pill（宽屏整条不渲染）。章节导航已在顶栏。 */}
+    {/* MD3 底栏：只剩窄屏那一排动作 pill（宽屏整条不渲染）。
+        章节导航走点按区 / 键盘 ←→ / 目录，顶栏不再摆「上一章 / 下一章」。 */}
     {uiV2 && <Md3BottomBar
       notesCount={notes.length}
       ttsActive={ttsActive}
@@ -2438,28 +2385,20 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onBookSearch={() => setBookSearchOpen(true)}
     />}
 
-    {/* TOC Drawer (Left) */}
-    <aside className={`reader-drawer reader-drawer-left ${activeDrawer === 'toc' ? 'open' : ''} ${settings.sidebarPinned ? 'pinned' : ''}`} aria-label="目录抽屉">
+    {/* TOC Drawer (Left)：桌面与移动统一为覆盖式抽屉，不挤压正文 */}
+    <aside className={`reader-drawer reader-drawer-left ${activeDrawer === 'toc' ? 'open' : ''}`} aria-label="目录抽屉">
       <TocDrawerHeader
         chapterTitle={chapter?.title ? convert(chapter.title) : null}
         chapterCount={currentBook.chapters.length}
         tocReverse={tocReverse}
         onToggleReverse={() => setTocReverse(value => !value)}
-        sidebarPinned={settings.sidebarPinned}
-        onTogglePin={() => onSettingsChange({ ...settings, sidebarPinned: !settings.sidebarPinned })}
         notesPanel={notesPanel}
-        notesCount={notes.length}
-        onToggleNotes={() => setNotesPanel(value => !value)}
+        onBackToToc={() => setNotesPanel(false)}
         onOpenSourceSwitch={() => { setActiveDrawer(null); setShowSourceSwitch(true) }}
         onOpenRefresh={currentBook.details.sourceId === 'loc_book' ? undefined : () => setShowRefreshChapters(true)}
         inShelf={inShelf}
         onToggleShelf={() => void toggleShelf()}
-        onClose={() => {
-          if (settings.sidebarPinned) {
-            onSettingsChange({ ...settings, sidebarPinned: false })
-          }
-          setActiveDrawer(null)
-        }}
+        onClose={() => setActiveDrawer(null)}
       />
       {notesPanel ? (
         /* 「笔记」面板（PROPOSAL-019 E）：这本书的全部划线 / 备注，点一条跳到那一章。
@@ -2490,31 +2429,16 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
             wordCounts={chapterWordCounts}
             onSelect={index => {
               changeChapter(index)
-              if (!settings.sidebarPinned) {
-                setActiveDrawer(null)
-              }
+              setActiveDrawer(null)
             }}
             itemHeight={TOC_ROW_HEIGHT}
             overscan={8}
             convertTitle={convert}
-            autoScrollKey={activeDrawer === 'toc' || settings.sidebarPinned ? 1 : 0}
+            autoScrollKey={activeDrawer === 'toc' ? 1 : 0}
           />
         </>
       )}
     </aside>
-
-    {/* 目录 | 正文 那条边界：固定目录时可左右拖（用户 2026-10-09） */}
-    {settings.sidebarPinned && (
-      <div
-        className={`reader-sidebar-resizer ${resizingSidebar ? 'is-dragging' : ''}`}
-        style={{ left: `${settings.sidebarWidth}px` }}
-        role="separator"
-        aria-label="拖动调整目录栏宽度"
-        onPointerDown={onSidebarResizeDown}
-        onPointerMove={onSidebarResizeMove}
-        onPointerUp={onSidebarResizeUp}
-      />
-    )}
 
     {/* 阅读设置：一颗齿轮 + 单个弹层，层内用「阅读 / 其它」标签页切换两批设置。
      *  （原来「界面」「设置」各占一颗齿轮、各一个弹层，用户反馈「现在有两个设置处理一下」。） */}
@@ -2569,7 +2493,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     </aside>}
 
     {/* Backdrop for Drawers：目录抽屉两种界面都用；设置抽屉在 MD3 下改由弹层自带遮罩 */}
-    {activeDrawer && (activeDrawer === 'toc' ? !settings.sidebarPinned : !uiV2) && (
+    {activeDrawer && (activeDrawer === 'toc' || !uiV2) && (
       <div className="reader-drawer-backdrop" onClick={() => setActiveDrawer(null)} aria-hidden="true" />
     )}
 
@@ -2629,13 +2553,12 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
               </div>
             )}
           </div>
+          {/* 页脚只留状态，不再放「上一页 / 下一页」两颗键：左右点按区、键盘左右键、
+              滚轮与滑动都已经能翻页，页脚再摆一排按钮是同一件事的第三份入口（用户 2026-11-02
+              「多余的按钮比如翻页，有些功能重复」）。页码本身保留，右移时给 AI 悬浮球留出位置。 */}
           <footer className="reader-paginated-footer">
-            <span>{convert(paginatedFooterTitle || '')}</span>
-            <div className="reader-paginated-pager">
-              <button className="md3-icon-btn" type="button" aria-label="上一页" title="上一页" onClick={goPrevPage}><Icon name="arrowLeft" /></button>
-              <span className="reader-paginated-pagecount">{pageIndex + 1} / {pageCount}</span>
-              <button className="md3-icon-btn" type="button" aria-label="下一页" title="下一页" onClick={goNextPage}><Icon name="arrowRight" /></button>
-            </div>
+            <span className="reader-paginated-chapter">{convert(paginatedFooterTitle || '')}</span>
+            <span className="reader-paginated-pagecount">{pageIndex + 1} / {pageCount}</span>
           </footer>
         </div>
       ) : (
@@ -2667,20 +2590,28 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
               <small>这是最后一章之前唯一没有续接上的位置：滚到底再向下滑即进入</small>
             </div>
           )}
-          {content && <footer className="reader-navigation"><button disabled={chapterIndex === 0 || loading} onClick={() => changeChapter(chapterIndex - 1)}><Icon name="arrowLeft" />上一章</button><div className="chapter-progress"><i style={{ width: `${chapterProgress}%` }} /><input className="chapter-scrub" type="range" min={0} max={Math.max(0, currentBook.chapters.length - 1)} step={1} value={shownChapterIndex} disabled={loading || currentBook.chapters.length < 2} aria-label={`章节进度：第 ${shownChapterIndex + 1} 章，共 ${currentBook.chapters.length} 章`} onChange={event => setScrubIndex(Number(event.target.value))} onPointerUp={() => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) }} onKeyUp={() => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) }} /><span>{shownChapterIndex + 1} / {currentBook.chapters.length}</span></div><button disabled={chapterIndex === currentBook.chapters.length - 1 || loading} onClick={() => changeChapter(chapterIndex + 1)}>下一章<Icon name="arrowRight" /></button></footer>}
+          {/* 滚动模式底部那条「上一章 / 进度滑杆 / 下一章」只留给旧界面（uiV2=false）。
+              MD3 外壳的章节导航已经在顶栏，目录抽屉还能直接跳任意章；这条页脚却排在
+              连续续接的整段正文末尾，滚到那里窗口又会往后接——实际很难滚到，留着只是
+              同一组动作的又一份入口（用户 2026-11-02）。 */}
+          {!uiV2 && content && <footer className="reader-navigation"><button disabled={chapterIndex === 0 || loading} onClick={() => changeChapter(chapterIndex - 1)}><Icon name="arrowLeft" />上一章</button><div className="chapter-progress"><i style={{ width: `${chapterProgress}%` }} /><input className="chapter-scrub" type="range" min={0} max={Math.max(0, currentBook.chapters.length - 1)} step={1} value={shownChapterIndex} disabled={loading || currentBook.chapters.length < 2} aria-label={`章节进度：第 ${shownChapterIndex + 1} 章，共 ${currentBook.chapters.length} 章`} onChange={event => setScrubIndex(Number(event.target.value))} onPointerUp={() => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) }} onKeyUp={() => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) }} /><span>{shownChapterIndex + 1} / {currentBook.chapters.length}</span></div><button disabled={chapterIndex === currentBook.chapters.length - 1 || loading} onClick={() => changeChapter(chapterIndex + 1)}>下一章<Icon name="arrowRight" /></button></footer>}
         </article>
       )}
       {boundaryMessage && <p className="reader-boundary-message" role="status">{boundaryMessage}</p>}
     </section>
 
-    {/* Floating Mobile Bottom Nav */}
-    <nav className="mobile-reader-nav">
+    {/* 旧界面的移动底栏：MD3 外壳自己有 `.md3-bottombar`（目录 / 搜书 / 笔记 / 朗读 / 设置）。
+        两条同时渲染时，旧的这条固定在 `bottom:0` 会压住新的那条与分页页脚（390px 实测
+        底栏 696–780、旧导航 722–780、页脚 744–780，三层叠在一起），所以 uiV2 下不再挂它。 */}
+    {!uiV2 && <nav className="mobile-reader-nav">
       <button onClick={() => setActiveDrawer('toc')}><Icon name="list" /><span>目录</span></button>
       <button onClick={() => setShowSourceSwitch(true)}><Icon name="sliders" /><span>换源</span></button>
       <button onClick={toggleTts} disabled={!!mediaSrc}><Icon name={ttsActive && ttsPlayState === 'playing' ? 'pause' : 'volume2'} /><span>{ttsActive ? (ttsPlayState === 'playing' ? '暂停' : '继续') : '朗读'}</span></button>
       <button onClick={() => setActiveDrawer('settings')}><span className="aa">Aa</span><span>设置</span></button>
-      <button onClick={() => onSettingsChange({ ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' })}><Icon name="moon" /><span>夜读</span></button>
-    </nav>
+      {!isBuiltinSkinHidden(settings, 'dark') && !isBuiltinSkinHidden(settings, 'light') && (
+        <button onClick={() => onSettingsChange({ ...settings, theme: resolveTheme(settings) === 'dark' ? 'light' : 'dark' })}><Icon name="moon" /><span>夜读</span></button>
+      )}
+    </nav>}
 
     {/* In-reader Source Switch Modal */}
     {showSourceSwitch && (

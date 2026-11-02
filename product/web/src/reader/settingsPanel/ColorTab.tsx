@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../icons'
 import { SkinModal } from '../../components/SkinModal'
-import { availableSkins, parseBgImage, type ReaderSettings } from '../readerSettings'
+import { availableSkins, parseBgImage, resolveTheme, type ReaderSettings } from '../readerSettings'
 import { BackgroundLibrary } from './BackgroundLibrary'
 import { SettingGroup, SettingRange } from './SettingRow'
 
@@ -42,27 +42,31 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
   }
 
   const customCount = (settings.customSkins ?? []).length
+  const activeTheme = resolveTheme(settings)
 
   return <>
-    <SettingGroup title="主题" hint="内置七套与自定义皮肤并列；点一下即应用，按 T 键循环内置。">
+    <SettingGroup title="主题" hint="内置七套与自定义皮肤并列；点一下即应用，按 T 键在未删除的内置皮肤间循环。">
       <div className="theme-grid">
-        {availableSkins(settings).map(skin => (
-          <button
-            key={skin.id}
-            type="button"
-            className={`theme-choice ${skin.builtin ? `swatch-${skin.id}` : 'swatch-custom'} ${settings.theme === skin.id ? 'selected' : ''}`}
-            onClick={() => update({ theme: skin.id })}
-          >
-            <i>{settings.theme === skin.id && <Icon name="check" />}</i>
-            <small>{skin.name}</small>
-          </button>
-        ))}
+        {availableSkins(settings).map(skin => {
+          const selected = activeTheme === skin.id
+          return (
+            <button
+              key={skin.id}
+              type="button"
+              className={`theme-choice ${skin.builtin ? `swatch-${skin.id}` : 'swatch-custom'} ${selected ? 'selected' : ''}`}
+              onClick={() => update({ theme: skin.id })}
+            >
+              <i>{selected && <Icon name="check" />}</i>
+              <small>{skin.name}</small>
+            </button>
+          )
+        })}
       </div>
       <div className="theme-custom-actions">
         <button type="button" className="subtle-button" onClick={() => setShowSkinEditor(true)}>
-          <Icon name="sliders" /> 管理自定义皮肤{customCount > 0 ? `（${customCount}）` : ''}
+          <Icon name="sliders" /> 管理皮肤{customCount > 0 ? `（${customCount} 套自定义）` : ''}
         </button>
-        <small>只存本机；与「设置 → 皮肤」共用同一份数据。</small>
+        <small>内置皮肤可改名、换 CSS 或删除；全部只存本机，与「设置 → 皮肤」共用同一份数据。</small>
       </div>
     </SettingGroup>
 

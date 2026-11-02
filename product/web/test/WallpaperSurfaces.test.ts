@@ -104,3 +104,19 @@ test('「新建书源」与分组/筛选/导入对齐，不再是一块贴墙的
   assert.match(create, /margin:\s*0 16px/,
     '按钮缺少与兄弟控件一致的 16px 边距')
 })
+
+/**
+ * 阅读器是 `main.tsx` 里提前 return 的独立壳：主壳那支挂了壁纸层与自定义皮肤，
+ * 阅读器这支如果没挂，`html[data-wallpaper]` / `data-wallpaper-reader` 永远不会写上，
+ * 即便「阅读区跟随壁纸」已打开，阅读区也一直用自己的底色（用户 2026-11-02 反馈
+ * 「阅读界面的背景壁纸问题」）。这条钉住两支壳的挂载。
+ */
+test('阅读器独立壳也必须挂壁纸层与自定义皮肤样式', () => {
+  const main = fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'main.tsx'), 'utf8')
+  const branch = /if \(page === 'reader' && reader\) \{([\s\S]*?)<ReaderScreen/.exec(main)?.[1] ?? ''
+  assert.ok(branch.length > 200, '找不到阅读器提前 return 的那一支（正则会退化成对空串断言）')
+  assert.match(branch, /<WallpaperLayer \/>/,
+    '阅读器壳没挂 WallpaperLayer：data-wallpaper / data-wallpaper-reader 不会写上')
+  assert.match(branch, /<SkinStyle settings=\{settings\} \/>/,
+    '阅读器壳没挂 SkinStyle：自定义皮肤在阅读页失效')
+})

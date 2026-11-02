@@ -2,24 +2,36 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import {
-  activeCustomSkin,
+  activeSkin,
   availableSkins,
+  BUILTIN_SKINS,
+  builtinSkinName,
+  builtinSkinOverride,
+  isBuiltinSkinHidden,
+  isBuiltinSkinId,
+  parseBuiltinSkinOverrides,
+  parseCustomSkins,
+  parseHiddenBuiltinSkins,
   parseSkinId,
+  readBuiltinSkinCss,
+  resolveTheme,
   skinLabel,
+  type BuiltinSkinId,
   type CustomSkin,
   type ReaderSettings,
 } from '../reader/readerSettings'
 
 /**
- * 「皮肤」浮层：只负责配色与自定义皮肤库，壁纸另有 `WallpaperModal`。
+ * 「皮肤」浮层：只管配色与皮肤，壁纸另有 `WallpaperModal`。
  *
- * 皮肤分两层：
- * ① **内置七套** —— 点一下就换；
+ * 两层皮肤都可以管：
+ * ① **内置七套** —— 点一下就换；可以改名、换 CSS、从列表删除，也能恢复；
  * ② **自定义皮肤库** —— 新增 / 编辑 / 删除 / 切换，全存这台浏览器的 localStorage。
  *
- * 注入点见 main.tsx 的 `SkinStyle`：只把**当前启用那一套**的 CSS 挂成
+ * 内置皮肤的改动单独存在 `builtinSkinOverrides`，删除只是记进 `hiddenBuiltinSkins`：
+ * 两者的 id 仍是自定义皮肤的保留字，否则一条同名自定义就能顶掉内置配色。
+ * 注入点见 main.tsx 的 `SkinStyle`：只把**当前启用那一套**的追加 CSS 挂成
  * `<style id="legado-custom-skin">`，文本走 textContent（不走 innerHTML）。
- * 自定义皮肤只挂自己的 `.theme-<id>`，未定义的颜色回落到中性基线。
  */
 export function SkinModal({
   settings,
@@ -32,30 +44,60 @@ export function SkinModal({
 }) {
   useEscapeClose(onClose)
   const skins = availableSkins(settings)
-  const library = settings.customSkins ?? []
-  const active = activeCustomSkin(settings)
+  // 直接渲染 localStorage 里的原数组会把"撞内置 id / 空 CSS"的旧条目也摆出来；
+  // 过一遍清洗，列表与保存时看到的才是同一套数据。
+  const library = parseCustomSkins(settings.customSkins ?? [])
+  const activeTheme = resolveTheme(settings)
+  const active = activeSkin(settings)
+  const hiddenCount = settings.hiddenBuiltinSkins?.length ?? 0
+  const modifiedCount = BUILTIN_SKINS.filter(skin => {
+    const override = builtinSkinOverride(settings, skin.id)
+    return Boolean(override && (override.name.trim() || override.css.trim()))
+  }).length
 
-  /** 正在编辑哪一套；`null` = 编辑器当前是"新建"。 */
+  /** 正在编辑哪一套自定义皮肤；`null` = 当前不是自定义编辑器。 */
   const [editingId, setEditingId] = useState<string | null>(null)
-  /** 编辑器按需展开：默认只列皮肤库，点「新建皮肤」或某一条的「编辑」才把表单放出来。 */
+  /** 正在编辑哪一套内置皮肤；与 `editingId` 互斥，两个都为空才是"新建自定义"。 */
+  const [editingBuiltinId, setEditingBuiltinId] = useState<BuiltinSkinId | null>(null)
+  /** 编辑器按需展开：默认只列皮肤，点「新建皮肤」「编辑」才把表单放出来。 */
   const [formOpen, setFormOpen] = useState(false)
   const [formId, setFormId] = useState('')
   const [formName, setFormName] = useState('')
   const [formCss, setFormCss] = useState('')
   const [error, setError] = useState('')
+  /** 管理动作（删除最后一款、恢复失败等）的错误；与编辑器错误分开放，别在编辑器收起时消失。 */
+  const [libraryError, setLibraryError] = useState('')
   const editorRef = useRef<HTMLDivElement>(null)
 
   const sanitized = parseSkinId(formId)
   const cssLooksLikeRules = /(^|\})\s*[.#a-zA-Z][^{}]*\{[^{}]*\}/.test(formCss)
+  const editingBuiltin = editingBuiltinId
+    ? BUILTIN_SKINS.find(skin => skin.id === editingBuiltinId)
+    : undefined
+  const editingBuiltinOverride = editingBuiltinId ? builtinSkinOverride(settings, editingBuiltinId) : undefined
 
   const resetForm = () => {
     setEditingId(null)
+    setEditingBuiltinId(null)
     setFormId(''); setFormName(''); setFormCss(''); setError('')
   }
   const startNew = () => { resetForm(); setFormOpen(true) }
   const startEdit = (skin: CustomSkin) => {
+    setEditingBuiltinId(null)
     setEditingId(skin.id)
     setFormId(skin.id); setFormName(skin.name); setFormCss(skin.css); setError('')
+    setFormOpen(true)
+  }
+  const startBuiltinEdit = (id: BuiltinSkinId) => {
+    const override = builtinSkinOverride(settings, id)
+    setEditingId(null)
+    setEditingBuiltinId(id)
+    setFormId(id)
+    setFormName(builtinSkinName(settings, id))
+    // 改过 CSS 就打开改后的；没改过就把样式表里的出厂规则预填进来，编辑才有起点。
+    setFormCss(override?.css.trim() ? override.css : readBuiltinSkinCss(id))
+    setError('')
+    setLibraryError('')
     setFormOpen(true)
   }
   const closeForm = () => { resetForm(); setFormOpen(false) }
@@ -63,11 +105,49 @@ export function SkinModal({
   // 列表长的时候编辑区在折叠线以下：展开后把它带到视口里，别让人以为按钮没反应。
   useEffect(() => {
     if (formOpen) editorRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [formOpen, editingId])
+  }, [formOpen, editingId, editingBuiltinId])
+
+  /** 至少要留一套看得见的皮肤：全删光后主题网格会变成空白，用户不知道该点哪。 */
+  const isLastVisibleSkin = () => {
+    if (availableSkins(settings).length > 1) return false
+    setLibraryError('至少要保留一套皮肤。要换成别的样式，请先新建或恢复一套皮肤。')
+    return true
+  }
 
   const save = () => {
+    if (editingBuiltinId) {
+      const name = formName.replace(/[\r\n]+/g, ' ').trim().slice(0, 40)
+      const css = formCss.slice(0, 20000)
+      if (css.trim() && !cssLooksLikeRules) {
+        setError('看起来不是完整的规则。要写成 `.theme-' + editingBuiltinId + ' { … }` 这种带选择器的形式，不是只写变量。')
+        return
+      }
+      // 和样式表里的**出厂规则**比较：只把真正改过的 CSS 存成追加规则。
+      // 否则点一次「编辑 → 保存」就会把整份出厂样式复制进 localStorage，
+      // 之后内置配色更新就再也落不到这台机器上。
+      const baseCss = readBuiltinSkinCss(editingBuiltinId)
+      const storedName = name && name !== editingBuiltin?.name ? name : ''
+      const storedCss = css.trim() && css.trim() !== baseCss.trim() ? css : ''
+      const builtinSkinOverrides = parseBuiltinSkinOverrides({
+        ...(settings.builtinSkinOverrides ?? {}),
+        [editingBuiltinId]: { name: storedName, css: storedCss },
+      })
+      // 保存即套用：顺带把这一套从"已删除"里恢复出来，否则套用了却看不见。
+      const hiddenBuiltinSkins = parseHiddenBuiltinSkins(
+        (settings.hiddenBuiltinSkins ?? []).filter(item => item !== editingBuiltinId),
+      )
+      onChange({ ...settings, builtinSkinOverrides, hiddenBuiltinSkins, theme: editingBuiltinId })
+      setLibraryError('')
+      closeForm()
+      return
+    }
+
     if (!sanitized) {
       setError('皮肤 id 不能为空，且只能用字母、数字、- 和 _（它会被拼成 .theme-<id> 类名）。')
+      return
+    }
+    if (isBuiltinSkinId(sanitized)) {
+      setError(`内置七套的 id 是保留的（${BUILTIN_SKINS.map(item => item.id).join('、')}），不能新建或覆盖内置皮肤。要改内置皮肤，请用上方的「内置七套管理」。`)
       return
     }
     if (!formCss.trim()) {
@@ -92,18 +172,66 @@ export function SkinModal({
     const nextLibrary = [...rest, next].sort((a, b) => a.id.localeCompare(b.id))
     // 保存即套用：让用户马上看到效果（theme 指向这一套的 id）
     onChange({ ...settings, customSkins: nextLibrary, theme: sanitized })
+    setLibraryError('')
     closeForm()
   }
 
   const remove = (skin: CustomSkin) => {
+    // 内置 id 不进库；这一道是兜底：旧数据或手改 localStorage 也不能删掉内置皮肤。
+    if (isBuiltinSkinId(skin.id)) return
+    if (isLastVisibleSkin()) return
+    if (!window.confirm(`删除自定义皮肤「${skinLabel(skin)}」？此操作不可恢复。`)) return
     const nextLibrary = library.filter(item => item.id !== skin.id)
-    // 删掉的正好是当前这套时退回晓白：别让 theme 指向一套已经不存在的皮肤。
-    const theme = settings.theme === skin.id ? 'light' : settings.theme
-    onChange({ ...settings, customSkins: nextLibrary, theme })
+    // 删掉的正好是当前这套时，按"还剩哪些"重新求一套，别让 theme 指向已经不存在的皮肤。
+    const nextSettings = { ...settings, customSkins: nextLibrary }
+    onChange({ ...nextSettings, theme: resolveTheme(nextSettings) })
+    setLibraryError('')
     if (editingId === skin.id) closeForm()
   }
 
-  const apply = (id: string) => onChange({ ...settings, theme: id })
+  /** 删除内置皮肤 = 从可选列表隐藏；改过的名字与 CSS 都留着，恢复时原样回来。 */
+  const removeBuiltin = (id: BuiltinSkinId) => {
+    if (isLastVisibleSkin()) return
+    const name = builtinSkinName(settings, id)
+    if (!window.confirm(`删除内置皮肤「${name}」？它只会从皮肤列表移除，改动会保留，随时可以在「内置七套管理」里恢复。`)) return
+    const hiddenBuiltinSkins = parseHiddenBuiltinSkins([...(settings.hiddenBuiltinSkins ?? []), id])
+    const nextSettings = { ...settings, hiddenBuiltinSkins }
+    onChange({ ...nextSettings, theme: resolveTheme(nextSettings) })
+    setLibraryError('')
+    if (editingBuiltinId === id) closeForm()
+  }
+
+  const restoreBuiltin = (id: BuiltinSkinId) => {
+    onChange({ ...settings, hiddenBuiltinSkins: parseHiddenBuiltinSkins((settings.hiddenBuiltinSkins ?? []).filter(item => item !== id)) })
+    setLibraryError('')
+  }
+
+  const resetBuiltin = (id: BuiltinSkinId) => {
+    const name = builtinSkinName(settings, id)
+    if (!window.confirm(`还原内置皮肤「${name}」的出厂名称与 CSS？`)) return
+    const builtinSkinOverrides = { ...(settings.builtinSkinOverrides ?? {}) }
+    delete builtinSkinOverrides[id]
+    onChange({ ...settings, builtinSkinOverrides })
+    setLibraryError('')
+    if (editingBuiltinId === id) closeForm()
+  }
+
+  const restoreAllBuiltins = () => {
+    if (!window.confirm('恢复全部内置皮肤的出厂名称与 CSS，并让它们重新出现在列表里？对内置皮肤的修改会被清除。')) return
+    const nextSettings = {
+      ...settings,
+      builtinSkinOverrides: {},
+      hiddenBuiltinSkins: [] as BuiltinSkinId[],
+    }
+    onChange({ ...nextSettings, theme: resolveTheme(nextSettings) })
+    setLibraryError('')
+    if (editingBuiltinId) closeForm()
+  }
+
+  const apply = (id: string) => {
+    setLibraryError('')
+    onChange({ ...settings, theme: id })
+  }
 
   return (
     <div className="overlay-backdrop" onClick={onClose}>
@@ -116,10 +244,10 @@ export function SkinModal({
         <div className="customize-body">
           <section className="customize-section">
             <h3>配色</h3>
-            <p className="customize-hint">点击即应用；内置七套只改配色，不改布局。</p>
+            <p className="customize-hint">点击即应用；内置与自定义皮肤都可以在下面管理。</p>
             <div className="customize-skin-row" role="radiogroup" aria-label="皮肤">
               {skins.map(skin => {
-                const selected = settings.theme === skin.id
+                const selected = activeTheme === skin.id
                 return (
                   <button
                     key={skin.id}
@@ -135,9 +263,68 @@ export function SkinModal({
                 )
               })}
             </div>
+            {skins.length === 0 && (
+              <p className="customize-note">没有可用的皮肤。内置皮肤已全部删除，自定义皮肤库也是空的；去下面恢复一套内置皮肤或新建一套。</p>
+            )}
           </section>
 
-          <section className="customize-section customize-skin-editor">
+          <section className="customize-section">
+            <details className="builtin-skin-manage">
+              <summary>
+                <span>内置七套管理</span>
+                <small>{modifiedCount > 0 || hiddenCount > 0
+                  ? [modifiedCount > 0 ? `已修改 ${modifiedCount}` : '', hiddenCount > 0 ? `已删除 ${hiddenCount}` : ''].filter(Boolean).join(' · ')
+                  : '可改名、换 CSS、删除'}</small>
+              </summary>
+              <p className="customize-hint">
+                内置皮肤也能改名、换 CSS 或从列表删除。删除只是隐藏，改动会保留，随时可以恢复；
+                这些改动只存本机浏览器，不上传服务端，也不进备份包。
+              </p>
+              <ul className="skin-library">
+                {BUILTIN_SKINS.map(skin => {
+                  const hidden = isBuiltinSkinHidden(settings, skin.id)
+                  const isActive = activeTheme === skin.id
+                  const override = builtinSkinOverride(settings, skin.id)
+                  const modified = Boolean(override && (override.name.trim() || override.css.trim()))
+                  return (
+                    <li key={skin.id} className={`skin-library-row ${isActive ? 'active' : ''} ${hidden ? 'is-hidden' : ''}`}>
+                      <div className="skin-library-main">
+                        <span className="skin-library-name">
+                          {builtinSkinName(settings, skin.id)}
+                          {isActive && <span className="customize-saved">使用中</span>}
+                        </span>
+                        <span className="skin-library-meta">
+                          <code>.theme-{skin.id}</code>
+                          {' · '}{hidden ? '已删除' : modified ? '已修改' : '出厂'}
+                          {modified && override?.name.trim() ? ` · 原名 ${skin.name}` : ''}
+                        </span>
+                      </div>
+                      <div className="skin-library-actions">
+                        {hidden && (
+                          <button type="button" className="subtle-button" onClick={() => restoreBuiltin(skin.id)}>恢复</button>
+                        )}
+                        <button type="button" className="subtle-button" onClick={() => startBuiltinEdit(skin.id)}>编辑</button>
+                        {!hidden && modified && (
+                          <button type="button" className="subtle-button" onClick={() => resetBuiltin(skin.id)}>还原</button>
+                        )}
+                        {!hidden && (
+                          <button type="button" className="subtle-button is-danger" onClick={() => removeBuiltin(skin.id)}>删除</button>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+              {(modifiedCount > 0 || hiddenCount > 0) && (
+                <div className="skin-library-foot">
+                  <button type="button" className="subtle-button" onClick={restoreAllBuiltins}>恢复全部内置</button>
+                </div>
+              )}
+            </details>
+            {!!libraryError && <p className="customize-error" role="alert">{libraryError}</p>}
+          </section>
+
+          <section className="customize-section">
             <div className="skin-library-head">
               <h3>自定义皮肤库</h3>
               <button type="button" className="subtle-button" onClick={startNew}>＋ 新建皮肤</button>
@@ -153,7 +340,7 @@ export function SkinModal({
             ) : (
               <ul className="skin-library">
                 {library.map(skin => {
-                  const isActive = settings.theme === skin.id
+                  const isActive = activeTheme === skin.id
                   return (
                     <li key={skin.id} className={`skin-library-row ${isActive ? 'active' : ''}`}>
                       <div className="skin-library-main">
@@ -174,30 +361,37 @@ export function SkinModal({
                 })}
               </ul>
             )}
+          </section>
 
-            {formOpen && (
-              <div className="skin-editor" ref={editorRef}>
-                <h4>{editingId ? '编辑皮肤' : '新建皮肤'}</h4>
+          {formOpen && (
+            <div className="skin-editor" ref={editorRef}>
+                <h4>{editingBuiltinId ? `编辑内置皮肤「${editingBuiltin?.name ?? editingBuiltinId}」` : editingId ? '编辑皮肤' : '新建皮肤'}</h4>
                 <label className="customize-field">
-                  <span>皮肤 id（拼成 .theme-&lt;id&gt;，只留字母数字与 - _）</span>
-                  <input
-                    type="text"
-                    value={formId}
-                    maxLength={32}
-                    placeholder="midnight"
-                    onChange={event => setFormId(event.target.value)}
-                  />
-                  {formId && sanitized !== formId.trim() && (
+                  <span>{editingBuiltinId
+                    ? '皮肤 id（内置固定，不可修改）'
+                    : '皮肤 id（拼成 .theme-<id>，只留字母数字与 - _）'}</span>
+                  {editingBuiltinId ? (
+                    <input type="text" value={formId} readOnly aria-readonly="true" />
+                  ) : (
+                    <input
+                      type="text"
+                      value={formId}
+                      maxLength={32}
+                      placeholder="midnight"
+                      onChange={event => setFormId(event.target.value)}
+                    />
+                  )}
+                  {!editingBuiltinId && formId && sanitized !== formId.trim() && (
                     <small className="customize-note">清洗后是 <code>{sanitized || '（空）'}</code></small>
                   )}
                 </label>
                 <label className="customize-field">
-                  <span>名字（不填就用 id）</span>
+                  <span>名字（不填就用{editingBuiltinId ? '出厂名字' : 'id'}）</span>
                   <input
                     type="text"
                     value={formName}
                     maxLength={40}
-                    placeholder="午夜"
+                    placeholder={editingBuiltin?.name ?? '午夜'}
                     onChange={event => setFormName(event.target.value)}
                   />
                 </label>
@@ -206,23 +400,35 @@ export function SkinModal({
                   <textarea
                     className="customize-css"
                     rows={6}
+                    maxLength={20000}
                     spellCheck={false}
                     value={formCss}
                     onChange={event => setFormCss(event.target.value)}
                   />
                 </label>
-                <p className="customize-note">保存后立即应用。</p>
+                <p className="customize-note">{editingBuiltinId
+                  ? 'CSS 留空 = 沿用内置样式；保存后会套用并重新出现在列表里。'
+                  : '保存后立即应用。'}</p>
                 {!!error && <p className="customize-error" role="alert">{error}</p>}
                 <div className="customize-actions">
                   <button type="button" className="primary-button" onClick={save}>保存并套用</button>
-                  <button type="button" className="subtle-button" onClick={closeForm}>{editingId ? '取消编辑' : '取消'}</button>
+                  <button type="button" className="subtle-button" onClick={closeForm}>{editingId || editingBuiltinId ? '取消编辑' : '取消'}</button>
+                  {editingBuiltinId && (
+                    <button type="button" className="subtle-button" onClick={() => setFormCss(readBuiltinSkinCss(editingBuiltinId))}>
+                      填入当前内置样式
+                    </button>
+                  )}
+                  {editingBuiltinId && editingBuiltinOverride && (
+                    <button type="button" className="subtle-button is-danger" onClick={() => resetBuiltin(editingBuiltinId)}>
+                      还原内置
+                    </button>
+                  )}
                   {!!active && (
                     <span className="customize-saved">当前已套用 <code>.theme-{active.id}</code></span>
                   )}
                 </div>
               </div>
             )}
-          </section>
         </div>
       </div>
     </div>

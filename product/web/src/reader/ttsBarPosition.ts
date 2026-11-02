@@ -25,16 +25,21 @@ const EDGE = 8
 export type BarPosition = { x: number; y: number }
 
 /**
- * 窄屏底部那条导航（`.mobile-reader-nav`）是固定高度、盖在正文上的，
- * 朗读条停在它上面就等于把「目录 / 书签 / 换源 / 朗读 / 设置 / 夜读」六颗键糊住。
- * 所以夹下边界时要按导航**实测高度**留位（`@media (max-width:640px)` 里那条
- * `bottom: 74px` 只在没拖过时生效 —— 拖过之后内联 `bottom:auto` 把它覆盖了）。
+ * 窄屏底部那条导航是固定高度、盖在正文上的：旧界面是 `.mobile-reader-nav`，
+ * MD3 外壳是 `.md3-bottombar`（同一时刻只会有一条真的显示）。朗读条停在它上面
+ * 就等于把底栏的键糊住，所以夹下边界时要按**实测高度**留位
+ * （`@media (max-width:640px)` 里那条 `bottom` 只在没拖过时生效 ——
+ * 拖过之后内联 `bottom:auto` 把它覆盖了）。
  */
+function visibleHeight(selector: string): number {
+  const node = document.querySelector<HTMLElement>(selector)
+  if (!node) return 0
+  if (getComputedStyle(node).display === 'none') return 0
+  return node.getBoundingClientRect().height
+}
+
 function bottomReserve(): number {
-  const nav = document.querySelector<HTMLElement>('.mobile-reader-nav')
-  if (!nav) return EDGE
-  if (getComputedStyle(nav).display === 'none') return EDGE
-  return nav.getBoundingClientRect().height + EDGE
+  return Math.max(visibleHeight('.mobile-reader-nav'), visibleHeight('.md3-bottombar')) + EDGE
 }
 
 type Drag = {

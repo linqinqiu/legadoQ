@@ -135,18 +135,27 @@ try {
     await page.waitForFunction(() => !!document.querySelector('.reader-flow-chapter.reader-flow-tail'),
       { timeout: 25000 }).catch(() => undefined)
 
-    // —— ③ 跨章过渡：预载到位时点「下一章」当场就该是新正文，不许有骨架屏 ——
+    // —— ③ 跨章过渡：预载到位时切到下一章当场就该是新正文，不许有骨架屏 ——
     // （滚动模式中途不再有"章末提示条"：下一章本来就挂在同一棵容器下面，那是连续文档改造的本意，
-    //   判据在 tools/verify/reader-flow-check.mjs。这里走页脚的「下一章」按钮，三种翻页方式都在。）
-    const nextButton = () => page.evaluate(() => {
-      const buttons = [...document.querySelectorAll('.reader-navigation button')]
-      const button = buttons.find(node => (node.textContent ?? '').includes('下一章'))
-      if (!button || button.disabled) return '没有可用的「下一章」按钮'
-      button.click()
-      return '已点击'
-    })
+    //   判据在 tools/verify/reader-flow-check.mjs。这里切「下一章」，三种翻页方式都在。）
+    // MD3 外壳下滚动模式没有文末 `.reader-navigation`，顶栏也不再摆「下一章」
+    // （用户 2026-11-02 去重：点按区 / 键盘 ←→ / 目录已经覆盖）；默认界面用 → 快捷键切章。
+    // 旧界面仍走页脚或旧顶栏那一颗，两种外壳都要能切。
+    const nextChapter = async () => {
+      const clicked = await page.evaluate(() => {
+        const legacy = [...document.querySelectorAll('.reader-navigation button')]
+          .find(node => (node.textContent ?? '').includes('下一章'))
+        const button = legacy ?? document.querySelector('.reader-header button[aria-label="下一章"]')
+        if (!button || button.disabled) return false
+        button.click()
+        return true
+      })
+      if (clicked) return '已点击「下一章」'
+      await page.keyboard.press('ArrowRight')
+      return '已按 → 切章'
+    }
     const titleBefore = (await snapshot(page)).title
-    const clicked = await nextButton()
+    const clicked = await nextChapter()
     await sleep(120)
     const instantly = await snapshot(page)
     check('预载命中时切章不出现骨架屏', !instantly.skeleton, instantly.skeleton ? '看到了骨架屏（旧行为）' : '无')

@@ -93,7 +93,7 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       rows: [
         {
           title: '皮肤',
-          hint: '七套内置配色与自定义皮肤库；点开即可切换、新建与编辑。',
+          hint: '内置七套可改名、换 CSS 或删除；自定义皮肤库可新建、编辑与删除。',
           action: '管理皮肤',
           onClick: actions.openSkins,
         },

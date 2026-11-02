@@ -23,12 +23,12 @@ test('菜单清单是唯一来源：id 不重复、默认顺序就是登记顺�
   const ids = READER_MENU_ITEMS.map(item => item.id)
   assert.equal(new Set(ids).size, ids.length, 'id 有重复')
   assert.deepEqual(DEFAULT_READER_MENU, ids)
-  // 默认顺序必须等于改动前工具栏那一排（切换书源 → 阅读设置 → 全屏 → 朗读），不动就不漂
-  assert.deepEqual(DEFAULT_READER_MENU, ['switchSource', 'settings', 'fullscreen', 'tts'])
+  // 「切换书源」已从菜单撤掉：目录抽屉顶部常年有「换源」，顶栏再放一份就是同一个动作的两个入口。
+  assert.deepEqual(DEFAULT_READER_MENU, ['settings', 'fullscreen', 'tts'])
 })
 
 test('parseReaderMenu：只认登记过的、去重、保序', () => {
-  assert.deepEqual(parseReaderMenu(['tts', 'switchSource', 'tts', 'nope']), ['tts', 'switchSource'])
+  assert.deepEqual(parseReaderMenu(['tts', 'switchSource', 'tts', 'nope']), ['tts'], '旧设置里的 switchSource 当未登记项丢掉')
   assert.deepEqual(parseReaderMenu(['settings', 'fullscreen']), ['settings', 'fullscreen'])
 })
 
@@ -40,16 +40,16 @@ test('parseReaderMenu：读不出合法项时回默认（工具栏是设置抽�
 })
 
 test('toggleReaderMenu：显示 / 隐藏；不许把最后一项也去掉', () => {
-  assert.deepEqual(toggleReaderMenu(['switchSource', 'settings'], 'tts'), ['switchSource', 'settings', 'tts'])
-  assert.deepEqual(toggleReaderMenu(['switchSource', 'settings', 'tts'], 'settings'), ['switchSource', 'tts'])
+  assert.deepEqual(toggleReaderMenu(['settings', 'fullscreen'], 'tts'), ['settings', 'fullscreen', 'tts'])
+  assert.deepEqual(toggleReaderMenu(['settings', 'fullscreen', 'tts'], 'settings'), ['fullscreen', 'tts'])
   assert.deepEqual(toggleReaderMenu(['tts'], 'tts'), ['tts'], '只剩一项时不许清空')
 })
 
 test('moveReaderMenu：上移 / 下移；到头不动', () => {
-  const base: ReaderMenuAction[] = ['switchSource', 'settings', 'fullscreen', 'tts']
-  assert.deepEqual(moveReaderMenu(base, 'settings', -1), ['settings', 'switchSource', 'fullscreen', 'tts'])
-  assert.deepEqual(moveReaderMenu(base, 'settings', 1), ['switchSource', 'fullscreen', 'settings', 'tts'])
-  assert.deepEqual(moveReaderMenu(base, 'switchSource', -1), base, '第一项上移不动')
+  const base: ReaderMenuAction[] = ['settings', 'fullscreen', 'tts']
+  assert.deepEqual(moveReaderMenu(base, 'fullscreen', -1), ['fullscreen', 'settings', 'tts'])
+  assert.deepEqual(moveReaderMenu(base, 'fullscreen', 1), ['settings', 'tts', 'fullscreen'])
+  assert.deepEqual(moveReaderMenu(base, 'settings', -1), base, '第一项上移不动')
   assert.deepEqual(moveReaderMenu(base, 'tts', 1), base, '最后一项下移不动')
   assert.equal(moveReaderMenu(base, 'nope' as ReaderMenuAction, 1), base, '找不到就原样返回')
 })
@@ -61,6 +61,22 @@ test('工具栏按 settings.menuItems 渲染，且与配置面板同源', () => 
   assert.match(read('../src/reader/OtherSettingsPanel.tsx'), /READER_MENU_ITEMS\.map\(/, '配置面板要按同一份清单列（PROPOSAL-020 P4 后这一节住在「设置」弹层）')
   // 旧版那四个写死的按钮不该再直接挂在 header 里（否则配置改了它也不动）
   assert.doesNotMatch(readerScreen, /<IconButton label="切换书源" icon="sliders"/)
+  // 「换源」只留在目录抽屉顶部：两套顶栏都不许再挂；抽屉那条是唯一可见入口。
+  assert.doesNotMatch(readerScreen, /onOpenSourceSwitch=\{\(\) => setShowSourceSwitch\(true\)\}/,
+    '顶栏不该再直接接换源（目录抽屉已经有一条）')
+  assert.match(read('../src/reader/TocDrawerHeader.tsx'), /label="换源"/, '目录抽屉顶部的换源要保留')
+})
+
+test('桌面端目录是普通覆盖式抽屉：没有固定侧栏与拖宽', () => {
+  const header = read('../src/reader/TocDrawerHeader.tsx')
+  const styles = read('../src/styles.css')
+  assert.doesNotMatch(header, /desktop-pin-btn|onTogglePin|pinOff|sidebarPinned/, '抽屉里不再有固定键与固定态文案')
+  assert.match(header, /label="关闭目录"/, '关闭键只负责关闭抽屉')
+  assert.doesNotMatch(readerScreen, /sidebarPinned|sidebar-pinned|sidebarWidth|reader-sidebar-resizer/, '调用方不再有固定侧栏状态、拖宽与分隔条')
+  assert.doesNotMatch(styles, /sidebar-pinned|reader-sidebar-resizer/, '样式里不再有固定侧栏与拖宽')
+  const tocToggles = readerScreen.match(/onToggleToc=\{\(\) => setActiveDrawer\(d => d === 'toc' \? null : 'toc'\)\}/g) ?? []
+  assert.equal(tocToggles.length, 3, '顶栏（新旧两套）与底栏的目录键都只切换覆盖式抽屉')
+  assert.match(readerScreen, /activeDrawer === 'toc' \|\| !uiV2/, '目录抽屉打开时始终有遮罩')
 })
 
 test('设置项随包存读：默认带 menuItems，读时过清洗', () => {

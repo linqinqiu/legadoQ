@@ -140,6 +140,6 @@ export function TypographyTab({ settings, onChange }: { settings: ReaderSettings
       <SettingChoices label="正文对齐" value={settings.textAlign} options={[{ value: 'justify', label: '两端对齐' }, { value: 'left', label: '左对齐' }]} onChange={textAlign => update({ textAlign })} />
       <SettingChoices label="分栏排版" value={settings.columnMode} options={[{ value: 'auto', label: '自适应' }, { value: 'single', label: '单栏' }, { value: 'double', label: '双栏' }]} onChange={columnMode => update({ columnMode })} hint={settings.columnMode === 'auto' ? '宽屏 (≥800px) 自动开启双页分栏' : settings.columnMode === 'double' ? '固定双栏双页排版' : '固定单栏排版'} />
     </SettingGroup>
-    <button className="reset-settings" onClick={() => onChange({ ...defaultReaderSettings, theme: settings.theme, customSkins: settings.customSkins })}>恢复默认设置</button>
+    <button className="reset-settings" onClick={() => onChange({ ...defaultReaderSettings, theme: settings.theme, customSkins: settings.customSkins, builtinSkinOverrides: settings.builtinSkinOverrides, hiddenBuiltinSkins: settings.hiddenBuiltinSkins })}>恢复默认设置</button>
   </>
 }

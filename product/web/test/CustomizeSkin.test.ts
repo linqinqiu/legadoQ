@@ -11,16 +11,26 @@ import { ColorTab } from '../src/reader/settingsPanel/ColorTab'
 import { BackgroundLibrary } from '../src/reader/settingsPanel/BackgroundLibrary'
 import {
   activeCustomSkin,
+  activeSkin,
   availableSkins,
   BUILTIN_SKINS,
+  builtinSkinCss,
+  builtinSkinName,
+  builtinSkinOverride,
   defaultReaderSettings,
+  isBuiltinSkinHidden,
+  isBuiltinSkinId,
   loadReaderSettings,
+  parseBuiltinSkinOverrides,
   parseCustomSkin,
   parseCustomSkins,
+  parseHiddenBuiltinSkins,
   parseReaderBackground,
   parseReaderBackgrounds,
   parseSkinId,
+  readBuiltinSkinCss,
   readerBackgroundVars,
+  resolveTheme,
   saveReaderSettings,
   skinLabel,
   themeClassNames,
@@ -68,6 +78,27 @@ test('皮肤列表 - 内置七套 + 库里每一套自定义皮肤', () => {
   assert.equal(availableSkins(settings({ customSkins: [skin(), skin({ id: 'dawn' })] })).length, 9)
 })
 
+/**
+ * 用户 2026-11-02：「皮肤七套也不能，已经有的不能任意编辑删除」。
+ * 内置七套在界面上没有编辑/删除入口，但如果自定义皮肤能占用同名 id，
+ * 注入的 CSS 就会把内置配色盖掉 —— 那等于绕过界面改掉了内置皮肤。
+ * 所以 id 必须在数据层就保留，而不是只靠界面少画两颗按钮。
+ */
+test('内置七套的 id 是保留字：自定义皮肤不能新增，也不能从旧数据里顶掉内置皮肤', () => {
+  const collision = skin({ id: 'light', name: '假晓白', css: '.theme-light { --canvas: #000000; }' })
+  assert.equal(parseCustomSkin(collision), null, '读取/保存时就要拒绝内置 id')
+  assert.equal(isBuiltinSkinId('Light'), true, '大小写归一后仍是内置 id')
+  assert.equal(isBuiltinSkinId('midnight'), false)
+
+  // 旧数据或手改 localStorage 仍可能把同名条目塞进来：列表与生效对象两层都要挡住。
+  const manual = settings({ theme: 'light', customSkins: [collision, skin()] })
+  const listed = availableSkins(manual)
+  assert.equal(listed.filter(item => item.id === 'light').length, 1, '同一个 id 只出现一张卡，内置优先')
+  assert.deepEqual(listed[0], { id: 'light', name: '晓白', builtin: true })
+  assert.equal(activeCustomSkin(manual), undefined, 'theme=light 时必须按内置皮肤解释，不能被同名自定义样式覆盖')
+  assert.deepEqual(themeClassNames(manual), ['theme-light'])
+})
+
 test('自定义皮肤只挂自己的类，不再叠加任何内置档', () => {
   assert.deepEqual(themeClassNames(settings()), ['theme-light'])
   assert.deepEqual(themeClassNames(settings({ theme: 'dark' })), ['theme-dark'])
@@ -82,6 +113,82 @@ test('自定义皮肤只挂自己的类，不再叠加任何内置档', () => {
   assert.deepEqual(themeClassNames({ ...custom, theme: 'paper' }), ['theme-paper'], '没启用自定义时仍按所选内置皮肤')
   // 内置皮肤列表本身不受影响
   assert.equal(BUILTIN_SKINS.length, 7)
+})
+
+/**
+ * 用户 2026-11-02：「固定的也能编辑或删除」。
+ * 内置皮肤可以改名、换 CSS；改动是**追加**在出厂规则之后的一份，没改 CSS 时不重复注入。
+ */
+test('内置皮肤可以改名、换 CSS，实际生效的是改后的那一份', () => {
+  const custom = settings({
+    theme: 'dark',
+    builtinSkinOverrides: { dark: { name: '深夜', css: '.theme-dark { --canvas: #000000; }' } },
+  })
+  assert.equal(builtinSkinName(custom, 'dark'), '深夜')
+  assert.equal(availableSkins(custom)[2].name, '深夜', '皮肤列表也要用改后的名字')
+  assert.equal(builtinSkinCss(custom, 'dark'), '.theme-dark { --canvas: #000000; }')
+  assert.deepEqual(activeSkin(custom), {
+    id: 'dark', name: '深夜', css: '.theme-dark { --canvas: #000000; }', builtin: true,
+  })
+  assert.deepEqual(themeClassNames(custom), ['theme-dark'], '内置皮肤仍然只挂自己那一个类')
+
+  // 只改名：CSS 仍走出厂规则，activeSkin 不重复注入一份空的 / 复制的样式。
+  const renamed = settings({ theme: 'dark', builtinSkinOverrides: { dark: { name: '深夜', css: '' } } })
+  assert.equal(activeSkin(renamed)?.css, '')
+  assert.equal(activeSkin(settings({ theme: 'dark' }))?.css, '', '没改动时不该往页面里多挂一条 style')
+
+  // 自定义皮肤仍不能占用内置 id，内置改动必须走 builtinSkinOverrides。
+  assert.equal(parseCustomSkin({ id: 'dark', name: '深夜', css: 'a{b:c}' }), null)
+})
+
+/**
+ * 删除内置皮肤 = 从可选列表隐藏：改过的名字 / CSS 都保留，恢复时原样回来。
+ * 只有七套全删且没有自定义皮肤时才会出现"没有主题"，这时宁可露出中性基线，
+ * 也不假装一套已经删掉的皮肤还在（否则类名和界面显示会对不上）。
+ */
+test('内置皮肤删除只是隐藏，可恢复；全删光时不再假装某套还在', () => {
+  const hiddenLight = settings({ theme: 'light', hiddenBuiltinSkins: ['light'] })
+  assert.equal(isBuiltinSkinHidden(hiddenLight, 'light'), true)
+  assert.equal(availableSkins(hiddenLight).length, 6)
+  assert.ok(!availableSkins(hiddenLight).some(skin => skin.id === 'light'), '删掉的那套不该还在列表里')
+  assert.equal(resolveTheme(hiddenLight), 'paper', '当前皮肤被删时自动落到下一套可见内置皮肤')
+  assert.deepEqual(themeClassNames(hiddenLight), ['theme-paper'])
+
+  const both = settings({
+    theme: 'light',
+    hiddenBuiltinSkins: ['light'],
+    builtinSkinOverrides: { light: { name: '米白', css: '.theme-light { --canvas: #fff; }' } },
+  })
+  assert.equal(builtinSkinName(both, 'light'), '米白', '隐藏不抹掉改动，恢复后名字还在')
+  assert.equal(builtinSkinOverride(both, 'light')?.css, '.theme-light { --canvas: #fff; }')
+  assert.equal(availableSkins(settings({ hiddenBuiltinSkins: [] })).length, 7, '恢复后七套都回来')
+
+  const noSkins = settings({ theme: 'light', hiddenBuiltinSkins: BUILTIN_SKINS.map(skin => skin.id) })
+  assert.deepEqual(availableSkins(noSkins), [])
+  assert.equal(resolveTheme(noSkins), '')
+  assert.deepEqual(themeClassNames(noSkins), [], '没有可选皮肤时不硬塞一个已删除的类名')
+
+  const fallbackCustom = settings({
+    theme: 'light',
+    hiddenBuiltinSkins: BUILTIN_SKINS.map(skin => skin.id),
+    customSkins: [skin()],
+  })
+  assert.equal(resolveTheme(fallbackCustom), 'midnight', '内置全删光时退到第一套自定义皮肤')
+  assert.deepEqual(themeClassNames(fallbackCustom), ['theme-midnight'])
+})
+
+test('内置改动与删除记录的清洗：只认内置 id，空改动不留档', () => {
+  assert.deepEqual(parseBuiltinSkinOverrides({
+    light: { name: ' 米白 ', css: ' a{b:c} ' },
+    dark: { name: '', css: '   ' },
+    nope: { name: 'x', css: 'a{b:c}' },
+  }), { light: { name: '米白', css: ' a{b:c} ' } })
+  assert.deepEqual(parseBuiltinSkinOverrides('不是对象'), {})
+  assert.deepEqual(parseHiddenBuiltinSkins(['LIGHT', 'nope', 'light', 'dark']), ['light', 'dark'], '去重、归一、按内置顺序')
+  assert.deepEqual(parseHiddenBuiltinSkins('不是数组'), [])
+
+  // 没有 document（Node 测试）时读不到出厂样式，返回空串让编辑器留空，而不是抛错。
+  assert.equal(readBuiltinSkinCss('light'), '')
 })
 
 /**
@@ -121,6 +228,13 @@ test('皮肤库清洗：id 过白名单、空 id / 空 CSS 丢掉、同 id 只�
     { id: 'x', name: '', css: 'a{b:c}' })
   assert.equal(parseCustomSkin(null), null)
   assert.equal(parseCustomSkin({ id: '', css: 'x' }), null)
+  // 内置七套的 id 是保留字：任何一套都不能被自定义皮肤顶替。
+  for (const builtin of BUILTIN_SKINS) {
+    assert.equal(parseCustomSkin({ id: builtin.id, css: 'a{b:c}' }), null,
+      `内置 id ${builtin.id} 是保留字，自定义皮肤不能占用`)
+  }
+  assert.deepEqual(parseCustomSkins([{ id: 'light', css: 'a{b:c}' }, { id: 'midnight', css: 'a{b:c}' }]).map(item => item.id),
+    ['midnight'], '库清洗会把撞内置 id 的旧条目丢掉，其余照常保留')
 })
 
 test('当前启用的是哪一套自定义皮肤；显示名缺省回落 id', () => {
@@ -176,7 +290,8 @@ test('阅读页「颜色与背景」：皮肤库入口 + 背景预设库都在�
   const html = renderToStaticMarkup(React.createElement(ColorTab, {
     settings: settings(), onChange: () => undefined,
   }))
-  assert.match(html, /管理自定义皮肤/)
+  assert.match(html, /管理皮肤/)
+  assert.match(html, /内置皮肤可改名、换 CSS 或删除/, '阅读页入口也要说清内置皮肤现在可管理')
   assert.match(html, /阅读背景/)
   assert.match(html, /我的背景/)
   assert.match(html, /跟随整站壁纸/)
@@ -216,9 +331,14 @@ test('自定义皮肤与背景预设随阅读设置一起存取，刷新后仍�
   }
   try {
     const background = { id: 'bg-1', name: '夜读', color: '#112233', image: '', dim: 0.3 }
+    const builtinSkinOverrides = {
+      dark: { name: '深夜', css: '.theme-dark { --canvas: #000000; }' },
+    }
     saveReaderSettings(settings({
       theme: 'midnight',
       customSkins: [skin({ name: '午夜' })],
+      builtinSkinOverrides,
+      hiddenBuiltinSkins: ['paper'],
       customBackgrounds: [background],
       readerBgColor: '#112233',
       readerBgDim: 0.3,
@@ -226,6 +346,8 @@ test('自定义皮肤与背景预设随阅读设置一起存取，刷新后仍�
     const loaded = loadReaderSettings()
     assert.equal(loaded.theme, 'midnight', '主题选择要能保存下来')
     assert.deepEqual(loaded.customSkins, [skin({ name: '午夜' })], '自定义皮肤库要能保存下来')
+    assert.deepEqual(loaded.builtinSkinOverrides, builtinSkinOverrides, '内置皮肤的改动要能保存下来')
+    assert.deepEqual(loaded.hiddenBuiltinSkins, ['paper'], '删除过的内置皮肤要能保存下来')
     assert.deepEqual(loaded.customBackgrounds, [background], '背景预设要能保存下来')
     assert.equal(loaded.readerBgColor, '#112233')
     assert.equal(loaded.readerBgDim, 0.3)
@@ -244,6 +366,13 @@ test('SkinModal 静态渲染：皮肤列表 + 皮肤库，编辑器按需展开'
   assert.doesNotMatch(html, /叠在哪一套之上|叠在哪一档/, '全权自定义：不该再问"叠在某一档之上"')
   assert.match(html, /中性基线/, '要说清楚没写到的变量走中性基线，不跟预设配色联动')
   assert.match(html, /新建皮肤/)
+  assert.match(html, /内置七套管理/, '内置皮肤的管理入口要在皮肤浮层里')
+  assert.match(html, /可改名、换 CSS、删除/, '折叠时也要说清这七套能改能删')
+  assert.match(html, /删除只是隐藏/, '删除不是抹掉，必须说清可恢复')
+  // 七套内置皮肤每一套都有编辑 / 删除入口；自定义库为空时不额外多出按钮。
+  assert.equal((html.match(/>编辑</g) ?? []).length, 7, '七套内置皮肤都要有编辑按钮')
+  assert.equal((html.match(/>删除</g) ?? []).length, 7, '七套内置皮肤都要有删除按钮')
+  assert.equal((html.match(/theme-swatch-/g) ?? []).length, 7, '七套内置皮肤的色片都在')
   // 编辑器默认收起：首屏只留库与新建入口，别让一整张空表单把「保存并套用」挤到折叠线以下。
   assert.doesNotMatch(html, /customize-css|保存并套用/, '没点「新建皮肤」之前不该先摆出一张空表单')
   assert.ok(!html.includes('自定义（'), '库里没东西时，皮肤列表里不该出现一个用不了的自定义皮肤')
@@ -259,8 +388,55 @@ test('SkinModal 里库里每一套都进皮肤列表，并给出编辑 / 删除'
   }))
   assert.match(html, /自定义（midnight）/)
   assert.match(html, /theme-swatch-custom/, '自定义皮肤要有自己的色片样式，不能长得像内置那档')
-  assert.match(html, /编辑/)
-  assert.match(html, /删除/)
+  assert.equal((html.match(/>编辑</g) ?? []).length, 8, '七套内置 + 库里这一套自定义都有编辑按钮')
+  assert.equal((html.match(/>删除</g) ?? []).length, 8, '七套内置 + 库里这一套自定义都有删除按钮')
+})
+
+test('SkinModal 显示内置皮肤的状态：已修改、已删除、使用中与恢复入口', () => {
+  const html = renderToStaticMarkup(React.createElement(SkinModal, {
+    settings: settings({
+      theme: 'dark',
+      builtinSkinOverrides: { dark: { name: '深夜', css: '.theme-dark { --canvas: #000; }' } },
+      hiddenBuiltinSkins: ['paper'],
+    }),
+    onChange: () => undefined, onClose: () => undefined,
+  }))
+  assert.match(html, /深夜/, '改过的名字要在管理列表里出现')
+  assert.match(html, /已修改/)
+  assert.match(html, /已删除/)
+  assert.match(html, /使用中/)
+  assert.match(html, />恢复</, '删掉的那套要有恢复按钮')
+  assert.match(html, /恢复全部内置/)
+  assert.equal((html.match(/>删除</g) ?? []).length, 6, '已删除的那套只剩恢复，不再有删除按钮')
+  assert.equal((html.match(/>还原</g) ?? []).length, 1, '改过的那套可以单独还原')
+})
+
+test('SkinModal 把内置 id 挡在自定义保存入口，并给内置删除 / 恢复留路径', () => {
+  const source = read('..', 'src', 'components', 'SkinModal.tsx')
+  assert.match(source, /isBuiltinSkinId\(sanitized\)/, '自定义皮肤保存时必须先拒绝内置 id')
+  assert.match(source, /内置七套的 id 是保留的/, '拒绝时要说清为什么，而不是静默保存失败')
+  assert.match(source, /isBuiltinSkinId\(skin\.id\)\) return/, '删除自定义皮肤的入口也要兜底挡住内置 id')
+  assert.match(source, /window\.confirm\(/, '删除自定义皮肤不能点一下就没')
+  assert.match(source, /hiddenBuiltinSkins/, '删除内置皮肤要写进隐藏表，而不是从数据里抹掉')
+  assert.match(source, /restoreBuiltin/, '删掉的内置皮肤必须能恢复')
+  assert.match(source, /resetBuiltin/, '改过的内置皮肤必须能单独还原')
+  assert.match(source, /restoreAllBuiltins/, '还要有一条恢复全部内置的路径')
+  assert.match(source, /isLastVisibleSkin/, '不能把最后一套皮肤也删掉')
+})
+
+test('内置皮肤的 CSS 预填读出的是出厂规则，不读用户自己的追加样式', () => {
+  const source = read('..', 'src', 'reader', 'readerSettings.ts')
+  assert.match(source, /owner\?\.id === 'legado-custom-skin'/, '跳过注入点，否则编辑一次未改动的皮肤就会把追加样式当成出厂样式')
+  assert.match(source, /function readBuiltinSkinCss/)
+})
+
+test('T 键轮换只走未删除的内置皮肤，恢复默认设置不会丢内置改动', () => {
+  const reader = read('..', 'src', 'reader', 'ReaderScreen.tsx')
+  assert.match(reader, /BUILTIN_SKINS\.filter\(skin => !isBuiltinSkinHidden\(settings, skin\.id\)\)/, 'T 键不能切到已删除的内置皮肤')
+  assert.match(reader, /const current = resolveTheme\(settings\)/, '轮换起点也要按实际生效的那套算')
+  const reset = read('..', 'src', 'reader', 'settingsPanel', 'TypographyTab.tsx')
+  assert.match(reset, /builtinSkinOverrides: settings\.builtinSkinOverrides/, '恢复默认排版不能清掉内置皮肤改动')
+  assert.match(reset, /hiddenBuiltinSkins: settings\.hiddenBuiltinSkins/, '恢复默认排版不能把删掉的皮肤又变回来')
 })
 
 /**
@@ -273,6 +449,7 @@ test('皮肤 CSS 的注入方式：createElement + textContent，空了就摘掉
   assert.match(main, /document\.createElement\('style'\)/)
   assert.match(main, /legado-custom-skin/, '注入点要有固定 id，切走皮肤时才知道摘哪一个')
   assert.match(main, /\.textContent\s*=\s*css/)
+  assert.match(main, /const active = activeSkin\(settings\)/, '内置皮肤的追加 CSS 与自定义皮肤走同一个注入点')
   // 只看 SkinStyle 这一段：文件别处有一句解释"为什么不用 innerHTML"的注释，那是文字不是代码。
   // `\r?\n` 是必须的：`git checkout` 在 Windows 上给出的是 CRLF，写死 `\n}` 会取到空串。
   const skinBlock = /function SkinStyle\([\s\S]*?\r?\n\}/.exec(main)?.[0] ?? ''
@@ -328,6 +505,9 @@ test('样式表里这几张界面都有规则（更新日志页、皮肤弹窗�
   assert.match(css, /\.skin-library \{/)
   assert.match(css, /\.skin-library-row \{/)
   assert.match(css, /\.skin-editor \{/)
+  assert.match(css, /\.builtin-skin-manage \{|\.builtin-skin-manage > summary \{/, '内置七套管理要有折叠头样式')
+  assert.match(css, /\.skin-library-row\.is-hidden/, '已删除的内置皮肤要能看出状态')
+  assert.match(css, /\.skin-library-foot \{/, '恢复全部内置的按钮要有自己的落位')
   // 搬出去的弹窗还得有自己的内容样式：类名不在样式表里 = 渲染出来是一个没有滚动的裸 div
   assert.match(css, /\.toc-rules-body \{/)
   assert.match(css, /\.toc-rule \{/)

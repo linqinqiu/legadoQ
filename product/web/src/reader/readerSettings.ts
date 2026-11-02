@@ -44,6 +44,21 @@ export type CustomSkin = {
 }
 
 /**
+ * 对一套内置皮肤的改动：只存用户改写的那两栏，空字段表示"用出厂值"。
+ *
+ * 用户 2026-11-02：「固定的也能编辑或删除」。内置皮肤不再是一块动不得的底板：
+ * 可以改名、换 CSS，也可以从皮肤列表里删掉（只是隐藏，随时能恢复）。
+ * 改动与自定义皮肤分开存，内置 id 仍是自定义皮肤的保留字 —— 否则一条同名自定义
+ * 就能悄悄覆盖内置皮肤，界面上却看不到"这是自定义"。
+ */
+export type BuiltinSkinOverride = {
+  name: string
+  css: string
+}
+
+export type BuiltinSkinOverrides = Partial<Record<BuiltinSkinId, BuiltinSkinOverride>>
+
+/**
  * 一套阅读背景预设（用户可存许多套）。
  *
  * 背景与皮肤是两件事：皮肤管整套界面的配色令牌，背景只铺在阅读区上。
@@ -67,6 +82,10 @@ export type ReaderSettings = {
    * 当前启用哪一套由 `theme`（等于那一套的 id）决定；`theme` 是内置档时库里哪套都不生效。
    */
   customSkins: CustomSkin[]
+  /** 内置七套的改名 / 换 CSS；键是内置 id，空字段用出厂值。只存本机，不进备份包。 */
+  builtinSkinOverrides: BuiltinSkinOverrides
+  /** 从皮肤列表里删掉的内置 id（只隐藏，不抹掉改动；随时可恢复）。 */
+  hiddenBuiltinSkins: BuiltinSkinId[]
   fontSize: number
   lineHeight: number
   letterSpacing: number
@@ -82,13 +101,6 @@ export type ReaderSettings = {
   textAlign: ReaderTextAlign
   /** 漫画单图模式：书源 `bookSourceType === 2` 时一屏一图、按图翻页；关掉则按普通图文混排。 */
   mangaSinglePage: boolean
-  sidebarPinned: boolean
-  /**
-   * 固定目录（`sidebarPinned`）时目录栏的宽度，px。
-   * 目录与正文之间那条边界可以左右拖（用户 2026-10-09：「我希望目录与正文边界能左右移动部分」）——
-   * 拖出来的值存在这里；正文区与点击分区的范围都跟着它走。
-   */
-  sidebarWidth: number
   ttsEngine: TtsEngineType
   ttsVoice: string
   ttsSpeed: number
@@ -153,6 +165,8 @@ const storageKey = 'legado-reader-settings-v2'
 export const defaultReaderSettings: ReaderSettings = {
   theme: 'light',
   customSkins: [],
+  builtinSkinOverrides: {},
+  hiddenBuiltinSkins: [],
   fontSize: 19,
   lineHeight: 1.95,
   letterSpacing: 0,
@@ -166,8 +180,6 @@ export const defaultReaderSettings: ReaderSettings = {
   columnMode: 'auto',
   textAlign: 'justify',
   mangaSinglePage: true,
-  sidebarPinned: false,
-  sidebarWidth: 300,
   ttsEngine: 'edge',
   ttsVoice: 'zh-CN-XiaoxiaoNeural',
   ttsSpeed: 1.0,
@@ -265,25 +277,97 @@ export const BUILTIN_SKINS: ReadonlyArray<{ id: BuiltinSkinId; name: string }> =
   { id: 'shimo', name: '石墨' },
 ]
 
-/** 当前可选的皮肤：内置七套 + 库里每一套自定义皮肤（没写 CSS 的不出现，不摆点了没反应的控件）。 */
+/**
+ * 内置七套的 id 是保留字。内置皮肤本身可以改（改动用 `builtinSkinOverrides` 单独存），
+ * 但不允许自定义皮肤占用同名 id —— 否则一条同名自定义就能盖掉内置配色，
+ * 界面与数据层也分不清"这是内置皮肤被改了"还是"多了一套自定义"。
+ * 保存前由 `parseCustomSkin` 拒绝；旧数据、手改 localStorage 再在 `availableSkins`
+ * 与 `activeCustomSkin` 各挡一层，内置皮肤永远优先。
+ */
+export function isBuiltinSkinId(id: unknown): id is BuiltinSkinId {
+  const normalized = parseSkinId(id)
+  return BUILTIN_SKINS.some(skin => skin.id === normalized)
+}
+
+/** 某一套内置皮肤被改动的部分（没有改动时 undefined）。 */
+export function builtinSkinOverride(settings: ReaderSettings, id: BuiltinSkinId): BuiltinSkinOverride | undefined {
+  return settings.builtinSkinOverrides?.[id]
+}
+
+/** 内置皮肤当前显示名：改过就用改后的名字，否则用出厂名。 */
+export function builtinSkinName(settings: ReaderSettings, id: BuiltinSkinId): string {
+  const name = builtinSkinOverride(settings, id)?.name.trim()
+  return name || BUILTIN_SKINS.find(skin => skin.id === id)?.name || id
+}
+
+/** 用户给内置皮肤写的 CSS；空串 = 沿用 styles.css 里的出厂规则。 */
+export function builtinSkinCss(settings: ReaderSettings, id: BuiltinSkinId): string {
+  const css = builtinSkinOverride(settings, id)?.css ?? ''
+  return css.trim() ? css : ''
+}
+
+/** 这套内置皮肤是否已从皮肤列表里删掉（删除只是隐藏，改动仍在，可恢复）。 */
+export function isBuiltinSkinHidden(settings: ReaderSettings, id: BuiltinSkinId): boolean {
+  return (settings.hiddenBuiltinSkins ?? []).includes(id)
+}
+
+/**
+ * 清洗一套内置皮肤的改动：名字去换行并限长，CSS 限长（注入走 textContent）。
+ * 两栏都空 → 这套没有改动，返回 null（不往存储里留空对象）。
+ */
+export function parseBuiltinSkinOverride(value: unknown): BuiltinSkinOverride | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const name = typeof raw.name === 'string' ? raw.name.replace(/[\r\n]+/g, ' ').trim().slice(0, 40) : ''
+  const css = typeof raw.css === 'string' ? raw.css.slice(0, 20000) : ''
+  return name || css.trim() ? { name, css } : null
+}
+
+/** 清洗内置改动表：只认内置七套的 id，丢掉空条目与手改出来的未知键。 */
+export function parseBuiltinSkinOverrides(value: unknown): BuiltinSkinOverrides {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const result: BuiltinSkinOverrides = {}
+  for (const skin of BUILTIN_SKINS) {
+    const override = parseBuiltinSkinOverride((value as Record<string, unknown>)[skin.id])
+    if (override) result[skin.id] = override
+  }
+  return result
+}
+
+/** 清洗"已删除的内置皮肤"：只留内置 id，去重，并按内置顺序返回。 */
+export function parseHiddenBuiltinSkins(value: unknown): BuiltinSkinId[] {
+  if (!Array.isArray(value)) return []
+  const hidden = new Set<BuiltinSkinId>()
+  for (const item of value) {
+    const id = parseSkinId(item)
+    if (isBuiltinSkinId(id)) hidden.add(id)
+  }
+  return BUILTIN_SKINS.map(skin => skin.id).filter(id => hidden.has(id))
+}
+
+/** 当前可选的皮肤：没被删掉的内置七套（用改后的名字）+ 库里每一套自定义皮肤（没写 CSS 的不出现）。 */
 export function availableSkins(settings: ReaderSettings): Array<{ id: string; name: string; builtin: boolean }> {
   const custom = (settings.customSkins ?? [])
-    .filter(skin => skin.id && skin.css.trim())
+    // 同名旧数据不并排展示：同一个 id 出现两张卡时，点哪张都只能落到内置皮肤上。
+    .filter(skin => skin.id && skin.css.trim() && !isBuiltinSkinId(skin.id))
     .map(skin => ({ id: skin.id, name: skinLabel(skin), builtin: false }))
-  return [...BUILTIN_SKINS.map(skin => ({ ...skin, builtin: true })), ...custom]
+  const builtin = BUILTIN_SKINS
+    .filter(skin => !isBuiltinSkinHidden(settings, skin.id))
+    .map(skin => ({ id: skin.id, name: builtinSkinName(settings, skin.id), builtin: true }))
+  return [...builtin, ...custom]
 }
 
 /**
  * 清洗一套自定义皮肤：id 过 `parseSkinId`（拼类名用），name 去换行并限长，css 限长（注入走 textContent）。
  * 老数据里的 `base` / `mode` 字段直接忽略 —— 自定义皮肤不再有"叠一档"的语义。
- * id 清洗后为空、或 css 为空 → 返回 null（这一套不成立，不进库）。
+ * id 清洗后为空、css 为空、或撞上内置七套的保留 id → 返回 null（这一套不成立，不进库）。
  */
 export function parseCustomSkin(value: unknown): CustomSkin | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Record<string, unknown>
   const id = parseSkinId(raw.id)
   const css = typeof raw.css === 'string' ? raw.css.slice(0, 20000) : ''
-  if (!id || !css.trim()) return null
+  if (!id || !css.trim() || isBuiltinSkinId(id)) return null
   const name = typeof raw.name === 'string' ? raw.name.replace(/[\r\n]+/g, ' ').trim().slice(0, 40) : ''
   return { id, name, css }
 }
@@ -307,7 +391,44 @@ export function skinLabel(skin: CustomSkin): string {
 /** 当前启用的那一套自定义皮肤（`theme` 命中库里某个 id 时），否则 undefined。 */
 export function activeCustomSkin(settings: ReaderSettings): CustomSkin | undefined {
   const id = parseSkinId(settings.theme)
+  // 内置 id 永远按内置皮肤解释：旧数据里即使留着同名自定义，也不能顶掉内置配色。
+  if (!id || isBuiltinSkinId(id)) return undefined
   return (settings.customSkins ?? []).find(skin => skin.id === id)
+}
+
+/**
+ * `theme` 实际会落到哪一套：大小写/脏字符先归一，被删掉的内置皮肤与库里没有的 id
+ * 都不算数，按内置顺序找第一套还看得见的皮肤。全删光且没有自定义时返回空串，
+ * 由调用方按"没有主题"处理（宁可露出中性基线，也不假装一套已删除的皮肤还在）。
+ *
+ * 界面上的选中态、注入哪份 CSS、T 键轮换都以这里为准：只比 `settings.theme`
+ * 会在"删掉当前皮肤"或"导入一份小写不同的 id"时显示错一套。
+ */
+export function resolveTheme(settings: ReaderSettings): string {
+  const theme = parseSkinId(settings.theme)
+  if (theme && isBuiltinSkinId(theme) && !isBuiltinSkinHidden(settings, theme)) return theme
+  if (theme && !isBuiltinSkinId(theme)) {
+    const custom = (settings.customSkins ?? []).find(skin => skin.id === theme && skin.css.trim())
+    if (custom) return custom.id
+  }
+  const builtin = BUILTIN_SKINS.find(skin => !isBuiltinSkinHidden(settings, skin.id))
+  if (builtin) return builtin.id
+  const custom = (settings.customSkins ?? []).find(skin => skin.id && skin.css.trim() && !isBuiltinSkinId(skin.id))
+  return custom?.id ?? ''
+}
+
+/**
+ * 当前真正生效的皮肤（含内置皮肤的改动）。`css` 是**额外注入**的那份：
+ * 内置皮肤没改 CSS 时为空串（出厂规则仍在 styles.css 里），自定义皮肤就是它自己的 CSS。
+ */
+export function activeSkin(settings: ReaderSettings): { id: string; name: string; css: string; builtin: boolean } | undefined {
+  const id = resolveTheme(settings)
+  if (!id) return undefined
+  if (isBuiltinSkinId(id)) {
+    return { id, name: builtinSkinName(settings, id), css: builtinSkinCss(settings, id), builtin: true }
+  }
+  const custom = (settings.customSkins ?? []).find(skin => skin.id === id && skin.css.trim())
+  return custom ? { id, name: skinLabel(custom), css: custom.css, builtin: false } : undefined
 }
 
 /** 背景预设 id 只用于列表 key 与内部标识，不拼选择器；仍收紧字符集，避免存进怪东西。 */
@@ -380,15 +501,47 @@ export function newBackgroundId(existing: ReaderBackground[]): string {
 }
 
 /**
- * 皮肤类名列表。自定义皮肤**只挂自己这一个类**，不叠加任何内置皮肤。
+ * 皮肤类名列表。每一套（内置或自定义）**只挂自己这一个类**，不叠加别的皮肤。
  *
- * 没写到的变量落到 `styles.css` 最前面那个 `:root` 里的中性颜色基线 ——
- * 那份基线与任何预设配色无关，所以切内置皮肤不会让自定义皮肤的外观跟着漂移。
+ * 内置皮肤的出厂配色在 styles.css 的 `.theme-*` 里；用户改过的 CSS 由 `activeSkin`
+ * 取出、main.tsx 的 SkinStyle 追加到文档后部，后写的规则覆盖出厂值。
+ * 没写到的变量落到 styles.css 最前面那个 `:root` 里的中性颜色基线 ——
+ * 那份基线与任何预设配色无关，所以切皮肤不会让自定义皮肤的外观跟着漂移。
  * 这是用户 2026-10-23 定下的语义：「自定义不是叠在哪一套之上，是全权自定义」。
  */
 export function themeClassNames(settings: ReaderSettings): string[] {
-  const active = activeCustomSkin(settings)
-  return [`theme-${active ? active.id : settings.theme}`]
+  const id = resolveTheme(settings)
+  return id ? [`theme-${id}`] : []
+}
+
+/**
+ * 读一套内置皮肤在样式表里**当前**的出厂规则（皮肤编辑器用它预填）。
+ * 遍历所有可访问的 styleSheet：跨域表读 `cssRules` 会抛，按没有处理。
+ * 返回的是 CSSOM 序列化后的文本（颜色可能变成 rgb()），保存后效果不变。
+ */
+export function readBuiltinSkinCss(id: BuiltinSkinId): string {
+  if (typeof document === 'undefined') return ''
+  const selector = `.theme-${id}`
+  for (const sheet of Array.from(document.styleSheets)) {
+    // 跳过 SkinStyle 注入的那条：它装的是用户改后的 CSS，同一选择器会排在出厂规则后面。
+    // 编辑器要预填的是出厂样式，拿错这一份会让"没改过也会显示成改过"。
+    const owner = sheet.ownerNode as HTMLElement | null
+    if (owner?.id === 'legado-custom-skin') continue
+    let rules: CSSRuleList
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue
+    }
+    for (const rule of Array.from(rules)) {
+      const styleRule = rule as CSSStyleRule
+      if (typeof styleRule.selectorText === 'string'
+        && styleRule.selectorText.split(',').some(part => part.trim() === selector)) {
+        return styleRule.cssText
+      }
+    }
+  }
+  return ''
 }
 
 export function parseColumnMode(mode: unknown): ReaderColumnMode {
@@ -480,9 +633,14 @@ export function loadReaderSettings(): ReaderSettings {
   try {
     const raw = window.localStorage.getItem(storageKey) || window.localStorage.getItem('legado-reader-settings-v1')
     const saved = JSON.parse(raw ?? '{}') as Partial<ReaderSettings> & { font?: string }
+    const customSkins = loadCustomSkins(saved as unknown as Record<string, unknown>)
+    const builtinSkinOverrides = parseBuiltinSkinOverrides(saved.builtinSkinOverrides)
+    const hiddenBuiltinSkins = parseHiddenBuiltinSkins(saved.hiddenBuiltinSkins)
     return {
-      theme: typeof saved.theme === 'string' && saved.theme.trim() ? saved.theme.trim() : defaultReaderSettings.theme,
-      customSkins: loadCustomSkins(saved as unknown as Record<string, unknown>),
+      theme: parseSkinId(saved.theme) || defaultReaderSettings.theme,
+      customSkins,
+      builtinSkinOverrides,
+      hiddenBuiltinSkins,
       fontSize: clampNumber(saved.fontSize, READER_FONT_SIZE_MIN, READER_FONT_SIZE_MAX, defaultReaderSettings.fontSize),
       lineHeight: clampNumber(saved.lineHeight, 1.45, 2.4, defaultReaderSettings.lineHeight),
       letterSpacing: clampNumber(saved.letterSpacing, -.25, 1.5, defaultReaderSettings.letterSpacing),
@@ -496,8 +654,6 @@ export function loadReaderSettings(): ReaderSettings {
   columnMode: parseColumnMode(saved.columnMode),
   textAlign: parseTextAlign(saved.textAlign),
       mangaSinglePage: typeof saved.mangaSinglePage === 'boolean' ? saved.mangaSinglePage : defaultReaderSettings.mangaSinglePage,
-      sidebarPinned: typeof saved.sidebarPinned === 'boolean' ? saved.sidebarPinned : defaultReaderSettings.sidebarPinned,
-      sidebarWidth: Math.round(clampNumber(saved.sidebarWidth, 220, 560, defaultReaderSettings.sidebarWidth)),
       ttsEngine: parseTtsEngine(saved.ttsEngine),
       ttsVoice: typeof saved.ttsVoice === 'string' && saved.ttsVoice.trim() ? saved.ttsVoice : defaultReaderSettings.ttsVoice,
       ttsSpeed: clampNumber(saved.ttsSpeed, 0.5, 3.0, defaultReaderSettings.ttsSpeed),

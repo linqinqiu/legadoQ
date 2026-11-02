@@ -38,7 +38,7 @@ export function TapZoneEditor({
 }: {
   map: TapMap
   mode: 'paginate' | 'scroll'
-  /** 正文区左缘（px）：固定目录时把编辑层让开目录栏，别压住它。 */
+  /** 正文区左缘（px）：把编辑层对齐到正文，别盖住两侧留白。 */
   left?: number
   onMap: (next: TapMap) => void
   onMode: (next: 'paginate' | 'scroll') => void

@@ -7,9 +7,10 @@ import { TtsPlayState } from './ttsEngine'
  *
  * 从 `ReaderScreen` 抽出来（PROPOSAL-019 F）：只有书名与一串动作回调 ——
  * 按钮排来自 `settings.menuItems`，跟翻页 / 进度 / 缓存不相干。
- * 章节导航（上一章 / 下一章）与 MD3 顶栏同址：底栏那行进度条删除后，这里是唯一的常驻入口。
+ * 章节导航（上一章 / 下一章）只留在这一套回退外壳里：默认 MD3 界面已按用户 2026-11-02
+ * 的要求删掉顶栏那两颗，改由点按区 / 键盘 ←→ / 目录承担。
  */
-export function ReaderHeader({ bookName, chapterIndex, totalChapters, menuItems, isFullscreen, mediaDisabled, ttsActive, ttsPlayState, onBack, onToggleToc, onPrevChapter, onNextChapter, onOpenSourceSwitch, onToggleSettings, onToggleFullscreen, onToggleTts, onResetTtsBar }: {
+export function ReaderHeader({ bookName, chapterIndex, totalChapters, menuItems, isFullscreen, mediaDisabled, ttsActive, ttsPlayState, onBack, onToggleToc, onPrevChapter, onNextChapter, onToggleSettings, onToggleFullscreen, onToggleTts, onResetTtsBar }: {
   bookName: string
   chapterIndex: number
   totalChapters: number
@@ -23,19 +24,16 @@ export function ReaderHeader({ bookName, chapterIndex, totalChapters, menuItems,
   onToggleToc: () => void
   onPrevChapter: () => void
   onNextChapter: () => void
-  onOpenSourceSwitch: () => void
   onToggleSettings: () => void
   onToggleFullscreen: () => void
   onToggleTts: () => void
   onResetTtsBar: () => void
 }) {
-  // 首章禁用上一章、末章禁用下一章：与 MD3 顶栏同一判据。
+  // 首章禁用上一章、末章禁用下一章。
   const atStart = chapterIndex <= 0
   const atEnd = chapterIndex >= Math.max(0, totalChapters - 1)
   const menuButton = (id: ReaderMenuAction) => {
     switch (id) {
-      case 'switchSource':
-        return <IconButton key={id} label="切换书源" icon="sliders" onClick={onOpenSourceSwitch} />
       case 'settings':
         return <IconButton key={id} label="阅读设置" icon="settings" onClick={onToggleSettings} />
       case 'fullscreen':

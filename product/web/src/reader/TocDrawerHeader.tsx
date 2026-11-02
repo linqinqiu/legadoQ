@@ -2,22 +2,27 @@ import { Icon } from '../icons'
 import { IconButton } from './IconButton'
 
 /**
- * 目录抽屉的标题栏（章名 + 倒序 / 固定 / 笔记 / 关闭四颗键）。
+ * 目录抽屉的标题栏（章名 + 书架 / 换源 / 刷新 / 倒序 / 关闭五颗键）。
  *
- * 从 `ReaderScreen` 抽出来（PROPOSAL-019 F）：只有标题与四个开关回调，
+ * 从 `ReaderScreen` 抽出来（PROPOSAL-019 F）：只有标题与五个开关回调，
  * 跟目录内容、翻页、进度都不相干。
+ *
+ * 桌面与移动统一为覆盖式抽屉（用户 2026-11-02「桌面端目录改成普通覆盖式抽屉」）：
+ * 打开由顶栏「目录」键切换，关闭由本排关闭键 / 遮罩承担，没有固定侧栏形态。
+ *
+ * 笔记入口只在顶栏（宽屏）/ 底栏（窄屏）留一份；这里原来那颗「笔记」与它们重复，
+ * 已删除（用户 2026-11-02「部分重复的功能也改掉」）。笔记面板打开时额外出现
+ * 一颗「回到目录」——那是返回动作，不是第二个笔记入口。
  */
-export function TocDrawerHeader({ chapterTitle, chapterCount, tocReverse, onToggleReverse, sidebarPinned, onTogglePin, notesPanel, notesCount, onToggleNotes, onOpenSourceSwitch, onOpenRefresh, inShelf, onToggleShelf, onClose }: {
+export function TocDrawerHeader({ chapterTitle, chapterCount, tocReverse, onToggleReverse, notesPanel, onBackToToc, onOpenSourceSwitch, onOpenRefresh, inShelf, onToggleShelf, onClose }: {
   /** 当前正在读那一章的标题（已过简繁转换）；空表示还没定位到章。 */
   chapterTitle: string | null
   chapterCount: number
   tocReverse: boolean
   onToggleReverse: () => void
-  sidebarPinned: boolean
-  onTogglePin: () => void
+  /** 笔记面板正开着：只决定要不要出「回到目录」返回键。 */
   notesPanel: boolean
-  notesCount: number
-  onToggleNotes: () => void
+  onBackToToc: () => void
   /** 换源：用户要求把入口从目录底部挪到目录顶端（「换源保留在目录侧放到顶端」）。 */
   onOpenSourceSwitch: () => void
   /** 刷新正文（单章/批量回源重取）。本地书没有书源可回，调用方不传就不出这颗键。 */
@@ -64,23 +69,15 @@ export function TocDrawerHeader({ chapterTitle, chapterCount, tocReverse, onTogg
           icon="list"
           onClick={onToggleReverse}
         />
+        {notesPanel && (
+          <IconButton
+            label="回到目录"
+            icon="arrowLeft"
+            onClick={onBackToToc}
+          />
+        )}
         <IconButton
-          className={`desktop-pin-btn ${sidebarPinned ? 'pinned' : ''}`}
-          label={sidebarPinned ? '取消固定目录' : '固定目录到侧边栏'}
-          icon={sidebarPinned ? 'pinOff' : 'pin'}
-          onClick={onTogglePin}
-        />
-        <IconButton
-          className={notesPanel ? 'active' : ''}
-          label={notesPanel ? '回到目录' : `笔记（${notesCount}）`}
-          icon="edit"
-          onClick={onToggleNotes}
-        />
-        <IconButton
-          // 固定态下抽屉由 `pinned` 类撑着，光 setActiveDrawer(null) 关不掉 —— 这颗必须顺带解除固定。
-          // 审计把它报成"一个控件兼两个职务"，核了 ReaderScreen 里 `reader-drawer-left` 那条
-          // className（`sidebarPinned` 拼在它上面）才确认是必需的；该修的是标签：它得说自己按下去会发生什么。
-          label={sidebarPinned ? '取消固定并关闭目录' : '关闭目录'}
+          label="关闭目录"
           icon="close"
           onClick={onClose}
         />
