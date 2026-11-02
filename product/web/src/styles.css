@@ -1071,7 +1071,7 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .setting-choice > span { color: var(--muted); font-size: 12px; }
 .setting-choice .page-modes { justify-content: flex-start; }
 .settings-tab-body { padding: 16px 18px 18px; display: grid; gap: 18px; align-content: start; }
-/* 自定义皮肤在主题网格里没有专属色板 CSS —— 给一块"基档+自定义"的中性格，名字照常显示。 */
+/* 自定义皮肤没有固定的色板 —— 给一块中性格，名字照常显示。 */
 .theme-choice.swatch-custom i { background: linear-gradient(135deg, var(--surface), var(--canvas)); border: 1px dashed var(--line); }
 .setting-label { font-size: 13px; font-weight: 650; }
 .theme-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
@@ -5291,7 +5291,7 @@ input[type="checkbox"] {
 }
 
 /* =============================================================================
- * 「更新日志」页与「自定义」弹窗（2026-10-01）
+ * 「更新日志」页与「皮肤」「壁纸」浮层（2026-10-01，2026-11-02 拆成两扇）
  * 页面式样沿用其它管理页那一套（max-width + 居中 + 54/32 内边距），
  * 不引入新的一层设计令牌 —— 这个应用只有一套界面。
  * ========================================================================== */
@@ -5317,20 +5317,14 @@ input[type="checkbox"] {
 }
 .menu-section-action:hover { border-color: var(--accent); background: var(--accent-soft); }
 
-/* —— 「自定义」弹窗 —— */
-/* 「自定义」弹窗：外壳与页头走 `.dialog-shell.size-s` + `.dialog-head`，关闭键走 `.overlay-close`（W2）。
-   原来 `.toc-rules-modal` 是这一整份的复制品，两份数值各自漂了半年。 */
+/* —— 「皮肤」「壁纸」浮层 —— */
+/* 两张浮层共用外壳与页头：`.dialog-shell.size-m` + `.dialog-head`，关闭键走 `.overlay-close`（W2）。
+   皮肤只放配色与皮肤库，壁纸只放背景图，内容各自单列。 */
 .customize-header h2 { display: flex; align-items: center; gap: 8px; }
 .customize-header h2 svg { width: 18px; height: 18px; color: var(--accent); }
 .customize-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 18px 26px; display: grid; gap: 20px; }
 /* 网格子项默认 min-width:auto，长内容（CSS 片段、长描述）会把列撑宽并顶出浮窗边界 */
 .customize-body > * { min-width: 0; }
-/* 自定义浮窗分左右：左边是外观（皮肤 + 皮肤库），右边是壁纸。窄屏回落成一列。 */
-.customize-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-.customize-col { display: grid; gap: 20px; min-width: 0; }
-/* 阅读页只开皮肤库时没有右栏，别留半张空网格。 */
-.customize-body.is-single .customize-columns { grid-template-columns: minmax(0, 1fr); }
-@media (max-width: 900px) { .customize-columns { grid-template-columns: 1fr; } }
 /* 「服务端口」弹窗：一行现状 + 一个数字框 + 保存，比皮肤那套简单。 */
 .server-port-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px; display: grid; gap: 14px; }
 .server-port-current { margin: 0; font-size: 13px; color: var(--muted); }
@@ -5389,11 +5383,11 @@ input[type="checkbox"] {
 .skin-editor { display: grid; gap: 10px; margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }
 .skin-editor h4 { margin: 0; font-size: 13px; font-weight: 600; }
 /* ==========================================================================
- * 「本地书分章规则」弹窗（2026-10-03：从「自定义」里搬出来，挂在书架导入旁边）
- * 壳沿用「自定义」弹窗那一套尺寸与圆角：同一应用里两种弹窗几何只会显得随机。
+ * 「本地书分章规则」弹窗（2026-10-03：从皮肤弹窗里搬出来，挂在书架导入旁边）
+ * 壳沿用浮层那一套尺寸与圆角：同一应用里两种弹窗几何只会显得随机。
  * ========================================================================== */
 /* 「本地书分章规则」弹窗：外壳/页头/关闭键都改引浮层那一档（W2）。
-   这一份原来是 `.customize-dialog` 的整份复制 —— 两份数值互相漂。 */
+   这一份原来是皮肤弹窗的整份复制 —— 两份数值互相漂。 */
 .toc-rules-head h2 { display: flex; align-items: center; gap: 8px; }
 .toc-rules-head h2 svg { width: 18px; height: 18px; color: var(--accent); }
 .toc-rules-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px; display: grid; gap: 14px; }
@@ -5898,7 +5892,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
    改版前的账：弹窗外壳 16 套类名 / 13 档宽度 / 9 种 max-height / 8 种阴影 /
    4 种入场动画，遮罩 4 套实现 4 档底色，关闭键 11 种类名 5 档尺寸，
    另有 5 处用 inline style 直接压弹窗宽高。`.toc-rules-modal` 是
-   `.customize-dialog` 的整份复制，`.book-manage-sheet` 干脆没有 max-height
+   皮肤弹窗的整份复制，`.book-manage-sheet` 干脆没有 max-height
    —— 长列表把弹窗顶出视口。这些都不会报错，只会让每一页的浮层"差一点点"。
 
    现在只有一档：几何值全部从下面的令牌取，页面类名只留内容样式
@@ -6388,15 +6382,23 @@ html[data-wallpaper="on"] .header-menu-dropdown {
 html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-workspace { background: transparent; }
 html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-color: transparent; background-image: none; }
 
-/* 壁纸控件搬进「自定义」浮窗后，行宽由浮窗给：地址框吃满这一列，不再用设置页的 460 上限。 */
-.customize-wallpaper .settings-search { max-width: 100%; width: 100%; }
+/* 壁纸浮层：图片 / 观感 / 界面三组，组间距由这里给；行宽吃满浮窗，地址框不再用设置页的 460 上限。 */
+.wallpaper-groups { display: grid; gap: 20px; min-width: 0; }
+.wallpaper-dialog .settings-search { max-width: 100%; width: 100%; }
 /* 浮窗里的小框边界：行距与内边距各收一点，长描述允许断词，免得把右侧动作挤出去。 */
-.customize-wallpaper .settings-row { padding: 11px 13px; }
-.customize-wallpaper .settings-row-main small { overflow-wrap: anywhere; }
+.wallpaper-dialog .settings-row { padding: 11px 13px; }
+.wallpaper-dialog .settings-row-main small { overflow-wrap: anywhere; }
+/* 清除壁纸单独一条，离开三组控件，避免和「启用壁纸」上下紧挨着被误点。 */
+.wallpaper-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted); font-size: var(--t-sm);
+}
+.wallpaper-footer .is-danger { color: var(--danger); }
 
-/* 首尾行的圆角跟容器对齐：壁纸模式下行带半透明底，
-   部分浏览器不会替父级的 overflow:hidden 裁圆角，这里显式补上。
-   用 :first-of-type 而不是 :first-child —— 壁纸分区的第一个子节点是隐藏的 file input。 */
+/* 每组 .settings-rows 的首尾行要自己收圆角：壁纸模式下行带半透明底，
+   部分浏览器不会替父级的 overflow:hidden 裁圆角，这里显式补上。 */
 .settings-rows > .settings-row:first-of-type { border-top-left-radius: var(--r-2); border-top-right-radius: var(--r-2); }
 .settings-rows > .settings-row:last-of-type { border-bottom-left-radius: var(--r-2); border-bottom-right-radius: var(--r-2); }
 

@@ -1,14 +1,15 @@
-// 旧版外壳 + 「自定义」皮肤 + 应用内「更新日志」的界面门禁。
+// 旧版外壳 + 「皮肤」/「壁纸」浮层 + 应用内「更新日志」的界面门禁。
 //
 // 来历：2026-10-01 先做了「界面框架 v2」（侧栏 + 页头条 + 全宽），同日用户拍板
 // 「整个应用回旧版，撤掉 v2」→ 侧栏那一套整条删除，本文件的前身 `ui-layout-check.mjs`
 // 判的是"两套外壳入口集合相等"，现在没有两套了，所以改名并改成判**一件新事**：
 //   ① 界面只有旧版这一套外壳（侧栏/页头条的文件与类名都不许再出现）；
 //   ② 「更新日志」页读的是随包的 CHANGELOG.md，结构、当前版本高亮、来源都真的在；
-//   ③ 「自定义」里的自定义皮肤**真的生效**，而且是**叠**在内置皮肤之上的
-//      （只写一个变量也不许花屏）—— 这条带反向对照，摘掉基类必须立刻取不到变量；
+//   ③ 「皮肤」浮层里的自定义皮肤**真的生效**，且**完全独立**：只挂自己的 `.theme-<id>`，
+//      不叠加任何内置配色，只写一个变量也不许花屏（未定义的颜色走中性基线）；
 //   ④ 「我的」菜单的条目集合（用户 2026-10-03：「顶栏『我的』菜单堆太多」——
-//      「更新日志」「快捷键」收进「关于」，这里按新的分法判，旧的两条要判为"不在菜单里"）。
+//      「更新日志」「快捷键」收进「关于」，这里按新的分法判，旧的两条要判为"不在菜单里"）；
+//   ⑤ 皮肤与壁纸已经是两个浮层：各自只放自己的控件，分章规则这类杂物不许长回来。
 //
 // 只读界面 + 只改 localStorage 里的设置，不动任何书源/书架数据，跑完自己清干净。
 // 跑法：node tools/verify/ui-shell-check.mjs
@@ -138,11 +139,11 @@ try {
       labels: [...document.querySelectorAll('.header-menu-dropdown button')].map(n => (n.textContent ?? '').trim()),
       skins: [...document.querySelectorAll('.header-menu-dropdown .menu-theme-btn .theme-name')].map(n => (n.textContent ?? '').trim()),
       swatchSize: swatch ? getComputedStyle(swatch).width : '',
-      hasCustomize: !!document.querySelector('.menu-section-action'),
+      hasManage: !!document.querySelector('.menu-section-action'),
     }
   })
   check('②皮肤七档都在（晓白 / 护眼 / 夜读 / 青竹 / 暮蓝 / 玫瑰 / 石墨）', menu.skins.join('、') === '晓白、护眼、夜读、青竹、暮蓝、玫瑰、石墨', menu.skins.join('、') || '(取不到)')
-  check('②菜单里有「自定义」入口', menu.labels.some(l => l.includes('自定义')) && menu.hasCustomize, menu.labels.join(' / '))
+  check('②皮肤分组有「管理」入口（打开皮肤浮层，不再叫「自定义」）', menu.labels.some(l => l.includes('管理')) && menu.hasManage, menu.labels.join(' / '))
   // 「更新日志」「快捷键」两条从菜单里收掉了（用户 2026-10-03：「顶栏『我的』菜单堆太多」）：
   // 前者有顶栏版本芯片 + 「关于」两条路，后者改由「关于」进。这里按新的分法判。
   check('②菜单里有「关于」入口', menu.labels.some(l => l.includes('关于')), menu.labels.join(' / '))
@@ -248,11 +249,13 @@ try {
   check('③1440 宽下没有横向溢出', log.overflow <= 1, `溢出 ${log.overflow}px`)
   await page.screenshot({ path: path.join(SHOTS, `ui-changelog-${STAMP}.png`) }).catch(() => null)
 
-  // ────────────────────── ④ 自定义皮肤真的生效 ──────────────────────
+  // ────────────────────── ④ 自定义皮肤真的生效且独立 ──────────────────────
   await page.goto(`${BASE}/#library`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.app-page-header', { timeout: 30000 })
-  check('④「我的」→「自定义」点得开弹窗', await openUserMenu(page, '自定义'), '')
-  await page.waitForSelector('.customize-dialog', { timeout: 8000 })
+  check('④「我的」→「皮肤 → 管理」点得开「皮肤」浮层', await openUserMenu(page, '管理'), '')
+  await page.waitForSelector('.skin-dialog', { timeout: 8000 })
+  // 编辑器默认收起：先点「＋ 新建皮肤」再填。这一步本身也是判据 —— 按钮必须真的把表单放出来。
+  check('④「＋ 新建皮肤」展开空编辑器', await clickIn(page, '.skin-library-head', '新建皮肤'), '')
   await page.waitForFunction(() => !!document.querySelector('.customize-skin-editor input[type=text]')
     && !!document.querySelector('.customize-css'), { timeout: 8000 }).catch(() => null)
   const canvas = '#0f1213'
@@ -261,13 +264,10 @@ try {
   check('④皮肤 id 与 CSS 两栏都填进去了', typed, typed ? '' : '没找到 .customize-skin-editor input / .customize-css')
   const echo = await page.evaluate(() => document.querySelector('.customize-note code')?.textContent?.trim() ?? '')
   check('④id 过白名单，界面把清洗结果说出来（大写与感叹号被滤掉）', echo.includes('gatemidnight'), `回显 ${echo || '(无)'}`)
-  // 叠在「夜读」上而不是默认的晓白：:root 现在有一份与浅色同值的中性基线，
-  // 若叠在晓白上，摘掉基档后变量值一个都不变，反向对照就恒真、什么也证明不了。
-  check('④把这套皮肤叠在「夜读」之上（基档要与中性基线不同，反向对照才有意义）',
-    await clickIn(page, '[aria-label="自定义皮肤的基础皮肤"]', '夜读'), '')
-  check('④「套用这套皮肤」点得动', await clickIn(page, '.customize-actions', '套用'), '')
+  // 不再选"基础皮肤"：自定义皮肤完全独立，只挂自己的类；未定义变量走 :root 中性基线。
+  check('④「保存并套用」点得动', await clickIn(page, '.customize-actions', '保存并套用'), '')
   await page.waitForFunction(() => [...document.querySelectorAll('.customize-skin')].some(n => (n.textContent ?? '').includes('自定义（gatemidnight）')), { timeout: 8000 })
-  check('④皮肤列表里选中新建的这一套', await clickIn(page, '.customize-skin-row', '自定义（gatemidnight）'), '')
+  check('④皮肤列表里出现新建的这一套', await page.evaluate(() => [...document.querySelectorAll('.customize-skin')].some(n => (n.textContent ?? '').includes('自定义（gatemidnight）'))), '')
   await sleep(400)
   const skin = await page.evaluate(() => {
     const html = document.documentElement
@@ -284,30 +284,17 @@ try {
     }
   })
   check('④注入的 <style> 在文档里，内容就是填的那条规则', skin.mounted && skin.text.includes('--canvas'), skin.text || '(空)')
-  check('④皮肤类是「内置基档 + 自定义」两个，自定义在后',
-    /theme-dark\s+theme-gatemidnight/.test(skin.classes.trim()), skin.classes || '(空)')
-  // 「夜读」的 --surface / --ink 与 :root 中性基线不同，所以下面同时证明了
-  // "其余变量来自基档"和"摘掉基档就换源"，不会因为基线兜底而恒真。
-  check('④只写一个变量，其余变量仍从基档解析下来（不花屏）',
-    skin.canvas === canvas && skin.surface === '#292e2b' && skin.ink === '#eef1ec',
+  check('④只挂自定义皮肤这一个类，不再叠加任何内置配色',
+    /(^|\s)theme-gatemidnight(\s|$)/.test(skin.classes)
+    && !/(^|\s)theme-(light|paper|dark|qingzhu|mulan|meigui|shimo)(\s|$)/.test(skin.classes),
+    skin.classes || '(空)')
+  // 只写 --canvas 一个变量：其余必须从 :root 中性基线解析下来（--surface #ffffff / --ink #202522），
+  // 不能是任何内置皮肤的色值 —— 这就是"独立"的可观测证据。
+  check('④只写一个变量，其余变量从 :root 中性基线解析下来（不花屏）',
+    skin.canvas === canvas && skin.surface === '#ffffff' && skin.ink === '#202522',
     `--canvas ${skin.canvas} · --surface ${skin.surface || '(空)'} · --ink ${skin.ink || '(空)'}`)
   check('④标题栏 meta 取的是算出来的 --canvas（不是写死的三档色表）',
     rgbEq(skin.meta, canvas) || skin.meta.toLowerCase() === canvas.toLowerCase(), `meta=${skin.meta || '(空)'}`)
-
-  // 反向对照：摘掉基档类，未覆盖的变量必须从「夜读」落回 :root 的中性基线 ——
-  // 若值不变，说明基档根本没参与解析（那条"叠加"就是恒真的）。
-  await page.evaluate(() => {
-    const html = document.documentElement
-    for (const name of [...html.classList]) if (/^theme-(light|paper|dark)$/.test(name)) html.classList.remove(name)
-  })
-  await sleep(250)
-  const noBase = await page.evaluate(() => {
-    const cs = getComputedStyle(document.documentElement)
-    return { surface: cs.getPropertyValue('--surface').trim(), ink: cs.getPropertyValue('--ink').trim(), canvas: cs.getPropertyValue('--canvas').trim() }
-  })
-  check('④反向对照：摘掉「夜读」后 --surface / --ink 落回中性基线（证明"叠加"是活的）',
-    noBase.surface === '#ffffff' && noBase.ink === '#202522' && noBase.canvas === canvas,
-    `--canvas ${noBase.canvas || '(空)'} · --surface ${noBase.surface || '(取不到)'} · --ink ${noBase.ink || '(取不到)'}`)
 
   // 皮肤要存得住；清除自定义皮肤之后注入的 <style> 必须被摘掉（不留一条幽灵规则）
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -322,25 +309,31 @@ try {
     `类 ${persisted.classes || '(空)'} · 注入=${persisted.style}`)
   await page.screenshot({ path: path.join(SHOTS, `ui-custom-skin-${STAMP}.png`) }).catch(() => null)
 
-  check('④「我的」→「自定义」再开一次（皮肤库的删除入口要点得到）', await openUserMenu(page, '自定义'), '')
-  await page.waitForSelector('.customize-dialog', { timeout: 8000 })
+  check('④「我的」→「皮肤 → 管理」再开一次（皮肤库的删除入口要点得到）', await openUserMenu(page, '管理'), '')
+  await page.waitForSelector('.skin-dialog', { timeout: 8000 })
   // 皮肤库扩成「增 / 改 / 删 / 切换」之后不再有全局「清除自定义皮肤」——删的是库里的那一条。
-  // 删掉的正好是当前这套时，界面要退回它叠着的那一档内置皮肤（见 CustomizeModal.remove）。
+  // 删掉的正好是当前这套时，界面退回晓白（见 SkinModal.remove），不留一个指向不存在皮肤的主题。
   check('④皮肤库里这条自定义皮肤删得动', await clickIn(page, '.customize-skin-editor', '删除'), '')
   // 等到注入的 <style> 真的摘掉再读数：这一条只等"动作生效"，判据（回到内置档、类被摘掉）仍在下面实测
   await page.waitForFunction(() => !document.getElementById('legado-custom-skin'), { timeout: 5000 }).catch(() => null)
-  const clearedSkin = await page.evaluate(() => ({
-    style: !!document.getElementById('legado-custom-skin'),
-    classes: document.documentElement.className,
-    skins: [...document.querySelectorAll('.customize-skin')].length,
-  }))
-  check('④删掉之后 <style> 被摘掉、皮肤列表回到内置那七套',
-    !clearedSkin.style && !clearedSkin.classes.includes('theme-gatemidnight') && clearedSkin.skins === 7,
-    `注入=${clearedSkin.style} 类=${clearedSkin.classes} 档数=${clearedSkin.skins}`)
+  const clearedSkin = await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement)
+    return {
+      style: !!document.getElementById('legado-custom-skin'),
+      classes: document.documentElement.className,
+      skins: [...document.querySelectorAll('.customize-skin')].length,
+      canvas: cs.getPropertyValue('--canvas').trim(),
+    }
+  })
+  check('④删掉之后 <style> 被摘掉、皮肤列表回到内置那七套、画布回到晓白',
+    !clearedSkin.style && !clearedSkin.classes.includes('theme-gatemidnight')
+    && /(^|\s)theme-light(\s|$)/.test(clearedSkin.classes) && clearedSkin.skins === 7
+    && clearedSkin.canvas === '#f8f9f7',
+    `注入=${clearedSkin.style} 类=${clearedSkin.classes} 档数=${clearedSkin.skins} 画布=${clearedSkin.canvas}`)
 
-  // ─────────── ⑤ 分章规则的落点（搬出「自定义」，长在书架导入旁边） ───────────
-  // ④ 收场时「自定义」弹窗还开着：不关掉就点下一颗按钮，点到的其实是挡片底下的控件。
-  await page.evaluate(() => document.querySelector('.customize-dialog .overlay-close')?.click())
+  // ─────────── ⑤ 分章规则的落点（搬出外观浮层，长在书架导入旁边） ───────────
+  // ④ 收场时「皮肤」浮层还开着：不关掉就点下一颗按钮，点到的其实是挡片底下的控件。
+  await page.evaluate(() => document.querySelector('.skin-dialog .overlay-close')?.click())
   await page.goto(`${BASE}/#shelf`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.shelf-bar', { timeout: 30000 })
   const shelfBar = await page.evaluate(() => ({
@@ -398,23 +391,43 @@ try {
   check('⑤这颗关闭按钮关得掉弹窗（挡片不留在那儿挡住后面的操作）',
     await page.evaluate(() => { document.querySelector('.toc-rules-modal .overlay-close')?.click(); return !!document.querySelector('.toc-rules-modal') })
     && await page.waitForFunction(() => !document.querySelector('.toc-rules-modal'), { timeout: 5000 }).then(() => true).catch(() => false), '')
-  // 「自定义」这一边：搬走了就必须在界面上真的看不见，不只是代码里删了
-  check('⑤「自定义」弹窗还开得住（搬空之后不是空壳）', await openUserMenu(page, '自定义'), '')
-  await page.waitForSelector('.customize-dialog', { timeout: 8000 })
-  const customize = await page.evaluate(() => {
-    const dialog = document.querySelector('.customize-dialog')
+  // 皮肤与壁纸已经是两个浮层：各自只放自己的控件，分章规则不许长回来
+  check('⑤「皮肤」浮层还开得住（拆走壁纸之后不是空壳）', await openUserMenu(page, '管理'), '')
+  await page.waitForSelector('.skin-dialog', { timeout: 8000 })
+  const skinDialog = await page.evaluate(() => {
+    const dialog = document.querySelector('.skin-dialog')
     return {
       text: dialog?.textContent ?? '',
       tocRows: dialog ? dialog.querySelectorAll('.toc-rule, .customize-toc-rule').length : -1,
       sections: [...(dialog?.querySelectorAll('.customize-section h3') ?? [])].map(n => (n.textContent ?? '').trim()),
     }
   })
-  // 外观三节：皮肤 / 皮肤库 / 壁纸。壁纸与皮肤同一处改是刻意的（2026-10 加壁纸时定的），
-  // 判据只盯"杂物"：分章规则不能再回来，也不许多出第四节。
-  check('⑤「自定义」不再是杂物间：只剩皮肤与壁纸，没有分章规则',
-    customize.tocRows === 0 && !customize.text.includes('分章规则')
-    && customize.sections.join('、') === '皮肤、自定义皮肤库、壁纸',
-    `${customize.sections.join('、') || '(没有分节)'} · 规则行 ${customize.tocRows}`)
+  check('⑤「皮肤」只放配色与自定义皮肤库，没有分章规则也没有壁纸控件',
+    skinDialog.tocRows === 0 && !skinDialog.text.includes('分章规则') && !skinDialog.text.includes('清除壁纸')
+    && skinDialog.sections.join('、') === '配色、自定义皮肤库',
+    `${skinDialog.sections.join('、') || '(没有分节)'} · 规则行 ${skinDialog.tocRows}`)
+  await page.evaluate(() => document.querySelector('.skin-dialog .overlay-close')?.click())
+  await page.waitForFunction(() => !document.querySelector('.skin-dialog'), { timeout: 5000 }).catch(() => null)
+
+  await page.goto(`${BASE}/#settings`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.settings-page', { timeout: 30000 })
+  check('⑤设置页「外观 → 壁纸 → 管理壁纸」点得开壁纸浮层', await clickIn(page, '.settings-page', '管理壁纸'), '')
+  await page.waitForSelector('.wallpaper-dialog', { timeout: 8000 })
+  const wallpaperDialog = await page.evaluate(() => {
+    const dialog = document.querySelector('.wallpaper-dialog')
+    return {
+      text: dialog?.textContent ?? '',
+      skinRows: dialog ? dialog.querySelectorAll('.customize-skin, .skin-library').length : -1,
+      sections: [...(dialog?.querySelectorAll('.customize-section h3') ?? [])].map(n => (n.textContent ?? '').trim()),
+      footer: !!dialog?.querySelector('.wallpaper-footer'),
+    }
+  })
+  check('⑤「壁纸」只放图片 / 观感 / 界面三组，皮肤库没有挤进来',
+    wallpaperDialog.skinRows === 0 && !wallpaperDialog.text.includes('自定义皮肤库')
+    && wallpaperDialog.sections.join('、') === '图片、观感、界面' && wallpaperDialog.footer,
+    `${wallpaperDialog.sections.join('、') || '(没有分节)'} · 皮肤行 ${wallpaperDialog.skinRows} · 清除条=${wallpaperDialog.footer}`)
+  await page.evaluate(() => document.querySelector('.wallpaper-dialog .overlay-close')?.click())
+  await page.waitForFunction(() => !document.querySelector('.wallpaper-dialog'), { timeout: 5000 }).catch(() => null)
 
   // ─────────────────────────── ⑥ 收尾 ──────────────────────────
   const cleared = await page.evaluate(() => {
@@ -435,9 +448,12 @@ try {
   // 一行写着 PASS、后面跟着 [命中了 v2 选择器]，读的人只会当成红了 —— 判据写得再对也没人信。
   const v2Left = ['.app-rail', '.rail-item', '.page-bar', '.app-frame', '.rail-tabs'].filter(name => css.includes(name))
   check('⑥样式表里没有 v2 的类名残留', v2Left.length === 0, v2Left.length ? `还留着 ${v2Left.join('、')}` : '干净')
-  const tocBack = fs.readFileSync(path.join(srcDir, 'components', 'CustomizeModal.tsx'), 'utf8').includes('tocRules')
-  check('⑥「自定义」弹窗的代码里没有分章规则那一段（判代码，不只是判界面）',
-    !tocBack, tocBack ? 'CustomizeModal.tsx 又长回了 tocRules' : '干净')
+  const skinPath = path.join(srcDir, 'components', 'SkinModal.tsx')
+  const tocBack = fs.readFileSync(skinPath, 'utf8').includes('tocRules')
+  const legacyModal = fs.existsSync(path.join(srcDir, 'components', 'CustomizeModal.tsx'))
+  check('⑥「皮肤」浮层的代码里没有分章规则那一段，旧的「自定义」弹窗也确实删了（判代码，不只是判界面）',
+    !tocBack && !legacyModal,
+    [tocBack && 'SkinModal.tsx 又长回了 tocRules', legacyModal && 'CustomizeModal.tsx 还在'].filter(Boolean).join('、') || '干净')
 
   check('全程没有页面异常', errors.length === 0, errors.slice(0, 2).join(' | '))
 } catch (error) {

@@ -14,16 +14,14 @@ import {
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 /**
- * 设置页的「壁纸」分区：开关、本地图片、图片地址、不透明度 / 遮罩 / 模糊、填充方式、清除。
+ * 壁纸浮层里的全部控件：图片、观感、界面三组，外加底部的清除。
  *
  * 全部改动即时生效、自动保存 —— 这里没有"保存"按钮：拖一下滑杆壁纸就变，
  * 松手时值已经写进 localStorage（见 `lib/wallpaper.ts` 的 `updateWallpaperSettings`）。
  *
- * 控件复用设置页与阅读设置里已有的类名（`.settings-rows` / `.settings-row` /
- * `.setting-range` / `.page-modes`），所以这个分区不需要新的布局样式。
- *
- * 2026-10-27：从设置页搬进「自定义」浮窗，和皮肤放在一起。浮窗里本来就是要改的那几项，
- * 再套一层"壁纸设置 展开/收起"只是让用户多点一次 —— 所以这里的折叠头撤掉了，直接铺开。
+ * 控件复用设置页已有的类名（`.settings-rows` / `.settings-row` /
+ * `.setting-range` / `.page-modes`），分组沿用 `.customize-section`；
+ * 只有组间距与底部清除条是壁纸浮层自己的样式。
  */
 export function WallpaperSection() {
   const { settings } = useSyncExternalStore(subscribeWallpaper, getWallpaperSnapshot, getWallpaperSnapshot)
@@ -96,7 +94,7 @@ export function WallpaperSection() {
   const maskPercent = Math.round(settings.mask * 100)
 
   return (
-    <div className="settings-rows">
+    <>
       <input
         ref={fileRef}
         type="file"
@@ -105,175 +103,194 @@ export function WallpaperSection() {
         onChange={event => void onFileChange(event)}
       />
 
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <strong>启用壁纸</strong>
-          <small>在整站内容背后铺设图片；关闭后恢复主题画布。</small>
-        </div>
-        <button
-          type="button"
-          className="subtle-button"
-          aria-pressed={settings.enabled}
-          onClick={toggleEnabled}
-        >
-          {settings.enabled ? '已开启' : '已关闭'}
-        </button>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <strong>本地图片</strong>
-          <small>从本机选择图片，保存在浏览器本地；重新选择会覆盖上一张。</small>
-        </div>
-        <button type="button" className="subtle-button" onClick={pickFile} disabled={saving}>
-          {saving ? '正在保存…' : '选择图片'}
-        </button>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <strong>图片地址</strong>
-          <small>填写 http(s) 图片地址，按回车或离开输入框后生效。</small>
-          <input
-            className="settings-search"
-            type="url"
-            inputMode="url"
-            placeholder="https://example.com/wallpaper.jpg"
-            value={urlDraft}
-            onChange={event => setUrlDraft(event.target.value)}
-            onBlur={commitUrl}
-            onKeyDown={event => { if (event.key === 'Enter') commitUrl() }}
-          />
-        </div>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <label className="setting-range">
-            <span>不透明度</span>
-            <output>{opacityPercent}%</output>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={opacityPercent}
-              onChange={event => updateWallpaperSettings({ opacity: Number(event.target.value) / 100 })}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <label className="setting-range">
-            <span>遮罩</span>
-            <output>{maskPercent}%</output>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={maskPercent}
-              onChange={event => updateWallpaperSettings({ mask: Number(event.target.value) / 100 })}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <label className="setting-range">
-            <span>模糊</span>
-            <output>{settings.blur}px</output>
-            <input
-              type="range"
-              min={0}
-              max={60}
-              step={2}
-              value={settings.blur}
-              onChange={event => updateWallpaperSettings({ blur: Number(event.target.value) })}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <label className="setting-range">
-            <span>面板不透明度</span>
-            <output>{Math.round(settings.panelOpacity * 100)}%</output>
-            <input
-              type="range"
-              min={20}
-              max={100}
-              step={5}
-              value={Math.round(settings.panelOpacity * 100)}
-              onChange={event => updateWallpaperSettings({ panelOpacity: Number(event.target.value) / 100 })}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <label className="setting-range">
-            <span>毛玻璃模糊</span>
-            <output>{settings.glassBlur}px</output>
-            <input
-              type="range"
-              min={0}
-              max={40}
-              step={2}
-              value={settings.glassBlur}
-              onChange={event => updateWallpaperSettings({ glassBlur: Number(event.target.value) })}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <strong>填充方式</strong>
-          <small>铺满：裁剪超出部分并填满区域；完整：保留整张图片并接受留白。</small>
-          <div className="page-modes" role="group" aria-label="填充方式">
-            {(['cover', 'contain'] as const).map(fill => (
+      <div className="wallpaper-groups">
+        <section className="customize-section">
+          <h3>图片</h3>
+          <p className="customize-hint">本地上传与图片地址二选一，最后选中的生效。</p>
+          <div className="settings-rows">
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <strong>启用壁纸</strong>
+                <small>在整站内容背后铺图片；关闭后回到主题画布。</small>
+              </div>
               <button
-                key={fill}
                 type="button"
-                className={settings.fill === fill ? 'selected' : ''}
-                aria-pressed={settings.fill === fill}
-                onClick={() => updateWallpaperSettings({ fill: fill as WallpaperFill })}
+                className="subtle-button"
+                aria-pressed={settings.enabled}
+                onClick={toggleEnabled}
               >
-                {fill === 'cover' ? '铺满裁剪' : '完整留白'}
+                {settings.enabled ? '已开启' : '已关闭'}
               </button>
-            ))}
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <strong>本地图片</strong>
+                <small>保存在本机浏览器；重新选择会覆盖上一张。</small>
+              </div>
+              <button type="button" className="subtle-button" onClick={pickFile} disabled={saving}>
+                {saving ? '正在保存…' : '选择图片'}
+              </button>
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <strong>图片地址</strong>
+                <small>http(s) 地址，按回车或离开输入框后生效。</small>
+                <input
+                  className="settings-search"
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://example.com/wallpaper.jpg"
+                  value={urlDraft}
+                  onChange={event => setUrlDraft(event.target.value)}
+                  onBlur={commitUrl}
+                  onKeyDown={event => { if (event.key === 'Enter') commitUrl() }}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
 
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <strong>阅读区跟随壁纸</strong>
-          <small>开启后，阅读区透出整站壁纸，不使用独立阅读背景。</small>
-        </div>
-        <button
-          type="button"
-          className="subtle-button"
-          aria-pressed={settings.readerFollow}
-          onClick={() => updateWallpaperSettings({ readerFollow: !settings.readerFollow })}
-        >
-          {settings.readerFollow ? '已开启' : '已关闭'}
-        </button>
-      </div>
+        <section className="customize-section">
+          <h3>观感</h3>
+          <p className="customize-hint">不透明度管图片本身；遮罩压暗画面；模糊柔化图片。</p>
+          <div className="settings-rows">
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <label className="setting-range">
+                  <span>不透明度</span>
+                  <output>{opacityPercent}%</output>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={opacityPercent}
+                    onChange={event => updateWallpaperSettings({ opacity: Number(event.target.value) / 100 })}
+                  />
+                </label>
+              </div>
+            </div>
 
-      <div className="settings-row">
-        <div className="settings-row-main">
-          <strong>清除壁纸</strong>
-          <small>删除本地图片与地址，关闭壁纸并恢复默认外观。</small>
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <label className="setting-range">
+                  <span>遮罩</span>
+                  <output>{maskPercent}%</output>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={maskPercent}
+                    onChange={event => updateWallpaperSettings({ mask: Number(event.target.value) / 100 })}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <label className="setting-range">
+                  <span>模糊</span>
+                  <output>{settings.blur}px</output>
+                  <input
+                    type="range"
+                    min={0}
+                    max={60}
+                    step={2}
+                    value={settings.blur}
+                    onChange={event => updateWallpaperSettings({ blur: Number(event.target.value) })}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <strong>填充方式</strong>
+                <small>铺满裁剪会裁掉边缘；完整留白会露出底色。</small>
+                <div className="page-modes" role="group" aria-label="填充方式">
+                  {(['cover', 'contain'] as const).map(fill => (
+                    <button
+                      key={fill}
+                      type="button"
+                      className={settings.fill === fill ? 'selected' : ''}
+                      aria-pressed={settings.fill === fill}
+                      onClick={() => updateWallpaperSettings({ fill: fill as WallpaperFill })}
+                    >
+                      {fill === 'cover' ? '铺满裁剪' : '完整留白'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="customize-section">
+          <h3>界面</h3>
+          <p className="customize-hint">面板与阅读区如何落在壁纸上。</p>
+          <div className="settings-rows">
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <label className="setting-range">
+                  <span>面板不透明度</span>
+                  <output>{Math.round(settings.panelOpacity * 100)}%</output>
+                  <input
+                    type="range"
+                    min={20}
+                    max={100}
+                    step={5}
+                    value={Math.round(settings.panelOpacity * 100)}
+                    onChange={event => updateWallpaperSettings({ panelOpacity: Number(event.target.value) / 100 })}
+                  />
+                </label>
+                <small>面板越透明，壁纸越明显。</small>
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <label className="setting-range">
+                  <span>毛玻璃模糊</span>
+                  <output>{settings.glassBlur}px</output>
+                  <input
+                    type="range"
+                    min={0}
+                    max={40}
+                    step={2}
+                    value={settings.glassBlur}
+                    onChange={event => updateWallpaperSettings({ glassBlur: Number(event.target.value) })}
+                  />
+                </label>
+                <small>面板背后的虚化半径。</small>
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-row-main">
+                <strong>阅读区跟随壁纸</strong>
+                <small>阅读区透明，直接透出这张壁纸。</small>
+              </div>
+              <button
+                type="button"
+                className="subtle-button"
+                aria-pressed={settings.readerFollow}
+                onClick={() => updateWallpaperSettings({ readerFollow: !settings.readerFollow })}
+              >
+                {settings.readerFollow ? '已开启' : '已关闭'}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <div className="wallpaper-footer">
+          <span>删除本机图片与地址，关闭壁纸。</span>
+          <button type="button" className="subtle-button is-danger" onClick={() => void clear()}>清除壁纸</button>
         </div>
-        <button type="button" className="subtle-button" onClick={() => void clear()}>清除</button>
       </div>
-    </div>
+    </>
   )
 }

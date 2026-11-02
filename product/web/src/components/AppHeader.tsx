@@ -19,12 +19,13 @@ export interface AppHeaderProps {
   onOpenAbout?: () => void
   /** 「我的」菜单里的「阅读记录」：同样是悬浮层（PROPOSAL-019 D）。 */
   onOpenReadingLog?: () => void
-  onOpenCustomize?: () => void
+  /** 「皮肤」分组的「管理」：打开皮肤浮层（内置配色 + 自定义皮肤库）。 */
+  onOpenSkins?: () => void
   /** 服务端 /healthz 报回来的版本号；空串表示还没问到（离线或启动中）。 */
   version?: string
 }
 
-/** 皮肤名单一来源在 readerSettings（顶栏菜单与「自定义」弹窗共用，各自定义一份迟早漂移）。 */
+/** 皮肤名单一来源在 readerSettings（顶栏菜单与「皮肤」浮层共用，各自定义一份迟早漂移）。 */
 export const APP_THEMES = BUILTIN_SKINS
 
 export function AppHeader({
@@ -36,7 +37,7 @@ export function AppHeader({
   onOpenChangelog,
   onOpenAbout,
   onOpenReadingLog,
-  onOpenCustomize,
+  onOpenSkins,
   version = '',
 }: AppHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -198,21 +199,21 @@ export function AppHeader({
               <div className="menu-section">
                 <div className="menu-section-label">
                   皮肤
-                  {onOpenCustomize && (
+                  {onOpenSkins && (
                     <button
                       type="button"
                       className="menu-section-action"
                       role="menuitem"
                       onClick={() => {
                         setMenuOpen(false)
-                        onOpenCustomize()
+                        onOpenSkins()
                       }}
                     >
-                      自定义
+                      管理
                     </button>
                   )}
                 </div>
-                {/* 列表来自 availableSkins：内置三套 + 「自定义」里填过 CSS 的那一套（同源，不会两处不一样） */}
+                {/* 列表来自 availableSkins：内置七套 + 皮肤库里填过 CSS 的那些（同源，不会两处不一样） */}
                 <div className="menu-theme-grid" role="radiogroup" aria-label="皮肤选择">
                   {availableSkins(settings).map(skin => {
                     const isSelected = settings.theme === skin.id

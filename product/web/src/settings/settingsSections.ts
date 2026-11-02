@@ -4,8 +4,6 @@
  * 表就得反过来 import 页面（而本仓库的依赖方向纪律是「内容 → 框架」单向）。
  * 页面保留同名重导出，`pages.tsx` 等既有引用不受影响。
  */
-import type { ReactNode } from 'react'
-
 export type SettingsRow = {
   title: string
   hint: string
@@ -14,13 +12,10 @@ export type SettingsRow = {
 }
 
 /**
- * `content` 是给"控件就在这一档里"的分区留的口子（目前只有「壁纸」用）。
- *
- * 普通行只能放一句说明 + 一颗按钮；壁纸要开关、选图、地址框和四根滑杆，
- * 塞进行模型只会逼出第二套控件。这里只放**渲染入口**，实现仍然只有一份
- * （`settings/WallpaperSection.tsx`、`settings/CookieSection.tsx`），所以不算开了第二套编辑器。
+ * 一档设置只有一张行表。控件不内联在这一页：点开那一行回到原来的编辑器，
+ * 实现仍然只有一份（`components/SkinModal.tsx`、`components/WallpaperModal.tsx` 等）。
  */
-export type SettingsSection = { title: string; rows: SettingsRow[]; content?: () => ReactNode }
+export type SettingsSection = { title: string; rows: SettingsRow[] }
 
 /**
  * 「设置」这一页的分区表（PROPOSAL-021 P0.3）。
@@ -42,7 +37,10 @@ export type SettingsSection = { title: string; rows: SettingsRow[]; content?: ()
 export type SettingsActions = {
   openShortcuts: () => void
   openOfflineCache: () => void
-  openCustomize: () => void
+  /** 皮肤：内置七套与自定义皮肤库 */
+  openSkins: () => void
+  /** 壁纸：整站背景图与阅读区跟随 */
+  openWallpaper: () => void
   openReplaceRules: () => void
   openTocRules: () => void
   openBackup: () => void
@@ -94,10 +92,16 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       title: '外观',
       rows: [
         {
-          title: '皮肤与壁纸',
-          hint: '七套皮肤、自定义皮肤库与整站壁纸，都在同一个浮窗里。',
-          action: '打开自定义',
-          onClick: actions.openCustomize,
+          title: '皮肤',
+          hint: '七套内置配色与自定义皮肤库；点开即可切换、新建与编辑。',
+          action: '管理皮肤',
+          onClick: actions.openSkins,
+        },
+        {
+          title: '壁纸',
+          hint: '整站背景图与阅读区跟随；图片只存本机浏览器，不进备份包。',
+          action: '管理壁纸',
+          onClick: actions.openWallpaper,
         },
         {
           // 与端口同一族：改的都是「这台机器上的 legadoQ 长什么样」；归到「外观」是因为
@@ -120,7 +124,7 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
         },
         {
           title: '备份包',
-          hint: '导入手机 legadoQ 的备份包，或把书源 / 书架 / 规则导成一份。',
+          hint: '导入手机 legadoQ 的备份包，或把书源、书架与规则导出成备份包。',
           action: '打开备份',
           onClick: actions.openBackup,
         },
@@ -138,7 +142,7 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
         {
           // AI 接入是独立一类：程序内部的 AI 网关，不是实验室条目。
           title: 'AI 接入',
-          hint: '登记一个 openai-compatible 模型，勾选 AI 能用的工具组。',
+          hint: '登记模型提供商与密钥，并选择 AI 可用的工具。',
           action: '打开 AI 接入',
           onClick: actions.openAiConnections,
         },
@@ -157,7 +161,7 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
  * 页内搜索：按"标题 + 那句说明"筛，命中的行留着、整档没命中就收起。
  *
  * 命中**分组名**时整档都给出来：用户搜「外观」是想看这一类有什么，
- * 只回一行「皮肤与壁纸」会让他以为只有这一项。行内命中仍然只留那一行 ——
+ * 只回一行「皮肤」会让他以为只有这一项。行内命中仍然只留那一行 ——
  * 搜「端口」时不把「AI 接入」「运行日志」一起倒出来。
  *
  * 抽成纯函数是为了能被直接喂数据测 —— 这一页只有渲染，判据在组件上能做的很有限。

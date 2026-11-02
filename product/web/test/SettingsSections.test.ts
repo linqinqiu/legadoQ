@@ -28,7 +28,8 @@ function fakeActions(): { actions: SettingsActions; called: string[] } {
   const actions: SettingsActions = {
     openShortcuts: make('openShortcuts'),
     openOfflineCache: make('openOfflineCache'),
-    openCustomize: make('openCustomize'),
+    openSkins: make('openSkins'),
+    openWallpaper: make('openWallpaper'),
     openReplaceRules: make('openReplaceRules'),
     openTocRules: make('openTocRules'),
     openBackup: make('openBackup'),
@@ -156,7 +157,7 @@ test('Cookie 收进「数据与凭据」：一行入口，点开走全局弹窗'
   const sections = buildSettingsSections(actions)
   const section = sections.find(item => item.title === '数据与凭据')!
   assert.ok(section, '应有「数据与凭据」分组')
-  assert.equal(section.content, undefined, '「Cookie」不再内联渲染，入口是一行按钮')
+  assert.equal('content' in section, false, '「Cookie」不再内联渲染，入口是一行按钮')
   const row = section.rows.find(item => item.title === 'Cookie 管理')!
   assert.ok(row, `「数据与凭据」里应有 Cookie 行，实际 ${section.rows.map(r => r.title)}`)
   assert.equal(row.action, '管理 Cookie', '入口动作名要说清打开弹窗')

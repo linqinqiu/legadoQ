@@ -206,8 +206,8 @@ export function BackgroundLibrary({
           <strong>跟随整站壁纸</strong>
           <small>
             {wallpaper.enabled
-              ? '开启后，阅读区改用整站壁纸，下方颜色与背景图不生效。'
-              : '整站壁纸未启用。启用后，此处控制阅读区是否跟随。'}
+              ? '开启后阅读区透明，上方颜色与背景图不再显示。'
+              : '整站壁纸未启用；开启后可在这里跟随。'}
           </small>
         </div>
         <button

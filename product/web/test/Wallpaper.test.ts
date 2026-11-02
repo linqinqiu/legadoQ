@@ -1,5 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { WallpaperModal } from '../src/components/WallpaperModal'
 import {
   DEFAULT_WALLPAPER_SETTINGS,
   getWallpaperSnapshot,
@@ -65,4 +68,18 @@ test('改设置会通知订阅者，且不改变图片版本号', () => {
   unsubscribe()
   updateWallpaperSettings({ ...DEFAULT_WALLPAPER_SETTINGS })
   assert.equal(calls, 1, '取消订阅后不再收到通知')
+})
+
+test('WallpaperModal 只放壁纸：图片 / 观感 / 界面三组，清除单独一条', () => {
+  const html = renderToStaticMarkup(React.createElement(WallpaperModal, { onClose: () => undefined }))
+  assert.match(html, /壁纸/)
+  // 11 项控件分成三组，不在一张长表里平铺
+  assert.equal((html.match(/class="settings-rows"/g) ?? []).length, 3, '应分成图片 / 观感 / 界面三组')
+  assert.match(html, /<h3>图片<\/h3>[\s\S]*<h3>观感<\/h3>[\s\S]*<h3>界面<\/h3>/, '三组顺序固定，用户靠位置找控件')
+  for (const label of ['启用壁纸', '本地图片', '图片地址', '不透明度', '遮罩', '模糊', '填充方式', '面板不透明度', '毛玻璃模糊', '阅读区跟随壁纸']) {
+    assert.ok(html.includes(label), `壁纸浮层缺控件「${label}」`)
+  }
+  assert.ok(html.includes('清除壁纸'), '清除壁纸要有自己的动作')
+  assert.match(html, /wallpaper-footer/, '清除壁纸要放在三组控件之外，别和启用开关紧挨着')
+  assert.doesNotMatch(html, /自定义皮肤库|theme-/, '皮肤库不该再挤进壁纸浮层')
 })

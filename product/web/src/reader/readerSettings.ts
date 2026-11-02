@@ -254,7 +254,7 @@ export function parseSkinId(id: unknown): string {
   return typeof id === 'string' ? id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(0, 32) : ''
 }
 
-/** 内置四套皮肤。名字只写一处，两套外壳与「自定义」弹窗共用（各自定义一份迟早会漂移）。 */
+/** 内置七套皮肤。名字只写一处，顶栏菜单与「皮肤」浮层共用（各自定义一份迟早会漂移）。 */
 export const BUILTIN_SKINS: ReadonlyArray<{ id: BuiltinSkinId; name: string }> = [
   { id: 'light', name: '晓白' },
   { id: 'paper', name: '护眼' },

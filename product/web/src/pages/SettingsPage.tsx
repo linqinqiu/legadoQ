@@ -38,7 +38,7 @@ export function SettingsPage({ sections }: {
         <div>
           <h1>设置</h1>
           {/* 这一句说的是这一页的逻辑：分类只是入口，不是第二份设置。 */}
-          <p>按类别找到要改的项；点开仍是原来那个编辑器。</p>
+          <p>按类别查找设置项，点开在原来的编辑器里改。</p>
         </div>
       </header>
       <div className="settings-search-row">
@@ -68,21 +68,17 @@ export function SettingsPage({ sections }: {
       ) : shown.map(section => (
         <section key={section.title} className="settings-section">
           <h2>{section.title}</h2>
-          {/* 控件直接长在这一档里的分区（壁纸与 Cookie）：实现只有一份，见 settingsSections 的说明 */}
-          {section.content?.()}
-          {section.rows.length > 0 && (
-            <div className="settings-rows">
-              {section.rows.map(row => (
-                <div key={row.title} className="settings-row">
-                  <div className="settings-row-main">
-                    <strong>{row.title}</strong>
-                    <small>{row.hint}</small>
-                  </div>
-                  <button type="button" className="subtle-button" onClick={row.onClick}>{row.action}</button>
+          <div className="settings-rows">
+            {section.rows.map(row => (
+              <div key={row.title} className="settings-row">
+                <div className="settings-row-main">
+                  <strong>{row.title}</strong>
+                  <small>{row.hint}</small>
                 </div>
-              ))}
-            </div>
-          )}
+                <button type="button" className="subtle-button" onClick={row.onClick}>{row.action}</button>
+              </div>
+            ))}
+          </div>
         </section>
       ))}
     </main>

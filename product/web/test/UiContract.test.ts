@@ -126,7 +126,8 @@ const MARKER_CLASSES: Record<string, string> = {
   // W2 并档之后，这些页面类名不再声明几何（宽高/圆角/阴影/动画都在 `.dialog-shell` 那一档），
   // 但门禁靠它们定位"是哪一张弹窗"。和上面几条同一个道理：没有样式 ≠ 没有用处。
   'book-detail-modal': '书籍详情弹窗的根节点，book-detail / explore-detail 两条门禁按它定位（16 处）',
-  'customize-dialog': '「自定义」弹窗根节点，ui-shell-check 与 CustomizeSkin 按它定位',
+  'skin-dialog': '「皮肤」浮层根节点，ui-shell-check 与 CustomizeSkin 按它定位',
+  'wallpaper-dialog': '「壁纸」浮层根节点，ui-shell-check 按它定位',
   'toc-rules-modal': '「本地书分章规则」弹窗根节点，ui-shell-check 与 toc-rule-check 按它定位',
   'logs-modal': '运行日志弹窗根节点，logs-ui-check 按它定位（19 处）',
   'logs-modal-header': '日志弹窗那一行页头，logs-ui-check 按它取「自动跟随 / 导出」那排按钮',
@@ -592,7 +593,7 @@ test('从主界面打开浮层要清空返回栈（否则会凭空跳回上一�
   assert.match(body, /setModalBackTo\(null\)/, 'openModalDirect 必须先清空返回栈')
 
   // 设置页/顶栏那些入口都该走 openModalDirect
-  for (const entry of ['openShortcuts', 'openOfflineCache', 'openCustomize', 'openBackup', 'openLogs', 'openServerPort', 'openAiConnections']) {
+  for (const entry of ['openShortcuts', 'openOfflineCache', 'openSkins', 'openWallpaper', 'openBackup', 'openLogs', 'openServerPort', 'openAiConnections']) {
     assert.match(main, new RegExp(`${entry}: \\(\\) => openModalDirect\\('`),
       `${entry} 应从主界面打开（走 openModalDirect 清空返回栈）`)
   }

@@ -6,7 +6,7 @@ import path from 'node:path'
 import { testFiles } from './discover.ts'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { CustomizeModal } from '../src/components/CustomizeModal'
+import { SkinModal } from '../src/components/SkinModal'
 import { ColorTab } from '../src/reader/settingsPanel/ColorTab'
 import { BackgroundLibrary } from '../src/reader/settingsPanel/BackgroundLibrary'
 import {
@@ -35,8 +35,9 @@ const skin = (patch: Partial<CustomSkin> = {}): CustomSkin => ({
 })
 
 /**
- * 「自定义」这一栏（用户 2026-10-01：「咱们这个是开源允许自定义」）。
- * 里面只有皮肤一件事 —— 界面框架 v2 那一波（侧栏 + 页头条 + 全宽）已按用户拍板整条撤掉，
+ * 皮肤浮层（用户 2026-10-01：「咱们这个是开源允许自定义」）。
+ * 它只负责配色与皮肤库，壁纸已拆到独立的 `WallpaperModal`。
+ * 界面框架 v2 那一波（侧栏 + 页头条 + 全宽）已按用户拍板整条撤掉，
  * 所以这里也钉住"只有一套外壳"这件事，别让侧栏哪天又悄悄长回来。
  *
  * 2026-10-11 起皮肤从**单套**扩成**库**（用户：「所有的自定义是可以自己定义保存……
@@ -233,8 +234,8 @@ test('自定义皮肤与背景预设随阅读设置一起存取，刷新后仍�
   }
 })
 
-test('CustomizeModal 静态渲染：皮肤列表 + 皮肤库 + 编辑器', () => {
-  const html = renderToStaticMarkup(React.createElement(CustomizeModal, {
+test('SkinModal 静态渲染：皮肤列表 + 皮肤库，编辑器按需展开', () => {
+  const html = renderToStaticMarkup(React.createElement(SkinModal, {
     settings: settings(), onChange: () => undefined, onClose: () => undefined,
   }))
   assert.match(html, /皮肤/)
@@ -243,12 +244,16 @@ test('CustomizeModal 静态渲染：皮肤列表 + 皮肤库 + 编辑器', () =>
   assert.doesNotMatch(html, /叠在哪一套之上|叠在哪一档/, '全权自定义：不该再问"叠在某一档之上"')
   assert.match(html, /中性基线/, '要说清楚没写到的变量走中性基线，不跟预设配色联动')
   assert.match(html, /新建皮肤/)
+  // 编辑器默认收起：首屏只留库与新建入口，别让一整张空表单把「保存并套用」挤到折叠线以下。
+  assert.doesNotMatch(html, /customize-css|保存并套用/, '没点「新建皮肤」之前不该先摆出一张空表单')
   assert.ok(!html.includes('自定义（'), '库里没东西时，皮肤列表里不该出现一个用不了的自定义皮肤')
   assert.ok(!html.includes('界面布局'), '界面框架 v2 已撤销：这里不该再有一档"布局"可选')
+  assert.doesNotMatch(html, /壁纸/, '壁纸已有独立浮层，皮肤弹窗里不该再出现一整组壁纸控件')
+  assert.doesNotMatch(html, /--canvas: #0f1213/, '说明里不再附带示例样式，用法只留选择器要求')
 })
 
-test('CustomizeModal 里库里每一套都进皮肤列表，并给出编辑 / 删除', () => {
-  const html = renderToStaticMarkup(React.createElement(CustomizeModal, {
+test('SkinModal 里库里每一套都进皮肤列表，并给出编辑 / 删除', () => {
+  const html = renderToStaticMarkup(React.createElement(SkinModal, {
     settings: settings({ customSkins: [skin()] }),
     onChange: () => undefined, onClose: () => undefined,
   }))
@@ -304,17 +309,21 @@ test('theme-color 跟着皮肤走，且取的是计算值', () => {
   assert.match(main, /meta\[name="theme-color"\]/)
 })
 
-test('样式表里两张新界面都有规则（更新日志页、自定义弹窗、分章规则弹窗）', () => {
+test('样式表里这几张界面都有规则（更新日志页、皮肤弹窗、壁纸浮层、分章规则弹窗）', () => {
   const css = read('..', 'src', 'styles.css')
   // W2 并档：两张弹窗自己的宽高没了，几何在共用那一档里 —— 所以断言也搬到那一档上。
   assert.match(css, /^\.dialog-shell \{/m, '弹窗外壳那一档不见了，两张弹窗都会退回裸 div')
   assert.match(css, /^\.dialog-head \{/m, '弹窗页头那一档不见了')
-  assert.match(read('..', 'src', 'components', 'CustomizeModal.tsx'), /className="dialog-shell[^"]*customize-dialog"/)
+  assert.match(read('..', 'src', 'components', 'SkinModal.tsx'), /className="dialog-shell[^"]*skin-dialog"/)
+  assert.match(read('..', 'src', 'components', 'WallpaperModal.tsx'), /className="dialog-shell[^"]*wallpaper-dialog"/)
   assert.match(read('..', 'src', 'components', 'TocRulesModal.tsx'), /className="dialog-shell[^"]*toc-rules-modal"/)
   assert.match(css, /\.changelog-page \{/)
   assert.match(css, /\.theme-swatch-custom/)
   assert.match(css, /\.menu-section-action/)
   assert.match(css, /\.theme-name/)
+  // 壁纸浮层的三组与底部清除条：类名不在样式表里 = 三组控件贴在一起分不开
+  assert.match(css, /\.wallpaper-groups \{/)
+  assert.match(css, /\.wallpaper-footer \{/)
   // 皮肤库那几条也得有样式：类名不在样式表里 = 渲染出来是一个没有布局的裸列表
   assert.match(css, /\.skin-library \{/)
   assert.match(css, /\.skin-library-row \{/)

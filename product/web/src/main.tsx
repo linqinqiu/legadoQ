@@ -9,7 +9,8 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { activeCustomSkin, loadReaderSettings, ReaderSettings, saveReaderSettings, themeClassNames } from './reader/readerSettings'
 import { AppHeader } from './components/AppHeader'
 import { FirstRunAgreement } from './components/FirstRunAgreement'
-import { CustomizeModal } from './components/CustomizeModal'
+import { SkinModal } from './components/SkinModal'
+import { WallpaperModal } from './components/WallpaperModal'
 import { ServerPortModal } from './components/ServerPortModal'
 import { BrandModal } from './components/BrandModal'
 import { ChangelogModal } from './plugins/changelog/ChangelogModal'
@@ -68,7 +69,7 @@ const MODAL_DEEP_LINKS: Record<string, AppModal> = {
 }
 
 /**
- * 自定义皮肤的注入点（「自定义」里填的 CSS 真的挂上，不是摆个空控件）。
+ * 自定义皮肤的注入点（「皮肤」浮层里填的 CSS 真的挂上，不是摆个空控件）。
  *
  * 用 `document.createElement('style')` + `textContent` 而不是 `dangerouslySetInnerHTML`：
  * 用户写的 CSS 里出现 `</style>` 也不会拼出新标签（textContent 不走 HTML 解析）。
@@ -550,7 +551,8 @@ function App() {
     settingsSections: buildSettingsSections({
       openShortcuts: () => openModalDirect('shortcuts'),
       openOfflineCache: () => openModalDirect('offline-cache'),
-      openCustomize: () => openModalDirect('customize'),
+      openSkins: () => openModalDirect('skin'),
+      openWallpaper: () => openModalDirect('wallpaper'),
       openReplaceRules: () => setPageDialog('rules'),
       openTocRules: () => setTocRulesSignal(value => value + 1),
       openBackup: () => openModalDirect('backup'),
@@ -591,7 +593,7 @@ function App() {
         onOpenChangelog={() => openModalDirect('changelog')}
         onOpenAbout={() => openModalDirect('about')}
         onOpenReadingLog={() => openModalDirect('reading-log')}
-        onOpenCustomize={() => openModalDirect('customize')}
+        onOpenSkins={() => openModalDirect('skin')}
         version={serverVersion}
       />
       {renderPage(page, pageContext)}
@@ -620,9 +622,10 @@ function App() {
       {openModal === 'offline-cache' && <OfflineCacheModal onClose={closeModal} />}
       {openModal === 'logs' && <LogsModal onClose={closeModal} />}
       {openModal === 'shortcuts' && <ShortcutHelp onClose={closeModal} />}
-      {openModal === 'customize' && (
-        <CustomizeModal settings={settings} onChange={setSettings} onClose={closeModal} />
+      {openModal === 'skin' && (
+        <SkinModal settings={settings} onChange={setSettings} onClose={closeModal} />
       )}
+      {openModal === 'wallpaper' && <WallpaperModal onClose={closeModal} />}
       {openModal === 'server-port' && <ServerPortModal onClose={closeModal} />}
       {openModal === 'brand' && <BrandModal onClose={closeModal} />}
       {openModal === 'cookies' && <CookieModal onClose={closeModal} />}

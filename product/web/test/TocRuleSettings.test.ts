@@ -37,10 +37,10 @@ test('目录规则不参与朗读会话身份（换规则不该打断正在读�
  * 现在的分法：书架「导入本地」旁边 = 下一本用哪条 + 哪几条参与自动打分；
  * 阅读设置抽屉 = 只对着手上这本（暂选，不写全局）。
  */
-test('默认规则长在书架的导入动作旁边，不在「自定义」里', () => {
-  const customize = read('../src/components/CustomizeModal.tsx')
+test('默认规则长在书架的导入动作旁边，不在「皮肤」浮层里', () => {
+  const skin = read('../src/components/SkinModal.tsx')
   // 判的是代码痕迹，不是那句"搬走了"的说明文字
-  assert.doesNotMatch(customize, /api\.tocRules|txtTocRule|<Select/, '「自定义」只剩皮肤；分章规则的代码别再长回来')
+  assert.doesNotMatch(skin, /api\.tocRules|txtTocRule|<Select/, '皮肤浮层只剩皮肤；分章规则的代码别再长回来')
   // 0.8.2 拆组：弹窗挂在书架页（pages/ShelfPage.tsx），那份阅读设置仍在宿主（main.tsx），
   // P2 起页面渲染表在 app/pages.tsx —— 读三面，断言不变
   const main = read('../src/main.tsx') + '\n' + read('../src/app/pages.tsx') + '\n' + read('../src/pages/ShelfPage.tsx')

@@ -13,7 +13,10 @@ export type AppModal =
   | 'offline-cache'
   | 'logs'
   | 'shortcuts'
-  | 'customize'
+  /** 皮肤：内置配色与自定义皮肤库 */
+  | 'skin'
+  /** 壁纸：整站背景图与阅读区跟随 */
+  | 'wallpaper'
   | 'server-port'
   /** 应用名称与图标：改的都是本机安装根，与端口同一族 */
   | 'brand'

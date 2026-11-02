@@ -94,7 +94,7 @@ test('一级目的地只在顶栏列一次；规则/备份 收在「设置」页
   // 但"必须接到某一份真实现"这条不变（不接就是死按钮）。
   // 同一轮把 5 个独立布尔收成一个 openModal：弹窗类动作的期望值从 setShowXxx(true) 变成 setOpenModal('xxx')，
   // 语义完全等价（同一时刻只开一个），判据跟着换写法而不是放宽要求。
-  for (const call of ["openModalDirect('shortcuts')", "openModalDirect('offline-cache')", "openModalDirect('customize')",
+  for (const call of ["openModalDirect('shortcuts')", "openModalDirect('offline-cache')", "openModalDirect('skin')", "openModalDirect('wallpaper')",
     "setPageDialog('rules')", 'setTocRulesSignal(value => value + 1)', "openModalDirect('backup')",
     "openModalDirect('logs')", "openModalDirect('server-port')"]) {
     assert.ok(wiredBlock.includes(call), `设置页的动作没接到 ${call}（悬浮层/弹窗/浮层那一份）`)

@@ -489,7 +489,7 @@ export function ShelfPage({
   
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
-  /** 「本地书分章规则」弹窗：从书架的导入动作旁边打开，不在「自定义」里。 */
+  /** 「本地书分章规则」弹窗：从书架的导入动作旁边打开，不在外观浮层里。 */
   const [showTocRules, setShowTocRules] = useState(false)
   // 「设置」页那一行点过来时信号会 +1；第一次挂载（0）不弹，否则刷新一下页面就跳出弹窗
   useEffect(() => {

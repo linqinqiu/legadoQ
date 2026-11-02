@@ -9,7 +9,7 @@ import { useEscapeClose } from '../lib/useEscapeClose'
  *
  * 外壳走统一那一套（`.overlay-backdrop` + `.dialog-shell` + `useEscapeClose`），
  * 与 `ServerPortModal` 同形 —— 它改的也是本机安装根（`brand.json` + `brand/` 里的图标字节），
- * 与端口是同一族，所以不塞进「自定义」弹窗（那里有"不许当杂物间"的明文纪律），
+ * 与端口是同一族，所以不塞进「皮肤」或「壁纸」浮层（那两扇各有自己的职责），
  * 也不与皮肤混放：皮肤只存这台浏览器的 localStorage，而品牌对本机所有浏览器都生效。
  *
  * 生效范围要如实说清（这里最容易被误解）：

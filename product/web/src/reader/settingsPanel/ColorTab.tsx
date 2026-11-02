@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../icons'
-import { CustomizeModal } from '../../components/CustomizeModal'
+import { SkinModal } from '../../components/SkinModal'
 import { availableSkins, parseBgImage, type ReaderSettings } from '../readerSettings'
 import { BackgroundLibrary } from './BackgroundLibrary'
 import { SettingGroup, SettingRange } from './SettingRow'
@@ -8,9 +8,8 @@ import { SettingGroup, SettingRange } from './SettingRow'
 /**
  * 「颜色与背景」标签页：主题网格 + 皮肤库入口 + 阅读背景。
  *
- * 皮肤与背景的编辑都收在这里，阅读页内即可完成，不必先回到「设置 → 皮肤与壁纸」。
- * 自定义皮肤复用同一个 `CustomizeModal`（`only="skins"` 时只显示皮肤库），
- * 没有第二套编辑器 —— 两处各写一份，迟早会各改各的。
+ * 皮肤与阅读背景的编辑都收在这里，阅读页内即可完成，不必先回到「设置 → 皮肤」。
+ * 自定义皮肤复用同一个 `SkinModal`，没有第二套编辑器。
  */
 export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onChange: (next: ReaderSettings) => void }) {
   const update = (value: Partial<ReaderSettings>) => onChange({ ...settings, ...value })
@@ -45,7 +44,7 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
   const customCount = (settings.customSkins ?? []).length
 
   return <>
-    <SettingGroup title="主题" hint="内置七套与自定义皮肤并列显示；自定义皮肤支持新增、编辑、删除，保存后立即应用。按 T 键循环切换内置皮肤。">
+    <SettingGroup title="主题" hint="内置七套与自定义皮肤并列；点一下即应用，按 T 键循环内置。">
       <div className="theme-grid">
         {availableSkins(settings).map(skin => (
           <button
@@ -63,11 +62,11 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
         <button type="button" className="subtle-button" onClick={() => setShowSkinEditor(true)}>
           <Icon name="sliders" /> 管理自定义皮肤{customCount > 0 ? `（${customCount}）` : ''}
         </button>
-        <small>自定义皮肤仅保存在本机；编辑器与「设置 → 皮肤与壁纸」共用同一份数据。</small>
+        <small>只存本机；与「设置 → 皮肤」共用同一份数据。</small>
       </div>
     </SettingGroup>
 
-    <SettingGroup title="阅读背景" hint="颜色与背景图铺在阅读区，压暗用于维持文字对比度；颜色与图片均未设置时跟随主题。">
+    <SettingGroup title="阅读背景" hint="颜色与背景图只铺在阅读区；压暗用于维持对比度，都不设时跟随主题。">
       <div className="bg-row">
         <input
           type="color"
@@ -108,8 +107,7 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
     </SettingGroup>
 
     {showSkinEditor && (
-      <CustomizeModal
-        only="skins"
+      <SkinModal
         settings={settings}
         onChange={onChange}
         onClose={() => setShowSkinEditor(false)}

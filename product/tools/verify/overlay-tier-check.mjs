@@ -87,14 +87,32 @@ const expectWidth = (size, vw) => {
 
 const DIALOGS = [
   {
-    name: '「自定义」',
-    expectSize: 'size-s',
+    name: '「皮肤」',
+    expectSize: 'size-m',
     open: async page => {
+      // 「我的」是图标按钮（aria-label 带「我的」、正文为空），按类名点；clickIn 按文字找不到它。
       await page.evaluate(() => document.querySelector('.overlay-backdrop.is-menu')?.click())
-      if (!await clickIn(page, '.app-page-header', '我的')) return false
-      if (!await waitFor(page, '.header-menu-dropdown')) return false
-      const done = await clickIn(page, '.header-menu-dropdown', '自定义')
-      return done && await waitFor(page, '.customize-dialog')
+      await page.waitForFunction(() => !document.querySelector('.header-menu-dropdown'), { timeout: 5000 }).catch(() => null)
+      const opened = await page.evaluate(() => {
+        const button = document.querySelector('.header-menu-btn')
+        if (!button) return false
+        button.click()
+        return true
+      })
+      if (!opened || !await waitFor(page, '.header-menu-dropdown')) return false
+      const done = await clickIn(page, '.header-menu-dropdown', '管理')
+      return done && await waitFor(page, '.skin-dialog')
+    },
+  },
+  {
+    name: '「壁纸」',
+    expectSize: 'size-m',
+    open: async page => {
+      await page.keyboard.press('Escape')
+      await page.evaluate(() => { location.hash = '#settings' })
+      if (!await waitFor(page, '.settings-page')) return false
+      const done = await clickIn(page, '.settings-page', '管理壁纸')
+      return done && await waitFor(page, '.wallpaper-dialog')
     },
   },
   {
