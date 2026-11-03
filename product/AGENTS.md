@@ -2,7 +2,10 @@
 
 本文件给需要把 legadoQ 接入外部系统 / AI 客户端的开发者与智能体看。它描述的是**真实已在 127.0.0.1:1234 跑起来的 HTTP 接口**，不是设计稿。
 
-> 安全模型：本服务没有账号、没有 token。写操作（登记/删除连接、新建书源）受**同源写门**保护：`POST/PUT/DELETE` **只有在带了 `Origin` 头**时才检查它是否指向服务自己（`ServerIdentity` 的绑定 host+port），带了跨站 Origin 就 403；**不带 Origin 的请求直接放行**（本机 curl / 脚本 / AI 客户端都属于这一类）。`GET/HEAD/OPTIONS` 无论带什么都放行。唯一反向例外是 WebSocket：那条把「没有 Origin」当作跨站拒掉。服务**仅绑定 127.0.0.1，绝不绑定 0.0.0.0**。所有外部 HTTP 调用走 JDK `java.net.http.HttpClient`。
+> 安全模型：本服务没有账号、没有 token。写操作（登记/删除连接、新建书源）受**同源写门**保护：`POST/PUT/DELETE` **只有在带了 `Origin` 头**时才检查它是否指向服务自己（`ServerIdentity` 的绑定 host+port），带了跨站 Origin 就 403；**不带 Origin 的请求直接放行**（本机 curl / 脚本 / AI 客户端都属于这一类）。`GET/HEAD/OPTIONS` 无论带什么都放行。唯一反向例外是 WebSocket：那条把「没有 Origin」当作跨站拒掉。服务**仅绑定 127.0.0.1，绝不绑定 0.0.0.0**。所有外部 HTTP 调用走 JDK `java.net.http.HttpClient`；受控实例由 `NetworkSecurity.newHttpClient()` 签发，
+`send/sendAsync` 前会**重解析 DNS 并复查回环/私网**（防 DNS 重绑定）。
+> ⚠️ 已知缺口（未修）：`ai/ProviderHttp.kt` 用的仍是裸 `HttpClient.newBuilder()`（默认跟随重定向），
+> 只在**构造请求时**校验 `baseUrl` —— AI 这一条路上因此还留着"解析时公网、建连时内网"与"302 跳内网"两个口子。
 
 ---
 
@@ -27,18 +30,26 @@
 
 ## 2. 端点目录（机器可读契约）
 
-`GET /api/catalog` 返回全部端点的机器可读契约（与 `http/` 目录的路由文件双向核对，见下方“一致性闸门”）。本组 8 个端点的归属见 `resources/agent-api.json`（group: `AI 自定义接入`）。
+`GET /api/catalog` 返回全部端点的机器可读契约（与 `http/` 目录的路由文件双向核对，见下方“一致性闸门”）。本组共 **16 个端点**，归属见 `resources/agent-api.json`（group: `AI 自定义接入`）。
 
 | 方法 | 路径 | 写门 | 说明 |
 |------|------|------|------|
 | GET  | `/api/agent/manifest`        | 否 | 能力清单：`enabled`（是否登记了外部连接）、`builtinConnections`（恒为空，保留字段） |
 | GET  | `/api/agent/connections`     | 否 | 列出当前已登记的外部连接（没有就是空列表） |
-| POST | `/api/agent/connections`     | **是** | 登记/更新一个 `openai-compatible` 外部连接 |
+| POST | `/api/agent/connections`     | **是** | 登记/更新一个外部连接（`apiKey` 缺省＝沿用原密钥，传空串才是清除） |
 | DELETE | `/api/agent/connections/{id}` | **是** | 删除一个外部连接 |
+| POST | `/api/agent/models`          | 否 | 只读探针：拿填的地址去拉模型清单（Anthropic 不支持时回 `supported:false`） |
 | POST | `/api/agent/sources`         | **是** | 新建/覆盖书源（落库） |
 | POST | `/api/agent/sources/validate`| 否 | 只读校验书源合法性，不落库 |
 | POST | `/api/agent/comprehend`      | 否 | 文章阅读理解：必须有外部模型；无连接 409、外呼失败 502 |
 | POST | `/api/agent/chat`            | 否 | 自由对话（多轮）：必须有外部模型；无连接 409、外呼失败 502 |
+| POST | `/api/agent/chat/stream`     | 否 | 同一套工具循环的 SSE 流式版；开流前先判连接，避免 200 之后才报 409 |
+| GET  | `/api/agent/skills`          | 否 | 技能清单（自带 + 用户） |
+| POST | `/api/agent/skills`          | **是** | 新建/覆盖一条技能（落盘 `agent-skills/<id>.md`） |
+| DELETE | `/api/agent/skills/{id}`    | **是** | 删除用户技能（移入 `.trash`，不直接删文件） |
+| GET  | `/api/agent/prompts`         | 否 | 提示词预设清单（按 order 排好） |
+| POST | `/api/agent/prompts`         | **是** | 新建/覆盖一条预设（整份文件读写，服务端有写锁） |
+| DELETE | `/api/agent/prompts/{id}`   | **是** | 删除一条预设（删前把整份文件备份进 `.trash`） |
 
 ## 3. 书源双动作：新建 / 校验
 
@@ -94,10 +105,11 @@ curl -s -X POST http://127.0.0.1:1234/api/agent/sources \
 > 它起真服务验**状态码与那句话**，而不是只断言 provider 抛了什么异常。
 > `comprehend` 与 `chat` 两条路径的分类必须一致（从前不一致：同一内网地址一个 500、一个 502）。
 
-> ⚠️ 多连接时的选择规则：默认 `FirstProfileSelector`（见 `ai/ConnectionSelector.kt`）取 `agent-profiles.json` 里**第一个**连接（按文件顺序）。
-> 只要这个「第一个」连接存在，无论后面还有多少可用连接，都只走它；它不可达就直接报错，**不会自动顺延到下一个连接**。
-> 所以「想让某个地址生效」就把它放在第一条，或只保留一个外部连接。这是已确认的正确行为，不是 bug；
-> 想要 failover / 按健康度挑选，由插件注册一个 `ConnectionSelector` 并 `selectorRegistry.setDefault(...)` 替换默认策略（见 `docs/plugin-framework.md` §1.1），框架默认行为不变。
+> ⚠️ 多连接时的选择规则：默认 `FirstProfileSelector`（见 `ai/ConnectionSelector.kt`）**先取标了「默认」的那条**
+> （`options.default=1|true`，界面上「AI 模型连接」里的「设为默认」就是写这个标记），没有才退回文件里的第一条。
+> 无论选中哪一条，它不可达就直接报错，**不会自动顺延到下一个连接**（不做 failover 是刻意的）。
+> 想要按健康度挑选，实现一个 `ConnectionSelector` 注册进 `selectorRegistry` 并 `setDefault(...)`——
+> 注意是在代码里注册（插件装载机制已移除，`docs/plugin-framework.md` 描述的是历史机制）。
 
 返回示例（外部命中）：
 ```json
@@ -108,7 +120,7 @@ curl -s -X POST http://127.0.0.1:1234/api/agent/sources \
 
 返回示例（没有连接）：
 ```json
-{ "code": "no_connection", "message": "尚未登记外部模型连接；请先在「AI 接入 → 连接」里登记一个 openai-compatible 地址。" }
+{ "code": "no_connection", "message": "还没有可用的模型连接；请先在「设置 → 服务与接入 → AI 模型连接」里登记一个模型地址。" }
 ```
 
 ## 5. 接入一个外部模型（openai-compatible）
@@ -162,7 +174,7 @@ curl -s -X POST http://127.0.0.1:1234/api/agent/connections \
 
 ## 6. 一致性闸门（给维护者）
 
-`web/test/ApiCatalog.test.ts` 是双向核对闸门：`http/AgentApiRoutes.kt` 里本组 8 个 `route("agent")` 端点，**必须同时**原样镜像到 `resources/agent-api.json`，且二者数量一致（其中本组 8 条属于 `AI 自定义接入` 组；版本号见 `app/build.gradle` 的 `version`）。
+`web/test/ApiCatalog.test.ts` 是双向核对闸门：`http/AgentApiRoutes.kt` 里本组 16 个 `route("agent")` 端点，**必须同时**原样镜像到 `resources/agent-api.json`，且二者数量一致（本组 16 条都属于 `AI 自定义接入` 组；版本号见 `app/build.gradle` 的 `version`）。
 **全量条数不在这里写**：权威值只有 `ApiCatalog.test.ts` 里那一条绝对计数断言（改端点时会逼你更新它），文档抄一份必然滞后 —— 这句从 139 一路错过到 142。
 **改动 `/api/agent/*` 时禁止动既有路由数量、路径、分组**；新增端点要同时在两处登记。运行：
 
@@ -174,8 +186,8 @@ npx tsx test/ApiCatalog.test.ts   # 期望 3/3 PASS
 ## 7. 本地验证（本会话已跑通）
 
 - 1234 服务：`gradlew :app:run`，环境变量 `LEGADO_HOST=127.0.0.1 LEGADO_PORT=1234 LEGADO_DATA_DIR=<数据目录> LEGADO_HOME=<dir>`，并加 `-Dai.debug`（或环境变量 `JAVA_OPTS=-Dai.debug`）启用外部网关句柄。
-- **交互入口（已改版）**：设置 → 「AI 接入」→ 打开「AI 接入 · 对话助手」面板。主形态就是**对话**：在输入框说话，消息走 `POST /api/agent/chat`；**必须先登记外部模型（openai-compatible）**，没有连接时输入框禁用、状态显示「未连接外部模型，AI 不可用」。连接登记与书源只读校验收进同面板底部的「连接与工具」折叠区。**没有也不再有独立的 `agent.html` 页面**（已删除，仅保留 SPA 设置入口）。
-- 注意：根路径 `http://127.0.0.1:1234/` 是 legadoQ**阅读器主应用**（书架/书源/阅读），与 `/api/agent/*` 这套 AI 接入无关；AI 接入的对话入口是上面设置面板里的「AI 接入」。
+- **交互入口（2026-11-03 拆档）**：设置 → 「服务与接入」下有六行独立入口：**AI 对话助手 / AI 模型连接 / AI 工具 / AI 技能 / AI 提示词 / 书源校验**。主形态仍是**对话**：在输入框说话，走 `POST /api/agent/chat/stream`（SSE）；**必须先登记模型连接**，没有连接时输入框禁用并给一颗「去登记模型连接」的跳转。连接登记、工具开关、技能与提示词各自一档，不再挤在同一屏底部折叠区里。**没有也不再有独立的 `agent.html` 页面**（已删除，仅保留 SPA 设置入口）。
+- 注意：根路径 `http://127.0.0.1:1234/` 是 legadoQ**阅读器主应用**（书架/书源/阅读），与 `/api/agent/*` 这套接入面无关；对话的入口是设置「服务与接入」里的「AI 对话助手」（另有常驻的悬浮球）。
 - 端到端（0.8.6 重测，四条路径各自都验过状态码与文案）：
   1. **没有连接（chat）**：删光外部连接 → `409 no_connection`，不再有本地说明冒充回答。
   2. **地址被闸门拒（chat / comprehend）**：登记 `baseUrl=http://127.0.0.1:5591/v1`（默认配置不放回环）
@@ -194,17 +206,23 @@ npx tsx test/ApiCatalog.test.ts   # 期望 3/3 PASS
 
 ## 8. 状态显示：显示状态 + 实测便携状态
 
-「AI 接入 · 对话助手」面板顶部有**两个**状态，不要混为一谈：
+「AI 模型连接」与「AI 对话助手」两档各管一半，别混为一谈：
 
-- **显示状态**（`externalConnected`）：只看 `GET /api/agent/connections` 里有没有连接。有就显示「已连接外部模型：<name>」。
-- **实测便携状态**（`probe`）：真的发一条 `ping` 走 `POST /api/agent/chat`，看**此刻**外部模型是否可达。
+- **显示状态**（对话档 + 连接档都有）：只看 `GET /api/agent/connections` 里有没有连接、哪条生效。有就显示「正在使用：<name>」。
+- **实测便携状态**（`probe`，在**「AI 模型连接」**这一档）：真的发一条 `ping` 走 `POST /api/agent/chat`，看**此刻**可达不可达。
   - `probing` → 「实测中…」（琥珀色标签）
   - `ok` → 「实测可达（<engine 去掉 external: 前缀>）」（强调色标签）
   - `fail` → 「实测不可达」（危险色标签）
-  - 打开面板且已登记外部模型时自动实测一次；旁边有「重新实测」按钮。
-  - 没有外部模型时不显示实测区，只显示「未连接外部模型，AI 不可用」。（状态靠 `ai-tag` 三档配色区分，界面不用装饰字形——`CopyStyle.test.ts` 的 BANNED_GLYPHS 判据盯着。）
+  - 打开该档且有连接时自动实测一次；旁边有「重新实测」按钮。
+  - 没有连接时不显示实测区，只显示「还没有模型连接，AI 不可用」。（状态靠 `ai-tag` 三档配色区分，界面不用装饰字形——`CopyStyle.test.ts` 的 BANNED_GLYPHS 判据盯着。）
 
 两者是独立维度：显示状态说"配了没有"，实测状态说"现在通不通"。只有实测 `ok` 才代表真能对话。
+
+> **界面文案口径（2026-11-03 定）**：给用户看的那一行只说**结果与能做什么**，不念实现与历史 ——
+> 说「预设皮肤」「隐藏」「恢复默认」「只存在这台电脑的浏览器里」，不说「内置七套」「换 CSS」
+> 「删除只是隐藏」「localStorage / 中性基线」「没有插件注册工具」（插件装载已移除）。
+> 必要的约束要留（id 不可改、留空=沿用原密钥、内网地址需先开环境变量），但用后果的口气写。
+> 判据同步：改这类文案时一并改 `CustomizeSkin.test.ts` / `CopyStyle.test.ts` 里钉的字符串。
 
 ## 9. 版本号：`version=dev` 的坑（已修）
 
@@ -302,7 +320,7 @@ legadoq-dist-v0.8.2/
 （这一条是拿真接口打出来的：目录给 `GET /api/logs` 列了 `stackTrace`，实际回包里那一项没有这个键。）
 
 `scope` 现在是**全量** —— `http/` 目录里注册的每一条都在这份目录里（0.8.2 起路由按面拆在
-`Routes.kt` 装配点与 `<组名>Routes.kt` 组文件里），共 141 条，按面分成：
+`Routes.kt` 装配点与 `<组名>Routes.kt` 组文件里），共 154 条，按面分成：
 目录 / 系统 / 书源 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 /
 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份。判据的要求是「目录条数 == 代码里的条数」，
 所以新加一条端点而忘了写进契约，当天就会红 —— 以前只盯 `/api/sources…` 前缀，别的面漏了没人知道。
@@ -385,7 +403,7 @@ AI 要"帮我修库"时，先让它给出分档统计，再决定动作，不要
 - `SubscriptionService`：订阅更新
 - `CoverCache`：封面缓存
 
-这些对象就是 141 个 HTTP 端点背后那同一批实例。AI 调用它们 == 端点调用它们，
+这些对象就是 154 个 HTTP 端点背后那同一批实例。AI 调用它们 == 端点调用它们，
 **没有第二条实现路径**，也就不会出现「AI 能改、界面改不了」或反过来这种分裂。
 
 **关键约束（来自 `web/test/ApiCatalog.test.ts`）：** 那份判据逐条比对 `http/` 目录的路由文件与
@@ -408,12 +426,12 @@ app/src/main/kotlin/io/legado/ai/
 ```
 
 > **内容 / 框架边界**：`ai/` 是「可覆盖的默认内容容器」（类比前端 `features/`）。
-> 它**不注册任何 HTTP 路由**（Ktor 路由只从 `http/` 装配），所以 141 端点计数不动。
+> 它**不注册任何 HTTP 路由**（Ktor 路由只从 `http/` 装配），所以 154 端点计数不动。
 > `ai/` 里的 `OpenAiCompatibleProvider` / `BuiltinTools` / `FirstProfileSelector`
 > 只是默认实现，全部可插拔（外部 provider / 工具 / 选择器用新 id 注册、`replace` 覆盖、`unregister`
 > 摘掉）。这条边界由 `FrameworkContractTest`（`@Tag("framework-contract")`，钉进 `verifyFramework`
 > 与 `check`）守住：默认只含 `openai-compatible` 与 `FirstProfileSelector`、重复 id 被拒、
-> 内置工具默认不可删、`agent-api.json` 契约 141/19/8。
+> 内置工具默认不可删、`agent-api.json` 契约 154/19/16。
 
 ## 2. 核心类型（`AgentContext.kt`）
 
@@ -484,7 +502,7 @@ AI 能改库，所以每一条写路径都要先过护栏：
 把它变成给 AI 看的、带 `version` 注记的文本说明。这样 **AI 看到的能力面 == 1234 交付的
 能力面**，不会因为另写一套而漂走。
 
-`BuiltinTools.all()` 注册 54 个工具，按面分组，每个都只是把参数转成一次既有服务调用：
+`BuiltinTools.all()` 注册 55 个工具，按面分组，每个都只是把参数转成一次既有服务调用：
 
 - **书源**：列举 / 取单条 / 校验草稿 / 写库（带版本乐观锁）/ 删除 / 批量整理 / 导入 / 自定义排序
 - **净化规则**：列举 / 增删改 / 切换启用 / 导入
@@ -604,7 +622,7 @@ val conn = AgentModule.connect(database, runner, coverCache, subscriptions, regi
    直接调用 `agent.runTool(...)` 的演示逻辑，仅供本地排查，不对外暴露。
 
 要让人/脚本以「AI 客户端」方式驱动这台服务，仍然走 `GET /api/catalog` 拿契约、
-走既有 141 个端点执行——进程内 `Agent` 是给"服务自己内嵌的自动化/智能体"用的同一条路径。
+走既有 154 个端点执行——进程内 `Agent` 是给"服务自己内嵌的自动化/智能体"用的同一条路径。
 
 ## 6.5 连接自己的配置（`options`）
 
@@ -638,7 +656,7 @@ val conn = AgentModule.connect(database, runner, coverCache, subscriptions, regi
 
 ## 7. 当前边界（骨架阶段只到这）
 
-- 已就位：连接句柄 `AgentConnection`、进程接线 `AgentModule`（默认关闭）、能力清单、护栏、54 个工具、异常兜底、目录读取、两套运行验证。
+- 已就位：连接句柄 `AgentConnection`、进程接线 `AgentModule`（默认关闭）、能力清单、护栏、55 个工具、异常兜底、目录读取、两套运行验证。
 - **基础设施三件套（0.8.2 结构重排补，让框架"提供更多可能"）**：
   - `ToolRegistry` —— 工具面从硬编码 `listOf(...)` 变成**运行时可变**：外部可以 `register` / `unregister`
     自己的工具，不改框架源码、不重编译。三条不变量：id 唯一（重复注册默认拒绝，要覆盖得显式
@@ -665,8 +683,8 @@ val conn = AgentModule.connect(database, runner, coverCache, subscriptions, regi
 ## 0. 一句话
 
 legadoQ 的 AI 是**进程内网关**，不是外挂服务：它和界面、脚本用的是同一批服务对象，
-所以它知道你在看什么，也能调程序自己的 54 个能力。
-入口是 `/api/agent/*`（8 个端点），核心实现在 `app/src/main/kotlin/io/legado/ai/`。
+所以它知道你在看什么，也能调程序自己的工具（`GET /api/agent/manifest` 实测 57 条：内置 55 + 两个发现工具 `tool.search` / `tool.call`）。
+入口是 `/api/agent/*`（16 个端点），核心实现在 `app/src/main/kotlin/io/legado/ai/`。
 
 ## 1. 三步接上
 
@@ -682,8 +700,9 @@ npm start                 # 默认 127.0.0.1:1234
 接本机的那类需要显式开一下口子，见下面「接本机模型」那条。
 
 **方式 A：界面**（推荐，能立即实测通不通）
-设置 → 接入与扩展 → **AI 接入** → 填连接 → 保存。
-面板顶部两个状态：「已连接」= 配没配；「实测可达」= 此刻通不通。
+设置 → 服务与接入 → **AI 模型连接** → 选协议、填地址与模型 → 登记。
+多个连接时点「设为默认」决定用哪条；该档顶部的「实测可达 / 实测不可达」是**此刻**真发一条探测消息的结果。
+对话在另一档：**AI 对话助手**（还有常驻悬浮球），它只显示"正在使用哪条连接"。
 
 **方式 B：HTTP**
 
@@ -747,9 +766,10 @@ curl -s -X POST http://127.0.0.1:1234/api/agent/chat \
 所以「这本书讲了什么」它知道"这本书"是哪本。**只给标识与少量摘要，不给整本正文** ——
 正文由它自己用工具去取（这才是 Agent 的正确用法，也避免一次请求塞几十万字）。
 
-### 2.2 能调 54 个工具
+### 2.2 能调 57 条工具（内置 55 + 两个发现工具）
 
-按面分组（`GET /api/agent/manifest` 可查全量）：
+`tool.search` / `tool.call` 由 `AgentModule.connect()` 在运行时注册（属 `program` 组，任何过滤都常驻），
+所以清单是 57 条而不是 `BuiltinTools.all()` 的 55 条。按面分组（全量以 `GET /api/agent/manifest` 为准）：
 
 | 组 | 工具 | 用途 |
 |---|---|---|
@@ -814,11 +834,12 @@ class MyProvider : LlmProvider {
 }
 ```
 
-见 `docs/plugin-framework.md` §1.1b。
+注册入口是 `LlmProviderRegistry.register(...)`（`agent-api.json` 之外的运行时扩展点，不改框架源码）。
+`docs/plugin-framework.md` 写的是**已移除的插件装载机制**，只当历史设计看，别按它找"插件目录"。
 
 ### 4.3 加一个连接选择策略
 
-默认只走第一个连接。想要 failover / 按健康度挑：
+先用标了「默认」的连接、否则用第一条。想要 failover / 按健康度挑：
 
 ```kotlin
 class HealthFirstSelector : ConnectionSelector {
@@ -847,10 +868,10 @@ val handle = agentConnection.hooks.before { meta, args ->
 | 现象 | 原因 | 解决 |
 |---|---|---|
 | `409 no_connection` | 没登记外部模型 | 按 §1.2 登记 |
-| `400 invalid_request` | `baseUrl` 指向本机 / 内网（回环也算） | 换成公网可达地址；本机模型需先暴露出去 |
+| `400 invalid_request` | `baseUrl` 指向本机 / 内网（回环也算） | 换成公网可达地址；要接本机模型，服务侧先设 `LEGADO_AI_ALLOW_LOOPBACK_BASEURL=1`（只放回环，且仍拒打到这台服务自己） |
 | `502 upstream_unreachable` | 模型地址连不上 / 非 2xx / 解析失败 | 查 baseUrl 与网络 |
 | 中文读成空 | 请求体不是无 BOM 的 UTF-8 | 用 UTF-8 无 BOM 发送 |
-| 换了地址不生效 | 多连接只走第一个 | 放第一条，或删掉其它 |
+| 换了地址不生效 | 多连接先用**标了「默认」**的那条，没有才用第一条 | 在「AI 模型连接」里点「设为默认」 |
 | 工具调不到 | 没注册 / id 重复 | `GET /api/agent/manifest` 查实际清单 |
 | 匿名 selector 注册失败 | `simpleName` 为 null | 用具名类 |
 
@@ -861,5 +882,5 @@ val handle = agentConnection.hooks.before { meta, args ->
 | 端点契约（机器可读） | `GET /api/catalog` |
 | 自定义接入面细节 | `AGENTS.md` |
 | AI 框架内部结构 | `AGENTS.md` |
-| 插件怎么贡献工具/协议 | `docs/plugin-framework.md` |
-| AI / 插件 两类分家 | `docs/plugin-framework.md` |
+| 协议 / 选择器 / 工具怎么扩展 | 直接看 `ai/LlmProvider.kt`、`ai/ConnectionSelector.kt`、`ai/ToolRegistry.kt` 的注册表 |
+| 插件装载（**已移除**） | `docs/plugin-framework.md`（历史设计文档，代码里已无 `plugin/` 包） |

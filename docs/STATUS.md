@@ -1,6 +1,6 @@
 # 当前结构与成果
 
-> 版本 **0.2.0** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 后端 **729** 项测试 / Web **811** 项测试，全绿
+> 版本 **0.2.14** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 后端 **898** 项测试 / Web **879** 项测试，全绿
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -22,7 +22,7 @@
 
 ## 2. 后端结构（Kotlin / Ktor 3.4.3，JDK 17）
 
-**规模**：92 个源文件、约 2.59 万行；91 个测试文件、729 项测试。
+**规模**（实测计数）：后端 105 个源文件 / 约 3.09 万行，110 个测试文件 / 898 项测试；前端 158 个 `.ts/.tsx` / 约 3.25 万行，116 个测试文件 / 879 项测试。
 
 ### 2.1 包职责
 
@@ -43,14 +43,14 @@
 | `backup/` | 备份包导入导出（zip 与裸 JSON，兼容兄弟项目扩展条目） |
 | `model/` | 跨层数据模型（`@Serializable`） |
 
-桌面壳 `DesktopLauncher.kt` 负责窗口、启动画面、托盘与安装目录解析；`plugin/` 只保留扩展点骨架，默认不扫 jar。
+桌面壳 `DesktopLauncher.kt` 负责窗口、启动画面、托盘与安装目录解析。插件装载机制已整体移除（代码里没有 `plugin/` 包），保留的是工具 / 协议 / 连接选择策略三类**运行时注册表**扩展点。
 
 ### 2.2 端点分布（154 条 / 19 组）
 
 | 组 | 条数 | 组 | 条数 |
 |---|---:|---|---:|
 | 内置浏览器 | 17 | 书架 | 16 |
-| 登录与凭据 | 15 | AI 自定义接入 | 13 |
+| 登录与凭据 | 15 | AI 自定义接入 | 16 |
 | 书源 | 12 | 净化规则 | 10 |
 | 进度与笔记 | 9 | 朗读 | 9 |
 | 系统 | 7 | RSS | 7 |
@@ -62,11 +62,11 @@
 
 契约由 `resources/agent-api.json` 描述，`FrameworkContractTest`、`web/test/ApiCatalog.test.ts` 与源码双向核对；`npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 一致。
 
-### 2.3 数据层（SQLite，18 张表）
+### 2.3 数据层（SQLite，代码建 20 张表）
 
-`source` `source_login_state` `cookie` `book_shelf` `book_group` `reading_progress` `reading_log` `book_note` `book_content_cache` `book_content_process` `book_cache_status` `book_toc_cache` `cover_cache` `replace_rule` `source_subscription` `rss_source` `log_entry` `source_health`
+`source` `source_login_state` `cookie` `book_shelf` `book_group` `reading_progress` `reading_log` `book_note` `book_content_cache` `book_content_process` `book_cache_status` `book_toc_cache` `cover_cache` `replace_rule` `source_subscription` `rss_source` `log_entry` `source_health` `script_cache` `app_meta`
 
-（分章规则不是独立表：`book_shelf.toc_rule` 记住这本书用哪条规则切的章。AI 连接、会话与技能走文件存储，不进库。）
+（分章规则不是独立表：`book_shelf.toc_rule` 记住这本书用哪条规则切的章。AI 连接、会话与技能走文件存储，不进库。**代码建的表 ≠ 磁盘上的表**：老库里可能留着已删功能的遗留表（如 0.6.12 移除书签后仍在的 `book_mark`），数表数量要用 `sqlite_master` 实测。）
 
 写入走**单写连接 + 全局锁**（WAL + `busy_timeout` + 失败重连），避免流式搜索与进度写入并发撞 `SQLITE_BUSY`。启动时按碎片率决定是否 `VACUUM`。
 
@@ -105,15 +105,15 @@
 
 ## 5. 质量门禁
 
-| 门禁 | 命令 | 现状（0.2.0） |
+| 门禁 | 命令 | 现状（0.2.14） |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **729 项 / 0 失败** |
-| Web 测试 | `web: npm test` | **811 项 / 0 失败** |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **898 项 / 0 失败** |
+| Web 测试 | `web: npm test` | **879 项 / 0 失败** |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过 |
 | 端点文档一致 | `npm run docs:api-check` | 154 条 / 19 组，一致 |
 | 更新日志 | `npm run changelog:check` | 无待记录（提交后钩子自动起草） |
-| 版本单一来源 | `npm run version:check` | 7 处一致，0.2.0 |
-| 真浏览器门禁 | `tools/verify/*.mjs` | 阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
+| 版本单一来源 | `npm run version:check` | 7 处一致，0.2.14 |
+| 真浏览器门禁 | `tools/verify/*-check.mjs` | 共 **46** 个脚本（约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
 
 CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约）。
 
@@ -171,4 +171,4 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是「单进程 + 单写 SQLite + 19 组 HTTP 端点」的本地阅读服务，前端是自研排版引擎的 Web 阅读器；0.1.8 把 AI 侧补成「多协议 + 流式 + 技能 + 工具 schema」的完整闭环，0.1.9 再加上可开关排序的提示词预设与按整轮裁剪的上下文预算，阅读侧补上正文刷新、兄弟备份导入与登录界面本地解析。质量靠 1540 项自动化测试（729 + 811）与七道命令门禁守着。当前最大的未完成项仍是**阅读器的跨章定位体验**与**AI 的外部工具接入（MCP）**。
+后端是「单进程 + 单写 SQLite + 19 组 HTTP 端点」的本地阅读服务，前端是自研排版引擎的 Web 阅读器；0.1.8 把 AI 侧补成「多协议 + 流式 + 技能 + 工具 schema」的完整闭环，0.1.9 再加上可开关排序的提示词预设与按整轮裁剪的上下文预算，阅读侧补上正文刷新、兄弟备份导入与登录界面本地解析。质量靠 1,777 项自动化测试（898 后端 + 879 前端）、7 条命令门禁与 46 个 `tools/verify/*-check.mjs` 脚本守着。当前最大的未完成项仍是**阅读器的跨章定位体验**与**AI 的外部工具接入（MCP）**。
