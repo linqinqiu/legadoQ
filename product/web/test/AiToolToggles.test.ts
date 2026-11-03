@@ -64,7 +64,7 @@ test('关组不会顺手清空逐项停用，反之也一样', async () => {
 })
 
 test('两个对话入口都把 disabledTools 发出去', () => {
-  for (const file of ['../src/features/ai/AiConnectionsModal.tsx', '../src/features/ai/AiFloatingBall.tsx']) {
+  for (const file of ['../src/features/ai/AiChatModal.tsx', '../src/features/ai/AiFloatingBall.tsx']) {
     const source = read(file)
     assert.match(source, /disabledTools:\s*prefs\.disabledTools/, `${file}：发送时要带上逐项停用清单`)
   }

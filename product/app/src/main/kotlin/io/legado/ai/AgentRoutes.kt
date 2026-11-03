@@ -668,7 +668,7 @@ private fun outcomeMessage(code: String, detail: String? = null): String {
     val specific = detail?.trim()?.takeIf { it.isNotEmpty() }
     if (specific != null) return specific
     return when (code) {
-        "no_connection" -> "尚未登记外部模型连接；请先在「AI 接入 → 连接」里登记一个模型地址。"
+        "no_connection" -> "还没有可用的模型连接；请先在「设置 → 服务与接入 → AI 模型连接」里登记一个模型地址。"
         "invalid_request" -> "这个连接用不了：地址不合法或被出站安全闸门拒绝（内网 / 本机地址不放开）。"
         "upstream_unreachable" -> "外部模型连不上，本次没有结果。"
         "tool_rounds_exhausted" -> "外部模型在工具调用轮数上限内仍未给出结论。"

@@ -48,8 +48,18 @@ export type SettingsActions = {
   openServerPort: () => void
   /** 应用名称与图标（本机安装根的品牌；与端口同一族） */
   openBrand: () => void
-  /** AI 接入 —— 独立一类 */
+  /** AI 对话助手：说话的地方（配置都收在下面几档） */
+  openAiChat: () => void
+  /** AI · 模型连接：登记外部模型、设为默认、实测可达 */
   openAiConnections: () => void
+  /** AI · 工具：勾选模型能调用哪一组能力 */
+  openAiTools: () => void
+  /** AI · 技能：命中关键词才注入的方法说明 */
+  openAiSkills: () => void
+  /** AI · 提示词：每次对话都生效的"怎么说话" */
+  openAiPrompts: () => void
+  /** AI · 书源校验：只读检查一份书源 JSON 的结构 */
+  openAiSourceCheck: () => void
   /**
    * 「Cookie」管理：打开全局凭据弹窗（与应用里其它 `AppModal` 浮层同一套外壳）。
    * 凭据按注册域共享，删书源不清桶，所以必须有这一处能看见全部、能逐个撤掉。
@@ -93,7 +103,7 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       rows: [
         {
           title: '皮肤',
-          hint: '内置七套可改名、换 CSS 或删除；自定义皮肤库可新建、编辑与删除。',
+          hint: '预设配色可以改名、换样式、隐藏或恢复；也可以新建自己的皮肤。',
           action: '管理皮肤',
           onClick: actions.openSkins,
         },
@@ -140,11 +150,41 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
           onClick: actions.openServerPort,
         },
         {
-          // AI 接入是独立一类：程序内部的 AI 网关，不是实验室条目。
-          title: 'AI 接入',
-          hint: '登记模型提供商与密钥，并选择 AI 可用的工具。',
-          action: '打开 AI 接入',
+          // AI 按能力各一档：以前六块挤在一屏里滚不到底，找一个开关要先越过连接表单。
+          title: 'AI 对话助手',
+          hint: '跟模型说话；它会自己调用下面的工具去查、去改。',
+          action: '开始对话',
+          onClick: actions.openAiChat,
+        },
+        {
+          title: 'AI 模型连接',
+          hint: '登记可用的模型、设为默认，并实测此刻通不通。',
+          action: '管理连接',
           onClick: actions.openAiConnections,
+        },
+        {
+          title: 'AI 工具',
+          hint: '勾选模型能调用哪几组能力；关掉的组它连看都看不到。',
+          action: '选择工具',
+          onClick: actions.openAiTools,
+        },
+        {
+          title: 'AI 技能',
+          hint: '「这类任务怎么做」的方法说明，命中关键词才注入，一次最多 3 条。',
+          action: '管理技能',
+          onClick: actions.openAiSkills,
+        },
+        {
+          title: 'AI 提示词',
+          hint: '「怎么说话」的要求，启用的每次对话都带上，可排序可停用。',
+          action: '管理提示词',
+          onClick: actions.openAiPrompts,
+        },
+        {
+          title: '书源校验',
+          hint: '粘贴一份书源 JSON 看结构合不合法，只检查、不写入。',
+          action: '去校验',
+          onClick: actions.openAiSourceCheck,
         },
         {
           title: '运行日志',

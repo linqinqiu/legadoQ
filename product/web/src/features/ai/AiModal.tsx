@@ -1,29 +1,27 @@
 import React from 'react'
-import { AiConnectionsModal } from './AiConnectionsModal'
+import { AiChatModal } from './AiChatModal'
 import type { UiContext } from '../../lib/uiContext'
 
 /**
- * 「AI 接入」浮层 —— **独立一类**，既不是实验室、也不是插件。
+ * 「AI 对话助手」浮层。
  *
- * 三类的边界（用户口径）：
- * - **实验室**：准备在基础框架上加入的、**待定**的功能；
- * - **插件**：用户自定义的扩展，可装可卸；
- * - **AI 接入**：单独一类 —— 已定型、是产品决定要有的，不是实验室里的待定项。
+ * 这一档以前叫「AI 接入」，里面堆着六块（连接、工具、技能、提示词、书源校验、对话），
+ * 打开就是一屏滚不到底。现在按能力各自一档，都挂在设置「服务与接入」下：这里只剩**用**。
  *
- * 所以它有自己的浮层，不占实验室的条目位。
+ * 外壳由 `AiChatModal` → `AiPanel` 自带（遮罩 + 一档 dialog-shell + 一颗关闭键 + Esc），
+ * 不再多包一层弹窗 —— 弹窗套弹窗就是两层遮罩、两颗关闭键。
  *
- * 直接用 `AiConnectionsModal` 的非 embedded 形态：它自带 overlay + dialog-shell + 关闭键，
- * 再包一层 PageDialog 就是"弹窗套弹窗"（两层遮罩、两颗关闭键，UiContract 判据会红）。
- *
- * **识别界面内容**：`uiContext` 会传给面板，随对话一起发给模型 ——
- * 问"这本书讲了什么"时模型才知道"这本书"是哪本。
+ * **识别界面内容**：`uiContext` 随对话一起发给模型 —— 问"这本书讲了什么"时它才知道
+ * "这本书"是哪本。没有模型连接时，`onOpenConnections` 给一颗直接去登记的按钮。
  */
 export function AiModal({
   onClose,
   uiContext,
+  onOpenConnections,
 }: {
   onClose: () => void
   uiContext?: UiContext
+  onOpenConnections?: () => void
 }) {
-  return <AiConnectionsModal onClose={onClose} uiContext={uiContext} />
+  return <AiChatModal onClose={onClose} uiContext={uiContext} onOpenConnections={onOpenConnections} />
 }

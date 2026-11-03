@@ -12,6 +12,10 @@ import path from 'node:path'
  * ② 界面把「预设」与「技能」说成同一件事（两者语义一混，用户就不知道往哪填）；
  * ③ 后端回报的 promptsUsed / trimmed 有没有一路传到气泡 —— 没有这两项，
  *    用户根本看不出自己刚写的预设到底生效了没有。
+ *
+ * 2026-11-03：「AI 接入」那一档浮层拆成六档（对话 / 模型连接 / 工具 / 技能 / 提示词 /
+ * 书源校验），提示词的界面从 `AiConnectionsModal.tsx` 搬进 `AiPromptsModal.tsx`，
+ * 对话搬进 `AiChatModal.tsx`。判据跟着换文件，断言的东西一条没减。
  */
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
 
@@ -26,14 +30,16 @@ test('api 层有提示词预设的三个方法，路径与后端三条路由一�
   assert.match(api, /export type AgentPromptInput = \{[\s\S]*?id\?:\s*string/, '新建时 id 可缺省，由服务端按名称生成')
 })
 
-test('AI 接入面板有独立的提示词区块，且说清与技能的分工', () => {
-  const modal = read('../src/features/ai/AiConnectionsModal.tsx')
-  assert.match(modal, /<PromptsSection \/>/, '区块要真的挂进面板')
-  assert.match(modal, /function PromptsSection/, '区块实现')
+test('提示词有自己那一档浮层，且说清与技能的分工', () => {
+  const modal = read('../src/features/ai/AiPromptsModal.tsx')
+  assert.match(modal, /<PromptsPanel \/>/, '内容要真的挂进浮层')
+  assert.match(modal, /function PromptsPanel/, '面板实现')
   assert.match(modal, /function PromptForm/, '新建/编辑表单')
   assert.match(modal, /api\.listAgentPrompts\(\)/, '列表从这里取')
   assert.match(modal, /api\.saveAgentPrompt\(/, '保存从这里发')
   assert.match(modal, /api\.deleteAgentPrompt\(/, '删除从这里发')
+  // 独立一档也必须还是那一套外壳（遮罩 + dialog-shell + 关闭键），不许长出一个裸表单
+  assert.match(modal, /<AiPanel title="AI 提示词"/, '走共用的浮层外壳')
 
   // 分工：预设管"怎么说话"、对所有对话生效；技能管"这类任务怎么做"、按关键词命中。
   assert.match(modal, /怎么说话/, '要写清预设是"怎么说话"')
@@ -45,31 +51,34 @@ test('AI 接入面板有独立的提示词区块，且说清与技能的分工',
   assert.match(modal, /下移\n/, '能下移')
   assert.match(modal, /新建提示词/, '能新建')
 
-  // 删除是不可逆动作（虽然服务端会备份），必须二次确认并说清备份位置。
+  // 删除是不可逆动作（虽然服务端会备份），必须二次确认并说清能找回。
   assert.match(modal, /window\.confirm\(`删除提示词/, '删除要确认')
-  assert.match(modal, /agent-prompts\.json 备份到 \.trash/, '确认文案要说清备份能找回')
+  assert.match(modal, /删除前会先备份整份清单/, '确认文案要说清备份能找回')
 
   // 正文限长要在输入侧就挡住，而不是保存后被服务端截断。
   assert.match(modal, /setInstruction\(e\.target\.value\.slice\(0,\s*2000\)\)/, '输入框就限 2000 字')
 })
 
 test('排序的两条保存要顺序发，不能并发', () => {
-  // 服务端 agent-prompts.json 是整份「读 → 改 → 写」：两条并发保存会各自读到旧快照，
+  // 服务端那份清单是整份「读 → 改 → 写」：两条并发保存会各自读到旧快照，
   // 后落盘的把先落盘的顶掉（实测点一次上移，两条 order 变成同一个数）。
-  const modal = read('../src/features/ai/AiConnectionsModal.tsx')
-  const move = modal.slice(modal.indexOf('const move = async'), modal.indexOf('return (\n    <section className="ai-section">\n      <h3>提示词</h3>'))
+  const modal = read('../src/features/ai/AiPromptsModal.tsx')
+  const move = modal.slice(modal.indexOf('const move = async'), modal.indexOf('return (\n    <section className="ai-section">\n      <h3>AI 提示词</h3>'))
   assert.ok(move.length > 0, '要能找到 move 的实现')
   assert.doesNotMatch(move, /Promise\.all/, '排序不能用 Promise.all 并发发两条保存')
   const saves = move.match(/await api\.saveAgentPrompt\(/g) ?? []
   assert.equal(saves.length, 2, `应顺序 await 两次保存，实际 ${saves.length} 次`)
 })
 
-test('提示词排在技能之前（先定"怎么说话"，再定"怎么做"）', () => {
-  const modal = read('../src/features/ai/AiConnectionsModal.tsx')
-  const promptsIndex = modal.indexOf('<PromptsSection />')
-  const skillsIndex = modal.indexOf('<SkillsSection />')
-  assert.ok(promptsIndex > 0 && skillsIndex > 0, '两个区块都要挂上')
-  assert.ok(promptsIndex < skillsIndex, '面板里提示词区块要在技能之前')
+test('注入顺序：先定"怎么说话"的预设，再定"怎么做"的技能', () => {
+  // 拆成两档浮层之后，界面上已经没有"谁在谁之前"这回事了；真正的不变量在服务端注入时：
+  // `Agent.injectContext` 必须先把预设拼进 system，再拼技能（越具体越靠后）。
+  const agent = read('../../app/src/main/kotlin/io/legado/ai/Agent.kt')
+  const inject = agent.slice(agent.indexOf('private fun injectContext'))
+  const promptsAt = inject.indexOf('for (preset in prompts)')
+  const skillsAt = inject.indexOf('for (skill in skills)')
+  assert.ok(promptsAt > 0 && skillsAt > 0, '两段注入都要找得到')
+  assert.ok(promptsAt < skillsAt, '提示词要先注入，技能在后（与界面那句分工一致）')
 })
 
 test('流式累积器收下 prompts 与 trimmed，快照不共用数组', () => {
@@ -82,7 +91,7 @@ test('流式累积器收下 prompts 与 trimmed，快照不共用数组', () => 
 })
 
 test('两处气泡都回报"这轮带上了什么"', () => {
-  for (const file of ['../src/features/ai/AiConnectionsModal.tsx', '../src/features/ai/AiFloatingBall.tsx']) {
+  for (const file of ['../src/features/ai/AiChatModal.tsx', '../src/features/ai/AiFloatingBall.tsx']) {
     const source = read(file)
     assert.match(source, /提示词 \{m\.promptsUsed\.length\} 条/, `${file}：要显示注入了几条预设`)
     assert.match(source, /已裁历史 \{m\.trimmed\} 条/, `${file}：裁过历史要如实说出来`)
@@ -95,7 +104,7 @@ test('两处气泡都回报"这轮带上了什么"', () => {
 test('裁历史不是静默改用户的输入：只丢整轮，最后一条用户消息保留', () => {
   // 这条判据在后端（AgentPromptContextTest）也有一份；这里守的是"界面不许假装没事"：
   // trimmed 一定要出现在元信息里，而不是被吞掉。
-  const modal = read('../src/features/ai/AiConnectionsModal.tsx')
+  const modal = read('../src/features/ai/AiChatModal.tsx')
   assert.match(modal, /trimmed:\s*result\.trimmed > 0 \? result\.trimmed : undefined/,
     '没裁时不写字段，裁了才显示 —— 显示 "0 条" 会让人以为历史被动过')
 })

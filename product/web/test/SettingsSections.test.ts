@@ -36,7 +36,12 @@ function fakeActions(): { actions: SettingsActions; called: string[] } {
     openLogs: make('openLogs'),
     openServerPort: make('openServerPort'),
     openBrand: make('openBrand'),
+    openAiChat: make('openAiChat'),
     openAiConnections: make('openAiConnections'),
+    openAiTools: make('openAiTools'),
+    openAiSkills: make('openAiSkills'),
+    openAiPrompts: make('openAiPrompts'),
+    openAiSourceCheck: make('openAiSourceCheck'),
     openCookies: make('openCookies'),
   }
   return { actions, called }
@@ -83,13 +88,23 @@ test('每一行的 onClick 真的调到对应回调（不是死按钮）', () =>
   assert.equal(new Set(called).size, totalActions, `应有 ${totalActions} 个不同动作被触发，实际 ${new Set(called).size}：${[...new Set(called)]}`)
 })
 
-test('服务与接入分组：AI 接入仍在，插件架构已移除', () => {
-  const { actions } = fakeActions()
+test('服务与接入分组：AI 按能力拆成独立入口，插件架构已移除', () => {
+  const { actions, called } = fakeActions()
   const sections = buildSettingsSections(actions)
   const rows = sections.find(section => section.title === '服务与接入')?.rows ?? []
   const titles = rows.map(r => r.title)
-  assert.ok(titles.includes('AI 接入'), `应有一行「AI 接入」，实际 ${titles}`)
+  // 2026-11-03：原来一栏「AI 接入」打开是一屏六块，现在按能力各一档、都在这一个分区里。
+  for (const want of ['AI 对话助手', 'AI 模型连接', 'AI 工具', 'AI 技能', 'AI 提示词', '书源校验']) {
+    assert.ok(titles.includes(want), `「服务与接入」里应有「${want}」，实际 ${titles}`)
+  }
   assert.ok(!titles.includes('插件'), `不该再有「插件」一行，实际 ${titles}`)
+  assert.ok(!titles.includes('AI 接入'), `不该再有一栏混装六块的「AI 接入」，实际 ${titles}`)
+  // 每一栏都要真的指向自己的浮层，不能都指向同一个
+  for (const row of rows.filter(r => r.title.startsWith('AI ') || r.title === '书源校验')) {
+    row.onClick()
+  }
+  const opened = called.filter(c => c.startsWith('openAi') || c === 'openAiSourceCheck')
+  assert.equal(new Set(opened).size, 6, `六个 AI 入口要各开各的，实际 ${[...new Set(opened)]}`)
 })
 
 test('页内搜索：命中留整档，不命中收整档，空查询原样返回', () => {

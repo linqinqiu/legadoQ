@@ -20,6 +20,11 @@ import { GuideModal } from './plugins/about/GuideModal'
 import { ReadingLogModal } from './plugins/reading-log/ReadingLogModal'
 import { SourceHealthEntryModal } from './plugins/source-health/SourceHealthModalEntry'
 import { AiModal } from './features/ai/AiModal'
+import { AiConnectionsModal } from './features/ai/AiConnectionsModal'
+import { AiToolsModal } from './features/ai/AiToolsModal'
+import { AiSkillsModal } from './features/ai/AiSkillsModal'
+import { AiPromptsModal } from './features/ai/AiPromptsModal'
+import { AiSourceCheckModal } from './features/ai/AiSourceCheckModal'
 import { AiFloatingBall } from './features/ai/AiFloatingBall'
 import type { UiContext } from './lib/uiContext'
 import { getSelection, subscribeSelection } from './lib/selectionStore'
@@ -566,7 +571,12 @@ function App() {
       openLogs: () => openModalDirect('logs'),
       openServerPort: () => openModalDirect('server-port'),
       openBrand: () => openModalDirect('brand'),
-      openAiConnections: () => openModalDirect('ai'),
+      openAiChat: () => openModalDirect('ai'),
+      openAiConnections: () => openModalDirect('ai-connections'),
+      openAiTools: () => openModalDirect('ai-tools'),
+      openAiSkills: () => openModalDirect('ai-skills'),
+      openAiPrompts: () => openModalDirect('ai-prompts'),
+      openAiSourceCheck: () => openModalDirect('ai-source-check'),
       openCookies: () => openModalDirect('cookies'),
     }),
     tocRulesSignal,
@@ -662,10 +672,21 @@ function App() {
         />
       )}
 
-      {/* —— AI 接入：**独立一类**（不是实验室） —— */}
+      {/* —— AI：**按能力各一档**（以前六块挤在一屏里滚不到底） ——
+          对话是「用」，其余是「配」：连接、工具、技能、提示词、书源校验都能从设置直达。
+          对话里那颗「去登记模型连接」走浮层返回栈：关掉连接要回到对话，而不是被扔回主界面。 */}
       {openModal === 'ai' && (
-        <AiModal onClose={closeModal} uiContext={currentUiContext} />
+        <AiModal
+          onClose={closeModal}
+          uiContext={currentUiContext}
+          onOpenConnections={() => openModalFrom('ai-connections', 'ai')}
+        />
       )}
+      {openModal === 'ai-connections' && <AiConnectionsModal onClose={closeModal} />}
+      {openModal === 'ai-tools' && <AiToolsModal onClose={closeModal} />}
+      {openModal === 'ai-skills' && <AiSkillsModal onClose={closeModal} />}
+      {openModal === 'ai-prompts' && <AiPromptsModal onClose={closeModal} />}
+      {openModal === 'ai-source-check' && <AiSourceCheckModal onClose={closeModal} />}
 
       {/* —— 全局 AI 悬浮球：挂在根上，**每个页面都在** ——
           用户原话：「ai 功能太差，1 是位置问题，不能随时随地使用，不能在对应地点研究」。
