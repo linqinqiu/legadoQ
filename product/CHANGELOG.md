@@ -33,6 +33,7 @@
 - **启动时对 SQLite 库做文件级一致性快照，留 5 份带 SHA-256（backup）**
 - **校验书源时对已知不兼容写法给出显式提示（sources）**
 - **补可观测性 v1 —— 搜索维度进程内指标 + GET /api/diagnostics（ops）**
+- **GET /api/backup/snapshots 列出启动快照并校验 SHA-256 完整性（backup）**
 ### 变更
 - **滚动模式段落 content-visibility，长章节少绘制少布局（ui）**
 
