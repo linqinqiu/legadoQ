@@ -18,7 +18,7 @@ export function WallpaperModal({ onClose }: { onClose: () => void }) {
           <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
         </header>
         <div className="customize-body">
-          <p className="customize-hint">整站背景图；图片与设置只存在本机浏览器，不进备份包。</p>
+          <p className="customize-hint">整站背景图；图片与设置只存在这台电脑的浏览器里，不进备份包。</p>
           <WallpaperSection />
         </div>
       </div>

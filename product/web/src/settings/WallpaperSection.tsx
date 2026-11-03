@@ -126,7 +126,7 @@ export function WallpaperSection() {
             <div className="settings-row">
               <div className="settings-row-main">
                 <strong>本地图片</strong>
-                <small>保存在本机浏览器；重新选择会覆盖上一张。</small>
+                <small>保存在这台电脑的浏览器里；重新选择会覆盖上一张。</small>
               </div>
               <button type="button" className="subtle-button" onClick={pickFile} disabled={saving}>
                 {saving ? '正在保存…' : '选择图片'}

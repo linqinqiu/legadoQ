@@ -45,7 +45,7 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
   const activeTheme = resolveTheme(settings)
 
   return <>
-    <SettingGroup title="主题" hint="内置七套与自定义皮肤并列；点一下即应用，按 T 键在未删除的内置皮肤间循环。">
+    <SettingGroup title="主题" hint="预设皮肤与你自己建的皮肤并列在这里；点一下即应用，按 T 键在没被隐藏的预设皮肤间循环。">
       <div className="theme-grid">
         {availableSkins(settings).map(skin => {
           const selected = activeTheme === skin.id
@@ -66,7 +66,7 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
         <button type="button" className="subtle-button" onClick={() => setShowSkinEditor(true)}>
           <Icon name="sliders" /> 管理皮肤{customCount > 0 ? `（${customCount} 套自定义）` : ''}
         </button>
-        <small>内置皮肤可改名、换 CSS 或删除；全部只存本机，与「设置 → 皮肤」共用同一份数据。</small>
+        <small>预设皮肤可改名、换样式或隐藏；改动只存在这台电脑上，与「设置 → 皮肤」是同一份。</small>
       </div>
     </SettingGroup>
 

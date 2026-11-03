@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api, type AboutInfo, type UpdateCheckResult } from '../lib/api'
 import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../lib/agreement'
+import { FEEDBACK_BODY_MAX, FEEDBACK_TITLE_MAX, buildFeedbackUrl } from '../features/feedback/feedbackUrl'
 
 /**
  * 「关于」（用户 2026-10-02：「加入关于（名称，开发者，更新日志，检查更新，用户协议，开源许可，免责声明）」）。
@@ -89,6 +90,9 @@ export function AboutPage({
   const [check, setCheck] = useState<UpdateCheckResult | null>(null)
   const [checking, setChecking] = useState(false)
   const [notice, setNotice] = useState('')
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackTitle, setFeedbackTitle] = useState('')
+  const [feedbackBody, setFeedbackBody] = useState('')
 
   useEffect(() => {
     void api.about().then(setInfo).catch(() => setNotice('关于信息没能从服务端读到'))
@@ -107,11 +111,30 @@ export function AboutPage({
   const repository = info?.repository ?? ''
   const homepage = repository ? `https://github.com/${repository}` : ''
 
+  /**
+   * 只生成地址，不提交：真正按下「Create」的是用户在 GitHub 页面上的那一次点击。
+   * 这样不需要任何令牌 —— 凭据是用户自己的 GitHub 账号，不是这台机器的。
+   */
+  const feedbackUrl = (() => {
+    if (!feedbackOpen) return ''
+    try {
+      return buildFeedbackUrl({
+        repository,
+        title: feedbackTitle,
+        description: feedbackBody,
+        version: info?.version,
+        build: info?.build,
+      })
+    } catch {
+      return ''
+    }
+  })()
+
   return (
     <section className="about-page">
       <header className="about-hero">
         <h1>{info?.title ?? 'legadoQ'}</h1>
-        <p>把 Legado 书源规则跑在服务端的本地阅读库：书架、发现、订阅、朗读与离线缓存都在自己的机器上。</p>
+        <p>把 Legado 书源规则跑在自己电脑上的阅读库：书架、发现、订阅、朗读与离线缓存都在这台机器上。</p>
         <dl className="about-facts">
           {/* 取失败时不能一直挂着「载入中…」：那行字会永远停在屏幕上（notice 在旁边，但版本这一格在说谎） */}
           <div><dt>版本</dt><dd>{info?.version ?? (notice ? '没取到' : '载入中…')}</dd></div>
@@ -144,7 +167,44 @@ export function AboutPage({
           <button type="button" className="ghost-button" onClick={onOpenShortcuts}>快捷键</button>
           <button type="button" className="ghost-button" onClick={onOpenGuide}>功能说明</button>
           {homepage && <a className="ghost-button" href={homepage} target="_blank" rel="noreferrer" title={homepage}>项目主页</a>}
+          <button type="button" className="ghost-button" onClick={() => setFeedbackOpen(open => !open)}>
+            {feedbackOpen ? '收起建议' : '提交建议'}
+          </button>
         </div>
+        {feedbackOpen && (
+          <div className="about-feedback">
+            <p className="about-feedback-note">
+              建议会打开 GitHub 的新建 Issue 页面，用你自己的 GitHub 账号确认后才真正提交，内容对公众可见。
+              {!repository && ' 服务端没有返回仓库地址，暂时无法提交。'}
+            </p>
+            <label className="customize-field">
+              <span>标题</span>
+              <input
+                type="text"
+                value={feedbackTitle}
+                maxLength={FEEDBACK_TITLE_MAX}
+                onChange={event => setFeedbackTitle(event.target.value)}
+                placeholder="一句话说明想改进什么"
+              />
+            </label>
+            <label className="customize-field">
+              <span>描述</span>
+              <textarea
+                value={feedbackBody}
+                maxLength={FEEDBACK_BODY_MAX}
+                rows={5}
+                onChange={event => setFeedbackBody(event.target.value)}
+                placeholder="在什么场景下、期望怎样、现在怎样"
+              />
+            </label>
+            <div className="customize-actions">
+              {feedbackUrl
+                ? <a className="primary-button" href={feedbackUrl} target="_blank" rel="noreferrer">打开 GitHub 提交</a>
+                : <button type="button" className="primary-button" disabled>打开 GitHub 提交</button>}
+              <span className="customize-saved">标题 {FEEDBACK_TITLE_MAX} 字以内，描述 {FEEDBACK_BODY_MAX} 字以内</span>
+            </div>
+          </div>
+        )}
         {notice && <p className="about-check is-unreachable">{notice}</p>}
         {check && (
           <div className="about-check-group" aria-live="polite">

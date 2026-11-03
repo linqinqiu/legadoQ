@@ -212,7 +212,7 @@ export function BackupPage() {
             </p>
           </div>
         )}
-        <p className="backup-hint">服务端把包写到临时文件、读完即删，包本身不会留在磁盘上。</p>
+        <p className="backup-hint">备份包只临时用一下，不会留在电脑上。</p>
       </section>
 
       <section className="backup-panel">

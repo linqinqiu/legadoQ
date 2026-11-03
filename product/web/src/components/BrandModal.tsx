@@ -68,7 +68,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
     setError('')
     try {
       const next = await api.setBrand({ name, shortName, themeColor })
-      apply(next, next.name ? `已改名为「${next.displayName}」，刷新页面即生效。` : '已回到内置名称。')
+      apply(next, next.name ? `已改名为「${next.displayName}」，刷新页面即生效。` : '已用回默认名称。')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '没保存成功')
     } finally {
@@ -82,7 +82,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
     try {
       const next = await api.resetBrand()
       setBrand(next); setName(''); setShortName(''); setThemeColor('')
-      apply(next, '已恢复内置的名称与图标。')
+      apply(next, '已恢复默认的名称与图标。')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '没恢复成')
     } finally {
@@ -110,7 +110,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
     setError('')
     try {
       const next = await api.clearBrandIcon()
-      apply(next, '已换回内置图标。')
+      apply(next, '已换回默认图标。')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '没换回去')
     } finally {
@@ -130,13 +130,13 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
 
         <div className="server-port-body">
           <p className="customize-hint">
-            这台服务的名字与图标。改的是<b>本机安装根</b>下的 <code>brand.json</code>，
-            所以对本机所有浏览器与装到桌面的应用都生效；界面标题与主题色刷新即生效，
-            已经装到桌面的那个应用要等浏览器同步清单（必要时卸载重装）。
+            这台服务显示什么名字、用什么图标。改动存在这台电脑上，所以本机所有浏览器与
+            装到桌面的应用都会跟着变：标题与主题色刷新即生效，已经装到桌面的那个应用要等
+            浏览器同步清单（必要时卸载重装）。
           </p>
 
           <label className="customize-field">
-            <span>应用名称（留空 = 内置的「{brand?.builtinName ?? 'legadoQ'}」）</span>
+            <span>应用名称（留空 = 用默认的「{brand?.builtinName ?? 'legadoQ'}」）</span>
             <input type="text" value={name} maxLength={40} placeholder={brand?.builtinName ?? 'legadoQ'}
               onChange={event => setName(event.target.value)} />
           </label>
@@ -146,7 +146,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
               onChange={event => setShortName(event.target.value)} />
           </label>
           <label className="customize-field">
-            <span>主题色（<code>#rrggbb</code>；留空用内置皮肤的）</span>
+            <span>主题色（<code>#rrggbb</code>；留空用默认配色）</span>
             <div className="brand-color-row">
               <input type="color" value={/^#[0-9a-f]{6}$/i.test(themeColor) ? themeColor : '#247a58'}
                 onChange={event => setThemeColor(event.target.value)} aria-label="主题色" />
@@ -160,25 +160,25 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
             <span>图标</span>
             {brand?.hasIcon
               ? <img className="brand-icon-preview" src={brand.iconUrl} alt="当前自定义图标" />
-              : <span className="brand-icon-preview is-empty" aria-label="当前用内置图标"><Icon name="book" /></span>}
+              : <span className="brand-icon-preview is-empty" aria-label="当前用默认图标"><Icon name="book" /></span>}
             <input
               ref={fileRef}
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={event => void upload(event.target.files?.[0])}
             />
-            {brand?.hasIcon && <button type="button" className="subtle-button" onClick={() => void dropIcon()}>换回内置</button>}
+            {brand?.hasIcon && <button type="button" className="subtle-button" onClick={() => void dropIcon()}>换回默认</button>}
           </div>
           <p className="customize-note">
-            只收 PNG / JPEG / WebP，单个不超过 5 MB —— <b>不收 SVG</b>：
-            图标会被浏览器当本站资源取用，带脚本的 SVG 等于自己开一条同源执行面。
+            只收 PNG / JPEG / WebP，单个不超过 5 MB。图标会被本机所有页面当成本站资源取用，
+            所以<b>不收 SVG</b>（那种格式里能带脚本）。
           </p>
 
           {!!error && <p className="customize-error" role="alert">{error}</p>}
           {!!message && <p className="customize-saved">{message}</p>}
           <div className="customize-actions">
             <button type="button" className="primary-button" onClick={() => void save()} disabled={busy}>保存</button>
-            {customised && <button type="button" className="subtle-button" onClick={() => void reset()} disabled={busy}>恢复内置</button>}
+            {customised && <button type="button" className="subtle-button" onClick={() => void reset()} disabled={busy}>恢复默认</button>}
           </div>
         </div>
       </div>

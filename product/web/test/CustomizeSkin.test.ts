@@ -291,7 +291,7 @@ test('阅读页「颜色与背景」：皮肤库入口 + 背景预设库都在�
     settings: settings(), onChange: () => undefined,
   }))
   assert.match(html, /管理皮肤/)
-  assert.match(html, /内置皮肤可改名、换 CSS 或删除/, '阅读页入口也要说清内置皮肤现在可管理')
+  assert.match(html, /预设皮肤可改名、换样式或隐藏/, '阅读页入口也要说清预设皮肤现在可管理')
   assert.match(html, /阅读背景/)
   assert.match(html, /我的背景/)
   assert.match(html, /跟随整站壁纸/)
@@ -362,17 +362,19 @@ test('SkinModal 静态渲染：皮肤列表 + 皮肤库，编辑器按需展开'
   }))
   assert.match(html, /皮肤/)
   assert.match(html, /自定义皮肤库/)
-  assert.match(html, /localStorage/, '要说清楚只存本机：不上传服务端、不进备份包')
+  assert.match(html, /只存在这台电脑的浏览器里/, '要说清楚只存本机：不上传服务端、不进备份包')
   assert.doesNotMatch(html, /叠在哪一套之上|叠在哪一档/, '全权自定义：不该再问"叠在某一档之上"')
-  assert.match(html, /中性基线/, '要说清楚没写到的变量走中性基线，不跟预设配色联动')
+  assert.match(html, /会用默认值补上/, '要说清楚没写到的颜色用默认值，不跟预设配色联动')
   assert.match(html, /新建皮肤/)
-  assert.match(html, /内置七套管理/, '内置皮肤的管理入口要在皮肤浮层里')
-  assert.match(html, /可改名、换 CSS、删除/, '折叠时也要说清这七套能改能删')
-  assert.match(html, /删除只是隐藏/, '删除不是抹掉，必须说清可恢复')
-  // 七套内置皮肤每一套都有编辑 / 删除入口；自定义库为空时不额外多出按钮。
-  assert.equal((html.match(/>编辑</g) ?? []).length, 7, '七套内置皮肤都要有编辑按钮')
-  assert.equal((html.match(/>删除</g) ?? []).length, 7, '七套内置皮肤都要有删除按钮')
-  assert.equal((html.match(/theme-swatch-/g) ?? []).length, 7, '七套内置皮肤的色片都在')
+  // 文案通用化（2026-11-03）：界面不再说"内置七套 / 换 CSS / 删除只是隐藏"这类实现话，隐藏就叫隐藏。
+  // 判据跟着换成用户视角的说法，守的仍然是"入口在、说得清能做什么"。
+  assert.match(html, /<span>预设皮肤<\/span>/, '预设皮肤的管理入口要在皮肤浮层里')
+  assert.match(html, /可改名、换样式、隐藏/, '折叠时也要说清这几套能改能藏')
+  assert.match(html, /隐藏的随时能恢复/, '隐藏不是抹掉，必须说清可恢复')
+  // 七套预设皮肤每一套都有编辑 / 隐藏入口；自定义库为空时不额外多出按钮。
+  assert.equal((html.match(/>编辑</g) ?? []).length, 7, '七套预设皮肤都要有编辑按钮')
+  assert.equal((html.match(/>隐藏</g) ?? []).length, 7, '七套预设皮肤都要有隐藏按钮')
+  assert.equal((html.match(/theme-swatch-/g) ?? []).length, 7, '七套预设皮肤的色片都在')
   // 编辑器默认收起：首屏只留库与新建入口，别让一整张空表单把「保存并套用」挤到折叠线以下。
   assert.doesNotMatch(html, /customize-css|保存并套用/, '没点「新建皮肤」之前不该先摆出一张空表单')
   assert.ok(!html.includes('自定义（'), '库里没东西时，皮肤列表里不该出现一个用不了的自定义皮肤')
@@ -389,7 +391,8 @@ test('SkinModal 里库里每一套都进皮肤列表，并给出编辑 / 删除'
   assert.match(html, /自定义（midnight）/)
   assert.match(html, /theme-swatch-custom/, '自定义皮肤要有自己的色片样式，不能长得像内置那档')
   assert.equal((html.match(/>编辑</g) ?? []).length, 8, '七套内置 + 库里这一套自定义都有编辑按钮')
-  assert.equal((html.match(/>删除</g) ?? []).length, 8, '七套内置 + 库里这一套自定义都有删除按钮')
+  assert.equal((html.match(/>隐藏</g) ?? []).length, 7, '七套预设皮肤都是「隐藏」，不是删除')
+  assert.equal((html.match(/>删除</g) ?? []).length, 1, '只有自定义库里那一套是真删除')
 })
 
 test('SkinModal 显示内置皮肤的状态：已修改、已删除、使用中与恢复入口', () => {
@@ -403,18 +406,18 @@ test('SkinModal 显示内置皮肤的状态：已修改、已删除、使用中�
   }))
   assert.match(html, /深夜/, '改过的名字要在管理列表里出现')
   assert.match(html, /已修改/)
-  assert.match(html, /已删除/)
+  assert.match(html, /已隐藏/)
   assert.match(html, /使用中/)
-  assert.match(html, />恢复</, '删掉的那套要有恢复按钮')
-  assert.match(html, /恢复全部内置/)
-  assert.equal((html.match(/>删除</g) ?? []).length, 6, '已删除的那套只剩恢复，不再有删除按钮')
+  assert.match(html, />恢复</, '隐藏掉的那套要有恢复按钮')
+  assert.match(html, /全部恢复默认/)
+  assert.equal((html.match(/>隐藏</g) ?? []).length, 6, '已隐藏的那套只剩恢复，不再有隐藏按钮')
   assert.equal((html.match(/>还原</g) ?? []).length, 1, '改过的那套可以单独还原')
 })
 
 test('SkinModal 把内置 id 挡在自定义保存入口，并给内置删除 / 恢复留路径', () => {
   const source = read('..', 'src', 'components', 'SkinModal.tsx')
   assert.match(source, /isBuiltinSkinId\(sanitized\)/, '自定义皮肤保存时必须先拒绝内置 id')
-  assert.match(source, /内置七套的 id 是保留的/, '拒绝时要说清为什么，而不是静默保存失败')
+  assert.match(source, /这些名字被预设皮肤占用了/, '拒绝时要说清为什么，而不是静默保存失败')
   assert.match(source, /isBuiltinSkinId\(skin\.id\)\) return/, '删除自定义皮肤的入口也要兜底挡住内置 id')
   assert.match(source, /window\.confirm\(/, '删除自定义皮肤不能点一下就没')
   assert.match(source, /hiddenBuiltinSkins/, '删除内置皮肤要写进隐藏表，而不是从数据里抹掉')

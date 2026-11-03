@@ -27,7 +27,7 @@ test('备份页静态渲染：主语是备份包，不是"手机恢复"，也不
   assert.ok(html.includes('不填也照样导入') || !html.includes('cookies'), '要说清不填密码只影响凭据那一节')
   assert.ok(html.includes('保留你本机的启用/停用选择'),
     '必须提前说清"已存在的书源不会被刷掉启用位"')
-  assert.ok(html.includes('临时文件'), '要说清包不落盘，用户才敢把备份交出来')
+  assert.ok(html.includes('不会留在电脑上'), '要说清包不会被留下，用户才敢把备份交出来')
   assert.ok(!/WebDAV|webdav/i.test(html), '页面上不许再出现 WebDAV 字样')
 })
 
