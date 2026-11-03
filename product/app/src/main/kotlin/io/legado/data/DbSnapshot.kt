@@ -1,11 +1,22 @@
 package io.legado.data
 
+import kotlinx.serialization.Serializable
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
 import java.sql.Connection
 import java.util.Comparator
+
+/** 一份快照的清单条目：字节数、sidecar 记录的 SHA-256、实测是否吻合（完整性判定）、创建时刻。 */
+@Serializable
+data class SnapshotInfo(
+    val name: String,
+    val bytes: Long,
+    val sha256: String?,
+    val verified: Boolean,
+    val createdAt: Long,
+)
 
 /**
  * 启动时给 SQLite 库做一份**文件级一致性快照**（`VACUUM INTO`），落在 `<库同目录>/backups/`，
@@ -77,6 +88,33 @@ object DbSnapshot {
             }
         }
         return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * 只读列出已有快照 + 逐份校验完整性（重算 SHA-256 与 sidecar 比对）。
+     * 不抛错：目录不存在返回空表；单份读失败按 `verified=false` 如实标出，不隐藏。
+     */
+    fun list(dbPath: String): List<SnapshotInfo> {
+        val dir = backupsDirOf(dbPath)
+        if (!Files.isDirectory(dir)) return emptyList()
+        val files = Files.list(dir).use { stream ->
+            stream.filter { Files.isRegularFile(it) && timestampOf(it.fileName.toString()) != null }.toList()
+        }
+        return files.mapNotNull { file ->
+            val created = timestampOf(file.fileName.toString()) ?: return@mapNotNull null
+            val bytes = runCatching { Files.size(file) }.getOrDefault(0L)
+            val recorded = runCatching {
+                Files.readString(file.resolveSibling("${file.fileName}.sha256")).substringBefore(" ").trim().lowercase()
+            }.getOrNull()
+            val actual = runCatching { sha256Of(file) }.getOrNull()
+            SnapshotInfo(
+                name = file.fileName.toString(),
+                bytes = bytes,
+                sha256 = recorded,
+                verified = recorded != null && actual != null && recorded == actual,
+                createdAt = created,
+            )
+        }.sortedByDescending { it.createdAt }
     }
 
     /**

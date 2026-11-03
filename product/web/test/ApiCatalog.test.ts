@@ -160,7 +160,8 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 2026-10-29：借用 refgd/MD3 的 AI 形状，新增 POST /api/agent/chat/stream（SSE 流式）与 GET/POST /api/agent/skills、DELETE /api/agent/skills/{id}（技能库）→ 147 → 151。
   // 2026-10-29：借 MD3 的 AiPromptPreset，新增 GET/POST /api/agent/prompts 与 DELETE /api/agent/prompts/{id}（提示词预设，开关+排序）→ 151 → 154。
   // 2026-11-03：补可观测性，新增 GET /api/diagnostics（系统组，只读，进程内搜索维度指标）→ 154 → 155，系统组 7 → 8。
-  assert.equal(catalog.endpoints.length, 155, `端点总数必须为 155，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-11-03：②-b 第一步，新增 GET /api/backup/snapshots（备份组，只读，快照清单 + SHA-256 校验）→ 155 → 156。
+  assert.equal(catalog.endpoints.length, 156, `端点总数必须为 156，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')
   assert.equal(systemGroup.length, 8, `系统组必须为 8 条（含 /api/diagnostics），现在是 ${systemGroup.length}`)

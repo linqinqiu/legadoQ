@@ -61,6 +61,8 @@ import io.legado.model.SourceSummary
 import io.legado.model.SubscriptionWriteRequest
 
 class Database(private val path: String) : Closeable, AutoCloseable {
+    /** 库文件路径的只读视图：备份快照清单端点据此定位 `<同目录>/backups`。 */
+    val dbPath: String get() = path
     private val random = SecureRandom()
     private val writeLock = ReentrantLock()
     private val readPool = ConcurrentLinkedQueue<Connection>()

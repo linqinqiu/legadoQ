@@ -704,6 +704,14 @@
     },
     {
       "method": "GET",
+      "path": "/api/backup/snapshots",
+      "write": false,
+      "group": "备份",
+      "purpose": "启动库快照清单（只读）：每次启动 VACUUM INTO 到 <库同目录>/backups 的历史副本，逐份重算 SHA-256 与 sidecar 比对给出 verified。只列不恢复——恢复是停服期操作",
+      "response": "[{name,bytes,sha256,verified,createdAt}]，按时间从新到旧；没有快照则空数组"
+    },
+    {
+      "method": "GET",
       "path": "/api/rss/sources",
       "write": false,
       "group": "RSS",

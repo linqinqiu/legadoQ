@@ -96,4 +96,23 @@ class DbSnapshotTest {
         assertTrue(latest > firstTs)
         conn.close()
     }
+
+    @Test
+    fun `list 列出快照并校验完整性，篡改后 verified 变 false`() {
+        val dir = Files.createTempDirectory("legado-snap-list")
+        val (conn, dbPath) = seededDb(dir)
+        assertTrue(DbSnapshot.list(dbPath).isEmpty())
+        val snap = DbSnapshot.run(conn, dbPath, keep = 5)!!
+        val listed = DbSnapshot.list(dbPath)
+        assertEquals(1, listed.size)
+        assertEquals(snap.fileName.toString(), listed[0].name)
+        assertTrue(listed[0].verified)
+        assertTrue(listed[0].bytes > 0)
+        // 篡改快照字节 → 重算哈希与 sidecar 不符 → verified=false
+        val bytes = Files.readAllBytes(snap)
+        bytes[bytes.size / 2] = (bytes[bytes.size / 2].toInt() xor 0xFF).toByte()
+        Files.write(snap, bytes)
+        assertFalse(DbSnapshot.list(dbPath).first { it.name == snap.fileName.toString() }.verified)
+        conn.close()
+    }
 }

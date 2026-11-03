@@ -13,6 +13,7 @@ import io.ktor.websocket.*
 import io.legado.backup.BackupImporter
 import io.legado.backup.BackupStore
 import io.legado.data.Database
+import io.legado.data.DbSnapshot
 import io.legado.model.ApiError
 import java.nio.file.Files
 import kotlinx.coroutines.CancellationException
@@ -43,6 +44,11 @@ fun Route.backupRoutes(
          */
         get("/backup/kept") {
             call.respond(backupKeep.list())
+        }
+        // 启动库快照清单（只读）：列出 backups/ 里的快照与各自的 SHA-256 完整性校验结果。
+        // 只"看"不"恢复"——恢复是停服期操作，绝不在服务运行时覆盖已打开的库。
+        get("/backup/snapshots") {
+            call.respond(DbSnapshot.list(database.dbPath))
         }
         get("/backup/kept/{name}") {
             val name = call.parameters["name"]
