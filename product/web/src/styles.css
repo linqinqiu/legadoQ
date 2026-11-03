@@ -5299,7 +5299,6 @@ input[type="checkbox"] {
 }
 .customize-skin.selected, .customize-base.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink, var(--accent)); font-weight: 600; }
 .customize-skin-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.customize-skin-editor { padding-top: 14px; border-top: 1px solid var(--line); }
 .customize-field { display: grid; gap: 6px; color: var(--ink); font-size: 13px; }
 .customize-field > span { color: var(--muted); font-size: 12px; }
 .customize-field input, .customize-css {
@@ -5724,6 +5723,18 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 .about-facts dd { margin: 0; font-size: var(--t-sm); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .about-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 4px; }
 .about-actions .ghost-button { text-decoration: none; }
+/* 「提交建议」：表单只在展开后出现；输入框沿用 customize-field 的排版，
+   描述是整段文字，所以单独给 textarea 一份和输入框一致的外观。 */
+.about-feedback { display: grid; gap: 10px; max-width: 640px; margin-top: 12px; }
+.about-feedback-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.about-feedback textarea {
+  width: 100%; min-height: 120px; resize: vertical;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: var(--canvas); color: var(--ink);
+  padding: 9px 11px; outline: none; font: inherit;
+}
+.about-feedback textarea:focus { border-color: var(--accent); }
+.about-feedback a.primary-button { text-decoration: none; }
 .about-check { margin: 2px 0 0; padding: 9px 12px; border-radius: var(--r-2); font-size: var(--t-sm); line-height: 1.7; }
 .about-check-group { display: grid; gap: 6px; }
 .about-check.is-available, .about-check.is-latest, .about-check.is-rolling { background: var(--surface-muted); color: var(--ink); }

@@ -97,6 +97,9 @@ try {
   browser = await puppeteer.launch(launchOptions())
   const page = await browser.newPage()
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 })
+  // 界面上的删除动作走 `window.confirm`（SkinModal.remove）：原生对话框会挂住页面 JS，
+  // 不接住的话这一步要等到 protocolTimeout 才失败（不是产品坏了）。与 source-editor-check 同一处理。
+  page.on('dialog', dialog => dialog.accept().catch(() => undefined))
   page.on('pageerror', error => errors.push(String(error.message)))
 
   // 首启协议层会挡住真实点击（它盖满整屏）。这一条门禁不判协议，直接标记为已同意；
@@ -256,12 +259,12 @@ try {
   await page.waitForSelector('.skin-dialog', { timeout: 8000 })
   // 编辑器默认收起：先点「＋ 新建皮肤」再填。这一步本身也是判据 —— 按钮必须真的把表单放出来。
   check('④「＋ 新建皮肤」展开空编辑器', await clickIn(page, '.skin-library-head', '新建皮肤'), '')
-  await page.waitForFunction(() => !!document.querySelector('.customize-skin-editor input[type=text]')
+  await page.waitForFunction(() => !!document.querySelector('.skin-editor input[type=text]')
     && !!document.querySelector('.customize-css'), { timeout: 8000 }).catch(() => null)
   const canvas = '#0f1213'
-  const typed = await typeInto(page, '.customize-skin-editor input[type=text]', 'gateMidnight!!')
+  const typed = await typeInto(page, '.skin-editor input[type=text]', 'gateMidnight!!')
     && await typeInto(page, '.customize-css', `.theme-gatemidnight { --canvas: ${canvas}; }`)
-  check('④皮肤 id 与 CSS 两栏都填进去了', typed, typed ? '' : '没找到 .customize-skin-editor input / .customize-css')
+  check('④皮肤 id 与 CSS 两栏都填进去了', typed, typed ? '' : '没找到 .skin-editor input / .customize-css')
   const echo = await page.evaluate(() => document.querySelector('.customize-note code')?.textContent?.trim() ?? '')
   check('④id 过白名单，界面把清洗结果说出来（大写与感叹号被滤掉）', echo.includes('gatemidnight'), `回显 ${echo || '(无)'}`)
   // 不再选"基础皮肤"：自定义皮肤完全独立，只挂自己的类；未定义变量走 :root 中性基线。
@@ -312,9 +315,16 @@ try {
   check('④「我的」→「皮肤 → 管理」再开一次（皮肤库的删除入口要点得到）', await openUserMenu(page, '管理'), '')
   await page.waitForSelector('.skin-dialog', { timeout: 8000 })
   // 皮肤库扩成「增 / 改 / 删 / 切换」之后不再有全局「清除自定义皮肤」——删的是库里的那一条。
-  // 删掉的正好是当前这套时，界面退回晓白（见 SkinModal.remove），不留一个指向不存在皮肤的主题。
-  check('④皮肤库里这条自定义皮肤删得动', await clickIn(page, '.customize-skin-editor', '删除'), '')
+  // 不按 class 定位：预设皮肤那一列同样是 .skin-library，用选择器会先命中它；这里按内容找刚建的那一行。
+  check('④皮肤库里这条自定义皮肤删得动', await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.skin-library-row')].find(node => (node.textContent ?? '').includes('gatemidnight'))
+    const btn = row && [...row.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '删除')
+    if (!btn) return false
+    btn.click()
+    return true
+  }), '皮肤库里找不到这一行的「删除」按钮')
   // 等到注入的 <style> 真的摘掉再读数：这一条只等"动作生效"，判据（回到内置档、类被摘掉）仍在下面实测
+  // 删掉的正好是当前这套时，界面退回内置档（见 SkinModal.remove），不留一个指向不存在皮肤的主题。
   await page.waitForFunction(() => !document.getElementById('legado-custom-skin'), { timeout: 5000 }).catch(() => null)
   const clearedSkin = await page.evaluate(() => {
     const cs = getComputedStyle(document.documentElement)
