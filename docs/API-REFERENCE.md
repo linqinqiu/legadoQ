@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.14 · 端点数：156 · 生成时间：2026-11-03
+> 版本：0.2.14 · 端点数：157 · 生成时间：2026-11-03
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -23,7 +23,7 @@
 | 内置浏览器 | 17 |
 | 搜索 | 2 |
 | 书源订阅 | 5 |
-| 备份 | 4 |
+| 备份 | 5 |
 | RSS | 7 |
 | 阅读 | 6 |
 | 净化规则 | 10 |
@@ -34,7 +34,7 @@
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
 | AI 自定义接入 | 16 |
-| **合计** | **156** |
+| **合计** | **157** |
 
 ## 目录（1）
 
@@ -139,7 +139,7 @@
 | POST | `/api/subscriptions/{id}/update` | 是 | 立刻更新这一个订阅（去抓那个地址，把拿到的书源入库） |
 | POST | `/api/subscriptions/update` | 是 | 更新所有启用的订阅 |
 
-## 备份（4）
+## 备份（5）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
@@ -147,6 +147,7 @@
 | GET | `/api/backup/kept/{name}` | 否 | 取其中一个条目的 JSON 原文（name 用清单里给的那个，别自己拼） |
 | POST | `/api/backup/import` | 是 | 上传备份入库（multipart）：手机/兄弟项目导出的 zip，或裸 JSON（分享书源数组、{bookSource:[…],bookshelf:[…]} 合并导出）；容器按内容判别，不看扩展名；请求体：file=multipart 文件字段，zip 或 .json（≤64 MiB），password=可选，只用于解开 zip 里的 cookies.json |
 | GET | `/api/backup/snapshots` | 否 | 启动库快照清单（只读）：每次启动 VACUUM INTO 到 <库同目录>/backups 的历史副本，逐份重算 SHA-256 与 sidecar 比对给出 verified。只列不恢复——恢复是停服期操作 |
+| POST | `/api/backup/snapshots/restore` | 是 | 排定从某快照恢复：只写一个待恢复标记，**不在运行时覆盖已打开的库**；真正落库发生在下次启动、打开数据库之前（当前库会先移作 pre-restore 安全副本，可回退）。需重启才生效；请求体：name=快照文件名（须来自 /api/backup/snapshots 且当前 verified） |
 
 ## RSS（7）
 

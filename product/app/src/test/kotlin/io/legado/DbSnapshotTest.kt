@@ -115,4 +115,40 @@ class DbSnapshotTest {
         assertFalse(DbSnapshot.list(dbPath).first { it.name == snap.fileName.toString() }.verified)
         conn.close()
     }
+
+    @Test
+    fun `排定并应用恢复：换回快照内容、留 pre-restore 副本、清标记`() {
+        val dir = Files.createTempDirectory("legado-snap-restore")
+        val (conn, dbPath) = seededDb(dir)   // 当前库有 hello
+        val snap = DbSnapshot.run(conn, dbPath, keep = 5)!!   // 快照=hello 时刻
+        conn.createStatement().use { it.execute("insert into t(v) values('after')") } // 现库多出 after
+        conn.close()
+        assertTrue(DbSnapshot.scheduleRestore(dbPath, snap.fileName.toString()))
+        assertTrue(DbSnapshot.applyPendingRestore(dbPath))
+        // 恢复后现库=快照内容（只有 hello，after 没了）
+        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { c ->
+            c.createStatement().use { st ->
+                st.executeQuery("select v from t").use { rs ->
+                    val vs = buildList { while (rs.next()) add(rs.getString(1)) }
+                    assertTrue("恢复应回到只有 hello，实得 $vs", vs == listOf("hello"))
+                }
+            }
+        }
+        val backups = dir.resolve("backups")
+        assertTrue("应留下 pre-restore 安全副本", Files.list(backups).use { s -> s.anyMatch { it.fileName.toString().startsWith("pre-restore-") } })
+        assertFalse("恢复后待恢复标记应清除", Files.exists(backups.resolve(".pending-restore")))
+    }
+
+    @Test
+    fun `快照被篡改则拒绝排定恢复，不碰库`() {
+        val dir = Files.createTempDirectory("legado-snap-restore-bad")
+        val (conn, dbPath) = seededDb(dir)
+        val snap = DbSnapshot.run(conn, dbPath, keep = 5)!!
+        conn.close()
+        val bytes = Files.readAllBytes(snap)
+        bytes[bytes.size / 2] = (bytes[bytes.size / 2].toInt() xor 0xFF).toByte()
+        Files.write(snap, bytes)   // 破坏快照 → verified=false
+        assertFalse(DbSnapshot.scheduleRestore(dbPath, snap.fileName.toString()))
+        assertFalse("拒绝时不应写待恢复标记", Files.exists(dir.resolve("backups/.pending-restore")))
+    }
 }

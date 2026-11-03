@@ -711,6 +711,15 @@
       "response": "[{name,bytes,sha256,verified,createdAt}]，按时间从新到旧；没有快照则空数组"
     },
     {
+      "method": "POST",
+      "path": "/api/backup/snapshots/restore",
+      "write": true,
+      "group": "备份",
+      "purpose": "排定从某快照恢复：只写一个待恢复标记，**不在运行时覆盖已打开的库**；真正落库发生在下次启动、打开数据库之前（当前库会先移作 pre-restore 安全副本，可回退）。需重启才生效",
+      "body": { "name": "快照文件名（须来自 /api/backup/snapshots 且当前 verified）" },
+      "response": "{scheduled,restartRequired,name}；快照不存在或未过完整性校验 400 invalid_snapshot"
+    },
+    {
       "method": "GET",
       "path": "/api/rss/sources",
       "write": false,

@@ -19,6 +19,7 @@ import java.nio.file.Files
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
@@ -49,6 +50,17 @@ fun Route.backupRoutes(
         // 只"看"不"恢复"——恢复是停服期操作，绝不在服务运行时覆盖已打开的库。
         get("/backup/snapshots") {
             call.respond(DbSnapshot.list(database.dbPath))
+        }
+        // 排定从某快照恢复：只写标记，**不在运行时覆盖活库**；真正落库在下次启动开库前。
+        post("/backup/snapshots/restore") {
+            if (!call.requireSameOriginWrite()) return@post
+            val name = runCatching { call.receive<SnapshotRestoreRequest>().name }
+                .getOrElse { return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体需为 {name}")) }
+            if (DbSnapshot.scheduleRestore(database.dbPath, name)) {
+                call.respond(SnapshotRestoreScheduled(scheduled = true, restartRequired = true, name = name))
+            } else {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_snapshot", "快照不存在或未通过完整性校验：$name"))
+            }
         }
         get("/backup/kept/{name}") {
             val name = call.parameters["name"]
@@ -113,5 +125,11 @@ fun Route.backupRoutes(
 
 /** 上传上限按原始字节算；zip 解包后的限额仍由 `BackupImporter` 按条目把关。 */
 private const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
+
+/** 排定恢复的请求体：只要一个快照名。 */
+@Serializable data class SnapshotRestoreRequest(val name: String)
+
+/** 排定恢复的回包：只说"已排定、需重启"，不代表已改库。 */
+@Serializable data class SnapshotRestoreScheduled(val scheduled: Boolean, val restartRequired: Boolean, val name: String)
 
 

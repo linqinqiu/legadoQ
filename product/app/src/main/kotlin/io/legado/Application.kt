@@ -20,6 +20,7 @@ import java.nio.file.Files
 import io.legado.cache.BookCacheService
 import io.legado.cache.CoverCache
 import io.legado.data.Database
+import io.legado.data.DbSnapshot
 import io.legado.data.MentionsWarmer
 import io.legado.data.getCookieForUrl
 import io.legado.http.SameOriginWriteGate
@@ -108,6 +109,11 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
         )
     }
     
+    // 待恢复标记在**打开库文件之前**消费：服务运行时绝不覆盖已打开的 SQLite（WAL/SHM 一致性）。
+    // applyPendingRestore 内部先校验快照 SHA-256、把当前库移作 pre-restore 安全副本再落快照，失败即放弃不动原库。
+    if (DbSnapshot.applyPendingRestore(config.databasePath)) {
+        log.info("已按待恢复标记还原数据库（下次启动生效的一次性操作，原库已留 pre-restore 副本）")
+    }
     val database = Database(config.databasePath)
     database.initialize()
     // 启动时把「每个凭据桶被多少书源提到」的统计提前算好（全库扫描，冷 JVM 实测 2~3 秒）。

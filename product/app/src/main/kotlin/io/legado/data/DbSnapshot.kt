@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.sql.Connection
 import java.util.Comparator
@@ -50,6 +51,67 @@ object DbSnapshot {
             stream.map { it.fileName.toString() }.toList()
         }
         return names.mapNotNull(::timestampOf).maxOrNull()
+    }
+
+    private const val RESTORE_MARKER = ".pending-restore"
+    private const val PRE_RESTORE_PREFIX = "pre-restore-"
+
+    /** 某份快照是否存在且完整（sidecar SHA-256 == 实测）。 */
+    fun isVerified(dbPath: String, name: String): Boolean =
+        list(dbPath).firstOrNull { it.name == name }?.verified == true
+
+    /**
+     * 排定一次恢复：只把选定的快照名写进标记文件，**绝不碰正在使用的库**。
+     * 真正落地发生在下次启动 [applyPendingRestore]（在打开库文件之前）。
+     * 只接受本模块命名、且当前通过校验的快照名（`timestampOf` 挡掉路径穿越 / 任意文件）。
+     */
+    fun scheduleRestore(dbPath: String, name: String): Boolean {
+        if (timestampOf(name) == null) return false
+        if (!isVerified(dbPath, name)) return false
+        val dir = backupsDirOf(dbPath)
+        Files.createDirectories(dir)
+        Files.writeString(dir.resolve(RESTORE_MARKER), name)
+        return true
+    }
+
+    /**
+     * 下次启动、打开库文件之前消费恢复标记（[Application] 在建 `Database` 前调用）。
+     * 步骤：校验快照 SHA-256 → 把当前库连同其 `-wal/-shm` 移作 `pre-restore-<ts>` 安全副本（可回退）→
+     * 用快照落成主库 → 删标记。任一步不满足或失败：当前库原样不动、标记改存 `.failed` 供排查，返回 false。
+     * 关键是**绝不半路覆盖出一个坏库**——先验后用，改库是一步 copy。无标记时快速返回 false。
+     */
+    fun applyPendingRestore(dbPath: String): Boolean {
+        val dir = backupsDirOf(dbPath)
+        val marker = dir.resolve(RESTORE_MARKER)
+        if (!Files.isRegularFile(marker)) return false
+        fun bail(reason: String): Boolean {
+            runCatching { Files.move(marker, dir.resolve("$RESTORE_MARKER.failed"), StandardCopyOption.REPLACE_EXISTING) }
+            System.err.println("待恢复快照已放弃（当前库保持不变）：$reason")
+            return false
+        }
+        val name = runCatching { Files.readString(marker).trim() }.getOrDefault("")
+        if (timestampOf(name) == null) return bail("标记里的名字不合法：$name")
+        val snap = dir.resolve(name)
+        if (!Files.isRegularFile(snap)) return bail("快照不存在：$name")
+        val recorded = runCatching {
+            Files.readString(dir.resolve("$name.sha256")).substringBefore(" ").trim().lowercase()
+        }.getOrNull()
+        val actual = runCatching { sha256Of(snap) }.getOrNull()
+        if (recorded == null || actual == null || recorded != actual) return bail("快照 SHA-256 校验不通过：$name")
+
+        val target = Paths.get(dbPath).toAbsolutePath()
+        val stamp = System.currentTimeMillis()
+        return runCatching {
+            if (Files.exists(target)) {
+                Files.move(target, dir.resolve("$PRE_RESTORE_PREFIX$stamp$SUFFIX"), StandardCopyOption.REPLACE_EXISTING)
+            }
+            runCatching { Files.deleteIfExists(Paths.get("$target-wal")) }
+            runCatching { Files.deleteIfExists(Paths.get("$target-shm")) }
+            Files.copy(snap, target, StandardCopyOption.REPLACE_EXISTING)
+            Files.deleteIfExists(marker)
+            System.err.println("已按启动快照恢复库：$name（原库留作 $PRE_RESTORE_PREFIX$stamp$SUFFIX，可回退）")
+            true
+        }.getOrElse { bail("落库失败：${it.message}") }
     }
 
     /**
