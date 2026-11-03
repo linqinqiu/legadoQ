@@ -177,6 +177,27 @@ export function findFirstFullyVisibleParagraphIndex(
   return 0
 }
 
+/**
+ * 进度要的是"视口里第一段**碰到的**文字"，不是"第一段完整可见的"。
+ *
+ * 两者差一段：页首常有一段只露出下半截，TTS 跳过它没问题（从完整那段开始读），
+ * 但保存进度时跳过它，下次恢复就会往前跳一段。长段（网文里一段占半屏很常见）
+ * 还会让 `findFirstFullyVisibleParagraphIndex` 一直落到后面的段去。
+ */
+export function findFirstIntersectingParagraphIndex(
+  paragraphs: Array<{ index: number; rect: ParagraphRect }>,
+  viewport: ViewportBounds,
+  tolerance = 2
+): number {
+  if (!paragraphs || paragraphs.length === 0) return 0
+  for (const p of paragraphs) {
+    const visibleHeight = Math.min(p.rect.bottom, viewport.bottom) - Math.max(p.rect.top, viewport.top)
+    const visibleWidth = Math.min(p.rect.right, viewport.right) - Math.max(p.rect.left, viewport.left)
+    if (visibleHeight > tolerance && visibleWidth > tolerance) return p.index
+  }
+  return 0
+}
+
 
 
 

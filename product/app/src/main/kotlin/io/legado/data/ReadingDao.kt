@@ -14,11 +14,31 @@ import io.legado.model.ReadingProgress
  */
 fun Database.saveProgress(progress: ReadingProgress): ReadingProgress = write { db ->
     val now = System.currentTimeMillis()
-    db.prepareStatement("""insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,char_offset,paragraph_anchor,position_version,position_checksum,updated_at) values(?,?,?,?,?,?,?,?,?,?)
+    val charOffset = progress.charOffset
+    if (charOffset == null) {
+        // 本次没提交逻辑位置（旧标签页/旧客户端）：只更新阅读位置，position 列一个都不碰。
+        // 不能把 null 写进 char_offset —— 它是 not null default 0，旧库也没有可空迁移。
+        val changed = db.prepareStatement("""update reading_progress set chapter_url=?,chapter_index=?,scroll_position=?,updated_at=? where source_id=? and book_url=?""").use {
+            it.setString(1, progress.chapterUrl); it.setInt(2, progress.chapterIndex); it.setDouble(3, progress.scrollPosition); it.setLong(4, now)
+            it.setString(5, progress.sourceId); it.setString(6, progress.bookUrl)
+            it.executeUpdate()
+        }
+        if (changed == 0) {
+            // 新书第一次落库：position 列走表默认值（0 / null / 1 / null）。
+            db.prepareStatement("""insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,updated_at) values(?,?,?,?,?,?)""").use {
+                it.setString(1, progress.sourceId); it.setString(2, progress.bookUrl); it.setString(3, progress.chapterUrl)
+                it.setInt(4, progress.chapterIndex); it.setDouble(5, progress.scrollPosition); it.setLong(6, now)
+                it.executeUpdate()
+            }
+        }
+    } else {
+        // 显式提交逻辑位置：整组覆盖。charOffset=0 是有效值（章首），不能被当成“没传”。
+        db.prepareStatement("""insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,char_offset,paragraph_anchor,position_version,position_checksum,updated_at) values(?,?,?,?,?,?,?,?,?,?)
         on conflict(source_id,book_url) do update set chapter_url=excluded.chapter_url,chapter_index=excluded.chapter_index,scroll_position=excluded.scroll_position,char_offset=excluded.char_offset,paragraph_anchor=excluded.paragraph_anchor,position_version=excluded.position_version,position_checksum=excluded.position_checksum,updated_at=excluded.updated_at""").use {
-        it.setString(1, progress.sourceId); it.setString(2, progress.bookUrl); it.setString(3, progress.chapterUrl); it.setInt(4, progress.chapterIndex); it.setDouble(5, progress.scrollPosition)
-        it.setInt(6, progress.charOffset); it.setString(7, progress.paragraphAnchor); it.setInt(8, progress.positionVersion); it.setString(9, progress.positionChecksum); it.setLong(10, now)
-        it.executeUpdate()
+            it.setString(1, progress.sourceId); it.setString(2, progress.bookUrl); it.setString(3, progress.chapterUrl); it.setInt(4, progress.chapterIndex); it.setDouble(5, progress.scrollPosition)
+            it.setInt(6, charOffset); it.setString(7, progress.paragraphAnchor); it.setInt(8, progress.positionVersion); it.setString(9, progress.positionChecksum); it.setLong(10, now)
+            it.executeUpdate()
+        }
     }
     db.prepareStatement("update book_shelf set last_read_at=? where source_id=? and book_url=?").use {
         it.setLong(1, now); it.setString(2, progress.sourceId); it.setString(3, progress.bookUrl); it.executeUpdate()

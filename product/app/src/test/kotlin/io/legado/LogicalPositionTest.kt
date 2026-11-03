@@ -21,6 +21,20 @@ class LogicalPositionTest {
     private fun temporaryDatabase(): String =
         Files.createTempFile("legado-logical-position-test", ".sqlite").toString()
 
+    /** Windows 上 SQLite 关闭后文件句柄偶尔还会晚一拍释放；删不掉时短暂重试，别把产品断言掩盖成清理失败。 */
+    private fun deleteDatabase(path: String) {
+        val file = java.nio.file.Path.of(path)
+        repeat(20) {
+            try {
+                Files.deleteIfExists(file)
+                return
+            } catch (_: java.nio.file.FileSystemException) {
+                Thread.sleep(50)
+            }
+        }
+        Files.deleteIfExists(file)
+    }
+
     @Test
     fun `reading progress saves and reads logical position fields`() {
         val path = temporaryDatabase()
@@ -48,7 +62,88 @@ class LogicalPositionTest {
             assertEquals("abc123", p.positionChecksum)
             database.close()
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabase(path)
+        }
+    }
+
+    @Test
+    fun `omitting logical position keeps the previous values`() {
+        val path = temporaryDatabase()
+        var database: Database? = null
+        try {
+            database = Database(path)
+            database.initialize()
+            database.saveProgress(
+                ReadingProgress(
+                    sourceId = "src",
+                    bookUrl = "book",
+                    chapterUrl = "ch",
+                    chapterIndex = 5,
+                    scrollPosition = 0.3,
+                    charOffset = 1234,
+                    paragraphAnchor = "p9",
+                    positionChecksum = "abc123",
+                ),
+            )
+            // 旧标签页/旧客户端只传 scrollPosition：charOffset / anchor / checksum 全是默认 null。
+            database.saveProgress(
+                ReadingProgress(
+                    sourceId = "src",
+                    bookUrl = "book",
+                    chapterUrl = "ch",
+                    chapterIndex = 5,
+                    scrollPosition = 0.6,
+                ),
+            )
+            val p = database.getProgress("src", "book")!!
+            assertEquals(0.6, p.scrollPosition, 0.0001)
+            assertEquals(1234, p.charOffset)
+            assertEquals("p9", p.paragraphAnchor)
+            assertEquals("abc123", p.positionChecksum)
+        } finally {
+            database?.close()
+            deleteDatabase(path)
+        }
+    }
+
+    @Test
+    fun `explicit zero offset still overwrites`() {
+        val path = temporaryDatabase()
+        var database: Database? = null
+        try {
+            database = Database(path)
+            database.initialize()
+            database.saveProgress(
+                ReadingProgress(
+                    sourceId = "src",
+                    bookUrl = "book",
+                    chapterUrl = "ch",
+                    chapterIndex = 5,
+                    scrollPosition = 0.3,
+                    charOffset = 1234,
+                    paragraphAnchor = "p9",
+                    positionChecksum = "abc123",
+                ),
+            )
+            database.saveProgress(
+                ReadingProgress(
+                    sourceId = "src",
+                    bookUrl = "book",
+                    chapterUrl = "ch",
+                    chapterIndex = 5,
+                    scrollPosition = 0.0,
+                    charOffset = 0,
+                    paragraphAnchor = "p0",
+                    positionChecksum = "start",
+                ),
+            )
+            val p = database.getProgress("src", "book")!!
+            assertEquals(0, p.charOffset)
+            assertEquals("p0", p.paragraphAnchor)
+            assertEquals("start", p.positionChecksum)
+        } finally {
+            database?.close()
+            deleteDatabase(path)
         }
     }
 
@@ -75,7 +170,7 @@ class LogicalPositionTest {
             assertNull(p.positionChecksum)
             database.close()
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabase(path)
         }
     }
 
@@ -107,7 +202,7 @@ class LogicalPositionTest {
             assertEquals("cs", listed[0].positionChecksum)
             database.close()
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabase(path)
         }
     }
 
@@ -132,7 +227,7 @@ class LogicalPositionTest {
             assertNull(listed[0].positionChecksum)
             database.close()
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabase(path)
         }
     }
 }

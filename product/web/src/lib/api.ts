@@ -602,10 +602,14 @@ export const api = {
     const charOffset = position?.charOffset
     const progressItem = {
       sourceId, bookUrl, chapterUrl, chapterIndex, scrollPosition,
-      ...(charOffset != null ? { charOffset } : {}),
-      paragraphAnchor: position?.paragraphAnchor ?? null,
-      positionVersion: 1,
-      positionChecksum: position?.positionChecksum ?? null,
+      // 没有逻辑位置时**整个字段组都不发**：后端保留上一次的值。
+      // 老标签页/旧客户端只传 scrollPosition 时，不能把别的客户端存下的语义位置清零。
+      ...(position ? {
+        ...(charOffset != null ? { charOffset } : {}),
+        paragraphAnchor: position.paragraphAnchor ?? null,
+        positionVersion: 1,
+        positionChecksum: position.positionChecksum ?? null,
+      } : {}),
       updatedAt: Date.now(),
     }
     // 先冲掉此前积压的（flush 自带"成功即出队"），本次直写成功就不再入队 ——

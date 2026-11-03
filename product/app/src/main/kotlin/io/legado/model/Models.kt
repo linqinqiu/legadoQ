@@ -447,11 +447,14 @@ data class SourceLoginStateRecord(
     val chapterIndex: Int,
     val scrollPosition: Double = 0.0,
     /**
-     * 逻辑位置模型（P1-T1）：章节内绝对字符偏移（0 基）。
-     * 取代 `scrollPosition` 成为阅读恢复的唯一真相；改字号/翻页后据此二分定位当前位置。
-     * 老客户端不报此字段时为 0，不影响旧流程。
+     * 逻辑位置模型（P1-T1）：章节内绝对字符偏移（0 起）。
+     * 取代 `scrollPosition` 作为阅读恢复的唯一坐标；字号/分页都据此二段定位到当前行。
+     *
+     * `null` = 本次请求没有提交逻辑位置。落库时用 coalesce 保留旧值：
+     * 旧标签页/旧客户端只传 scrollPosition 时，不能把别的客户端存下的语义位置清零。
+     * 0 仍是有效值（章首），会正常覆盖。
      */
-    val charOffset: Int = 0,
+    val charOffset: Int? = null,
     /** 段落锚点：稳定定位用的段落标识（如段落索引或段首哈希），内容重排后辅助回退。可空。 */
     val paragraphAnchor: String? = null,
     /** 逻辑位置编码版本，便于后续格式迁移。 */

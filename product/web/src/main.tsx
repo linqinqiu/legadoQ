@@ -233,7 +233,10 @@ function App() {
 
   useEffect(() => {
     const handleOnline = () => {      void flushOfflineProgress(async (item) => {
-        await api.saveProgress(item.sourceId, item.bookUrl, item.chapterUrl, item.chapterIndex, item.scrollPosition)
+        const position = item.charOffset != null || item.paragraphAnchor != null || item.positionChecksum != null
+          ? { charOffset: item.charOffset, paragraphAnchor: item.paragraphAnchor, positionChecksum: item.positionChecksum }
+          : undefined
+        await api.saveProgress(item.sourceId, item.bookUrl, item.chapterUrl, item.chapterIndex, item.scrollPosition, position)
       })
     }
     window.addEventListener('online', handleOnline)

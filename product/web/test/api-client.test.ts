@@ -151,3 +151,35 @@ test('api client - streamSearch WebSocket lifecycle and error handling', async (
     globalThis.location = originalLocation
   }
 })
+
+test('api.saveProgress - no logical position omits all fields; explicit zero still sent', async () => {
+  const originalFetch = globalThis.fetch
+  const bodies: any[] = []
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    bodies.push(init?.body ? JSON.parse(String(init.body)) : null)
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  try {
+    await api.saveProgress('src', 'book', 'ch', 1, 0.25)
+    const legacy = bodies.at(-1)
+    assert.equal(Object.hasOwn(legacy, 'charOffset'), false)
+    assert.equal(Object.hasOwn(legacy, 'paragraphAnchor'), false)
+    assert.equal(Object.hasOwn(legacy, 'positionChecksum'), false)
+
+    await api.saveProgress('src', 'book', 'ch', 1, 0.25, {
+      charOffset: 0,
+      paragraphAnchor: 'p0',
+      positionChecksum: 'cs',
+    })
+    const logical = bodies.at(-1)
+    assert.equal(logical.charOffset, 0)
+    assert.equal(logical.paragraphAnchor, 'p0')
+    assert.equal(logical.positionVersion, 1)
+    assert.equal(logical.positionChecksum, 'cs')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

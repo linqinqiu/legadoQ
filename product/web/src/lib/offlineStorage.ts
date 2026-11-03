@@ -436,6 +436,11 @@ export interface OfflineProgressItem {
   chapterUrl: string
   chapterIndex: number
   scrollPosition: number
+  /** 逻辑位置（P1-T1）：离线补发时不能只带 scrollPosition，否则语义位置会丢。 */
+  charOffset?: number
+  paragraphAnchor?: string | null
+  positionVersion?: number
+  positionChecksum?: string | null
   updatedAt: number
 }
 

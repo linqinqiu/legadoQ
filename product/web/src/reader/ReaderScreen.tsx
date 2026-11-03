@@ -36,6 +36,8 @@ import { ReaderMenuAction } from './readerMenu'
 import { IDENTITY_CONVERTER, loadScriptConverter, type ScriptConverter } from './scriptConvert'
 import { coverDirection, pageTurnAnim, planNextPage, planPrevPage } from './pageTurn'
 import { flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, prependLandingPage, resolveMeasuredPage, sectionAtPage, sectionProgress } from './readerFlow'
+import { findFirstIntersectingParagraphIndex } from './readerInteractions'
+import { caretOffsetWithin, checksumText, offsetToParagraph, paragraphAnchor, textOffsetRect, type LogicalPosition } from './logicalPosition'
 import { SourceSwitchModal } from '../sources/SourceSwitchModal'
 import { cleanAuthor, cleanTitle } from '../lib/searchFilters'
 import { toast } from '../components/Toast'
@@ -294,6 +296,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const boundaryTimerRef = useRef<number | null>(null)
   const targetInitialPageRef = useRef<'first' | 'last' | null>(null)
   const initialPagePositionRef = useRef<number | null>(null)
+  /** 首屏要恢复的语义位置；与 fraction 同时准备，语义位置校验通过时优先。 */
+  const initialLogicalPositionRef = useRef<(LogicalPosition & { chapterIndex: number }) | null>(null)
   const wheelTimerRef = useRef<number | null>(null)
   // 滚轮增量累计量（像素）与"没在滚了就清零"的定时器：见 readerInteractions.paginateWheelStep
   const wheelAccumRef = useRef(0)
@@ -637,6 +641,18 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     return starts
   }, [content])
   /**
+   * 校验值只回答"这一章的内容还是不是保存时那一份"。
+   * 简繁模式也计入：切换字形后同一 charOffset 指向的字会变，宁可退回 scrollPosition。
+   * 不把换算后的正文拼进来——词表是异步加载的，等它到位会把首屏恢复拖到第二帧。
+   */
+  const positionChecksum = useMemo(
+    () => (content ? checksumText(`${settings.scriptMode}\n${splitParagraphs(content).join('\n')}`) : ''),
+    [content, settings.scriptMode],
+  )
+  // persist / 首屏恢复都是长期闭包：经 ref 读当前章的段起点与校验值，避免把 persist 的依赖搅乱。
+  const logicalMetaRef = useRef({ starts: paragraphStarts, checksum: positionChecksum })
+  logicalMetaRef.current = { starts: paragraphStarts, checksum: positionChecksum }
+  /**
    * 待保存 / 正在编辑的那一条。`id === null` = 刚从选区新建；否则是点已有高亮打开的。
    * `x`/`y` 是浮层要摆的位置（视口坐标，横向以选中处为中心）。
    */
@@ -875,11 +891,86 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     return ''
   }, [chapterIndex, currentBook.chapters])
 
+  /**
+   * 从当前视口读一个逻辑位置。
+   *
+   * 只认**锚点章自己的 section**：滚动模式的 flowHead/flowTail 也带 `data-chapter-index`，
+   * 全局查会把上一章/下一章的段号混进来。取"第一段相交"而不是"第一段完整可见"——
+   * 页首常有一段只露下半截，跳过它会让下次恢复往前跳一段。
+   *
+   * 简繁打开时段内偏移不做：词表可能让同一段少/多几个 UTF-16 码元，段首仍然稳定，
+   * 段内偏移反而不稳；这条只在默认"原文"模式追求行级精度。
+   */
+  const readLogicalPosition = useCallback((targetChapter: Chapter): LogicalPosition | null => {
+    const meta = logicalMetaRef.current
+    if (!meta.starts.length || !meta.checksum) return null
+    const scope = settings.pageMode === 'paginate'
+      ? bodyRef.current
+      : document.querySelector<HTMLElement>('.reading-content')
+    const section = scope?.querySelector<HTMLElement>(`[data-chapter-index="${targetChapter.index}"]`)
+    if (!section) return null
+    const els = Array.from(section.querySelectorAll<HTMLElement>('[data-paragraph-index]'))
+    if (!els.length) return null
+    const viewport = settings.pageMode === 'paginate'
+      ? viewportRef.current?.getBoundingClientRect()
+      : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth }
+    if (!viewport) return null
+    const rects = els.map(el => {
+      const r = el.getBoundingClientRect()
+      return {
+        index: Number(el.dataset.paragraphIndex ?? 0),
+        rect: { top: r.top, bottom: r.bottom, left: r.left, right: r.right },
+      }
+    })
+    const index = findFirstIntersectingParagraphIndex(rects, viewport)
+    const target = els.find(el => Number(el.dataset.paragraphIndex ?? 0) === index) ?? els[0]
+    const r = target.getBoundingClientRect()
+    const within = settings.scriptMode === 'off'
+      ? caretOffsetWithin(target, Math.max(r.left, viewport.left) + 2, Math.max(r.top, viewport.top) + 2) ?? 0
+      : 0
+    return {
+      charOffset: (meta.starts[index] ?? 0) + within,
+      paragraphAnchor: paragraphAnchor(index),
+      positionChecksum: meta.checksum,
+    }
+  }, [settings.pageMode, settings.scriptMode])
+
+  /** 把逻辑位置滚回视口。返回 false 表示 DOM 里找不到这一章/这一段，交给 fraction 兜底。 */
+  const scrollToLogicalPosition = useCallback((position: LogicalPosition & { chapterIndex: number }): boolean => {
+    const meta = logicalMetaRef.current
+    if (!meta.starts.length) return false
+    const scope = document.querySelector<HTMLElement>('.reading-content')
+    const section = scope?.querySelector<HTMLElement>(`[data-chapter-index="${position.chapterIndex}"]`)
+    if (!section) return false
+    const els = Array.from(section.querySelectorAll<HTMLElement>('[data-paragraph-index]'))
+    if (!els.length) return false
+    const { index, within } = offsetToParagraph(meta.starts, position.charOffset)
+    let target = els.find(el => Number(el.dataset.paragraphIndex ?? 0) === index)
+    if (!target) {
+      // 图片段没有 data-paragraph-index：退到它前面最近的一段文字；再不行就这一段的第一段。
+      const before = els.filter(el => Number(el.dataset.paragraphIndex ?? 0) <= index)
+      target = before[before.length - 1] ?? els[0]
+    }
+    const rect = textOffsetRect(target, within) ?? target.getBoundingClientRect()
+    const top = Math.max(0, rect.top + window.scrollY - 8)
+    lastScrollYRef.current = top
+    window.scrollTo({ top, behavior: 'auto' })
+    return true
+  }, [])
+
   const persist = useCallback(() => {
     const current = currentRef.current
     if (!current) return
-    void api.saveProgress(currentBook.details.sourceId, currentBook.bookUrl, current.chapter.url, current.chapter.index, clampScrollPosition(current.position)).catch(() => undefined)
-  }, [currentBook.bookUrl, currentBook.details.sourceId])
+    const logical = readLogicalPosition(current.chapter)
+    void api.saveProgress(
+      currentBook.details.sourceId,
+      currentBook.bookUrl,
+      current.chapter.url,
+      current.chapter.index,
+      clampScrollPosition(current.position),
+      logical ?? undefined,
+    ).catch(() => undefined)
+  }, [currentBook.bookUrl, currentBook.details.sourceId, readLogicalPosition])
 
   const preloadNextChapter = useCallback((index: number) => {
     let j = index + 1
@@ -1378,6 +1469,16 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       flowAdvanceRef.current = false
       const position = advancing ? null
         : (!restoredRef.current && chapter.index === startIndex ? currentBook.progress?.scrollPosition ?? 0 : 0)
+      const saved = currentBook.progress
+      initialLogicalPositionRef.current = !advancing && !restoredRef.current && chapter.index === startIndex
+        && saved?.charOffset != null && !!saved.positionChecksum
+        ? {
+            chapterIndex: chapter.index,
+            charOffset: saved.charOffset,
+            paragraphAnchor: saved.paragraphAnchor ?? '',
+            positionChecksum: saved.positionChecksum,
+          }
+        : null
       restoredRef.current = true
       currentRef.current = { chapter, position: position ?? 0 }
       initialPagePositionRef.current = position
@@ -1399,7 +1500,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     return () => {
       cancelled = true
     }
-  }, [chapter, currentBook.bookUrl, currentBook.details.sourceId, currentBook.progress?.scrollPosition, startIndex])
+  }, [chapter, currentBook.bookUrl, currentBook.details.sourceId, currentBook.progress?.scrollPosition, currentBook.progress?.charOffset, currentBook.progress?.paragraphAnchor, currentBook.progress?.positionChecksum, startIndex])
 
   /**
    * 续接窗口：把锚点章之后的 1~2 章挂到下面（滚动与分页两种模式都要）。
@@ -1460,10 +1561,14 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     const targetMode = targetInitialPageRef.current
     const initialPos = initialPagePositionRef.current
+    const initialLogical = initialLogicalPositionRef.current
     targetInitialPageRef.current = null
     initialPagePositionRef.current = null
+    initialLogicalPositionRef.current = null
 
     const scrollToTarget = () => {
+      if (!targetMode && initialLogical && initialLogical.positionChecksum === positionChecksum
+        && scrollToLogicalPosition(initialLogical)) return
       const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
       let targetScroll = 0
       if (targetMode === 'last') {
@@ -1482,7 +1587,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     scrollToTarget()
     const rafId = window.requestAnimationFrame(scrollToTarget)
     return () => window.cancelAnimationFrame(rafId)
-  }, [content, loading, settings.pageMode])
+  }, [content, loading, positionChecksum, scrollToLogicalPosition, settings.pageMode])
 
   /**
    * 分页模式的跨章也是"顶窗口"（用户 2026-10-02：「竖版做好了，横板还是跳转」）。
@@ -1598,6 +1703,28 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         pendingPageRef.current = null
         setPageIndex(next)
         return
+      }
+      // 首屏恢复优先用语义位置：fraction 的分母是整个多章窗口，窗口里一挂上前后章就会偏。
+      // 校验不过（正文变过、简繁模式变过）才让下面的 resolveMeasuredPage 按 fraction 兜底。
+      const pendingLogical = initialLogicalPositionRef.current
+      initialLogicalPositionRef.current = null
+      if (pendingLogical && pendingLogical.positionChecksum === logicalMetaRef.current.checksum) {
+        const section = sections.find(node => Number(node.dataset.chapterIndex ?? -1) === pendingLogical.chapterIndex)
+        const els = section ? Array.from(section.querySelectorAll<HTMLElement>('[data-paragraph-index]')) : []
+        if (els.length) {
+          const { index, within } = offsetToParagraph(logicalMetaRef.current.starts, pendingLogical.charOffset)
+          let target = els.find(el => Number(el.dataset.paragraphIndex ?? 0) === index)
+          if (!target) {
+            const before = els.filter(el => Number(el.dataset.paragraphIndex ?? 0) <= index)
+            target = before[before.length - 1] ?? els[0]
+          }
+          const rect = textOffsetRect(target, within) ?? target.getBoundingClientRect()
+          const column = Math.max(0, Math.round((rect.left - bodyLeft) / measuredStride))
+          const page = Math.min(effectivePageCount - 1, Math.max(0, Math.floor(column / columnsPerPage)))
+          initialPagePositionRef.current = null
+          setPageIndex(page)
+          return
+        }
       }
     } else {
       pageSpansRef.current = []

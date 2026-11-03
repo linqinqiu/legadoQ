@@ -36,7 +36,7 @@ fun Route.readerRoutes(
         put("/reading-progress") {
             if (!call.requireSameOriginWrite()) return@put
             val progress = call.receive<ReadingProgress>()
-            if (progress.sourceId.isBlank() || progress.bookUrl.isBlank() || progress.chapterUrl.isBlank() || progress.chapterIndex < 0 || progress.charOffset < 0 || !progress.scrollPosition.isFinite() || progress.scrollPosition !in 0.0..1.0) { call.respond(HttpStatusCode.BadRequest, ApiError("invalid_progress", "阅读进度无效")); return@put }
+            if (progress.sourceId.isBlank() || progress.bookUrl.isBlank() || progress.chapterUrl.isBlank() || progress.chapterIndex < 0 || (progress.charOffset ?: 0) < 0 || !progress.scrollPosition.isFinite() || progress.scrollPosition !in 0.0..1.0) { call.respond(HttpStatusCode.BadRequest, ApiError("invalid_progress", "阅读进度无效")); return@put }
             call.respond(repo.saveProgress(progress))
         }
         // 阅读记录（PROPOSAL-019 D）。只增不改：POST 累加、GET 读，没有编辑/删除单条的入口。
