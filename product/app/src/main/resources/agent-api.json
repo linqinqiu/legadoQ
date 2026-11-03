@@ -644,6 +644,14 @@
     },
     {
       "method": "GET",
+      "path": "/api/diagnostics",
+      "write": false,
+      "group": "系统",
+      "purpose": "进程内运行指标快照：整批搜索请求数与截断数、按书源聚合的调用/失败/超时/命中与平均耗时（只取调用最高的前 50 源）。纯内存累计，重启清零，给本地诊断'哪个源在拖慢搜索'用",
+      "response": "{searchRequests,truncatedSearchRequests,trackedSources,topSources:[{sourceId,calls,failures,timeouts,matched,avgLatencyMs,lastLatencyMs,updatedAt}]}"
+    },
+    {
+      "method": "GET",
       "path": "/api/about",
       "write": false,
       "group": "系统",

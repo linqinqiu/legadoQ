@@ -25,6 +25,7 @@ import io.legado.model.ServerPortResult
 import io.legado.ops.LogCategory
 import io.legado.ops.LogLevel
 import io.legado.ops.LogService
+import io.legado.ops.Metrics
 import io.legado.ops.UpdateCheck
 import io.legado.rules.RuleExecutionException
 import io.legado.rules.RuleRunner
@@ -126,6 +127,10 @@ fun Route.apiRoutes(
             if (!call.requireSameOriginWrite()) return@delete
             LogService.clearLogs()
             call.respond(HttpStatusCode.NoContent)
+        }
+        // 运行指标快照：给"哪个源在拖慢搜索、超时多少"这类本地诊断用；纯读、只在内存里累计，重启清零。
+        get("/diagnostics") {
+            call.respond(Metrics.snapshot())
         }
         /**
          * 更新日志：随包发出的 `CHANGELOG.md`（`app/build.gradle` 的 processResources 拷成

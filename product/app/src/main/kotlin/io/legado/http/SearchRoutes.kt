@@ -18,6 +18,7 @@ import io.legado.model.ExploreRequest
 import io.legado.model.SearchRequest
 import io.legado.model.SearchResult
 import io.legado.model.SearchStreamEvent
+import io.legado.ops.Metrics
 import io.legado.rules.RuleRunner
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -68,7 +69,8 @@ fun Route.searchRoutes(
                 ordered,
                 sourceSearchConcurrency(),
                 AppConfig.searchTotalTimeoutMs,
-            ) { source -> readableSearchResults(runner, source.json, request.keyword) }
+            ) { source -> readableSearchResults(runner, source.id, source.json, request.keyword) }
+            Metrics.recordSearchRequest(outcome.truncated)
 
             // 截断要**说出来**，不能静默返回半份结果 —— 调用方分不清"就这么多"与"没搜完"。
             // 用响应头而不是改回包形状：`List<SearchResult>` 是既有契约，不能动。
@@ -104,7 +106,7 @@ fun Route.searchRoutes(
                 val workers = sourceRecords.map { source -> async {
                     semaphore.withPermit {
                         if (!isActive) return@async
-                        val outcome = searchSourceOutcome(runner, source.json, request.keyword)
+                        val outcome = searchSourceOutcome(runner, source.json, request.keyword, source.id)
                         if (!isActive) return@async
                         runCatching {
                             if (outcome.results.isNotEmpty()) events.send(SearchStreamEvent("results", results = outcome.results))
@@ -169,10 +171,10 @@ fun Route.searchRoutes(
 
 private val SEARCH_TIMEOUT_MS = AppConfig.searchTimeoutMs
 
-private suspend fun readableSearchResults(runner: RuleRunner, sourceJson: String, keyword: String): List<SearchResult> =
-    searchSourceOutcome(runner, sourceJson, keyword).results
+private suspend fun readableSearchResults(runner: RuleRunner, sourceId: String, sourceJson: String, keyword: String): List<SearchResult> =
+    searchSourceOutcome(runner, sourceJson, keyword, sourceId).results
 
-internal data class SearchSourceOutcome(val results: List<SearchResult>, val failed: Boolean)
+internal data class SearchSourceOutcome(val results: List<SearchResult>, val failed: Boolean, val timedOut: Boolean = false)
 
 internal class SearchStreamCounters(private val totalSources: Int) {
     private val completed = AtomicInteger()
@@ -209,6 +211,7 @@ internal suspend fun searchSourceOutcome(
     runner: RuleRunner,
     sourceJson: String,
     keyword: String,
+    sourceId: String = "",
     timeoutMs: Long = SEARCH_TIMEOUT_MS,
 ): SearchSourceOutcome {
     /*
@@ -220,16 +223,25 @@ internal suspend fun searchSourceOutcome(
      * `Unhandled request failure: TimeoutCancellationException`）。
      * 真正该往上传的只有"调用方自己取消了"（客户端停读、页面关了）—— 那种情况回答也没人看。
      */
-    val results = try {
-        withTimeout(timeoutMs) { withContext(Dispatchers.IO) { runner.search(sourceJson, keyword) } }
+    val startedAt = System.currentTimeMillis()
+    val outcome = try {
+        val results = withTimeout(timeoutMs) { withContext(Dispatchers.IO) { runner.search(sourceJson, keyword) } }
+        SearchSourceOutcome(results, failed = false)
     } catch (error: TimeoutCancellationException) {
-        return SearchSourceOutcome(emptyList(), failed = true)
+        SearchSourceOutcome(emptyList(), failed = true, timedOut = true)
     } catch (error: CancellationException) {
         throw error
     } catch (error: Throwable) {
-        return SearchSourceOutcome(emptyList(), failed = true)
+        SearchSourceOutcome(emptyList(), failed = true)
     }
-    return SearchSourceOutcome(results, failed = false)
+    Metrics.recordSearch(
+        sourceId = sourceId,
+        latencyMs = System.currentTimeMillis() - startedAt,
+        timedOut = outcome.timedOut,
+        failed = outcome.failed && !outcome.timedOut,
+        resultCount = outcome.results.size,
+    )
+    return outcome
 }
 
 internal fun sourceSearchConcurrency(processors: Int = Runtime.getRuntime().availableProcessors()): Int =
