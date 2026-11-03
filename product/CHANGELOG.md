@@ -35,6 +35,7 @@
 - **补可观测性 v1 —— 搜索维度进程内指标 + GET /api/diagnostics（ops）**
 - **GET /api/backup/snapshots 列出启动快照并校验 SHA-256 完整性（backup）**
 - **排定从快照恢复（只写标记，下次启动开库前落库）（backup）**
+- **备份页加"启动快照"区，可选快照排定恢复（backup）**
 ### 变更
 - **滚动模式段落 content-visibility，长章节少绘制少布局（ui）**
 
