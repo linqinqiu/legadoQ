@@ -1,6 +1,7 @@
 package io.legado
 
 import io.legado.ops.Metrics
+import io.legado.ops.SourceMetricSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -15,11 +16,8 @@ class MetricsTest {
     @Before
     fun setUp() = Metrics.reset()
 
-    private fun topOf(sourceId: String): Map<String, Any>? {
-        @Suppress("UNCHECKED_CAST")
-        val tops = Metrics.snapshot()["topSources"] as List<Map<String, Any>>
-        return tops.firstOrNull { it["sourceId"] == sourceId }
-    }
+    private fun topOf(sourceId: String): SourceMetricSnapshot? =
+        Metrics.snapshot().topSources.firstOrNull { it.sourceId == sourceId }
 
     @Test
     fun `按源聚合调用失败超时命中与均值`() {
@@ -27,25 +25,25 @@ class MetricsTest {
         Metrics.recordSearch("a", latencyMs = 300, timedOut = true, failed = true, resultCount = 0)
         val row = topOf("a")
         assertTrue(row != null)
-        assertEquals(2L, (row!!["calls"] as Long))
-        assertEquals(1L, row["timeouts"] as Long)
-        assertEquals(0L, row["failures"] as Long)   // 超时优先，不计进 failures
-        assertEquals(1L, row["matched"] as Long)
-        assertEquals(200L, row["avgLatencyMs"] as Long)  // (100+300)/2
+        assertEquals(2L, row!!.calls)
+        assertEquals(1L, row.timeouts)
+        assertEquals(0L, row.failures)   // 超时优先，不计进 failures
+        assertEquals(1L, row.matched)
+        assertEquals(200L, row.avgLatencyMs)  // (100+300)/2
     }
 
     @Test
     fun `失败而非超时的源计入 failures`() {
         Metrics.recordSearch("e", latencyMs = 50, timedOut = false, failed = true, resultCount = 0)
         val row = topOf("e")!!
-        assertEquals(1L, row["failures"] as Long)
-        assertEquals(0L, row["timeouts"] as Long)
+        assertEquals(1L, row.failures)
+        assertEquals(0L, row.timeouts)
     }
 
     @Test
     fun `空 sourceId 不聚合`() {
         Metrics.recordSearch("", latencyMs = 10, timedOut = false, failed = false, resultCount = 0)
-        assertEquals(0, (Metrics.snapshot()["trackedSources"] as Int))
+        assertEquals(0, Metrics.snapshot().trackedSources)
     }
 
     @Test
@@ -53,21 +51,18 @@ class MetricsTest {
         Metrics.recordSearchRequest(truncated = false)
         Metrics.recordSearchRequest(truncated = true)
         val snap = Metrics.snapshot()
-        assertEquals(2L, snap["searchRequests"] as Long)
-        assertEquals(1L, snap["truncatedSearchRequests"] as Long)
+        assertEquals(2L, snap.searchRequests)
+        assertEquals(1L, snap.truncatedSearchRequests)
     }
 
     @Test
     fun `快照按调用数降序且只留前 50 源`() {
         repeat(60) { i -> repeat(i + 1) { Metrics.recordSearch("s$i", 10, false, false, 1) } }
         val snap = Metrics.snapshot()
-        assertEquals(60, snap["trackedSources"] as Int)
-        @Suppress("UNCHECKED_CAST")
-        val tops = snap["topSources"] as List<Map<String, Any>>
-        assertEquals(50, tops.size)
-        // 调用最多的是 s59（60 次），应排第一
-        assertEquals("s59", tops.first()["sourceId"])
-        val calls = tops.map { it["calls"] as Long }
-        assertTrue(calls == calls.sortedDescending())
+        assertEquals(60, snap.trackedSources)
+        assertEquals(50, snap.topSources.size)
+        assertEquals("s59", snap.topSources.first().sourceId)   // 调用最多的排第一
+        val calls = snap.topSources.map { it.calls }
+        assertEquals(calls.sortedDescending(), calls)
     }
 }

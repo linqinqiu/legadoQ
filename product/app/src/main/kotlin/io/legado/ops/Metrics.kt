@@ -1,7 +1,30 @@
 package io.legado.ops
 
+import kotlinx.serialization.Serializable
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+
+/** 单书源的聚合指标；`avgLatencyMs` 为累计均值。 */
+@Serializable
+data class SourceMetricSnapshot(
+    val sourceId: String,
+    val calls: Long,
+    val failures: Long,
+    val timeouts: Long,
+    val matched: Long,
+    val avgLatencyMs: Long,
+    val lastLatencyMs: Long,
+    val updatedAt: Long,
+)
+
+/** `GET /api/diagnostics` 的响应体；字段与 agent-api.json 声明的形状一致。 */
+@Serializable
+data class DiagnosticsSnapshot(
+    val searchRequests: Long,
+    val truncatedSearchRequests: Long,
+    val trackedSources: Int,
+    val topSources: List<SourceMetricSnapshot>,
+)
 
 /**
  * 进程内的轻量运行指标：给 `GET /api/diagnostics` 读数用，回答"到底是哪个书源在拖慢搜索"
@@ -55,29 +78,29 @@ object Metrics {
         if (truncated) searchTruncatedRequests.incrementAndGet()
     }
 
-    fun snapshot(): Map<String, Any> {
+    fun snapshot(): DiagnosticsSnapshot {
         val top = cells.entries
             .map { (id, c) ->
                 val calls = c.calls.get()
-                mapOf(
-                    "sourceId" to id,
-                    "calls" to calls,
-                    "failures" to c.failures.get(),
-                    "timeouts" to c.timeouts.get(),
-                    "matched" to c.matched.get(),
-                    "avgLatencyMs" to (if (calls > 0) c.totalLatencyMs.get() / calls else 0L),
-                    "lastLatencyMs" to c.lastLatencyMs,
-                    "updatedAt" to c.updatedAt,
+                SourceMetricSnapshot(
+                    sourceId = id,
+                    calls = calls,
+                    failures = c.failures.get(),
+                    timeouts = c.timeouts.get(),
+                    matched = c.matched.get(),
+                    avgLatencyMs = if (calls > 0) c.totalLatencyMs.get() / calls else 0L,
+                    lastLatencyMs = c.lastLatencyMs,
+                    updatedAt = c.updatedAt,
                 )
             }
-            .filter { (it["calls"] as Long) > 0 }
-            .sortedByDescending { it["calls"] as Long }
+            .filter { it.calls > 0 }
+            .sortedByDescending { it.calls }
             .take(TOP_SOURCES)
-        return mapOf(
-            "searchRequests" to searchRequests.get(),
-            "truncatedSearchRequests" to searchTruncatedRequests.get(),
-            "trackedSources" to cells.values.count { it.calls.get() > 0 },
-            "topSources" to top,
+        return DiagnosticsSnapshot(
+            searchRequests = searchRequests.get(),
+            truncatedSearchRequests = searchTruncatedRequests.get(),
+            trackedSources = cells.values.count { it.calls.get() > 0 },
+            topSources = top,
         )
     }
 
