@@ -2173,6 +2173,17 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   border-radius: 4px;
 }
 
+/*
+ * 滚动模式长章节渲染开销（⑥）：浏览器跳过视口外段落的绘制与内部布局。
+ * 只作用滚动正文 .reading-content；分页在 .reader-paginated-column-body，不受影响；
+ * 配图是 .reader-paragraph-image（高度不可猜），排除。用 content-visibility 而非 JS 卸载：
+ * 节点仍留在 DOM，进度/逻辑位置/笔记/TTS 靠 [data-paragraph-index] 量 rect 的地方一行不动。
+ */
+.reading-content .reader-paragraph {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3em;
+}
+
 /* 正文配图：不跟着段落首行缩进，不撑破版心；取不到图时整块收起，不留空洞 */
 .reader-paragraph-image { margin: 1.2em 0; text-align: center; text-indent: 0; }
 .reader-paragraph-image img { max-width: 100%; height: auto; border-radius: 4px; }
