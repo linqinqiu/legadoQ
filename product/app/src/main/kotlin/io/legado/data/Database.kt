@@ -334,6 +334,7 @@ class Database(private val path: String) : Closeable, AutoCloseable {
             statement.executeUpdate("drop table if exists app_user")
             statement.executeUpdate("drop table if exists session")
         }
+        maybeSnapshot(db)
         migrateReadingProgress(db)
         migrateBookshelf(db)
         migrateSourceTable(db)
@@ -341,6 +342,21 @@ class Database(private val path: String) : Closeable, AutoCloseable {
         migrateBookNote(db)
         migrateBookContentCache(db)
         reclaimFreePages(db)
+    }
+
+    /**
+     * 启动快照的到期判断：距 `backups/` 里最新一份不足 [AppConfig.dbSnapshotMinIntervalMs] 就跳过，
+     * 否则用当前写连接做一次 `VACUUM INTO`。用迁移**之前**的这一刻，坏迁移时才有干净副本可退。
+     * keep=0 关闭；间隔=0 表示每次启动都拍。
+     */
+    private fun maybeSnapshot(db: Connection) {
+        val keep = AppConfig.dbSnapshotKeep
+        if (keep <= 0) return
+        val dir = DbSnapshot.backupsDirOf(path)
+        val minInterval = AppConfig.dbSnapshotMinIntervalMs
+        val latest = DbSnapshot.latestSnapshotTs(dir)
+        if (minInterval > 0L && latest != null && System.currentTimeMillis() - latest < minInterval) return
+        DbSnapshot.run(db, path, keep)
     }
 
     /**

@@ -68,6 +68,19 @@ object AppConfig {
     /** SQLite 只读连接池上限。 */
     val dbPoolSize: Int = int("LEGADO_DB_POOL_SIZE", 16)
 
+    /**
+     * 启动时给库做文件级快照（`VACUUM INTO`）保留几份，落在 `<库同目录>/backups/`。
+     * 默认 5 份；`0` 关闭自动快照。大库每次启动都整库拷贝代价真实，所以下面用间隔再收一道。
+     */
+    val dbSnapshotKeep: Int = int("LEGADO_DB_SNAPSHOT_KEEP", 5).coerceIn(0, 50)
+
+    /**
+     * 两次自动快照的最小间隔（毫秒，默认 12 小时）。距上次快照不足这个点就跳过本次启动，
+     * 避免"一天重启十次"反复 VACUUM 整库；也满足"每天至少有一份可回滚副本"。
+     * `0` 表示不设间隔、每次启动都拍（此时只由 keep 决定保留几份）。
+     */
+    val dbSnapshotMinIntervalMs: Long = long("LEGADO_DB_SNAPSHOT_MIN_INTERVAL_MS", 12 * 60 * 60 * 1000L)
+
     /** Edge-TTS 结果缓存条目上限。 */
     val edgeTtsCacheMax: Int = int("LEGADO_EDGE_TTS_CACHE_MAX", 250)
 
