@@ -53,6 +53,13 @@ test('备份页分两层说明，且两层不交叉：会恢复到应用里 / �
   }
 })
 
+test('备份页有"启动快照"区（②-b 恢复入口），SSR 无数据时给空态而非报错', () => {
+  const html = renderToStaticMarkup(React.createElement(BackupPage))
+  assert.ok(html.includes('启动快照'), '备份页要挂上启动快照区')
+  assert.ok(html.includes('排定恢复') || html.includes('还没留下过快照'),
+    '快照区要么列出可排定的快照、要么给"还没有快照"的空态，不能是空白或报错')
+})
+
 /**
  * #66：包里没有原生归宿的个性化条目要说清"收下了"而不是"跳过了"。
  * 这里喂一条 keptSections 进去，验播报把这批条目念出来。
