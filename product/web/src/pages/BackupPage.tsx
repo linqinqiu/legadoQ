@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type BackupImportSummary, type KeptBackupEntry } from '../lib/api'
+import { api, type BackupImportSummary, type BackupSnapshotInfo, type KeptBackupEntry } from '../lib/api'
 import { toast } from '../components/Toast'
 import { Icon } from '../icons'
 import { loadReaderSettings, saveReaderSettings } from '../reader/readerSettings'
@@ -77,6 +77,34 @@ export function BackupPage() {
     try { setKept(await api.keptBackupEntries()); setKeptFailed(false) } catch { setKeptFailed(true) }
   }, [])
   useEffect(() => { void loadKept() }, [loadKept])
+
+  // 启动库快照：可回滚的历史副本。取失败与"确实一份都没有"分开，别把没取到说成"没有备份"。
+  const [snapshots, setSnapshots] = useState<BackupSnapshotInfo[]>([])
+  const [snapshotsFailed, setSnapshotsFailed] = useState(false)
+  const loadSnapshots = useCallback(async () => {
+    try { setSnapshots(await api.backupSnapshots()); setSnapshotsFailed(false) } catch { setSnapshotsFailed(true) }
+  }, [])
+  useEffect(() => { void loadSnapshots() }, [loadSnapshots])
+
+  const scheduleRestore = async (snap: BackupSnapshotInfo) => {
+    const when = new Date(snap.createdAt).toLocaleString('zh-CN', { hour12: false })
+    const go = window.confirm(
+      `用「${when}」这份启动快照恢复数据库？\n` +
+      '这不会立刻生效：系统会在你下一次重启 legadoQ、打开数据库之前才落库，' +
+      '并把当前库先留成一份"恢复前副本"，万一恢复的不是想要的还能再退回。' +
+      '确认后排定成功，请随后重启一次。',
+    )
+    if (!go) return
+    setBusy(true)
+    try {
+      const result = await api.restoreBackupSnapshot(snap.name)
+      toast.success(result.restartRequired ? '已排定：下次重启 legadoQ 时恢复（当前库会先留一份副本）' : '已排定恢复')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '排定恢复失败')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const handleImport = async (file: File) => {
     const warned = window.confirm(
@@ -261,6 +289,37 @@ export function BackupPage() {
               ))}
             </ul>
           </>
+        )}
+      </section>
+      <section className="backup-panel">
+        <h2>启动快照（回滚点）</h2>
+        <p className="backup-hint">
+          每次启动会在服务器数据目录里留一份数据库的完整快照，只保留最近几份。
+          误删书源、装坏规则之后，可以从这里挑一份"排定恢复"——恢复在你下次重启时生效，当前库会先留一份副本。
+        </p>
+        {snapshotsFailed && snapshots.length === 0 && (
+          <p className="backup-hint" role="status">
+            快照清单没取到。
+            <button type="button" className="subtle-button" onClick={() => void loadSnapshots()}>再取一次</button>
+          </p>
+        )}
+        {!snapshotsFailed && snapshots.length === 0 && (
+          <p className="backup-hint">这台服务还没留下过快照（首次启动后就会有）。</p>
+        )}
+        {snapshots.length > 0 && (
+          <ul className="backup-kept-list">
+            {snapshots.map(snap => (
+              <li key={snap.name}>
+                <span className="backup-kept-label">{new Date(snap.createdAt).toLocaleString('zh-CN', { hour12: false })}</span>
+                <span className="backup-kept-meta">
+                  {snap.verified ? '完整' : '校验未通过'} · {Math.max(1, Math.round(snap.bytes / 1024))} KB
+                </span>
+                {snap.verified && (
+                  <button type="button" className="subtle-button" disabled={busy} onClick={() => void scheduleRestore(snap)}>排定恢复</button>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </section>

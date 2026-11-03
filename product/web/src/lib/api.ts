@@ -176,6 +176,11 @@ export type BackupImportSummary = {
 /** 备份包里被原样收下的一条个性化内容（服务端 BackupStore）。appliable 为真时前端能套到自己设置上。 */
 export type KeptBackupEntry = { name: string; label: string; bytes: number; items: number; appliable: boolean; updatedAt: number }
 
+/** 启动库快照的一条清单（服务端 DbSnapshot）：verified 为真才允许排定恢复。 */
+export type BackupSnapshotInfo = { name: string; bytes: number; sha256?: string | null; verified: boolean; createdAt: number }
+/** 排定恢复的回包：只表示已排定、需重启，不代表已改库。 */
+export type BackupRestoreScheduled = { scheduled: boolean; restartRequired: boolean; name: string }
+
 export type ReplaceRule = {
   id: string
   name: string
@@ -768,6 +773,9 @@ export const api = {
     return request<BackupImportSummary>('/api/backup/import', { method: 'POST', body: form })
   },
   keptBackupEntries: () => request<KeptBackupEntry[]>('/api/backup/kept'),
+  backupSnapshots: () => request<BackupSnapshotInfo[]>('/api/backup/snapshots'),
+  restoreBackupSnapshot: (name: string) =>
+    request<BackupRestoreScheduled>('/api/backup/snapshots/restore', { method: 'POST', body: JSON.stringify({ name }) }),
   keptBackupEntryUrl: (name: string) => `/api/backup/kept/${encodeURIComponent(name)}`,
   keptBackupEntry: (name: string) => fetch(`/api/backup/kept/${encodeURIComponent(name)}`).then(response =>
     response.ok ? response.text() : Promise.reject(new Error('服务器上没有这个条目'))),
