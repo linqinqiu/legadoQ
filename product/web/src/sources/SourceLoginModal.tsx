@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { zh } from '../i18n/zh'
 import { api, ExternalLoginStatus, SourceBrowserCookies, SourceLoginUiResponse } from '../lib/api'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
@@ -485,7 +486,7 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
               type="button"
               className="overlay-close"
               title="关闭"
-              aria-label="关闭"
+              aria-label={zh.common.close}
               onClick={onClose}
             >
               <Icon name="close" />
@@ -709,7 +710,7 @@ export const SourceLoginModal: React.FC<SourceLoginModalProps> = ({
             <div className="dialog-shell size-s source-login-dialog" role="dialog" aria-modal="true" aria-label="编辑登录请求头" onClick={e => e.stopPropagation()}>
               <div className="dialog-head">
                 <h3>编辑 / 填入登录头 (Login Header)</h3>
-                <button type="button" className="overlay-close" onClick={() => setHeaderEditOpen(false)} aria-label="关闭"><Icon name="close" /></button>
+                <button type="button" className="overlay-close" onClick={() => setHeaderEditOpen(false)} aria-label={zh.common.close}><Icon name="close" /></button>
               </div>
               <div className="source-login-body" style={{ padding: '16px' }}>
                 <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--muted)' }}>

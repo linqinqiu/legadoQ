@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api, SourceSummary } from '../lib/api'
 import { Icon } from '../icons'
 
@@ -92,7 +93,7 @@ export function SourceShareModal({ sourceIds, sources, onClose, onToast }: Sourc
                 : `已选 ${picked.length} 个书源，打包成一个 JSON 数组`}
             </small>
           </div>
-          <button type="button" className="overlay-close" title="关闭" aria-label="关闭" onClick={onClose}>
+          <button type="button" className="overlay-close" title="关闭" aria-label={zh.common.close} onClick={onClose}>
             <Icon name="close" />
           </button>
         </header>

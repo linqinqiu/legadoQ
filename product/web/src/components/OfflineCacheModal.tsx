@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { Icon } from '../icons'
 import { sourceLabel } from '../sources/sourceOrder'
 import {
@@ -106,7 +107,7 @@ export function OfflineCacheModal({ onClose }: OfflineCacheModalProps) {
               <small>存在这台电脑的浏览器里，断网也能读已下载的部分</small>
             </div>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭">
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}>
             <Icon name="close" />
           </button>
         </header>

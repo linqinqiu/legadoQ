@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
+import { zh } from '../i18n/zh'
 import {
   api,
   SourceLoginActionResult,
@@ -541,7 +542,7 @@ export const SourceLoginUiPanel = forwardRef<SourceLoginUiPanelHandle, SourceLog
                 <button
                   type="button"
                   className="overlay-close"
-                  aria-label="关闭"
+                  aria-label={zh.common.close}
                   onClick={() => setInline(null)}
                 >
                   <Icon name="close" />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { Icon } from '../icons'
 import { toast } from '../components/Toast'
 import { useEscapeClose } from '../lib/useEscapeClose'
@@ -55,7 +56,7 @@ export function CookieModal({ onClose }: { onClose: () => void }) {
       >
         <header className="dialog-head">
           <h2><Icon name="bookmark" /> Cookie 管理</h2>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>
         </header>
         <div className="cookie-modal-body">
           <CookieManager />
@@ -397,7 +398,7 @@ function CookieEditModal({ domain, onClose, onSaved }: {
             <h2>编辑 Cookie</h2>
             <small>{domain}</small>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭">
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}>
             <Icon name="close" />
           </button>
         </header>

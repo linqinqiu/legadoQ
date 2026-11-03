@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api, Chapter, SearchResult, SearchStreamEvent, SourceSummary, streamSearch } from '../lib/api'
 import { cleanTitle } from '../lib/searchFilters'
 import { sourceLabel, sourcePickerOptions } from './sourceOrder'
@@ -398,7 +399,7 @@ export function SourceSwitchModal({
             <h2>{bookName}</h2>
             <small>{author ? `作者：${author}` : '未知作者'} · 当前：{sourceLabel(currentSourceId)}</small>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭">
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}>
             <Icon name="close" />
           </button>
         </header>

@@ -1,3 +1,4 @@
+import { zh } from '../i18n/zh'
 /**
  * 标记快捷条（MD3 MarkingSelectionMenu 形态，PROPOSAL 阅读器增强）：
  * 选中正文后先摆这一条，而不是立刻弹笔记输入框。四个动作：
@@ -38,7 +39,7 @@ export function MarkingMenu({ x, y, onHighlight, onNote, onCopy, onAi, onDismiss
       <button type="button" className="reader-marking-btn" title="发给 AI 助手" aria-label="AI" onClick={onAi}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.9 4.8L19 9.7l-5.1 1.9L12 16.4l-1.9-4.8L5 9.7l5.1-1.9L12 3Z" /><path d="M18.5 15.5l.9 2.2 2.1.8-2.1.8-.9 2.2-.9-2.2-2.1-.8 2.1-.8.9-2.2Z" /></svg>
       </button>
-      <button type="button" className="reader-marking-btn" title="关闭" aria-label="关闭" onClick={onDismiss}>
+      <button type="button" className="reader-marking-btn" title="关闭" aria-label={zh.common.close} onClick={onDismiss}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
       </button>
     </div>

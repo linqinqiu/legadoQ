@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api, TtsVoice } from '../lib/api'
 import { Icon } from '../icons'
 import { ReaderSettings, TtsEngineType } from './readerSettings'
@@ -93,7 +94,7 @@ export const TtsSettingsModal: React.FC<TtsSettingsModalProps> = ({
           <div className="source-login-title-group">
             <h3 className="source-login-title"><Icon name="volume2" /> 听书朗读设置</h3>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} title="关闭" aria-label="关闭"><Icon name="close" /></button>
+          <button type="button" className="overlay-close" onClick={onClose} title="关闭" aria-label={zh.common.close}><Icon name="close" /></button>
         </header>
 
         <div className="source-login-body tts-modal-content">

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { zh } from '../i18n/zh'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
 
@@ -44,7 +45,7 @@ export function SourceGroupModal({
             <h2>批量设置分组</h2>
             <small>已选中 {selectedCount} 个书源</small>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭">
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}>
             <Icon name="close" />
           </button>
         </header>

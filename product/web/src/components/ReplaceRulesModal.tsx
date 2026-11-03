@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { zh } from '../i18n/zh'
 import { api, ReplaceRule, ReplaceRulePreviewResponse } from '../lib/api'
 import { toast } from './Toast'
 import { Icon } from '../icons'
@@ -313,7 +314,7 @@ export const ReplaceRulesModal: React.FC<Props> = ({
               type="button"
               onClick={onClose}
               className="overlay-close"
-              aria-label="关闭"
+              aria-label={zh.common.close}
             >
               <Icon name="close" />
             </button>
@@ -473,7 +474,7 @@ export const ReplaceRulesModal: React.FC<Props> = ({
                 type="button"
                 onClick={() => setIsEditModalOpen(false)}
                 className="overlay-close"
-                aria-label="关闭"
+                aria-label={zh.common.close}
               >
                 <Icon name="close" />
               </button>
@@ -642,7 +643,7 @@ export const ReplaceRulesModal: React.FC<Props> = ({
                 type="button"
                 onClick={() => setIsImportModalOpen(false)}
                 className="overlay-close"
-                aria-label="关闭"
+                aria-label={zh.common.close}
               >
                 <Icon name="close" />
               </button>

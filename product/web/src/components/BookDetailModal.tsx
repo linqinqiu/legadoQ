@@ -2,6 +2,7 @@
 // 从 main.tsx 拆出（0.8.2 结构重排）：组件体逐字未动，import 由脚本按导出面索引补全。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { CoverFallback } from '../shelf/Cover'
 import { Icon } from '../icons'
 import type { OpenBook } from '../reader/openBook'
@@ -290,7 +291,7 @@ export function BookDetailModal({
               {book.progress ? '继续阅读' : '开始阅读'}
               <Icon name="arrowRight" />
             </button>
-            <button type="button" className="overlay-close" onClick={handleClose} aria-label="关闭">
+            <button type="button" className="overlay-close" onClick={handleClose} aria-label={zh.common.close}>
               <Icon name="close" />
             </button>
           </div>

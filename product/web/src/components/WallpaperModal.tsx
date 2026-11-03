@@ -1,4 +1,5 @@
 import { Icon } from '../icons'
+import { zh } from '../i18n/zh'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { WallpaperSection } from '../settings/WallpaperSection'
 
@@ -15,7 +16,7 @@ export function WallpaperModal({ onClose }: { onClose: () => void }) {
       <div className="dialog-shell size-m wallpaper-dialog" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="壁纸">
         <header className="dialog-head customize-header">
           <h2><Icon name="image" /> 壁纸</h2>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>
         </header>
         <div className="customize-body">
           <p className="customize-hint">整站背景图；图片与设置只存在这台电脑的浏览器里，不进备份包。</p>

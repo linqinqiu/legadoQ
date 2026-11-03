@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api, type BrandInfo } from '../lib/api'
 import { reportBrand } from '../lib/brandStore'
 import { Icon } from '../icons'
@@ -125,7 +126,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
       <div className="dialog-shell size-s" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="应用名称与图标">
         <header className="dialog-head">
           <h2><Icon name="sliders" /> 应用名称与图标</h2>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>
         </header>
 
         <div className="server-port-body">

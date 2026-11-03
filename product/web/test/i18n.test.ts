@@ -29,7 +29,7 @@ test('PageDialog 已从集中字典取关闭标签，不再内联', () => {
 })
 
 test('残留的裸 aria-label="关闭" 不得超过当前基线（棘轮）', () => {
-  const RATCHET = 26 // ③ 批次 1 后实测：全仓 `aria-label="关闭"` 还剩 26 处（PageDialog 已集中），后续批次压低它
+  const RATCHET = 0 // ③ 批次 2：全部 overlay「关闭」已集中到 zh.common.close，今后不许再出现裸字面量
   const bare = tsFiles().reduce((sum, file) => {
     const n = (fs.readFileSync(file, 'utf8').match(/aria-label="关闭"/g) ?? []).length
     return sum + n

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api } from '../lib/api'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
@@ -48,7 +49,7 @@ export function ServerPortModal({ onClose }: { onClose: () => void }) {
       <div className="dialog-shell size-s" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="服务端口">
         <header className="dialog-head">
           <h2><Icon name="sliders" /> 服务端口</h2>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>
         </header>
 
         <div className="server-port-body">

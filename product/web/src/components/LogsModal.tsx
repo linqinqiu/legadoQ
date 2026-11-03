@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api, type LogEntry } from '../lib/api'
 import { Icon } from '../icons'
 import { Select } from './Select'
@@ -167,7 +168,7 @@ export function LogsModal({ onClose }: { onClose: () => void }) {
             <button type="button" className="logs-btn danger" onClick={() => void clear()}>
               <Icon name="trash" /><span>清空</span>
             </button>
-            <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭">
+            <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}>
               <Icon name="close" />
             </button>
           </div>

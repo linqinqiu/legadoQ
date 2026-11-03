@@ -2,6 +2,7 @@
 // 从 main.tsx 拆出（0.8.2 结构重排）：组件体逐字未动，import 由脚本按导出面索引补全。
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { BookCover } from '../shelf/Cover'
 import { BookGroup, BookshelfItem, Chapter, SearchResult, SourceSummary, api } from '../lib/api'
 import { Icon } from '../icons'
@@ -95,7 +96,7 @@ export function BookInfoEditModal({
           <div>
             <h2>编辑书籍信息</h2>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭">
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}>
             <Icon name="close" />
           </button>
         </header>
@@ -260,7 +261,7 @@ export function BookManageModal({
             </p>
             <small>{item.completed ? '已读完' : item.chapterIndex === undefined ? '刚加入书架' : `阅读至第 ${item.chapterIndex + 1} 章`}</small>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>
         </header>
 
         <div className="manage-sheet-actions">

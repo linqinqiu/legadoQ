@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api, type TocRuleList } from '../lib/api'
 import { Icon } from '../icons'
 import { Select } from './Select'
@@ -107,7 +108,7 @@ export function TocRulesModal({
       <div className="dialog-shell size-m toc-rules-modal" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="本地书分章规则">
         <header className="dialog-head toc-rules-head">
           <h2><Icon name="list" /> 本地书分章规则</h2>
-          <button type="button" className="overlay-close" onClick={onClose} aria-label="关闭"><Icon name="close" /></button>
+          <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>
         </header>
 
         <div className="toc-rules-body">

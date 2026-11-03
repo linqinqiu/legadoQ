@@ -3,6 +3,7 @@
 // `renderToStaticMarkup` 静态渲染才需要默认 React 在作用域里 —— 那件组件已拆进
 // `VirtualChapterList.tsx`，那条理由与它的默认导入一起搬过去了。）
 import React, { CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { api, BookDetails, BookNote, Chapter, SearchResult, TocRuleOption } from '../lib/api'
 import { getBrand } from '../lib/brandStore'
 import { ContextMenuItem, showContextMenu } from '../components/ContextMenu'
@@ -2862,7 +2863,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
                 <small>当前设备处于离线状态</small>
               </div>
             </div>
-            <button type="button" className="overlay-close" onClick={() => setOfflineTtsConfirmOpen(false)} aria-label="关闭">
+            <button type="button" className="overlay-close" onClick={() => setOfflineTtsConfirmOpen(false)} aria-label={zh.common.close}>
               <Icon name="close" />
             </button>
           </header>

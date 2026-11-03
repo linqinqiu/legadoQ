@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { zh } from '../i18n/zh'
 import { Icon } from '../icons'
 import type { Chapter } from '../lib/api'
 import { api } from '../lib/api'
@@ -144,7 +145,7 @@ export function RefreshChaptersModal({ sourceId, bookUrl, chapters, currentIndex
               <small>绕过缓存回源重取。目录与阅读进度不动，只换这几章的正文。</small>
             </div>
           </div>
-          <button type="button" className="overlay-close" onClick={onClose} disabled={running} aria-label="关闭">
+          <button type="button" className="overlay-close" onClick={onClose} disabled={running} aria-label={zh.common.close}>
             <Icon name="close" />
           </button>
         </header>
