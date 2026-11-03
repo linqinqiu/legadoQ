@@ -32,6 +32,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -98,55 +99,31 @@ fun Route.searchRoutes(
                 return@webSocket
             }
             val sourceRecords = database.listSearchSourceRecords(request!!.sourceIds)
-            send(Frame.Text(Json.encodeToString(SearchStreamEvent("start", totalSources = sourceRecords.size))))
+            val session = SearchSession(sourceRecords, sourceSearchConcurrency()) { source ->
+                searchSourceOutcome(runner, source.json, request.keyword, source.id)
+            }
             coroutineScope {
-                val events = Channel<SearchStreamEvent>(Channel.BUFFERED)
-                val counters = SearchStreamCounters(sourceRecords.size)
-                val semaphore = Semaphore(sourceSearchConcurrency())
-                val workers = sourceRecords.map { source -> async {
-                    semaphore.withPermit {
-                        if (!isActive) return@async
-                        val outcome = searchSourceOutcome(runner, source.json, request.keyword, source.id)
-                        if (!isActive) return@async
-                        runCatching {
-                            if (outcome.results.isNotEmpty()) events.send(SearchStreamEvent("results", results = outcome.results))
-                            events.send(counters.complete(outcome))
-                        }
-                    }
-                } }
-                val completionJob = launch {
-                    try {
-                        workers.awaitAll()
-                        runCatching { events.send(counters.snapshot("done")) }
-                    } catch (_: CancellationException) {
-                        // Workers were cancelled
-                    } finally {
-                        events.close()
+                // 主收集：把领域事件流逐条翻成 Frame 发回；另开一个监听协程读到 cancel 帧就取消收集。
+                val streaming = launch {
+                    session.events().collect { event ->
+                        runCatching { send(Frame.Text(Json.encodeToString(event))) }
                     }
                 }
-                val cancellationMonitor = launch {
+                val cancelWatch = launch {
                     try {
                         for (frame in incoming) {
-                            if (frame is Frame.Text && frame.readText().contains("\"cancel\"")) break
+                            if (frame is Frame.Text && frame.readText().contains("\"cancel\"")) {
+                                streaming.cancel()
+                                break
+                            }
                         }
                     } catch (_: Throwable) {
-                        // Incoming channel closed
-                    } finally {
-                        workers.forEach { it.cancel() }
-                        completionJob.cancel()
-                        events.close()
+                        // 连接被对端关闭：incoming 抛错，正常收尾
                     }
                 }
-                try {
-                    for (event in events) send(Frame.Text(Json.encodeToString(event)))
-                } catch (_: Throwable) {
-                    // Socket closed or disconnected
-                } finally {
-                    cancellationMonitor.cancel()
-                    completionJob.cancel()
-                    workers.forEach { it.cancel() }
-                    events.close()
-                }
+                streaming.join()
+                // done 已发出、流自然收尾：撤掉那个还在等 cancel 帧的监听，别让它吊着整个 scope。
+                cancelWatch.cancel()
             }
         }
         get("/explore/sources") {
