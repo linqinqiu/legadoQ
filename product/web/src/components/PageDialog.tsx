@@ -1,6 +1,7 @@
 import React from 'react'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { zh } from '../i18n/zh'
 
 /**
  * 整页内容改悬浮层共用的壳（0.6.27：规则 / 备份 / 更新日志 / 关于 不再占整页路由）。
@@ -19,7 +20,7 @@ export function PageDialog({ title, onClose, children }: { title: string; onClos
       >
         <header className="dialog-head">
           <h2>{title}</h2>
-          <button type="button" className="overlay-close" aria-label="关闭" onClick={onClose}><Icon name="close" /></button>
+          <button type="button" className="overlay-close" aria-label={zh.common.close} onClick={onClose}><Icon name="close" /></button>
         </header>
         <div className="page-dialog-body">{children}</div>
       </div>
