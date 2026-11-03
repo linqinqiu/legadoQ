@@ -82,7 +82,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 
 ## API
 
-- 端点总数：**154**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
+- 端点总数：**157**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
 - 机器可读目录：`GET http://127.0.0.1:1234/api/catalog`。
 - 接入说明：[`product/AGENTS.md`](product/AGENTS.md)。
 
