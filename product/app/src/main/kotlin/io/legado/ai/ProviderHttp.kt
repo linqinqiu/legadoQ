@@ -1,7 +1,7 @@
 package io.legado.ai
 
 import io.legado.AppConfig
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 import io.legado.http.ServerIdentity
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray

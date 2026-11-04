@@ -55,7 +55,7 @@ import io.legado.data.getTocCache
 import io.legado.data.saveSourceLoginInfo
 import io.legado.data.setCookieFromSetCookie
 import io.legado.data.shelfBook
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 import io.legado.model.FlexChildStyle
 import io.legado.model.SourceLoginActionResult
 import io.legado.model.SourceLoginCheckResult
@@ -97,7 +97,7 @@ class RuleRunner(
      * 这类形状时就没抓手，所以留这个口子（优先于 `responseFetcher`）。
      */
     internal var fetchedFetcher: ((String) -> Fetched)? = null
-    private val client = io.legado.http.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    private val client = io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
     private val json = Json { ignoreUnknownKeys = true }
     private val jsSandbox = JsSandbox(this)
 

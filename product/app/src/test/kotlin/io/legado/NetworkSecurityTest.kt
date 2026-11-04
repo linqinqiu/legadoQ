@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.net.URI
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 
 class NetworkSecurityTest {
 

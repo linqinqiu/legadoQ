@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import io.legado.AppConfig
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 import java.util.TreeMap
 
 /**

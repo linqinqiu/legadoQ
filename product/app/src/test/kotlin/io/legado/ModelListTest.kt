@@ -3,7 +3,7 @@ package io.legado
 import com.sun.net.httpserver.HttpServer
 import io.legado.ai.AgentProfileStore
 import io.legado.ai.OpenAiCompatibleProvider
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

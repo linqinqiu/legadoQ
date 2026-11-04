@@ -9,7 +9,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondTextWriter
 import io.legado.data.Database
 import io.legado.data.saveSource
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 import io.legado.model.ApiError
 import io.legado.model.SourceWriteRequest
 import io.legado.source.SourceCodec

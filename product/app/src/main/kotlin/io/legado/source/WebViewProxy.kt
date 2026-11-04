@@ -23,7 +23,7 @@ import io.legado.data.Database
 import io.legado.data.cookieBucketsForHosts
 import io.legado.data.getCookieForUrl
 import io.legado.data.setCookieFromSetCookie
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 import io.legado.ops.LogLevel
 import io.legado.ops.logSystem
 

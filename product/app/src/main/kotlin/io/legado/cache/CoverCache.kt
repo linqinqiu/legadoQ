@@ -18,7 +18,7 @@ import java.util.zip.InflaterInputStream
 import io.legado.data.Database
 import io.legado.data.forgetCover
 import io.legado.data.generatedLocalCoverKeys
-import io.legado.http.NetworkSecurity
+import io.legado.ops.NetworkSecurity
 import io.legado.http.proxyRequestHeaders
 
 data class CachedCover(val key: String, val contentType: String)
@@ -38,7 +38,7 @@ class CoverCache(
      *  换到前面就会把 `{ "image/png" to bytes }` 绑给 `cookieFor`，五个既有用例一起编译不过。 */
     private val fetcher: ((String) -> Pair<String, ByteArray>)? = null,
 ) {
-    private val client = io.legado.http.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    private val client = io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
 
     init { Files.createDirectories(directory) }
 

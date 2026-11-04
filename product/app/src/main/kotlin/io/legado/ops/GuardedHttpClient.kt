@@ -1,4 +1,4 @@
-package io.legado.http
+package io.legado.ops
 
 import java.net.Authenticator
 import java.net.CookieHandler
