@@ -45,9 +45,9 @@ function stripComments(text: string): string {
 function auditSubscriptionSplit(files: { name: string; text: string }[]): string[] {
   const problems: string[] = []
   const byName = new Map(files.map(f => [f.name, f.text]))
-  const sourcesPageText = byName.get('pages/SourcesPage.tsx') ?? ''
+  const sourcesPageText = byName.get('features/source-editor/SourcesPage.tsx') ?? ''
   const rssPage = stripComments(byName.get('pages/RssPage.tsx') ?? '')
-  const panel = byName.get('sources/SourceSubscriptionPanel.tsx') ?? ''
+  const panel = byName.get('features/source-editor/SourceSubscriptionPanel.tsx') ?? ''
 
   // ① 页签不许长回来：`.subscription-tabs` 在界面与样式表里都不该再出现
   for (const f of files) {
@@ -107,7 +107,7 @@ test('形状核对：书源页只剩编辑器，订阅页两块并列', () => {
   const pages = read('app/pages.tsx')
   assert.match(pages, /import \{ RssPage \} from '\.\.\/pages\/RssPage'/, '「订阅」页要由 pages/RssPage 提供')
 
-  const sourcesPage = stripComments(functionBody(read('pages/SourcesPage.tsx'), 'SourcesPage'))
+  const sourcesPage = stripComments(functionBody(read('features/source-editor/SourcesPage.tsx'), 'SourcesPage'))
   assert.ok(sourcesPage.length > 3000, `SourcesPage 只切出 ${sourcesPage.length} 字，切分本身没在做事`)
   assert.doesNotMatch(sourcesPage, /SourceSubscriptionPanel/, '书源页不该再引用订阅面板')
   assert.doesNotMatch(sourcesPage, /订阅地址/, '书源页不该再有「订阅地址」')
@@ -118,7 +118,7 @@ test('形状核对：书源页只剩编辑器，订阅页两块并列', () => {
   assert.match(rssPage, /subscription-block/, '两块要有各自的分区容器（视觉上分得清）')
 
   // 书源订阅面板的 onClose 现在是可选的（订阅页里没有"收起这一档"）
-  assert.match(read('sources/SourceSubscriptionPanel.tsx'), /onClose\?:/, 'onClose 应为可选')
+  assert.match(read('features/source-editor/SourceSubscriptionPanel.tsx'), /onClose\?:/, 'onClose 应为可选')
 
   const rss = read('pages/RssPanel.tsx')
   assert.doesNotMatch(rss, /onChanged/, 'RssPanel 的 onChanged 只为页签计数而存在，页签没了就该一起删')
@@ -134,7 +134,7 @@ test('反向对照：把旧形状塞回去必须报，而且逐项报得出是�
   assert.ok(tabs.some(p => p.includes('.subscription-tabs')), `加了页签没报：${tabs.join(' / ')}`)
 
   // 书源页又把订阅塞回来（注入到函数体内，才等于"书源页真的又渲染了它"）
-  const back = auditSubscriptionSplit(patch('pages/SourcesPage.tsx', t =>
+  const back = auditSubscriptionSplit(patch('features/source-editor/SourcesPage.tsx', t =>
     t.replace('const [isBatchMode, setIsBatchMode] = useState(false)',
       'const subsOpen = false\n  const injected = <SourceSubscriptionPanel onSourcesChange={() => {}} />\n  const [isBatchMode, setIsBatchMode] = useState(false)')))
   assert.ok(back.some(p => p.includes('又渲染了 <SourceSubscriptionPanel')), `塞回订阅面板没报：${back.join(' / ')}`)

@@ -169,6 +169,28 @@ object AppConfig {
     val aiAllowLoopbackBaseUrl: Boolean
         get() = flag("LEGADO_AI_ALLOW_LOOPBACK_BASEURL")
 
+    /**
+     * 强制走「文本回灌」协议（`LEGADO_AI_FORCE_TEXT_FALLBACK=1`）。
+     *
+     * 默认关闭：先用**原生 tool 协议**（tool_calls + role="tool" 消息），只在"本轮已经带 tool
+     * 结果、上游说它不认这套"时才自动降级到文本回灌。这个开关是给"上游一开始就不接 tool_calls"
+     * 的网关用的——例如某些实现有状态原生工具运行、客户端连 tool_calls 都不认的服务，
+     * 让 Agent 从第一轮就跳过原生协议，省一次注定失败的往返。
+     */
+    val aiForceTextFallback: Boolean
+        get() = flag("LEGADO_AI_FORCE_TEXT_FALLBACK")
+
+    /**
+     * 关掉自动降级（`LEGADO_AI_NEVER_DOWNGRADE_PROTOCOL=1`）。
+     *
+     * 默认关闭：原生协议这一跳失败 → 切文本回灌重试本轮（见 [io.legado.ai.Agent] 里
+     * `useNativeToolProtocol`）。这是给 pipio.io 那类"tool run 过期"的上游兜底的。
+     * 但有些部署宁愿让"上游不接工具回灌"直接显式报错、也不想让框架自作聪明改写历史；
+     * 这个开关把选择权交回用户。开了之后，原生失败不再降级，`chat` 直接回 502 `upstream_unreachable`。
+     */
+    val aiNeverDowngradeProtocol: Boolean
+        get() = flag("LEGADO_AI_NEVER_DOWNGRADE_PROTOCOL")
+
     private fun flag(key: String): Boolean =
         when (env[key]?.trim()?.lowercase()) {
             "1", "true", "yes", "on" -> true

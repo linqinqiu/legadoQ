@@ -182,7 +182,8 @@ test('小节不许重复（全文件），且当前版本按 新增→变更→�
 
 /** 接口层：读不到就 404，绝不能 200 + 空文本（前端会把"包里没有"念成"没有更新"）。 */
 test('服务端 /changelog 读不到时报 404，不报"空日志"', () => {
-  const routes = read('..', '..', 'app', 'src', 'main', 'kotlin', 'io', 'legado', 'http', 'Routes.kt')
+  // 0.2.14：系统域端点搬到 http/system/SystemRoutes.kt，装配点只留挂载调用。
+  const routes = read('..', '..', 'app', 'src', 'main', 'kotlin', 'io', 'legado', 'http', 'system', 'SystemRoutes.kt')
   assert.match(routes, /get\("\/changelog"\)/, '要有 GET /api/changelog 这一条路由')
   assert.match(routes, /meta\/changelog\.md/, '它读的是随包的 meta/changelog.md（打进 jar 才谈得上"随包"）')
   assert.match(routes, /changelog_missing/, '读不到时给一个明确的错误码')
@@ -193,7 +194,7 @@ test('服务端 /changelog 读不到时报 404，不报"空日志"', () => {
 
 /** 前端读的是同一个地址，且拿不到文本时如实报错。 */
 test('api.changelog 读 /api/changelog，非 2xx 要抛而不是返回空串', () => {
-  const api = read('..', 'src', 'lib', 'api.ts')
+  const api = read('..', 'src', 'lib', 'api', 'domains', 'system.ts')
   assert.match(api, /changelog:.*\/api\/changelog/s, 'api.ts 要有 changelog()，打到 /api/changelog')
   const body = /changelog:[\s\S]{0,400}/.exec(api)?.[0] ?? ''
   assert.match(body, /res\.ok/, '要判断 res.ok')

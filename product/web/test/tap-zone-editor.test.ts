@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { TapZoneEditor } from '../src/reader/TapZoneEditor'
-import { DEFAULT_MAPS, type TapMap } from '../src/reader/tapZones'
+import { TapZoneEditor } from '../src/features/reader/TapZoneEditor'
+import { DEFAULT_MAPS, type TapMap } from '../src/features/reader/tapZones'
 
 /**
  * 「点击区域」编辑器（用户 2026-10-09：「区域设置改提供横竖虚线，自定义，但是要区分翻页方式的影响」

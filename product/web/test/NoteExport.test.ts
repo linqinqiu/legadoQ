@@ -19,7 +19,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(path.join(import.meta.dirname, '../package.json'))
 
 // 走 tsx：直接 import 会被 tsconfig 的 jsx 影响，这里用 tsx 的 register 更稳。
-const { notesToMarkdown, notesExportFileName, notesToMarkdown: render } = await import('../src/reader/noteExport.ts')
+const { notesToMarkdown, notesExportFileName, notesToMarkdown: render } = await import('../src/features/reader/noteExport.ts')
 
 const note = (over: Record<string, unknown> = {}) => ({
   id: 1,
@@ -110,7 +110,7 @@ test('文件名去掉文件系统不接受的字符', () => {
 
 test('导出不新增端点：仍是前端动作', () => {
   // 这条是护栏：若哪天有人把导出改成"加一个新端点"，这里会提醒他去核对 ApiCatalog 的 139 条。
-  const src = fs.readFileSync(path.join(import.meta.dirname, '../src/reader/noteExport.ts'), 'utf8')
+  const src = fs.readFileSync(path.join(import.meta.dirname, '../src/features/reader/noteExport.ts'), 'utf8')
   assert.doesNotMatch(src, /api\.|fetch\(/, '导出必须是纯前端动作，不引入新的后端调用')
   assert.match(src, /export function notesToMarkdown/, '导出主函数要可单测')
 })

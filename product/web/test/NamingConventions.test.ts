@@ -65,7 +65,8 @@ test('features/ 下的目录职责与文档一致', () => {
   // 两个开关把值写进浏览器本地存储后没有任何地方读，描述的还是 0.8.4 就删掉的浮动窗口；
   // 那套 `builtinSettings.ts` 注册表连同分区一起删了，设置项的唯一来源是
   // `settings/settingsSections.ts`（见 SettingsPage.tsx 的说明）。
-  const expected = ['ai']
+  // 0.2.14：业务域按面收进 features/（书源 / 书架 / 阅读 / 设置）；feedback 为既有域。
+  const expected = ['ai', 'bookshelf', 'reader', 'settings', 'source-editor', 'feedback']
   for (const d of expected) {
     assert.ok(fs.existsSync(path.join(SRC, 'features', d)),
       `features/${d}/ 应存在（产品自带内容）`)
@@ -76,8 +77,12 @@ test('features/ 下的目录职责与文档一致', () => {
   assert.ok(!fs.existsSync(path.join(SRC, 'features', 'plugins')),
     'features/plugins/ 不该存在 —— 插件住 plugins/')
   // 反向：删掉的"第二套设置分区来源"不该长回来（长回来就等于两套都能改）
-  assert.ok(!fs.existsSync(path.join(SRC, 'features', 'settings')),
-    'features/settings/ 不该存在 —— 设置分区只有 settings/settingsSections.ts 一个来源')
+  // 0.2.14 起 settings 成为正常业务域（features/settings/ 放页面本身），判据因此从
+  // "目录不许存在"收紧为"目录里不许出现第二套分区注册表"（历史包袱：说谎控件 + 双来源）。
+  for (const banned of ['builtinSettings.ts', 'WindowPrefsSection.tsx', 'windowPrefs.ts']) {
+    assert.ok(!fs.existsSync(path.join(SRC, 'features', 'settings', banned)),
+      `features/settings/${banned} 不该存在 —— 设置分区只有 features/settings/settingsSections.ts 一个来源`)
+  }
   assert.ok(!fs.existsSync(path.join(SRC, 'features', 'builtinSettings.ts')),
     'features/builtinSettings.ts 不该存在 —— 同上，别再开第二套注册表')
 })

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { GLOBAL_SHORTCUTS, PRIMARY_PAGES, READER_SHORTCUTS, SHORTCUT_TABLES, isTypingTarget, normalizeKey, shortcutFor } from '../src/reader/shortcuts'
+import { GLOBAL_SHORTCUTS, PRIMARY_PAGES, READER_SHORTCUTS, SHORTCUT_TABLES, isTypingTarget, normalizeKey, shortcutFor } from '../src/features/reader/shortcuts'
 import { PAGES } from '../src/app/pageMeta'
-import { ShortcutHelp } from '../src/reader/ShortcutHelp'
+import { ShortcutHelp } from '../src/features/reader/ShortcutHelp'
 
 /**
  * 快捷键这张表与真正生效的处理器不许各说一套（用户 2026-10-02：「加入一些快捷键快捷方式」）。
@@ -14,7 +14,7 @@ import { ShortcutHelp } from '../src/reader/ShortcutHelp'
  * 于是这张"可查的按键表"变成一份谎言清单。所以这里双向都判：表里列的每条都要有人实现，
  * 处理器引用的每个动作都要在表里露出来。
  */
-const readerSource = fs.readFileSync(new URL('../src/reader/ReaderScreen.tsx', import.meta.url), 'utf8')
+const readerSource = fs.readFileSync(new URL('../src/features/reader/ReaderScreen.tsx', import.meta.url), 'utf8')
 const appSource = fs.readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8')
 
 /** 带修饰键的那几条不走表里的匹配（表只负责"给人看"），但它们对应的代码必须真的在。 */

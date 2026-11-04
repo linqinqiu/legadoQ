@@ -13,8 +13,8 @@ import {
   startHealthRun,
   stopHealthRun,
   type HealthRunStart,
-} from '../src/sources/sourceHealthRun'
-import { autoTagBatches, HEALTH_TAGS } from '../src/sources/sourceGrouping'
+} from '../src/features/source-editor/sourceHealthRun'
+import { autoTagBatches, HEALTH_TAGS } from '../src/features/source-editor/sourceGrouping'
 import type { SourceHealthCheckItem } from '../src/lib/api'
 
 /**
@@ -370,7 +370,7 @@ test('resetHealthRun - 跑完之后能清干净，正在跑时不清', async () 
 
 test('体检跑在弹窗组件之外：卸载不再顺手取消', () => {
   const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
-  const modal = read('../src/sources/SourceHealthModal.tsx')
+  const modal = read('../src/features/source-editor/SourceHealthModal.tsx')
   assert.match(modal, /const run = useHealthRun\(\)/, '弹窗是订阅者，不是运行时的持有者')
   assert.doesNotMatch(modal, /return \(\) => \{[\s\S]{0,160}cancel/, '卸载回调里不许再出现取消')
   assert.doesNotMatch(modal, /cancelledRef\.current\s*=/, '组件里不该还留着"卸载就置位"的那个开关（注释里提历史不算）')

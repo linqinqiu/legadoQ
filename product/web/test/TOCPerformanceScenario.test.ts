@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { assertScalesLinearly, assertWithinCeiling } from './perfCriteria.ts'
-import { computeCenterScrollOffset as computeAutoScrollOffset, computeVirtualWindow as computeVirtualSlice } from '../src/reader/virtualSlice.js'
+import { computeCenterScrollOffset as computeAutoScrollOffset, computeVirtualWindow as computeVirtualSlice } from '../src/features/reader/virtualSlice.js'
 import { LazyCandidateManager, deduplicateSearchResults } from './LazySourceLoading.test.ts'
 import type { SearchResult, BookDetails, Chapter, ReadingProgress } from './LazySourceLoading.test.ts'
 import { memoizedSplitParagraphs, scrollPosition, shouldPreloadNextChapter, BoundedPreloadCache } from './ReaderOptimization.test.ts'
@@ -61,12 +61,29 @@ test('TOCPerformanceScenario - Tier 4 Scenario 1: 5,000+ chapter TOC scrolling &
   // 2. Performance benchmark: Instantaneous filter execution speed (< 10ms)
   const queries = ['第100章', '大结局', '第2500章', '修仙风云', '不存在的章节关键字', '']
   for (const q of queries) {
-    const filterStart = performance.now()
+    // 两档**交替**取样：同一个循环里 small / big 轮着跑，机器负载对两者同时生效，
+    // 比值里就不剩「小样本那半段刚好被抢占」这种系统性偏差（单次取样会把它记成复杂度回归）。
+    // 每档把测量窗口拉到 ≥10ms 再折算单次成本：小规模单次只有一两毫秒，噪声占比过高。
+    const sampleBoth = (query: string) => {
+      const one = (data: Chapter[]) => {
+        const probe = performance.now()
+        filterChapters(data, query)
+        const once = Math.max(performance.now() - probe, 0.05)
+        const reps = Math.min(200, Math.max(1, Math.ceil(10 / once)))
+        const started = performance.now()
+        for (let r = 0; r < reps; r++) filterChapters(data, query)
+        return (performance.now() - started) / reps
+      }
+      let smallMs = Number.POSITIVE_INFINITY
+      let bigMs = Number.POSITIVE_INFINITY
+      for (let round = 0; round < 3; round++) {
+        smallMs = Math.min(smallMs, one(chapters))
+        bigMs = Math.min(bigMs, one(chapters4x))
+      }
+      return { smallMs, bigMs }
+    }
     const filtered = filterChapters(chapters, q)
-    const filterElapsed = performance.now() - filterStart
-    const bigFilterStart = performance.now()
-    filterChapters(chapters4x, q)
-    const bigFilterElapsed = performance.now() - bigFilterStart
+    const { smallMs: filterElapsed, bigMs: bigFilterElapsed } = sampleBoth(q)
 
     assertScalesLinearly({
       name: '5,000→20,000 章过滤「' + q + '」',

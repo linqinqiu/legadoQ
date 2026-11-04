@@ -2,19 +2,19 @@
 // 从 main.tsx 拆出（0.8.2 结构重排）：组件体逐字未动，import 由脚本按导出面索引补全。
 
 import { FormEvent, useMemo, useState } from 'react'
-import { CoverFallback, SearchCover } from '../shelf/Cover'
+import { CoverFallback, SearchCover } from '../features/bookshelf/Cover'
 import { Icon } from '../icons'
-import type { OpenBook } from '../reader/openBook'
+import type { OpenBook } from '../features/reader/openBook'
 import { Select } from '../components/Select'
-import { ShelfLayout, readSearchLayout, writeSearchLayout } from '../shelf/shelfLayout'
+import { ShelfLayout, readSearchLayout, writeSearchLayout } from '../features/bookshelf/shelfLayout'
 import { SortMode, cleanTitle, filterSearchGroups, isExactMatch, pickBlurb } from '../lib/searchFilters'
 import { SourceSummary } from '../lib/api'
-import { bookTypeMeta, commonBookType } from '../shelf/bookType'
+import { bookTypeMeta, commonBookType } from '../features/bookshelf/bookType'
 import { groupSearchResults, useSearchStore } from '../lib/searchStore'
-import { sanitizeImageUrl } from '../sources/sourceImport'
-import { sourcePickerOptions } from '../sources/sourceOrder'
+import { sanitizeImageUrl } from '../features/source-editor/sourceImport'
+import { sourcePickerOptions } from '../features/source-editor/sourceOrder'
 import { toast } from '../components/Toast'
-import { splitSourceGroups } from '../sources/sourceGrouping'
+import { splitSourceGroups } from '../features/source-editor/sourceGrouping'
 import { BookDetailModal } from '../components/BookDetailModal'
 
 export const highlightRegexCache = new Map<string, RegExp>()

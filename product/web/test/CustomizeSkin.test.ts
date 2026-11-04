@@ -7,8 +7,8 @@ import { testFiles } from './discover.ts'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { SkinModal } from '../src/components/SkinModal'
-import { ColorTab } from '../src/reader/settingsPanel/ColorTab'
-import { BackgroundLibrary } from '../src/reader/settingsPanel/BackgroundLibrary'
+import { ColorTab } from '../src/features/reader/settingsPanel/ColorTab'
+import { BackgroundLibrary } from '../src/features/reader/settingsPanel/BackgroundLibrary'
 import {
   activeCustomSkin,
   activeSkin,
@@ -36,7 +36,7 @@ import {
   themeClassNames,
   type CustomSkin,
   type ReaderSettings,
-} from '../src/reader/readerSettings'
+} from '../src/features/reader/readerSettings'
 
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
 const settings = (patch: Partial<ReaderSettings> = {}): ReaderSettings => ({ ...defaultReaderSettings, ...patch })
@@ -428,16 +428,16 @@ test('SkinModal 把内置 id 挡在自定义保存入口，并给内置删除 / 
 })
 
 test('内置皮肤的 CSS 预填读出的是出厂规则，不读用户自己的追加样式', () => {
-  const source = read('..', 'src', 'reader', 'readerSettings.ts')
+  const source = read('..', 'src', 'features', 'reader', 'readerSettings.ts')
   assert.match(source, /owner\?\.id === 'legado-custom-skin'/, '跳过注入点，否则编辑一次未改动的皮肤就会把追加样式当成出厂样式')
   assert.match(source, /function readBuiltinSkinCss/)
 })
 
 test('T 键轮换只走未删除的内置皮肤，恢复默认设置不会丢内置改动', () => {
-  const reader = read('..', 'src', 'reader', 'ReaderScreen.tsx')
+  const reader = read('..', 'src', 'features', 'reader', 'ReaderScreen.tsx')
   assert.match(reader, /BUILTIN_SKINS\.filter\(skin => !isBuiltinSkinHidden\(settings, skin\.id\)\)/, 'T 键不能切到已删除的内置皮肤')
   assert.match(reader, /const current = resolveTheme\(settings\)/, '轮换起点也要按实际生效的那套算')
-  const reset = read('..', 'src', 'reader', 'settingsPanel', 'TypographyTab.tsx')
+  const reset = read('..', 'src', 'features', 'reader', 'settingsPanel', 'TypographyTab.tsx')
   assert.match(reset, /builtinSkinOverrides: settings\.builtinSkinOverrides/, '恢复默认排版不能清掉内置皮肤改动')
   assert.match(reset, /hiddenBuiltinSkins: settings\.hiddenBuiltinSkins/, '恢复默认排版不能把删掉的皮肤又变回来')
 })
@@ -473,7 +473,7 @@ test('应用只有一套外壳（旧版顶栏），侧栏与页头条那套文�
   assert.ok(!fs.existsSync(path.join(src, 'PageBar.tsx')), 'PageBar.tsx（v2 页头条）应该已经删掉')
   const testDir = path.resolve(import.meta.dirname)
   assert.ok(!fs.existsSync(path.join(testDir, 'AppRail.test.ts')), '配套用例也要一起撤，留着就是一条打不开的红')
-  const settingsSrc = read('..', 'src', 'reader', 'readerSettings.ts')
+  const settingsSrc = read('..', 'src', 'features', 'reader', 'readerSettings.ts')
   assert.doesNotMatch(settingsSrc, /uiLayout/, '设置里不该再有"界面布局"这一档')
   const css = read('..', 'src', 'styles.css')
   for (const dead of ['.app-rail', '.rail-item', '.page-bar', '.app-frame', '.rail-tabs']) {

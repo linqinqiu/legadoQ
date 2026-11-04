@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { api, BookDetails, SearchResult, SearchStreamEvent, streamSearch } from './api'
 import { mergeStreamedResults, PROGRESS_FLUSH_MS, progressCanCoalesce } from './searchFilters'
-import type { OpenBook } from '../reader/openBook'
+import type { OpenBook } from '../features/reader/openBook'
 import { cleanAuthor, cleanTitle, defaultSearchFilters, SearchFilters, SearchGroup } from './searchFilters'
 
 export type SourceChoiceStatus = 'idle' | 'loading' | 'loaded' | 'error'

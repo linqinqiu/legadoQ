@@ -17,7 +17,7 @@ const SRC = path.resolve(import.meta.dirname, '../src')
 const read = (...parts: string[]) => fs.readFileSync(path.join(SRC, ...parts), 'utf8')
 
 test('登录浮层把书源界面接成第三个页签，自动推荐与顶栏行为跟着走', () => {
-  const modal = read('sources', 'SourceLoginModal.tsx')
+  const modal = read('features', 'source-editor', 'SourceLoginModal.tsx')
   assert.match(modal, /function hasLocalLoginUi/, 'URL-only 的按钮不算本地界面，判定要单独成函数')
   assert.match(modal, /const hasLocalUi = hasLocalLoginUi\(uiResponse\)/, '页签与顶栏共用同一判定')
   assert.match(modal, /\{hasLocalUi && tab\('form', '书源界面'\)\}/, '本地界面页签要在')
@@ -25,7 +25,7 @@ test('登录浮层把书源界面接成第三个页签，自动推荐与顶栏�
   assert.match(modal, /await panelRef\.current\.submitLogin\(\)/, '顶栏「保存并登录」要复用界面的当前字段')
   assert.match(modal, /if \(panelRef\.current\?\.hasInlinePage\(\)\) return/, 'Esc 先让浮层处理')
 
-  const panel = read('sources', 'SourceLoginUiPanel.tsx')
+  const panel = read('features', 'source-editor', 'SourceLoginUiPanel.tsx')
   assert.match(panel, /renderSourceLoginUi/, 'V2 的 state 变化要重新渲染')
   assert.match(panel, /executeSourceLoginUiAction/, 'V2 动作走 login-ui/action')
   assert.match(panel, /executeSourceLoginAction\(/, 'V1 动作走 login-action')
@@ -35,7 +35,7 @@ test('登录浮层把书源界面接成第三个页签，自动推荐与顶栏�
 })
 
 test('本地页面 iframe：脚本能跑、表单能用，但不给 same-origin，并只认自己的消息', () => {
-  const panel = read('sources', 'SourceLoginUiPanel.tsx')
+  const panel = read('features', 'source-editor', 'SourceLoginUiPanel.tsx')
   assert.match(panel, /sandbox="allow-scripts allow-forms allow-popups allow-modals"/,
     '登录/设置页要能跑脚本和表单，但禁止 allow-same-origin')
   assert.doesNotMatch(panel, /sandbox="[^"]*allow-same-origin/, '同源会让页面能碰父窗口')
@@ -46,7 +46,7 @@ test('本地页面 iframe：脚本能跑、表单能用，但不给 same-origin�
 })
 
 test('行类型覆盖上游 RowUi：无 action 的按钮当分隔标题，按钮支持倒计时', () => {
-  const panel = read('sources', 'SourceLoginUiPanel.tsx')
+  const panel = read('features', 'source-editor', 'SourceLoginUiPanel.tsx')
   assert.match(panel, /if \(!row\.action\)/, '没有 action 的按钮是分隔标题')
   assert.match(panel, /countdowns\[row\.action\]/, '按钮倒计时来自 countdown')
   assert.match(panel, /row\.type === 'toggle'/, '开关')

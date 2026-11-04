@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { layout, charWidth } from '../src/reader/typeset/layoutEngine'
-import { hashContent, serializePaginationKey, type TypesetParams } from '../src/reader/typeset/typesetParams'
+import { layout, charWidth } from '../src/features/reader/typeset/layoutEngine'
+import { hashContent, serializePaginationKey, type TypesetParams } from '../src/features/reader/typeset/typesetParams'
 
 /**
  * 无 DOM 布局引擎的判据（用户 2026-10-24：用纯数学排版替换基于 DOM 测量的分页）。

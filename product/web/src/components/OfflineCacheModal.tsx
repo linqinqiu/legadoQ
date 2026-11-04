@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { zh } from '../i18n/zh'
 import { Icon } from '../icons'
-import { sourceLabel } from '../sources/sourceOrder'
+import { sourceLabel } from '../features/source-editor/sourceOrder'
 import {
   clearAllOffline,
   clearOfflineBook,

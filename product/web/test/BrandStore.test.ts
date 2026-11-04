@@ -64,7 +64,7 @@ test('顶栏与阅读器标题读品牌 store，不写死应用名', () => {
   assert.match(header, /getBrand|useSyncExternalStore\(subscribeBrand/, '顶栏品牌字要读单一来源')
   assert.doesNotMatch(header, /<strong>legadoQ<\/strong>|aria-label="legadoQ"/, '顶栏不许留硬编码的「legadoQ」')
 
-  const reader = read('reader/ReaderScreen')
+  const reader = read('features/reader/ReaderScreen')
   // 切片从"取品牌名"那行起：标题模板用的是上一行取出的局部变量，从 `const shown` 起截会漏掉它。
   const titleBlock = /const brandName = getBrand\(\)\.displayName[\s\S]{0,220}/.exec(reader)?.[0] ?? ''
   assert.ok(titleBlock.length > 0, '要能定位到设标签页标题那一段（且它得先读品牌 store）')

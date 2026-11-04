@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path'
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 const webRoot = dirname(testDir)
-const readerDir = join(webRoot, 'src', 'reader')
+const readerDir = join(webRoot, 'src', 'features', 'reader')
 const readerScreenSrc = readFileSync(join(readerDir, 'ReaderScreen.tsx'), 'utf8')
 const stylesSrc = readFileSync(join(webRoot, 'src', 'styles.css'), 'utf8')
 

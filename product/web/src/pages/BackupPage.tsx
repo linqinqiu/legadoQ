@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type BackupImportSummary, type BackupSnapshotInfo, type KeptBackupEntry } from '../lib/api'
 import { toast } from '../components/Toast'
 import { Icon } from '../icons'
-import { loadReaderSettings, saveReaderSettings } from '../reader/readerSettings'
+import { loadReaderSettings, saveReaderSettings } from '../features/reader/readerSettings'
 import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../lib/backupPreferences'
 import { fetchImportUrl, fileNameFromUrl } from '../lib/importFromUrl'
 

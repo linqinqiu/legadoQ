@@ -81,9 +81,15 @@ import io.legado.model.SearchResult
  * A deliberately small, server-safe subset of Legado's declarative source protocol.
  * It keeps execution away from Android APIs and rejects private-network targets.
  */
-class RuleRunner(private val responseFetcher: ((String) -> String)? = null, internal var database: Database? = null) {
-    constructor(database: Database) : this(null, database)
-    constructor(responseFetcher: (String) -> String) : this(responseFetcher, null)
+class RuleRunner(
+    private val responseFetcher: ((String) -> String)? = null,
+    internal var database: Database? = null,
+    /** 规则处理器调度器；缺省时按原有内置逻辑走（向后兼容）。 */
+    internal val ruleDispatcher: RuleDispatcher? = null,
+) {
+    constructor(database: Database) : this(null, database, null)
+    constructor(responseFetcher: (String) -> String) : this(responseFetcher, null, null)
+    constructor(database: Database, ruleDispatcher: RuleDispatcher) : this(null, database, ruleDispatcher)
 
     /**
      * 测试与离线注入的**完整响应**替身：正文之外还要给状态码、响应头、Set-Cookie。
@@ -103,13 +109,16 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
      * 于是目录取不到（0 章，用户 2026-10-09 报的「漫画打不开」的根因之一）。
      *
      * 键是 bookUrl（搜索/发现时存），详情解析出 tocUrl 之后再补一份 tocUrl 的键
-     * （`chapters()` 那一侧拿到的是 tocUrl）。上限做了保护，避免长跑进程里无限涨。
+     * （`chapters()` 那一侧拿到的是 tocUrl）。
+     *
+     * 上限用**按最近使用淘汰**（LRU）来守，不是整表清空：从前超过上限就 `clear()`，长跑进程 +
+     * 多书源时会把别的书刚 `@put` 的变量一起抹掉，命中「目录取 0 章」这条老 bug（见上面漫画源那例）。
+     * LRU 只丢最久没用过的那条，最近用过的键（正是搜索存完紧接着要 `@get` 的那本）留在表里。
      */
-    private val ruleData = java.util.concurrent.ConcurrentHashMap<String, Map<String, String>>()
+    private val ruleData = newRuleDataCache(MAX_RULE_DATA_KEYS)
 
     private fun rememberRuleData(key: String?, vars: Map<String, String>) {
         if (key.isNullOrBlank() || vars.isEmpty()) return
-        if (ruleData.size > MAX_RULE_DATA_KEYS) ruleData.clear()
         ruleData[key] = vars
     }
 
@@ -2229,7 +2238,7 @@ class RuleRunner(private val responseFetcher: ((String) -> String)? = null, inte
     private companion object {
         const val MAX_BODY_BYTES = 2 * 1024 * 1024
         private const val MAX_TRACE_CHARS = 240
-        /** ruleData（跨调用复用的 @put 变量）的键上限：超了整表清空 —— 丢了顶多重搜一次。 */
+        /** ruleData（跨调用复用的 @put 变量）的键上限：超了按最近使用淘汰最旧那条（见 [newRuleDataCache]），不再整表清空。 */
         const val MAX_RULE_DATA_KEYS = 4096
         /** Java HttpClient 的受限请求头（设了会抛 IllegalArgumentException，见 request()）。 */
         val RESTRICTED_HEADERS = setOf("connection", "content-length", "expect", "host", "upgrade")
@@ -2384,5 +2393,21 @@ internal fun bareJsonListPath(body: String, rule: String): String? {
 }
 
 private val BARE_JSON_LIST_KEY = Regex("[A-Za-z_][\\w-]*(\\.[A-Za-z_][\\w-]*)*")
+
+/**
+ * ruleData（跨调用复用的 `@put` 变量表）的存储：**按最近使用淘汰**、线程安全。
+ *
+ * 为什么不是 `ConcurrentHashMap` + 超限 `clear()`：整表清空会把别的书刚存下、还没 `@get` 的变量
+ * 一起抹掉，命中「目录取 0 章」（见 [RuleRunner] 里 ruleData 的注释）。这里用 `accessOrder=true`
+ * 的 [java.util.LinkedHashMap]：`get` 与 `put` 都算"用过一次"、把键挪到队尾，超过上限只淘汰
+ * 队首那条最久没碰的。`synchronizedMap` 保证并发搜索/发现下多线程读写不炸。
+ */
+internal fun newRuleDataCache(maxKeys: Int): MutableMap<String, Map<String, String>> =
+    java.util.Collections.synchronizedMap(
+        object : java.util.LinkedHashMap<String, Map<String, String>>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Map<String, String>>): Boolean =
+                size > maxKeys
+        },
+    )
 
 // ---------------------------------------------------------------- @xpath 方言（JsoupXpath）

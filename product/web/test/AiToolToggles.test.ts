@@ -68,7 +68,8 @@ test('两个对话入口都把 disabledTools 发出去', () => {
     const source = read(file)
     assert.match(source, /disabledTools:\s*prefs\.disabledTools/, `${file}：发送时要带上逐项停用清单`)
   }
-  const api = read('../src/lib/api.ts')
+  // 0.2.14：AI 域实现拆到 lib/api/domains/agent.ts
+  const api = read('../src/lib/api/domains/agent.ts')
   assert.match(api, /\.\.\.\(disabledTools && disabledTools\.length > 0 \? \{ disabledTools \} : \{\}\)/,
     '非流式 chat 带上 disabledTools（空数组不进请求体）')
   assert.match(api, /\.\.\.\(opts\.disabledTools && opts\.disabledTools\.length > 0 \? \{ disabledTools: opts\.disabledTools \} : \{\}\)/,
@@ -78,7 +79,7 @@ test('两个对话入口都把 disabledTools 发出去', () => {
 })
 
 test('工具区块给出逐项复选框，并解释 program 组为什么不能停', () => {
-  const section = read('../src/settings/AiToolsSection.tsx')
+  const section = read('../src/features/settings/AiToolsSection.tsx')
   assert.match(section, /loadAiToolPrefs/, '状态读的是完整偏好')
   assert.match(section, /toggleTool/, '有逐项开关的处理')
   assert.match(section, /aria-label=\{`启用 \$\{tool\.id\}`\}/, '每个工具一条可勾选项，且有可读标签')
@@ -91,7 +92,7 @@ test('凭据界面说清会话层与超长丢下的键', () => {
   const api = read('../src/lib/cookieApi.ts')
   assert.match(api, /sessionKeys\?: string\[\]/, '列表类型装得下会话键')
   assert.match(api, /droppedKeys\?: string\[\]/, '也装得下因超长没发出去的键')
-  const section = read('../src/settings/CookieSection.tsx')
+  const section = read('../src/features/settings/CookieSection.tsx')
   assert.match(section, /仅本次会话（重启失效）/, '要说清会话凭据的寿命，不能只说"有几个键"')
   assert.match(section, /不会发出/, '被 4096 上限丢下的键要指名道姓')
   assert.match(section, /单条就超过 4096 字符/, '只剩一条仍然超限是另一回事，要分开说')

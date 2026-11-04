@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { compareCustomSort, dropIndexAt, moveWithin } from '../src/shelf/shelfOrder'
+import { compareCustomSort, dropIndexAt, moveWithin } from '../src/features/bookshelf/shelfOrder'
 import type { BookshelfItem } from '../src/lib/api'
 
 /**
@@ -49,7 +49,7 @@ test('挪位置 - 前移与后移的下标语义一致，越界原样返回', ()
 
 test('书架确实接上了拖动排序（不只是一个没人调用的模块）', () => {
   // 0.8.2 拆组：书架页从 main.tsx 搬进 pages/ShelfPage.tsx，断言逐字不变
-  const main = read('../src/pages/ShelfPage.tsx')
+  const main = read('../src/features/bookshelf/ShelfPage.tsx')
   assert.match(main, /case 'custom': sorted\.sort\(compareCustomSort\)/, '「自定义」这一档真的按 sortOrder 排')
   assert.match(main, /value: 'custom', label: '自定义（长按拖动）'/, '排序下拉里选得到')
   assert.match(main, /enabled: \(\) => sort === 'custom' && !batchMode/, '只在自定义档、且不在批量模式里可拖')
@@ -58,7 +58,7 @@ test('书架确实接上了拖动排序（不只是一个没人调用的模块�
   assert.match(main, /清除自定义顺序/)
   assert.match(main, /onPointerDown=\{onPointerDown\(index\)\}/)
   assert.match(main, /onClickCapture=\{onClickCapture\}/, '拖完那一下不能被当成"点开这本书"')
-  const layout = read('../src/shelf/shelfLayout.ts')
+  const layout = read('../src/features/bookshelf/shelfLayout.ts')
   assert.match(layout, /SORT_VALUES: ShelfSort\[\] = \[[^\]]*'custom'/, 'custom 是合法持久值，否则刷新就弹回默认档')
   // 0.8.2 拆组：书架面住在 ShelfRoutes.kt
   const server = read('../..', 'app/src/main/kotlin/io/legado/http/ShelfRoutes.kt')

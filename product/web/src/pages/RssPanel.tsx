@@ -3,7 +3,7 @@ import { api, type ExploreTab, type RssArticle, type RssSourceSummary } from '..
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { Notice } from '../components/Notice'
-import { EmptyGuide } from '../shelf/EmptyGuide'
+import { EmptyGuide } from '../features/bookshelf/EmptyGuide'
 import { Select } from '../components/Select'
 import { exploreLabel } from '../lib/exploreLabel'
 import { rssImageSrc } from '../lib/rssImage'

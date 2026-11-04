@@ -1,6 +1,6 @@
 # 当前结构与成果
 
-> 版本 **0.2.14** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 后端 **924** 项测试 / Web **883** 项测试，全绿
+> 版本 **0.2.14** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 后端 **927** 项测试 / Web **900** 项测试，全绿
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -22,17 +22,17 @@
 
 ## 2. 后端结构（Kotlin / Ktor 3.4.3，JDK 17）
 
-**规模**（实测计数）：后端 108 个源文件 / 约 3.1 万行，116 个测试文件 / 924 项测试；前端 159 个 `.ts/.tsx` / 约 3.3 万行，110 个测试文件 / 883 项测试。
+**规模**（实测计数）：后端 120 个源文件 / 约 3.19 万行，117 个测试文件 / 927 项测试；前端 175 个 `.ts/.tsx` / 约 3.46 万行，117 个测试文件 / 900 项测试。
 
 ### 2.1 包职责
 
 | 包 | 职责 |
 |---|---|
-| `http/` | 路由与 HTTP 边界：13 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；`Guard.kt`（同源写门）、`NetworkSecurity.kt`（出站 SSRF）、`RouteCatalog.kt`（端点目录）、`ProxyHeaders.kt` |
-| `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；建表与迁移集中在 `Database.kt` |
+| `http/` | 路由与 HTTP 边界：13 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；系统域（目录/服务/日志/诊断/关于/更新日志）独立成 `http/system/SystemRoutes.kt`；`Guard.kt`（同源写门）、`NetworkSecurity.kt`（出站 SSRF）、`RouteCatalog.kt`（端点目录）、`ProxyHeaders.kt` |
+| `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 只是组合根（连接池 / 建表 / 迁移 / Cookie 工具四件事拆在 `data/db/`：`ConnectionPool` `Schema` `Migration` `CookieUtil`） |
 | `reading/` | 阅读域收口 `ReadingRepository`：进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口 |
 | `ai/` | 进程内 AI 网关：三种协议（OpenAI 兼容 / Responses / Anthropic）、流式 SSE、工具循环、连接与预设、技能库、内置工具与参数 schema |
-| `rules/` | 书源规则引擎（Rhino 沙箱、正文/目录/搜索规则、loginUi V1/V2 渲染与动作） |
+| `rules/` | 书源规则引擎（Rhino 沙箱、正文/目录/搜索规则、loginUi V1/V2 渲染与动作）；`RuleProcessor` / `RuleContext` / `RuleDispatcher` 是**扩展点契约**（尚未接入 `RuleRunner`，见文件内说明），`rules/processor/` 下为占位实现与 `demo/` 示例 |
 | `source/` | 书源模型与登录链路（真浏览器登录、跨域凭据抓取、Cookie 罐） |
 | `cache/` | 正文缓存、封面缓存、缓存任务调度 |
 | `localbook/` | 本地书解析（TXT 分章 / EPUB） |
@@ -74,19 +74,23 @@
 
 ## 3. 前端结构（TypeScript / React 19）
 
-**规模**：147 个 ts/tsx、约 3.08 万行。
+**规模**：175 个 ts/tsx / 约 3.46 万行（`src/`，实测计数）。
 
 | 目录 | 内容 |
 |---|---|
-| `pages/` | 12 个页面组件：书架、书源、发现、RSS（含面板）、设置、备份、更新日志、阅读记录、关于、功能说明等 |
-| `reader/` | 43 个模块（另有 `typeset/` 等 3 个子目录）：阅读器主体、目录虚拟列表、笔记/标注、TTS 引擎与播放条、排版（无 DOM 布局引擎 + Worker）、分页缓存（IndexedDB）、翻页动画、手势/快捷键 |
+| `pages/` | 9 个页面组件：发现、书库、RSS（含面板）、备份、更新日志、阅读记录、关于、功能说明 |
+| `features/reader/` | 49 项（另有 `settingsPanel/` `typeset/` `dict/` 三个子目录）：阅读器主体、目录虚拟列表、笔记/标注、TTS 引擎与播放条（`ReaderTtsManager` + `ReaderTtsContext`）、排版（无 DOM 布局引擎 + Worker）、分页缓存、翻页动画、手势/快捷键 |
+| `features/bookshelf/` | 书架页 + 封面、空态引导、书类型、拖拽排序、布局与自定义顺序 |
+| `features/source-editor/` | 书源页 + 编辑器面板、字段表单、健康体检、登录浮层（V1 表单 / V2 脚本动作）、换源弹窗、订阅面板 |
+| `features/settings/` | 设置页 + 分区表（数据权威源 `settingsSections.ts`）、AI 工具、Cookie、壁纸分区 |
 | `features/ai/` | AI 悬浮球、对话面板（流式）、多会话、连接管理、技能库 |
-| `features/settings/` | 设置页分区贡献（如界面偏好） |
-| `sources/` | 书源编辑器、字段表单、换源弹窗、登录浮层（V1 表单 / V2 脚本动作） |
-| `settings/` | 设置分区表（数据权威源）与筛选 |
-| `lib/` | API 客户端、品牌、导航、UI 上下文、离线存储等 |
-| `plugins/` | 以「设置分区」形式贡献的内置页面（关于/备份/更新日志/阅读记录/书源体检） |
-| `extensions/` | 前端扩展注册表 |
+| `lib/api/` | 按域拆分的 API 客户端：`client.ts`（统一 fetch）+ `types.ts`（全部类型）+ `domains/{sources,search,reader,backup,agent,system,brand}.ts`；`lib/api.ts` 保留旧 `api` 对象形状作兼容层 |
+| `lib/` 其余 | 品牌 store、导航、UI 上下文、离线存储、搜索 store 等 |
+| `plugins/` | Slot / Extension 外壳：`slotRegistry`（槽位声明）、`extensionRegistry`（扩展注册）、`attachmentStore`（零依赖 `useSyncExternalStore` 挂载表）、`ExtensionSlot`（渲染占位） |
+| `components/` | 通用弹层与控件（ContextMenu、Select、Toast、各类 Modal） |
+
+**页面与业务的边界**：`pages/` 只放"路由级页面"，业务实现在 `features/<域>/`；`lib/api.ts` 是兼容层，
+新代码按域引用（`lib/api/domains/*` 或 `lib/api` 的类型），旧的 `api.xxx` 写法继续可用。
 
 **阅读器三个地基**：逻辑位置模型（章节 + 字符偏移 + 段落锚点 + 校验值，页码只作派生显示）；分页引擎（字体/字号/行距/边距/窗口精确分页，Worker 计算，IndexedDB 缓存，改字号靠锚点原地重量）；章节窗口（前接章 + 当前章 + 后接章，后端 `chapterWindow()` 已实现）。
 
@@ -107,8 +111,8 @@
 
 | 门禁 | 命令 | 现状（0.2.14） |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **924 项 / 0 失败** |
-| Web 测试 | `web: npm test` | **883 项 / 0 失败** |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **927 项 / 0 失败** |
+| Web 测试 | `web: npm test` | **900 项 / 0 失败** |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过 |
 | 端点文档一致 | `npm run docs:api-check` | 157 条 / 19 组，一致 |
 | 更新日志 | `npm run changelog:check` | 无待记录（提交后钩子自动起草） |
@@ -155,6 +159,8 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 | 缺口 | 现状 | 影响 |
 |---|---|---|
+| 规则引擎扩展点未接入 | `RuleProcessor` / `RuleContext` / `RuleDispatcher` 只是契约，`RuleRunner`（2413 行）仍走内联解析链路；`rules/processor/*` 为占位实现 | 新增解析方式能独立实现并单测，但**不会生效**；接入需一次带等价性测试的独立重构 |
+| ReaderScreen 未拆完 | 已拆出 TTS（`ReaderTtsManager` + `ReaderTtsContext`）；目录 / 正文 / 分页 / 设置四块仍在 2900 行的 `ReaderScreen.tsx` 里 | 阅读器改一处要读整文件；拆分需带交互回归 |
 | 全书搜索定位并高亮 | 只跳到命中章，不滚到命中处、不高亮 | 搜到还得自己找 |
 | 大章节分块渲染 | 整章挂 DOM | 超大章节内存与首屏 |
 | 漫画阅读模式 | 图片仅作正文内联，无双页/从右到左/页索引进度 | 漫画体验 |

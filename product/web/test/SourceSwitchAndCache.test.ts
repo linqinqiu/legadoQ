@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { matchBestChapter } from '../src/sources/SourceSwitchModal'
+import { matchBestChapter } from '../src/features/source-editor/SourceSwitchModal'
 import { Chapter } from '../src/lib/api'
 import { toast } from '../src/components/Toast'
 

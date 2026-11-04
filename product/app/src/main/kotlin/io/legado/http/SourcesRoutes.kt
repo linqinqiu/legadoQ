@@ -266,7 +266,7 @@ fun Route.sourcesRoutes(
             }
             val timeoutMs = req.timeoutMs.coerceIn(1000L, 10000L)
             val allSources = database.listSources(null)
-            // 没点名 ids 时只体检**启用中**的源。整库 5,574 个里被用户停用的那批他根本不读，
+            // 没点名 ids 时只体检**启用中**的源。整库里被用户停用的那批他根本不读，
             // 探它们既慢（并发 16、单个 5 秒超时，一轮就是几十分钟）又会在结果里堆一大片
             // 「连不上」，把真正要看的那几十个淹掉 —— 这正是「体检过慢、管理功能异常」的实测成因。
             // 停用的那批仍可显式点名（ids）或在界面上勾「连停用的一起体检」来覆盖。
@@ -827,14 +827,20 @@ private fun jsonEvent(message: String): String = Json.encodeToString(message)
 private val debugJson = Json { encodeDefaults = true }
 
 /**
+ * Cookie 同步接口只接受同源或无 Origin 的请求：
+ * - 没有 Origin 头视为本机工具或同源页面，放行；
+ * - 有 Origin 则必须指向服务自己（`isSameOriginIdentity`），否则拒绝。
+ *
+ * 书源自己的域名**不再**用于全局 Cookie 写入：恶意书源若填写攻击者控制的域名，
+ * 可使该域名下的页面向 1234 注入 Cookie，相当于通过书源配置开 CSRF 侧门。
+ * 书源域名的子资源放行由「内置浏览器代理」的 `/browser/res` 与 `/browser/page` 路径
+ * 独立负责，不与全局 Cookie 写入混在一起。
+ */
+/**
  * Cookie 同步接口只接受「该书源自己的站点」发来的跨站请求：没有 Origin 头视为本机工具或同源页面，放行；
  * 有 Origin 则必须命中书源 `bookSourceUrl` / `loginUrl` 的注册域（或该主机名确实出现在这份书源配置里，
  * 兼容用自定义标识当 URL 的聚合源）。命中时回显该 Origin 并带 `Vary: Origin`，不再使用 `*`。
  */
-/** Origin 的主机与端口都指向服务自己的绑定身份（判定在 Guard.kt，0.6.23 起与写闸门同一份）。 */
-private fun sameOriginCall(call: ApplicationCall): Boolean =
-    isSameOriginIdentity(call.request.headers[HttpHeaders.Origin]?.trim())
-
 private fun allowCookieSyncOrigin(call: ApplicationCall, database: Database, sourceJson: String? = null): Boolean {
     val origin = call.request.headers[HttpHeaders.Origin]?.trim()?.takeIf { it.isNotEmpty() } ?: return true
     val host = runCatching { URI(origin).host?.lowercase() }.getOrNull()?.takeIf { it.isNotEmpty() }
@@ -848,6 +854,10 @@ private fun allowCookieSyncOrigin(call: ApplicationCall, database: Database, sou
     call.response.headers.append(HttpHeaders.Vary, "Origin")
     return true
 }
+
+/** Origin 的主机与端口都指向服务自己的绑定身份（判定在 Guard.kt，0.6.23 起与写闸门同一份）。 */
+private fun sameOriginCall(call: ApplicationCall): Boolean =
+    isSameOriginIdentity(call.request.headers[HttpHeaders.Origin]?.trim())
 
 /**
  * 把代理结果写回响应；失败时返回一张可读的 HTML 错误页（因为它会被渲染进内置浏览器 iframe）。

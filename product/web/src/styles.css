@@ -6412,3 +6412,9 @@ html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-
 .settings-row:hover { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); }
 .source-item:hover,
 .shelf-card:hover { background: color-mix(in srgb, var(--ink) 5%, var(--surface)); }
+
+/* 扩展槽位：槽本身不产生盒子，挂进来的组件直接参与父级布局。
+   没有规则时浏览器会把它当块级 div，阅读器工具条那一行会被撑出一层空白。 */
+.extension-slot {
+  display: contents;
+}

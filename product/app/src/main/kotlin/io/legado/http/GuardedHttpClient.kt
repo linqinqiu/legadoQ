@@ -23,7 +23,17 @@ import javax.net.ssl.SSLParameters
  *
  * 这是把"出站必过闸"从"每个调用点记得手调一次"变成"拿不到不过闸的 client"的机制化收口。
  */
-internal class GuardedHttpClient(private val delegate: HttpClient) : HttpClient() {
+internal class GuardedHttpClient(
+    private val delegate: HttpClient,
+    /**
+     * 允许打到**回环**地址（本机模型：Ollama / LM Studio）。
+     *
+     * 只有 AI 外呼这一条在显式开关（`LEGADO_AI_ALLOW_LOOPBACK_BASEURL=1`）下会打开它，
+     * 且打开后仍拒私网/链路本地/保留段，并由调用方另行硬拒「打到这台服务自己」。
+     * 其余出站（书源、订阅、封面、媒体代理）永远拿不到放开回环的实例。
+     */
+    private val allowLoopback: Boolean = false,
+) : HttpClient() {
 
     override fun <T> send(req: HttpRequest, responseBodyHandler: HttpResponse.BodyHandler<T>): HttpResponse<T> {
         guard(req.uri())
@@ -56,7 +66,7 @@ internal class GuardedHttpClient(private val delegate: HttpClient) : HttpClient(
 
     private fun guard(uri: URI) {
         // 1) 既有判定：scheme/host + 解析后 IP 的私网/回环/保留段。
-        NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, uri.host ?: "目标")
+        NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, uri.host ?: "目标", allowLoopback)
         // 2) 防 DNS 重绑定：构造时解析过，建连前再解析一次并复查。
         //    两次解析之间若被重绑到私网，这里兜底拦下。
         val resolved = try {
@@ -65,6 +75,9 @@ internal class GuardedHttpClient(private val delegate: HttpClient) : HttpClient(
             throw NetworkSecurity.UnreachableTargetException("无法解析目标域名: ${uri.host}（${e.message}）", e)
         }
         for (addr in resolved) {
+            val loopback = addr.isLoopbackAddress || (addr.hostAddress?.startsWith("127.") == true)
+            // 放开回环时跳过它，但仍要挡私网/链路本地/保留段 —— 口子只开给本机模型，不开给整个内网。
+            if (loopback && allowLoopback) continue
             if (addr.isAnyLocalAddress || addr.isLoopbackAddress || addr.isLinkLocalAddress ||
                 addr.isSiteLocalAddress || addr.hostAddress == "169.254.169.254" ||
                 NetworkSecurity.isSpecialV4(addr) || NetworkSecurity.isSpecialV6(addr)

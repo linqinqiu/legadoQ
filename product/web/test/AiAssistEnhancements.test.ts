@@ -60,8 +60,9 @@ test('系统提示词模板可一键切换', () => {
 })
 
 test('工具在界面可见：按组列出（复用已有 manifest，不新增端点）', () => {
-  const api = read('../src/lib/api.ts')
-  assert.match(api, /origin\?: string \| null/, 'manifest 工具带来源字段（历史遗留，现在恒为内置）')
+  // 0.2.14：manifest 的字段类型住在 lib/api/types.ts
+  const types = read('../src/lib/api/types.ts')
+  assert.match(types, /origin\?: string \| null/, 'manifest 工具带来源字段（历史遗留，现在恒为内置）')
   // 2026-11-03：工具从「AI 接入」那一屏里拆成独立一档 `AiToolsModal.tsx`。
   const panel = read('../src/features/ai/AiToolsModal.tsx')
   assert.match(panel, /AiToolsSection/, '这一档能选工具组')

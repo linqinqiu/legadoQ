@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { BookDetails, BookshelfItem, Chapter, ReadingProgress } from '../src/lib/api'
 import { cleanAuthor, cleanTitle } from '../src/lib/searchFilters'
-import type { OpenBook } from '../src/reader/openBook'
+import type { OpenBook } from '../src/features/reader/openBook'
 
 /**
  * Simulates openShelfItem logic to test instant bookshelf open behavior and details call elimination.

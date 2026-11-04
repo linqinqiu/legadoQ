@@ -42,7 +42,8 @@ test('版本与仓库都来自服务端，界面不写死', () => {
   assert.match(page, /api\.about\(\)/)
   // 字面量版本号会造出第二个事实来源（这条在本项目里翻过车，见 version-check.mjs）
   assert.doesNotMatch(page, /['"`]\d+\.\d+\.\d+['"`]/, 'AboutPage 里出现了写死的版本号')
-  assert.match(read('../src/lib/api.ts'), /about: \(\) => request<AboutInfo>\('\/api\/about'\)/)
+  // 0.2.14：实现按域拆到 lib/api/domains/*，系统域在 system.ts（lib/api.ts 只留旧形状兼容层）
+  assert.match(read('../src/lib/api/domains/system.ts'), /about: \(\) => request<AboutInfo>\('\/api\/about'\)/)
 })
 
 test('构建号与对外版本分两格显示，取不到时不编数字', () => {
@@ -51,12 +52,12 @@ test('构建号与对外版本分两格显示，取不到时不编数字', () =>
   assert.match(page, /info\.build/)
   assert.match(page, /info\.build !== '0'/, '构建号为 0 表示没注入，不能当成一次真实构建显示')
   assert.match(page, /未注入/)
-  const api = read('../src/lib/api.ts')
-  assert.match(api, /AboutInfo = \{[^}]*build\?: string/, '旧服务端可能没有 build 字段，类型要允许缺省')
+  const types = read('../src/lib/api/types.ts')
+  assert.match(types, /AboutInfo = \{[^}]*build\?: string/, '旧服务端可能没有 build 字段，类型要允许缺省')
 })
 
 test('检查更新是点了才打，且地址不接受用户输入', () => {
-  assert.match(read('../src/lib/api.ts'), /checkUpdate: \(\) => request<UpdateCheckResult>\('\/api\/about\/update-check', \{ method: 'POST' \}\)/)
+  assert.match(read('../src/lib/api/domains/system.ts'), /checkUpdate:[\s\S]{0,400}?'\/api\/about\/update-check', \{ method: 'POST' \}/)
   const server = read('../../app/src/main/kotlin/io/legado/ops/UpdateCheck.kt')
   assert.match(server, /System\.getenv\("LEGADO_REPO"\)/, '仓库 slug 只有一个可覆盖的来源')
   assert.doesNotMatch(server, /call\.request\.queryParameters/, '检查更新不许从请求参数里拼 URL —— 那是开在本机上的 SSRF 门')
@@ -64,7 +65,8 @@ test('检查更新是点了才打，且地址不接受用户输入', () => {
   // 要列发布列表，不能只取 /releases/latest：CI 每推一次 main 就把滚动构建发成标签 `latest`，
   // `/releases/latest` 于是永远返回 `tag_name="latest"`，版本比较把它当"有新版本"（用户 2026-10-11）。
   assert.match(server, /releases\?per_page/, '要列全部发布，从里面分出「版本号发布」与「滚动构建」')
-  assert.match(read('../../app/src/main/kotlin/io/legado/http/Routes.kt'), /post\("\/about\/update-check"\)[\s\S]*?requireSameOriginWrite/)
+  // 系统域路由已拆到 http/system/SystemRoutes.kt（Routes.kt 只留挂载调用）
+  assert.match(read('../../app/src/main/kotlin/io/legado/http/system/SystemRoutes.kt'), /post\("\/about\/update-check"\)[\s\S]*?requireSameOriginWrite/)
 })
 
 test('许可那一栏说的是真话：运行时依赖与协议都列出来', () => {

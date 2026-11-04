@@ -9,9 +9,9 @@ import {
   parseScriptMode,
   SCRIPT_MODE_OPTIONS,
   type ScriptDict,
-} from '../src/reader/scriptConvert'
-import * as realDict from '../src/reader/dict/openccData'
-import { defaultReaderSettings } from '../src/reader/readerSettings'
+} from '../src/features/reader/scriptConvert'
+import * as realDict from '../src/features/reader/dict/openccData'
+import { defaultReaderSettings } from '../src/features/reader/readerSettings'
 
 /**
  * 「简繁转换」（用户 2026-10-11 的 A–F 里 C 项）。
@@ -151,19 +151,19 @@ test('loadScriptConverter：off 不碰字典；同档只建一次', async () => 
 
 test('设置项：默认关着，读时过清洗', () => {
   assert.equal(defaultReaderSettings.scriptMode, 'off')
-  assert.match(read('../src/reader/readerSettings.ts'), /scriptMode: parseScriptMode\(saved\.scriptMode\)/)
+  assert.match(read('../src/features/reader/readerSettings.ts'), /scriptMode: parseScriptMode\(saved\.scriptMode\)/)
 })
 
 test('设置面板那三档与转换器是同一份清单', () => {
   assert.deepEqual(SCRIPT_MODE_OPTIONS.map(option => option.id), ['off', 's2t', 't2s'])
-  const readerScreen = read('../src/reader/ReaderScreen.tsx')
+  const readerScreen = read('../src/features/reader/ReaderScreen.tsx')
   // PROPOSAL-020 P4：简繁这一节从「行为」页搬去了「设置」弹层（OtherSettingsPanel）。
-  assert.match(read('../src/reader/OtherSettingsPanel.tsx'), /SCRIPT_MODE_OPTIONS\.map\(/, '面板要按同一份清单列，别各写一份')
+  assert.match(read('../src/features/reader/OtherSettingsPanel.tsx'), /SCRIPT_MODE_OPTIONS\.map\(/, '面板要按同一份清单列，别各写一份')
   assert.match(readerScreen, /settings\.scriptMode/, '正文要真的按这一项走')
 })
 
 test('正文与章名都过转换器，不是只转正文', () => {
-  const readerScreen = read('../src/reader/ReaderScreen.tsx')
+  const readerScreen = read('../src/features/reader/ReaderScreen.tsx')
   assert.match(readerScreen, /splitParagraphs\([^)]*\)\.map\(convert\)|splitBody\(/, '正文段落要过转换器')
   assert.match(readerScreen, /<h1>\{convert\(/, '章名也要转，否则正文繁体、标题简体')
 })
@@ -177,7 +177,7 @@ test('转换器是函数：useState 初始化器必须包一层（否则被当�
    * 静态渲染的门禁（paginate-flow 等）能逮住它，但那一层要起服务 + 浏览器；
    * 这里用源码判据把它钉在最便宜的一层，别再让同一句话第二次掉进同一个坑。
    */
-  const readerScreen = read('../src/reader/ReaderScreen.tsx')
+  const readerScreen = read('../src/features/reader/ReaderScreen.tsx')
   assert.match(readerScreen, /useState<ScriptConverter>\(\(\) => IDENTITY_CONVERTER\)/, '初始化器要包一层 () => …')
   assert.doesNotMatch(readerScreen, /useState<ScriptConverter>\(IDENTITY_CONVERTER\)/, '裸函数会被当惰性初始化器调用，绝不能这么写')
   // 另一半：setter 同样要包一层（loaded 本身是函数，会被当 updater）

@@ -11,7 +11,7 @@ import path from 'node:path'
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
 // 0.8.2 拆组：书源页从 main.tsx 搬进 pages/SourcesPage.tsx；这三条读的书源页代码都在那里。
 // 相对 import 因层级变化（./shelf → ../shelf），正则收两种写法，断言的事实不变。
-const sourcesPage = () => read('../src/pages/SourcesPage.tsx')
+const sourcesPage = () => read('../src/features/source-editor/SourcesPage.tsx')
 
 test('顺序只有一个来源：服务端排，客户端只做原位回填', () => {
   const main = sourcesPage()
@@ -29,7 +29,7 @@ test('顺序只有一个来源：服务端排，客户端只做原位回填', ()
 
 test('书源拖动与书架共用同一份手势，且批量模式让路', () => {
   const main = sourcesPage()
-  assert.match(main, /from '[.][./]*shelf\/dragSort'/, '手势在 dragSort.ts 里，两处共用一份')
+  assert.match(main, /from '[.][./]*(bookshelf|shelf)\/dragSort'/, '手势在 dragSort.ts 里，两处共用一份')
   assert.match(main, /itemSelector: '\.source-list-item'/)
   assert.match(main, /enabled: \(\) => !isBatchMode/, '批量模式里点按是勾选，不能抢成拖动')
   assert.match(main, /onPointerDown=\{onSourcePointerDown\(index\)\}/)
@@ -42,7 +42,8 @@ test('有位置才给"清除自定义顺序"，并且说的是条数', () => {
   assert.match(main, /orderedCount > 0 && \(/)
   assert.match(main, /个书源有自定义位置；其余按名称排在后面/, '不能只说"已自定义"而不讲清其余那批还是按名称')
   assert.match(main, /api\.clearSourceOrder/)
-  assert.match(read('../src/lib/api.ts'), /reorderSources: \(ids: string\[\]\) => request<\{ updated: number \}>\('\/api\/sources\/order', \{ method: 'PUT', body: JSON\.stringify\(\{ ids \}\) \}\)/)
+  // 0.2.14：sources 域实现在 lib/api/domains/sources.ts（reorder）
+  assert.match(read('../src/lib/api/domains/sources.ts'), /reorder: \(ids: string\[\]\) =>[\s\S]{0,200}'\/api\/sources\/order'[\s\S]{0,120}method: 'PUT'[\s\S]{0,80}JSON\.stringify\(\{ ids \}\)/)
 })
 
 test('路由注册在 /sources/{id} 之前，PUT /sources/order 不会被当成某个源', () => {

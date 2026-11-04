@@ -1,6 +1,6 @@
 import React from 'react'
 import { RssPanel } from './RssPanel'
-import { SourceSubscriptionPanel } from '../sources/SourceSubscriptionPanel'
+import { SourceSubscriptionPanel } from '../features/source-editor/SourceSubscriptionPanel'
 
 /**
  * 「订阅」页 —— 这里放**两件不同的事**，各占一块、各有标题，不让用户猜：

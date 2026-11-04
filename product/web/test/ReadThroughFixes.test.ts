@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { removeCut } from '../src/reader/tapZones'
-import { splitSentences } from '../src/reader/ttsTextProcessor'
+import { removeCut } from '../src/features/reader/tapZones'
+import { splitSentences } from '../src/features/reader/ttsTextProcessor'
 import { searchStore } from '../src/lib/searchStore'
 
 /**
@@ -27,7 +27,7 @@ test('removeCut 按下标删线，横竖两条把手都用它', () => {
   assert.deepEqual(removeCut([0.5], 0), [], '只剩一条时双击要真的把它摘掉')
   assert.deepEqual(removeCut([0.5], 5), [0.5], '下标越界不该动任何东西')
 
-  const editor = read('reader', 'TapZoneEditor.tsx')
+  const editor = read('features', 'reader', 'TapZoneEditor.tsx')
   assert.equal((editor.match(/filter\(\(_, item\)/g) || []).length, 0, '按下标比值的写法要清零')
   assert.match(editor, /withCuts\('x', removeCut\(map\.x, index\)\)/, '竖线把手')
   assert.match(editor, /withCuts\('y', removeCut\(map\.y, index\)\)/, '横线把手（曾与竖线同一次笔误）')
@@ -40,8 +40,8 @@ test('全角数字与字母是有效内容，纯标点碎片仍然丢掉', () =>
     '反向对照：真·纯标点仍然要被丢掉')
   // 两处"什么算标点"必须同源：引擎侧与分句侧各写一份迟早漂
   const range = /\/\[\\s[^/\n]*\]\/g/g
-  const engine = read('reader', 'ttsEngine.ts').match(range) ?? []
-  const processor = read('reader', 'ttsTextProcessor.ts').match(range) ?? []
+  const engine = read('features', 'reader', 'ttsEngine.ts').match(range) ?? []
+  const processor = read('features', 'reader', 'ttsTextProcessor.ts').match(range) ?? []
   assert.equal(engine.length, 1, 'ttsEngine 里应当只有一处剥除区间')
   assert.equal(processor.length, 1, 'ttsTextProcessor 里应当只有一处剥除区间')
   assert.deepEqual(processor, engine, '两处剥除区间不许是两个答案')
@@ -107,7 +107,7 @@ test('换源的晚到响应不许把上一轮的书写回屏幕（§4.1 那条 P
  */
 test('书架：还没到手 / 取失败了 / 确实没有 是三件事，全选只看可见那一列', () => {
   // 0.8.2 拆组：ShelfPage 从 main.tsx 搬进 pages/ShelfPage.tsx，断言逐字不变
-  const shelf = read('pages', 'ShelfPage.tsx')
+  const shelf = read('features', 'bookshelf', 'ShelfPage.tsx')
   const body = shelf.slice(shelf.indexOf('function ShelfPage'))
   assert.match(body, /const \[itemsLoaded, setItemsLoaded\] = useState\(false\)/, '要有一个"到手了"的旗标')
   assert.match(body, /setItemsLoaded\(true\)/, '旗标要在 load 的 finally 里置位')
@@ -126,7 +126,7 @@ test('书架：还没到手 / 取失败了 / 确实没有 是三件事，全选�
 })
 
 test('一张卡只有一个百分比口径，本地同步的进度分子只数这一次切片', () => {
-  const shelf = read('pages', 'ShelfPage.tsx')
+  const shelf = read('features', 'bookshelf', 'ShelfPage.tsx')
   const meta = /className="shelf-meta-percent"[\s\S]{0,220}/.exec(shelf)
   assert.ok(meta, '卡底部那格百分比要还在')
   assert.match(meta[0], /\(\(item\.chapterIndex \?\? 0\) \+ 1\) \/ item\.totalChapters/, '与 hover 层同口径')
@@ -143,7 +143,7 @@ test('Esc 只挂一份、登录浮层保留本地界面与两条凭据路径、�
   const logs = read('components', 'LogsModal.tsx')
   assert.doesNotMatch(logs, /addEventListener\('keydown'/, 'LogsModal 不该再自己挂一份 keydown')
   assert.match(logs, /useEscapeClose\(onClose\)/, '统一那一套要在')
-  const debug = read('sources', 'SourceDebugModal.tsx')
+  const debug = read('features', 'source-editor', 'SourceDebugModal.tsx')
   assert.doesNotMatch(debug, /addEventListener\('keydown'/, '调试台同理（收流留在卸载清理里）')
   assert.match(debug, /useEffect\(\(\) => \(\) => \{ streamRef\.current\?\.close\(\) \}, \[\]\)/, '卸载要收 EventSource')
 
@@ -151,16 +151,16 @@ test('Esc 只挂一份、登录浮层保留本地界面与两条凭据路径、�
   // 凭据路径只留「真浏览器」与「粘贴 Cookie」两条（用户 2026-10-28）。
   // 2026-10-28 追加「书源界面」：有 loginUi 的源按 APK 的方式在本地渲染字段与按钮；
   // 它不是第三条凭据路径，而是书源自己的登录界面。
-  const login = read('sources', 'SourceLoginModal.tsx')
+  const login = read('features', 'source-editor', 'SourceLoginModal.tsx')
   assert.doesNotMatch(login, /SourceWebViewModal|bookmarkletCode/, '内置浏览器 / 书签同步不许回来')
   const tabs = [...login.matchAll(/tab\('(external|cookie|form|browser|bookmark)', '([^']+)'\)/g)].map(m => m[2])
   assert.deepEqual(tabs, ['书源界面', '真浏览器', '粘贴 Cookie'], '登录方式：书源界面 + 两条凭据路径')
   assert.match(login, /api\.externalLoginStart\(sourceId, res\.openUrl\)/,
     '登录脚本要浏览器时必须交给真浏览器，不能弹到日常浏览器或内嵌沙箱')
 
-  assert.doesNotMatch(read('sources', 'bookSourceFields.ts'), /SOURCE_FIELD_COUNT/,
+  assert.doesNotMatch(read('features', 'source-editor', 'bookSourceFields.ts'), /SOURCE_FIELD_COUNT/,
     '与列表漂移的死常量不回来（总数由编辑器现算）')
-  assert.doesNotMatch(read('sources', 'sourceInspector.ts'), /createInitialInspections/,
+  assert.doesNotMatch(read('features', 'source-editor', 'sourceInspector.ts'), /createInitialInspections/,
     '纯别名不回来')
 })
 
@@ -180,12 +180,12 @@ test('底部弹层只在开着的时候接 Esc', () => {
   // 阅读设置现在合并成**一张** ReaderSheet（层内用「阅读 / 其它」标签页切换，不再两张同挂）。
   // useEscapeClose 的监听挂在 window 上，与 open 无关 —— 关闭态必须不接 Esc，否则按一次 Esc
   // 会连触发两次关闭。这条判据仍然盯着那个「只在 open 时接 Esc」的写法。
-  const sheet = read('reader', 'ReaderSheet.tsx')
+  const sheet = read('features', 'reader', 'ReaderSheet.tsx')
   assert.match(sheet, /useEscapeClose\(open \? onClose : ignoreEscape\)/,
     '关闭态不许接 Esc（0.7.0 那轮的修法）')
   assert.doesNotMatch(sheet, /useEscapeClose\(onClose\)/,
     '反向对照：无条件接 Esc 的写法')
-  const screen = read('reader', 'ReaderScreen.tsx')
+  const screen = read('features', 'reader', 'ReaderScreen.tsx')
   assert.equal((screen.match(/<ReaderSheet /g) ?? []).length, 1,
     '阅读设置合并成一张弹层；再冒出第二张说明又把两个设置拆回去了')
 })
@@ -193,9 +193,9 @@ test('底部弹层只在开着的时候接 Esc', () => {
 test('MD3 外壳的注释不许把"默认"写回旧界面', () => {
   // PROPOSAL-020 P1 时 MD3 确实是回退档，0.7.0（2360391）把它上线成默认，
   // 注释还说"默认走旧界面" —— 读注释的人会以为要开开关才用得上。
-  const chrome = read('reader', 'Md3Chrome.tsx')
+  const chrome = read('features', 'reader', 'Md3Chrome.tsx')
   assert.doesNotMatch(chrome, /默认走旧界面/, '过期状态描述要跟着改，不然是拿注释当事实')
-  const screen = read('reader', 'ReaderScreen.tsx')
+  const screen = read('features', 'reader', 'ReaderScreen.tsx')
   assert.match(screen, /localStorage\.getItem\('reader-ui-v2'\) !== '0'/,
     '现行默认：只有显式置 0 才回旧界面')
 })

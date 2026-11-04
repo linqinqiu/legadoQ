@@ -1,5 +1,6 @@
 package io.legado.ai
 
+import io.legado.http.NetworkSecurity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -146,5 +147,36 @@ class OpenAiProviderSsrfTest {
         assertNull("null 仍返回 null", provider.endpointUrl(profile(null)))
         assertNull("空串仍返回 null", provider.endpointUrl(profile("")))
         assertNull("纯空白仍返回 null", provider.endpointUrl(profile("   ")))
+    }
+
+    // ===== 发送层兜底闸门（0.2.14 补） =====
+    //
+    // 从前闸门只在 provider 构造请求时跑一次 `assertPublicBaseUrl`，发送层（`sendWithRetry`）
+    // 用的是裸 `HttpClient`。于是"绕过 provider 直接调 ProviderHttp.sendText"或"解析时公网、
+    // 建连时被重绑到内网"（TOCTOU）都能让这台服务真去连内网：连不上就翻成 5xx "连不上"，
+    // 真连上了（如 DNS 重绑命中本机端口）就是 SSRF 侧门。
+    //
+    // 修复把同一道闸门挪到贴着 `client.send()` 的位置。判别式：直接对内网地址调 sendText，
+    // 必须在**建连之前**抛 BlockedAddressException（4xx 语义），而不是穿透到重试兜底被
+    // 翻成 UnreachableTargetException（5xx）。这条测试不需要真起服务器 —— 它验的就是"根本没发出去"。
+
+    @Test
+    fun `发送层也过闸门 内网地址建连前就被拒且保持4xx语义`() {
+        val internalUrl = "http://127.0.0.1:59999/v1/chat/completions"
+        val error = assertThrows(NetworkSecurity.BlockedAddressException::class.java) {
+            ProviderHttp.sendText(
+                profile = profile("http://127.0.0.1:59999"),
+                url = internalUrl,
+                body = "{}",
+                timeoutMs = 2_000L,
+                allowRetry = true,
+            )
+        }
+        // 被拒绝属 4xx（IllegalArgumentException 家族），绝不能是 UnreachableTargetException（IOException / 5xx）
+        assertTrue("被拒地址必须是 IllegalArgumentException", error is IllegalArgumentException)
+        assertTrue(
+            "错误要说明是内网/本机地址，实际「${error.message}」",
+            error.message?.contains("内网") == true || error.message?.contains("本机") == true,
+        )
     }
 }

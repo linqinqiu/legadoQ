@@ -19,7 +19,7 @@ test('书源页首屏：宿主把启动时取好的清单交给书源页，挂�
   const mount = /<SourcesPage[\s\S]*?\/>/.exec(pages)?.[0] ?? ''
   assert.match(mount, /sources=\{ctx\.sources\}/, 'pages.tsx 没把宿主已有的书源清单传给 SourcesPage')
 
-  const page = read('src', 'pages', 'SourcesPage.tsx')
+  const page = read('src', 'features', 'source-editor', 'SourcesPage.tsx')
   const start = page.indexOf('export function SourcesPage')
   const signature = page.slice(start, start + 700)
   assert.match(signature, /\(\{[\s\S]*?sources:\s*hostedSources/, 'SourcesPage 没接收宿主给的初始清单')

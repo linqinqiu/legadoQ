@@ -4,8 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { SettingsPage, type SettingsSection } from '../src/pages/SettingsPage'
-import { filterSettingsSections } from '../src/settings/settingsSections'
+import { SettingsPage, type SettingsSection } from '../src/features/settings/SettingsPage'
+import { filterSettingsSections } from '../src/features/settings/settingsSections'
 
 /**
  * 「设置」页存在的意义是"分类"：用户 2026-10-03 让它收纳 txt 目录规则 / 备份 / 替换净化，
@@ -36,7 +36,7 @@ test('静态渲染：分组、一行一句说明、一个动作', () => {
 })
 
 test('这一页只是路由：不读写数据，也不持有设置的值', () => {
-  const page = read('../src/pages/SettingsPage.tsx')
+  const page = read('../src/features/settings/SettingsPage.tsx')
   // 出现这些就说明有人把第二套实现搬进来了（两处都能改 → 迟早两处不一样）
   assert.doesNotMatch(page, /localStorage|fetch\(|api\./, '设置页不该自己读写数据')
   assert.doesNotMatch(page, /saveReaderSettings|onSettingsChange|settings\./, '它不持有设置的值：值仍存在原来那一处')
@@ -79,7 +79,7 @@ test('一级目的地只在顶栏列一次；规则/备份 收在「设置」页
   // 分区表只有**一份出处**：`settings/settingsSections.ts`（P0.3 从 main.tsx 搬出来）。
   const main = read('../src/main.tsx')
   // 判两件事：表里声明了哪些动作，以及 main.tsx 是不是把每一个都接到了原来那一份实现上。
-  const sectionsFile = read('../src/settings/settingsSections.ts')
+  const sectionsFile = read('../src/features/settings/settingsSections.ts')
   assert.doesNotMatch(main, /const settingsSections: SettingsSection\[\] = \[/,
     '分区表又内联回 App 组件了 —— 一张要给人读的清单不该长在三千多行那个文件中间')
   const declared = [...sectionsFile.matchAll(/^ {2}(open[A-Z]\w*): \(\) => void$/gm)].map(m => m[1])
@@ -115,7 +115,7 @@ test('路由与"去书架开弹窗"的信号接上了', () => {
   assert.match(route, /pageFromHash/, 'hash 解析要由页面元数据表提供')
   assert.match(route, /\{ key: 'settings'/, 'settings 必须在页面表里')
   const pages = read('../src/app/pages.tsx')
-  const main = [read('../src/main.tsx'), pages, read('../src/pages/ShelfPage.tsx')].join('\n')
+  const main = [read('../src/main.tsx'), pages, read('../src/features/bookshelf/ShelfPage.tsx')].join('\n')
   // 结构判据：settings 分支里渲染 SettingsPage，sections 来自宿主接好的分区表。
   assert.match(pages, /<SettingsPage sections=\{ctx\.settingsSections\}/)
   assert.match(main, /settingsSections: buildSettingsSections\(\{/)
@@ -175,7 +175,7 @@ test('搜索框画在界面上，且"没搜到"只在真搜过时才说', () => 
   // 「没有匹配」那一支必须同时要求"真的输入过"：少了这个条件，sections 为空时界面会凭空说"没有匹配「」"。
   // 0.8.3 起这个条件收进 nothingMatched（= searching && 内置与插件分区都空），
   // 判据改成查它的定义里确实带了 searching，而不是钉死内联写法。
-  const settingsSrc = read('../src/pages/SettingsPage.tsx')
+  const settingsSrc = read('../src/features/settings/SettingsPage.tsx')
   assert.match(settingsSrc, /const nothingMatched = searching &&/, '空态条件里必须包含"真的输入过"')
   assert.match(settingsSrc, /\{nothingMatched \?/, '空态要用那个条件把关')
 })

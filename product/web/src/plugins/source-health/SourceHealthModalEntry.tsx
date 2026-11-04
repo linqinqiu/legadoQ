@@ -1,5 +1,5 @@
 import React from 'react'
-import { SourceHealthModal } from '../../sources/SourceHealthModal'
+import { SourceHealthModal } from '../../features/source-editor/SourceHealthModal'
 import type { SourceSummary } from '../../lib/api'
 
 /**

@@ -109,6 +109,7 @@ class OpenAiCompatibleProvider(
             timeoutMs = ProviderHttp.timeoutMs(profile, 60_000L),
             headers = ProfileOptions.headers(profile.options),
             authHeaders = { key -> bearer(key) },
+            loopbackAllowed = loopbackAllowed(),
         )
         if (resp.statusCode() !in 200..299) {
             val text = runCatching { resp.body().bufferedReader().use { it.readText() } }.getOrNull()
@@ -222,6 +223,7 @@ class OpenAiCompatibleProvider(
             timeoutMs = ProviderHttp.timeoutMs(profile, 30_000L),
             headers = ProfileOptions.headers(profile.options),
             authHeaders = { key -> bearer(key) },
+            loopbackAllowed = loopbackAllowed(),
         )
         if (resp.statusCode() !in 200..299) {
             ProviderHttp.failForStatus(resp.statusCode(), resp.body())
@@ -310,6 +312,7 @@ class OpenAiCompatibleProvider(
             timeoutMs = ProviderHttp.timeoutMs(profile, 20_000L),
             headers = ProfileOptions.headers(profile.options),
             authHeaders = { key -> bearer(key) },
+            loopbackAllowed = loopbackAllowed(),
         )
         if (resp.statusCode() !in 200..299) {
             ProviderHttp.failForStatus(resp.statusCode(), resp.body())

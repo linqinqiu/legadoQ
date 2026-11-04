@@ -24,10 +24,19 @@ const DOC = path.join(ROOT, 'AGENTS.md')
  * `ApiRoutesHttpTest` 起的是真服务器，它才是不漂的最终锚——文件怎么拆都骗得过解析器、骗不过 404。
  */
 function routeFiles(): string[] {
-  return fs.readdirSync(HTTP_DIR)
-    .filter(f => (f === 'Routes.kt' || f.endsWith('Routes.kt')) && f.endsWith('.kt'))
-    .sort()
-    .map(f => path.join(HTTP_DIR, f))
+  // 递归扫：0.2.14 起系统域独立成 `http/system/SystemRoutes.kt` 子包，
+  // 只扫顶层会让 9 条系统端点（catalog/server/logs/diagnostics/about/changelog）
+  // 在判据里凭空消失 —— 目录里那 9 条于是被报告成「代码中不存在」。
+  const out: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.name.endsWith('Routes.kt')) out.push(full)
+    }
+  }
+  walk(HTTP_DIR)
+  return out.sort()
 }
 
 /**
@@ -132,7 +141,10 @@ function parseAllRoutes(): { method: string; path: string; write: boolean }[] {
   const found: { method: string; path: string; write: boolean }[] = []
   for (const file of routeFiles()) {
     const text = fs.readFileSync(file, 'utf8')
-    const seeded = text.includes('route("/api") {') ? text : `    route("/api") {\n${text}\n    }\n`
+    // 合成锚的缩进必须是 0：组文件里的端点既可能是原来的 8 空格（仍在 `route("/api")` 内），
+    // 也可能是抽成 `fun Route.xxxRoutes()` 后降到 4 空格（如 http/system/SystemRoutes.kt）。
+    // 锚写在 4 空格会与后者同级，被 `while (indent >= 本行缩进) pop` 弹掉，`/api` 前缀整段丢失。
+    const seeded = text.includes('route("/api") {') ? text : `route("/api") {\n${text}\n}\n`
     found.push(...parseRoutes(seeded))
   }
   const unique = new Map<string, { method: string; path: string; write: boolean }>()
@@ -144,8 +156,13 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   const routes = parseAllRoutes()
   assert.ok(routes.length >= 120, `只从 http/ 路由文件解析到 ${routes.length} 条端点，解析方式没对上，这条判据在演空戏`)
   const catalog = JSON.parse(fs.readFileSync(CATALOG, 'utf8'))
-  assert.ok(Array.isArray(catalog.endpoints) && catalog.endpoints.length === routes.length,
-    `目录有 ${catalog.endpoints?.length ?? 0} 条，代码里注册了 ${routes.length} 条 —— 这两个数必须相等，全量覆盖是这份契约的全部意义`)
+  // 先算出「哪几条对不上」再断言数量：只说 157 ≠ 148 的话，得自己去翻两边的全部条目。
+  const problems = auditCatalog(routes, catalog)
+  assert.ok(
+    Array.isArray(catalog.endpoints) && catalog.endpoints.length === routes.length,
+    `目录有 ${catalog.endpoints?.length ?? 0} 条，代码里注册了 ${routes.length} 条 —— 这两个数必须相等，全量覆盖是这份契约的全部意义\n`
+      + `差异明细（前 20 条）：\n${problems.slice(0, 20).join('\n') || '（无：数量不等但逐条审计没发现问题，说明是重复项或解析口径差异）'}`,
+  )
   assert.deepEqual(auditCatalog(routes, catalog), [], '端点目录与代码对不上')
   // 绝对计数钉死：143 条 / 19 组 / 系统组 7 条是当前 legadoQ 的权威契约（见 docs/RESEARCH-NOTES §7）。
   // 双向相等只防「漂移」，不防「两边一起错」——重排架构时若这两个数真要变，

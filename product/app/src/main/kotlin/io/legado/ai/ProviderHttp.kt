@@ -1,5 +1,6 @@
 package io.legado.ai
 
+import io.legado.AppConfig
 import io.legado.http.NetworkSecurity
 import io.legado.http.ServerIdentity
 import kotlinx.serialization.json.Json
@@ -28,6 +29,10 @@ import java.time.Duration
  * 为什么必须共用：出站闸门是**安全边界**（AI 连接不许打内网/本机，尤其不许打这台服务自己）。
  * 每多一份复制就多一次漂移机会，而漂移的那天就是侧门重开的那天。协议实现可以各写各的，
  * 这道门只有一套。
+ *
+ * 闸门在**发包这一层**兜底（见 [sendWithRetry]）：provider 构造请求时已校验过一次 `baseUrl`，
+ * 但那只挡住"填错地址"，挡不住"解析时公网、建连时被重绑到内网"与"302 跳内网"。所以这里
+ * 每次 [client.send] 前贴着复查一次地址，且 [client] 不自动跟随重定向——两道口子都封死。
  */
 internal object ProviderHttp {
 
@@ -43,7 +48,27 @@ internal object ProviderHttp {
     private const val MAX_RETRY_AFTER_MS = 10_000L
 
     private val client: HttpClient by lazy {
-        HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
+        // 走受控出站 client：每次 send 前都会在 GuardedHttpClient.guard() 里
+        // 对解析后的 IP 再复查一次私网/回环/保留段，防 DNS 重绑定 TOCTOU。
+        NetworkSecurity.newHttpClient(
+            connectTimeout = Duration.ofSeconds(10),
+            followRedirects = HttpClient.Redirect.NEVER,
+        )
+    }
+
+    /**
+     * 放开回环的同一套受控 client：**只在** `loopbackAllowed`（本机 Ollama / LM Studio）时选用。
+     *
+     * 为什么必须另有一个实例而不是给上面那个传参：`client` 是进程级 lazy 单例，
+     * 而回环口子是**逐连接**的策略（provider 可以按连接注入），两者混在一起会让
+     * 「某个连接放开了」悄悄扩大成「所有出站都放开」。
+     */
+    private val loopbackClient: HttpClient by lazy {
+        NetworkSecurity.newHttpClient(
+            connectTimeout = Duration.ofSeconds(10),
+            followRedirects = HttpClient.Redirect.NEVER,
+            allowLoopback = true,
+        )
     }
 
     // ===== 地址 =====
@@ -172,11 +197,13 @@ internal object ProviderHttp {
         headers: Map<String, String> = emptyMap(),
         authHeaders: (String) -> Map<String, String> = { emptyMap() },
         allowRetry: Boolean = true,
+        loopbackAllowed: Boolean = AppConfig.aiAllowLoopbackBaseUrl,
     ): HttpResponse<String> = sendWithRetry(
         profile = profile,
         url = url,
         timeoutMs = timeoutMs,
         allowRetry = allowRetry,
+        loopbackAllowed = loopbackAllowed,
         handler = HttpResponse.BodyHandlers.ofString(),
         build = { key ->
             baseBuilder(url, key, timeoutMs)
@@ -195,11 +222,13 @@ internal object ProviderHttp {
         headers: Map<String, String> = emptyMap(),
         authHeaders: (String) -> Map<String, String> = { emptyMap() },
         allowRetry: Boolean = true,
+        loopbackAllowed: Boolean = AppConfig.aiAllowLoopbackBaseUrl,
     ): HttpResponse<String> = sendWithRetry(
         profile = profile,
         url = url,
         timeoutMs = timeoutMs,
         allowRetry = allowRetry,
+        loopbackAllowed = loopbackAllowed,
         handler = HttpResponse.BodyHandlers.ofString(),
         build = { key ->
             baseBuilder(url, key, timeoutMs)
@@ -227,11 +256,13 @@ internal object ProviderHttp {
         headers: Map<String, String> = emptyMap(),
         authHeaders: (String) -> Map<String, String> = { emptyMap() },
         allowRetry: Boolean = true,
+        loopbackAllowed: Boolean = AppConfig.aiAllowLoopbackBaseUrl,
     ): HttpResponse<InputStream> = sendWithRetry(
         profile = profile,
         url = url,
         timeoutMs = timeoutMs,
         allowRetry = allowRetry,
+        loopbackAllowed = loopbackAllowed,
         handler = HttpResponse.BodyHandlers.ofInputStream(),
         build = { key ->
             baseBuilder(url, key, timeoutMs)
@@ -258,15 +289,23 @@ internal object ProviderHttp {
         handler: HttpResponse.BodyHandler<T>,
         build: (String) -> HttpRequest,
         release: (HttpResponse<T>) -> Unit = {},
+        loopbackAllowed: Boolean = AppConfig.aiAllowLoopbackBaseUrl,
     ): HttpResponse<T> {
         val keys = keys(profile)
         val maxAttempts = 1 + (if (allowRetry) retries(profile) else 0)
         var lastError: Throwable? = null
         for (attempt in 0 until maxAttempts) {
             val key = if (keys.isEmpty()) "" else keys[attempt % keys.size]
+            // 贴着 send() 再走一次同一道闸门：provider 只在构造请求时跑过一次 assertPublicBaseUrl，
+            // 从那一刻到真正建连之间 DNS 可能被重绑到内网/回环（TOCTOU）。这里复查把窗口收到与
+            // 受控 client 同级别。用**调用方传入的** loopbackAllowed，与构造期同一策略（provider 可按连接
+            // 注入回环口子，发送层不能自己另读一份全局值把口子悄悄关回去）。故意放在 try 外面——地址被拒
+            // 必须原样抛 BlockedAddressException（4xx 语义），不能被下面的重试兜底 catch 翻成 UnreachableTargetException（5xx "连不上"）。
+            assertPublicBaseUrl(url, loopbackAllowed)
             val request = build(key)
             try {
-                val resp = client.send(request, handler)
+                // 口子跟着连接走：开了回环就用放开回环的实例，否则用严格实例。
+                val resp = (if (loopbackAllowed) loopbackClient else client).send(request, handler)
                 val retryable = resp.statusCode() in RETRYABLE_STATUS ||
                     (resp.statusCode() in ROTATE_KEY_STATUS && keys.size > 1)
                 if (retryable && attempt < maxAttempts - 1) {

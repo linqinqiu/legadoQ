@@ -1,5 +1,5 @@
 import { api } from './api'
-import { sanitizeImageUrl } from '../sources/sourceImport'
+import { sanitizeImageUrl } from '../features/source-editor/sourceImport'
 
 /**
  * RSS 条目的配图让服务端代取，不放浏览器直连。

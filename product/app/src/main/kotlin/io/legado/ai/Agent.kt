@@ -290,8 +290,12 @@ class Agent(
         //     客户端把结果回灌第二轮时那次运行已经过期，上游直接报
         //     `invalid_tool_contract: native tool run expired … start a new turn with the
         //     original request instead of resending tool results`。
-        //     对这类上游，只有 B 能通。所以 A 失败一次就整体切到 B，不再回头试 A。
-        var useNativeToolProtocol = true
+        //     对这类上游，只有 B 能通。降级只在**本次 chat/chatStream 调用内**发生（每次调用
+        //     都从 A 重新开始），不跨过进程、也不跨过下一次 chat。
+        //     两个用户可选手感旋钮：`LEGADO_AI_FORCE_TEXT_FALLBACK=1` 从第一轮就用 B（给连
+        //     tool_calls 都不认的上游省一次注定失败的往返）；`LEGADO_AI_NEVER_DOWNGRADE_PROTOCOL=1`
+        //     禁掉 A→B 自动降级，A 失败直接回 upstream_unreachable（不再悄悄改写历史）。
+        var useNativeToolProtocol = !AppConfig.aiForceTextFallback
         // 最后一跳"到不了"的真因（DNS 失败 / 连不上 / 上游返回非 2xx）。
         // 只用来把 HTTP 层那句套话换成能照着做事的话，不参与控制流。
         var providerFailure: String? = null
@@ -317,7 +321,7 @@ class Agent(
                 null
             }
             // 原生协议这一跳失败：可能是上游不认「回灌」形态。切到文本回灌重试一次本轮。
-            if (reply == null && useNativeToolProtocol && convo.any { it.role == "tool" }) {
+            if (reply == null && useNativeToolProtocol && !AppConfig.aiNeverDowngradeProtocol && convo.any { it.role == "tool" }) {
                 useNativeToolProtocol = false
                 // 把历史里已有的 tool 结果改写成 user 消息 —— 文本回灌形态不认 tool 角色。
                 val transcript = convo.filter { it.role == "tool" }.joinToString("\n") { it.content }
@@ -511,7 +515,7 @@ class Agent(
         val toolRounds = mutableListOf<String>()
         var usage = LlmUsage()
         var providerFailure: String? = null
-        var useNativeToolProtocol = true
+        var useNativeToolProtocol = !AppConfig.aiForceTextFallback
 
         emit(
             AgentStreamEvent(
@@ -559,7 +563,7 @@ class Agent(
                 null
             }
 
-            if (reply == null && useNativeToolProtocol && convo.any { it.role == "tool" }) {
+            if (reply == null && useNativeToolProtocol && !AppConfig.aiNeverDowngradeProtocol && convo.any { it.role == "tool" }) {
                 // 上游不认原生回灌：切到文本回灌，重试一次（与 [chat] 同一条降级路径）。
                 useNativeToolProtocol = false
                 val transcript = convo.filter { it.role == "tool" }.joinToString("\n") { it.content }

@@ -85,9 +85,9 @@ fun Database.getSource(id: String): SourceRecord? = connect { db -> db.prepareSt
  * 配了「发现」页（exploreUrl 非空）的启用书源，供发现页做书源筛选。
  *
  * 以前是"把全部启用源连 payload 一起捞回 Kotlin、再逐个 Json.parseToJsonElement 判 exploreUrl"——
- * 5,574 个源每个都整份解析一遍，实测这一步要 2.6 秒（发现页第一屏就卡在这儿）。
+ * 整库源多时这一步要跑到秒级（发现页第一屏就卡在这儿）。
  * 改成让 SQLite 在 C 层筛：json_type/json_extract 走内置 JSON1，payload 根本不落到 Kotlin 侧，
- * 只把命中的那两千来行取回来。`json_valid` 兜底非法 JSON（等价于旧写法里 runCatching 跳过）。
+ * 只把命中的那一部分行取回来。`json_valid` 兜底非法 JSON（等价于旧写法里 runCatching 跳过）。
  */
 fun Database.listExploreSources(): List<SourceSummary> {
     check(!isClosed) { "Database is closed" }

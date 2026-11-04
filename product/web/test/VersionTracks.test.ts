@@ -59,7 +59,8 @@ test('构建号写进 jar 资源，并从 /healthz 与 /api/about 报出来', ()
   assert.match(buildInfo, /meta\/build-info\.properties/)
   assert.match(buildInfo, /getOrDefault\("0"\)/, '读不到注入文件时回落 0，而不是编一个号')
   assert.match(read('product/app/src/main/kotlin/io/legado/Application.kt'), /build = BuildInfo\.buildNumber/)
-  assert.match(read('product/app/src/main/kotlin/io/legado/http/Routes.kt'), /AboutInfo\([^)]*BuildInfo\.buildNumber\)/)
+  // 0.2.14：系统域端点搬到 http/system/SystemRoutes.kt（Routes.kt 只留挂载调用）
+  assert.match(read('product/app/src/main/kotlin/io/legado/http/system/SystemRoutes.kt'), /AboutInfo\([^)]*BuildInfo\.buildNumber\)/)
   assert.match(read('product/app/src/main/kotlin/io/legado/model/Models.kt'), /data class HealthStatus[\s\S]*?val build: String/)
   assert.match(read('product/app/src/main/kotlin/io/legado/model/Models.kt'), /data class AboutInfo[\s\S]*?val build: String/)
 })
@@ -70,7 +71,7 @@ test('关于页把构建号显示出来，且不写死版本或构建号', () =>
   assert.match(page, /info\.build/)
   assert.match(page, /info\.build !== '0'/)
   assert.match(page, /未注入/)
-  assert.match(read('product/web/src/lib/api.ts'), /AboutInfo = \{[^}]*build\?: string/)
+  assert.match(read('product/web/src/lib/api/types.ts'), /AboutInfo = \{[^}]*build\?: string/)
 })
 
 test('npm 入口把日常 bump 与发布分开', () => {

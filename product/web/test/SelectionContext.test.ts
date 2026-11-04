@@ -27,7 +27,7 @@ test('选区存在组件之外：阅读器写入、AI 面板读取同一份', ()
   assert.match(store, /export function setSelectionFromDraft/, '阅读器要有写入入口')
 
   // 阅读器真的调用了它
-  const reader = read('../src/reader/ReaderScreen.tsx')
+  const reader = read('../src/features/reader/ReaderScreen.tsx')
   assert.match(reader, /setSelectionFromDraft\(/, '阅读器选中文字时要写入选区')
   assert.match(reader, /setSelection\(null\)/, '选区取消/保存后要清掉 —— 不然助手一直盯着旧的一段')
 })

@@ -6,7 +6,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AppHeader } from '../src/components/AppHeader'
 import { toast } from '../src/components/Toast'
-import { defaultReaderSettings } from '../src/reader/readerSettings'
+import { defaultReaderSettings } from '../src/features/reader/readerSettings'
 import { BackupPage, reportImportSummary } from '../src/pages/BackupPage'
 import { applyPreferencePatch, mapReadStyle } from '../src/lib/backupPreferences'
 

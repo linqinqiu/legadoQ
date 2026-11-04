@@ -92,7 +92,14 @@ fun Route.searchRoutes(
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "跨站页面不能驱动本机搜索"))
                 return@webSocket
             }
-            val request = (incoming.receive() as? Frame.Text)?.readText()?.let { text -> runCatching { Json.decodeFromString<SearchRequest>(text) }.getOrNull() }
+            // 客户端来帧限幅（文档第6项）：单帧 ≤ WS_SEARCH_MAX_FRAME_BYTES、每连接累计 ≤ WS_SEARCH_MAX_MESSAGES 条。
+            // 首帧也要过尺寸这一关——否则一个超大 Text 会在 Json.decodeFromString 里做无谓解码。
+            val firstFrame = incoming.receive()
+            if (wsFrameBytes(firstFrame) > WS_SEARCH_MAX_FRAME_BYTES) {
+                close(CloseReason(CloseReason.Codes.TOO_BIG, "首帧超过 ${WS_SEARCH_MAX_FRAME_BYTES} 字节"))
+                return@webSocket
+            }
+            val request = (firstFrame as? Frame.Text)?.readText()?.let { text -> runCatching { Json.decodeFromString<SearchRequest>(text) }.getOrNull() }
             if (request?.keyword.isNullOrBlank()) {
                 send(Frame.Text(Json.encodeToString(SearchStreamEvent("error", message = "请输入搜索关键词"))))
                 close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "搜索条件无效"))
@@ -110,8 +117,21 @@ fun Route.searchRoutes(
                     }
                 }
                 val cancelWatch = launch {
+                    // 首帧已经在上面读掉了；这里从第二条起继续读，累计到 WS_SEARCH_MAX_MESSAGES 就断开。
+                    var seen = 1
                     try {
                         for (frame in incoming) {
+                            seen += 1
+                            if (seen > WS_SEARCH_MAX_MESSAGES) {
+                                streaming.cancel()
+                                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "累计消息数超过 $WS_SEARCH_MAX_MESSAGES"))
+                                break
+                            }
+                            if (wsFrameBytes(frame) > WS_SEARCH_MAX_FRAME_BYTES) {
+                                streaming.cancel()
+                                close(CloseReason(CloseReason.Codes.TOO_BIG, "单帧超过 $WS_SEARCH_MAX_FRAME_BYTES 字节"))
+                                break
+                            }
                             if (frame is Frame.Text && frame.readText().contains("\"cancel\"")) {
                                 streaming.cancel()
                                 break
@@ -147,6 +167,24 @@ fun Route.searchRoutes(
 }
 
 private val SEARCH_TIMEOUT_MS = AppConfig.searchTimeoutMs
+
+/**
+ * WS `/search/stream` 客户端来帧限幅（文档第6项：恶意页面狂发消息不能耗尽服务器协程/内存）。
+ *
+ * 一条正常会话只需要「首条 SearchRequest + 至多一条 cancel 帧」；单帧尺寸 64 KB、累计 64 条
+ * 已远远够真用例，任一超限就是异常连接，服务端立刻 close 释放 collect 协程。
+ */
+private const val WS_SEARCH_MAX_FRAME_BYTES = 64 * 1024
+private const val WS_SEARCH_MAX_MESSAGES = 64
+
+/**
+ * 来帧字节数。这条流是 Text 协议（前端只发 JSON 文本帧，服务端也只回 Text），
+ * Text 帧按 UTF-8 编码后的长度量；其它帧（Binary/Ping/Pong/Close）不计尺寸，只计入条数上限。
+ */
+private fun wsFrameBytes(frame: Frame): Int = when (frame) {
+    is Frame.Text -> frame.readText().toByteArray(Charsets.UTF_8).size
+    else -> 0
+}
 
 private suspend fun readableSearchResults(runner: RuleRunner, sourceId: String, sourceJson: String, keyword: String): List<SearchResult> =
     searchSourceOutcome(runner, sourceJson, keyword, sourceId).results

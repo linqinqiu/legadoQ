@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { DEFAULT_LAYOUT, DEFAULT_SEARCH_LAYOUT, readSearchLayout, readShelfLayout, writeSearchLayout, writeShelfLayout } from '../src/shelf/shelfLayout'
+import { DEFAULT_LAYOUT, DEFAULT_SEARCH_LAYOUT, readSearchLayout, readShelfLayout, writeSearchLayout, writeShelfLayout } from '../src/features/bookshelf/shelfLayout'
 import { pickBlurb, SearchGroup } from '../src/lib/searchFilters'
 
 /**

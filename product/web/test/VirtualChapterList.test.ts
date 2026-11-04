@@ -5,10 +5,10 @@ import fs from "node:fs"
 import path from "node:path"
 import React from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { VirtualChapterList } from "../src/reader/VirtualChapterList"
-import { TOC_ROW_HEIGHT } from "../src/reader/readerInteractions"
+import { VirtualChapterList } from "../src/features/reader/VirtualChapterList"
+import { TOC_ROW_HEIGHT } from "../src/features/reader/readerInteractions"
 
-import { computeCenterScrollOffset, computeVirtualWindow } from '../src/reader/virtualSlice.js'
+import { computeCenterScrollOffset, computeVirtualWindow } from '../src/features/reader/virtualSlice.js'
 
 /**
  * 判据沿用这两个名字，但**实现是产品那一份**：以前这里手写一份 `computeVirtualSlice` 去对
@@ -240,8 +240,8 @@ test('同 url 的两章都要渲染得出：key 带章节序号（服务端不�
   assert.match(html, /第1章 下/, '同址的第二行不能因为撞 key 就消失')
   // 反向对照：裸 url 当 key 的写法不许回来 —— React 重复 key 只 warning，门禁与页面都看不见
   // 0.8.2 拆组：组件搬进了 VirtualChapterList.tsx，两面都扫（ReaderScreen 那半是防它把行内联回去）
-  const src = fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'reader', 'VirtualChapterList.tsx'), 'utf8')
-    + fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'reader', 'ReaderScreen.tsx'), 'utf8')
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'features', 'reader', 'VirtualChapterList.tsx'), 'utf8')
+    + fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'features', 'reader', 'ReaderScreen.tsx'), 'utf8')
   assert.doesNotMatch(src, /key=\{chapter\.url\}/)
 })
 
@@ -262,8 +262,8 @@ test('行高只有一个来源：TOC_ROW_HEIGHT 必须等于样式表里的 --ro
 test('目录切片只有一份实现：产品引 src/virtualSlice，判据不许自己手写', () => {
   // 0.8.2 拆组：切片算式随 VirtualChapterList 搬进 VirtualChapterList.tsx，两面都读 ——
   // 正向三条由新那份满足，反向「内联不许回来」两面同扫（更严：ReaderScreen 也不能内联）
-  const src = fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'reader', 'VirtualChapterList.tsx'), 'utf8')
-    + fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'reader', 'ReaderScreen.tsx'), 'utf8')
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'features', 'reader', 'VirtualChapterList.tsx'), 'utf8')
+    + fs.readFileSync(path.resolve(import.meta.dirname, '..', 'src', 'features', 'reader', 'ReaderScreen.tsx'), 'utf8')
   assert.match(src, /from '\.\/virtualSlice'/, '阅读器没再引那份共用算式 —— 是不是又内联回去了？')
   assert.match(src, /computeVirtualWindow\(/, '目录窗口不是算出来的，就是硬写的')
   assert.match(src, /computeCenterScrollOffset\(/, '「跳到正在读那一章」的定位算式也要走同一处')
@@ -272,7 +272,7 @@ test('目录切片只有一份实现：产品引 src/virtualSlice，判据不许
     '内联的 `Math.floor(scrollTop / itemHeight)` 又回来了，那份共用的 virtualSlice 就成了没人引的死代码')
 
   const judge = fs.readFileSync(path.resolve(import.meta.dirname, 'VirtualChapterList.test.ts'), 'utf8')
-  assert.match(judge, /from '\.\.\/src\/reader\/virtualSlice(\.js)?'/, '判据必须引 src 那一份实现')
+  assert.match(judge, /from '\.\.\/src\/features\/reader\/virtualSlice(\.js)?'/, '判据必须引 src 那一份实现')
   assert.doesNotMatch(judge, /function computeVirtual(Slice|Window)/,
     '判据里不许再定义第二份切片算式，它只能 import 产品那一份')
 

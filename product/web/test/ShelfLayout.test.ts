@@ -7,7 +7,7 @@ import {
   layoutFromLegacyCode,
   readShelfLayout,
   writeShelfLayout,
-} from '../src/shelf/shelfLayout'
+} from '../src/features/bookshelf/shelfLayout'
 
 // node:test 在同一进程里跑所有文件，offline-pwa.test.ts 也自带一份 localStorage mock，
 // 所以桩件必须用完就还原（还原成调用现场的值，模块顶层缓存的那份可能是空的）。

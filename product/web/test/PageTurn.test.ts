@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { coverDirection, pageTurnAnim, planNextPage, planPrevPage } from '../src/reader/pageTurn'
+import { coverDirection, pageTurnAnim, planNextPage, planPrevPage } from '../src/features/reader/pageTurn'
 
 /**
  * 翻页状态机的决策（PROPOSAL-019 A）。纯函数，不起浏览器。
@@ -47,7 +47,7 @@ test('coverDirection：往后翻从右（+1），往回翻从左（-1）', () =>
 })
 
 test('与产品接线同源：ReaderScreen 用这几个函数，不自己再写一份判断', () => {
-  const src = fs.readFileSync(path.resolve(import.meta.dirname, '../src/reader/ReaderScreen.tsx'), 'utf8')
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/ReaderScreen.tsx'), 'utf8')
   assert.match(src, /planNextPage\(/, '「下一页」要调 planNextPage')
   assert.match(src, /planPrevPage\(/, '「上一页」要调 planPrevPage')
   assert.match(src, /pageTurnAnim\(/, '动画选择要调 pageTurnAnim')

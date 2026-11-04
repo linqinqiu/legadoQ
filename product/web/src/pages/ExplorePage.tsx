@@ -4,8 +4,8 @@ import { Icon } from '../icons'
 import { Select } from '../components/Select'
 import { filterByGroup, sourceGroups, UNGROUPED } from '../lib/exploreGroups'
 import { labelExploreTabs } from '../lib/exploreLabel'
-import { sanitizeImageUrl } from '../sources/sourceImport'
-import { DeferredCover } from '../shelf/Cover'
+import { sanitizeImageUrl } from '../features/source-editor/sourceImport'
+import { DeferredCover } from '../features/bookshelf/Cover'
 
 export interface ExplorePageProps {
   onOpen: (book: SearchResult) => Promise<void>

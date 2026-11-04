@@ -207,7 +207,7 @@ export function computeScrollPosition(scrollTop: number, scrollHeight: number, c
 
 /**
  * Scroll Controller reproducing the exact RAF coalescing and debounce logic
- * from web/src/reader/ReaderScreen.tsx 的 scroll effect（rafId 合并 + persist）
+ * from web/src/features/reader/ReaderScreen.tsx 的 scroll effect（rafId 合并 + persist）
  */
 export class ReaderScrollController {
   rafId: number | null = null

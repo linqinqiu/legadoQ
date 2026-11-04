@@ -19,12 +19,12 @@ import {
   serializePaginationKey,
   hashContent,
   type TypesetParams,
-} from '../src/reader/typeset/typesetParams'
+} from '../src/features/reader/typeset/typesetParams'
 import {
   getPagination,
   putPagination,
   evictIfNeeded,
-} from '../src/reader/paginationCache'
+} from '../src/features/reader/paginationCache'
 
 /** 构造一份默认的排版参数，便于在用例间微调单个字段做隔离测试。 */
 function baseParams(overrides: Partial<TypesetParams> = {}): TypesetParams {

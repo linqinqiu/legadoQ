@@ -169,6 +169,9 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
         environment.monitor.subscribe(ApplicationStarted) {
             subscriptions.start()
             bookCache.start()
+            // 大库高碎片时全量 VACUUM 会重写整个文件，同步跑明显拖冷启动。
+            // 端口已 listen，把碎片回收挪到后台守护线程里（见 Database.scheduleReclaimFragmentation）。
+            database.scheduleReclaimFragmentation()
             val purgedCovers = coverCache.purgeGeneratedLocalCovers(database)
             if (purgedCovers > 0) log.info("已回收 {} 张自动生成的本地书封面", purgedCovers)
         }
@@ -191,9 +194,9 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
         val jsonFormat = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
         register(ContentType.Application.Json, StrictJsonConverter(jsonFormat))
     }
-    // 接口 JSON 压一层 gzip：书源清单 5,574 条实测 1,063,255 字节 → gzip -9 只有 100,436 字节，
-    // 发现页书源 540KB 同理。这些对象重复度极高，压缩几乎白赚；此前只有 `/assets` 那批
-    // 静态文件在 StaticWeb 里自己压，API 响应是原样出去的。
+    // 接口 JSON 压一层 gzip：整份书源清单/发现页清单这类大 payload 对象重复度极高，
+    // 压缩比接近 10:1 几乎白赚；此前只有 `/assets` 那批静态文件在 StaticWeb 里自己压，
+    // API 响应是原样出去的。
     //
     // 只认 `application/json`，不用插件默认的"除黑白名单外全压"：
     // ① 静态资源已经带 Content-Encoding（插件会跳过，但没必要让它每次都走到那一步）；

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sourcePickerOptions, type PickableSource } from '../src/sources/sourceOrder'
+import { sourcePickerOptions, type PickableSource } from '../src/features/source-editor/sourceOrder'
 
 const src = (id: string, name: string, enabled: boolean, group?: string): PickableSource =>
   ({ id, name, enabled, group })

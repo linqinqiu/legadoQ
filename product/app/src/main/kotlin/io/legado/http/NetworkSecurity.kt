@@ -46,11 +46,14 @@ object NetworkSecurity {
     fun newHttpClient(
         connectTimeout: Duration = Duration.ofSeconds(10),
         followRedirects: HttpClient.Redirect = HttpClient.Redirect.NEVER,
+        /** 仅 AI 外呼在 `LEGADO_AI_ALLOW_LOOPBACK_BASEURL=1` 时会传 true（本机模型）。 */
+        allowLoopback: Boolean = false,
     ): HttpClient = GuardedHttpClient(
         HttpClient.newBuilder()
             .connectTimeout(connectTimeout)
             .followRedirects(followRedirects)
             .build(),
+        allowLoopback,
     )
 
     /**
@@ -60,7 +63,15 @@ object NetworkSecurity {
      * @throws BlockedAddressException scheme 不对，或解析结果落在内网/本机/保留段
      * @throws UnreachableTargetException 域名解析不了 —— 那是"到不了"，不是"被拒绝"
      */
-    fun resolveAndValidateSafeHttpTarget(uri: URI, serviceName: String = "目标") {
+    fun resolveAndValidateSafeHttpTarget(
+        uri: URI,
+        serviceName: String = "目标",
+        /**
+         * 允许回环（本机模型）。打开后**只**放过 127.0.0.0/8 与 ::1，
+         * 私网 / 链路本地 / CGNAT / 保留段照旧拒绝。
+         */
+        allowLoopback: Boolean = false,
+    ) {
         if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
             throw BlockedAddressException("仅允许 HTTP(S) $serviceName 地址")
         }
@@ -80,6 +91,9 @@ object NetworkSecurity {
             resolved
         }
         for (address in addresses) {
+            val loopback = address.isLoopbackAddress ||
+                (address.hostAddress?.startsWith("127.") == true)
+            if (loopback && allowLoopback) continue
             if (address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress || address.isSiteLocalAddress || address.hostAddress == "169.254.169.254") {
                 throw BlockedAddressException("拒绝访问内网或本机地址")
             }

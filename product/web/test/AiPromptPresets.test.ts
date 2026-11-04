@@ -20,14 +20,16 @@ import path from 'node:path'
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
 
 test('api 层有提示词预设的三个方法，路径与后端三条路由一致', () => {
-  const api = read('../src/lib/api.ts')
-  assert.match(api, /listAgentPrompts:\s*\(\)\s*=>\s*request<\{ prompts: AgentPrompt\[\] \}>\('\/api\/agent\/prompts'\)/,
+  // 0.2.14：按域拆分后三条实现住在 lib/api/domains/agent.ts，类型在 lib/api/types.ts
+  const api = read('../src/lib/api/domains/agent.ts')
+  assert.match(api, /list:\s*\(\)\s*=>\s*request<\{ prompts: AgentPrompt\[\] \}>\('\/api\/agent\/prompts'\)/,
     '列表要读 {prompts:[…]}，不是裸数组')
-  assert.match(api, /saveAgentPrompt[\s\S]{0,160}'\/api\/agent\/prompts',\s*\{\s*method:\s*'POST'/, '保存走 POST')
-  assert.match(api, /deleteAgentPrompt[\s\S]{0,200}`\/api\/agent\/prompts\/\$\{encodeURIComponent\(id\)\}`, \{ method: 'DELETE' \}/,
+  assert.match(api, /save:[\s\S]{0,160}'\/api\/agent\/prompts',\s*\{\s*method:\s*'POST'/, '保存走 POST')
+  assert.match(api, /delete:[\s\S]{0,240}`\/api\/agent\/prompts\/\$\{encodeURIComponent\(id\)\}`[\s\S]{0,80}method:\s*'DELETE'/,
     '删除要 encodeURIComponent(id)，预设名可能含中文')
-  assert.match(api, /export type AgentPrompt = \{[\s\S]*?order:\s*number/, '类型带 order（界面靠它排序）')
-  assert.match(api, /export type AgentPromptInput = \{[\s\S]*?id\?:\s*string/, '新建时 id 可缺省，由服务端按名称生成')
+  const types = read('../src/lib/api/types.ts')
+  assert.match(types, /export type AgentPrompt = \{[\s\S]*?order:\s*number/, '类型带 order（界面靠它排序）')
+  assert.match(types, /export type AgentPromptInput = \{[\s\S]*?id\?:\s*string/, '新建时 id 可缺省，由服务端按名称生成')
 })
 
 test('提示词有自己那一档浮层，且说清与技能的分工', () => {

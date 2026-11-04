@@ -1,0 +1,19 @@
+/** 统一 fetch 基础客户端：所有域 API 客户端复用此 request。 */
+
+/** 不设身份：写操作由服务端的同源闸门把关，浏览器自己带 Origin，这里不注入任何令牌。 */
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const headers = new Headers(init.headers)
+  // FormData 必须留给浏览器自己带 boundary，写死 application/json 会让服务端收不到文件
+  if (init.body && !(typeof FormData !== 'undefined' && init.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
+  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string }
+    throw new Error(body.message ?? '请求失败')
+  }
+  return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>)
+}

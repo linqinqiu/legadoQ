@@ -5,7 +5,7 @@ import {
   filterSettingsSections,
   type SettingsActions,
   type SettingsSection,
-} from '../src/settings/settingsSections.ts'
+} from '../src/features/settings/settingsSections.ts'
 
 /**
  * 「设置」分区表的**行为**判据。

@@ -54,7 +54,7 @@ function ruleBody(text: string, selector: string): string {
 }
 
 const narrow = mediaBlock('@media (max-width: 720px)')
-const sources = fs.readFileSync(path.resolve(here, '../src/pages/SourcesPage.tsx'), 'utf8')
+const sources = fs.readFileSync(path.resolve(here, '../src/features/source-editor/SourcesPage.tsx'), 'utf8')
 
 test('书源列表副标题截断：长分组名不许流到绝对定位的开关下面', () => {
   const bodies = [...css.matchAll(/\.source-list small \{([^}]*)\}/g)].map(m => m[1]!)

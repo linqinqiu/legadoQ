@@ -56,6 +56,7 @@ class AnthropicProvider(
             timeoutMs = ProviderHttp.timeoutMs(profile, 60_000L),
             headers = baseHeaders(profile),
             authHeaders = { key -> auth(key) },
+            loopbackAllowed = loopbackAllowed(),
         )
         if (resp.statusCode() !in 200..299) {
             ProviderHttp.failForStatus(resp.statusCode(), resp.body())
@@ -78,6 +79,7 @@ class AnthropicProvider(
             timeoutMs = ProviderHttp.timeoutMs(profile, 60_000L),
             headers = baseHeaders(profile),
             authHeaders = { key -> auth(key) },
+            loopbackAllowed = loopbackAllowed(),
         )
         if (resp.statusCode() !in 200..299) {
             val text = runCatching { resp.body().bufferedReader().use { it.readText() } }.getOrNull()

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { readerImageSrc } from '../src/reader/readerImage'
+import { readerImageSrc } from '../src/features/reader/readerImage'
 
 /**
  * 正文配图（漫画每一页）的取法与"重取这一张"（`reader/readerImage.ts`）。
@@ -29,7 +29,7 @@ test('站内地址（本地 EPUB 插图）原样交给浏览器，不过代理�
 })
 
 test('取失败的那一张要给一句结论和一条出路，不许整块藏掉', () => {
-  const screen = read('..', 'src', 'reader', 'ReaderScreen.tsx')
+  const screen = read('..', 'src', 'features', 'reader', 'ReaderScreen.tsx')
   const failedRow = screen.split('\n').filter(line => line.includes('reader-image-failed'))
   assert.equal(failedRow.length, 1, `失败行应当恰好一处，实测 ${failedRow.length}`)
   assert.ok(/重取这一张/.test(screen), '那一行要有「重取这一张」这颗按钮')
@@ -41,8 +41,10 @@ test('取失败的那一张要给一句结论和一条出路，不许整块藏�
 })
 
 test('重取接口是写操作，地址与回包字段要对得上', () => {
-  const api = read('..', 'src', 'lib', 'api.ts')
-  assert.ok(/refreshBookImage:[\s\S]{0,200}\/api\/book\/image\/refresh\?url=/.test(api), '没走 /api/book/image/refresh')
-  assert.ok(/refreshBookImage:[\s\S]{0,300}method: 'POST'/.test(api), '重取必须是 POST（写操作才过同源闸门）')
-  assert.ok(/export type RefreshedImage = \{/.test(api), '回包要有具名类型，不许是裸 Map')
+  // 0.2.14：封面/重取实现搬到 lib/api/domains/reader.ts（cover.refresh），类型在 types.ts
+  const api = read('..', 'src', 'lib', 'api', 'domains', 'reader.ts')
+  const types = read('..', 'src', 'lib', 'api', 'types.ts')
+  assert.ok(/refresh:[\s\S]{0,200}\/api\/book\/image\/refresh\?url=/.test(api), '没走 /api/book/image/refresh')
+  assert.ok(/refresh:[\s\S]{0,300}method: 'POST'/.test(api), '重取必须是 POST（写操作才过同源闸门）')
+  assert.ok(/export type RefreshedImage = \{/.test(types), '回包要有具名类型，不许是裸 Map')
 })

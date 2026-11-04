@@ -10,7 +10,7 @@ export type Chapter = {
 
 /**
  * Direct replication of VirtualChapterList virtual window and spacer calculation
- * from web/src/reader/VirtualChapterList.tsx + reader/virtualSlice.ts（computeVirtualWindow）
+ * from web/src/features/reader/VirtualChapterList.tsx + reader/virtualSlice.ts（computeVirtualWindow）
  */
 export function calculateVirtualChapterListState({
   count,
@@ -45,7 +45,7 @@ export function calculateVirtualChapterListState({
 }
 
 /**
- * Direct replication of scrollToActive calculation from web/src/reader/virtualSlice.ts
+ * Direct replication of scrollToActive calculation from web/src/features/reader/virtualSlice.ts
  * 的 computeCenterScrollOffset
  */
 export function calculateAutoScroll({
@@ -68,7 +68,7 @@ export function calculateAutoScroll({
 }
 
 /**
- * Direct replication of chapter search filtering from web/src/reader/ReaderScreen.tsx
+ * Direct replication of chapter search filtering from web/src/features/reader/ReaderScreen.tsx
  * 的 filteredChapters useMemo
  */
 export function executeChapterFilter(chapters: Chapter[], deferredQuery: string): Chapter[] {

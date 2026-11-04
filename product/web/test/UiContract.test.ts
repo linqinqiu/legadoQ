@@ -53,7 +53,7 @@ test('按钮档位都有全局基础档（换一处用不会变成裸文字）',
 })
 
 test('朗读悬浮条：挂载时就夹回视口，且不给底部导航让位的那条路已封住', () => {
-  const src = fs.readFileSync(path.resolve(import.meta.dirname, '../src/reader/ttsBarPosition.ts'), 'utf8')
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/ttsBarPosition.ts'), 'utf8')
   // 存进去的坐标可能来自另一块屏；只监听 resize 的话手机上打开会留在屏幕外（连抓手一起）
   assert.match(src, /clampNow\(\)\s*\r?\n\s*window\.addEventListener\('resize'/,
     '挂载时必须先夹一次，而不是只等 resize')
@@ -83,9 +83,9 @@ test('页面级浮层都在挡片之下（弹窗开着时顶栏与批量条不�
 })
 
 test('体检弹窗不把"清单还没取到"写成"0 个书源"', () => {
-  const modal = fs.readFileSync(path.resolve(import.meta.dirname, '../src/sources/SourceHealthModal.tsx'), 'utf8')
+  const modal = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/source-editor/SourceHealthModal.tsx'), 'utf8')
   // 0.8.2 拆组：传 sourcesState 的那个"父组件"就是书源页（pages/SourcesPage.tsx），断言逐字不变
-  const page = fs.readFileSync(path.resolve(import.meta.dirname, '../src/pages/SourcesPage.tsx'), 'utf8')
+  const page = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/source-editor/SourcesPage.tsx'), 'utf8')
   // 空数组有两种成因，只有一种该报数字
   assert.match(modal, /sourcesState: 'loading' \| 'ready' \| 'failed'/, '弹窗得知道清单到没到手')
   assert.match(page, /sourcesState=\{sourcesState\}/, '父组件得把它传进来')
@@ -97,7 +97,7 @@ test('体检弹窗不把"清单还没取到"写成"0 个书源"', () => {
 })
 
 test('移动端底部导航的列数与真实按钮数对得上', () => {
-  const reader = fs.readFileSync(path.resolve(import.meta.dirname, '../src/reader/ReaderScreen.tsx'), 'utf8')
+  const reader = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/ReaderScreen.tsx'), 'utf8')
   const nav = /<nav className="mobile-reader-nav">([\s\S]*?)<\/nav>/.exec(reader)?.[1] ?? ''
   const buttons = (nav.match(/<button/g) ?? []).length
   assert.ok(buttons > 0, '要真的取到那段导航（取空的话下面那条断言恒真）')

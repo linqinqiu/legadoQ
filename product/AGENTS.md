@@ -4,8 +4,9 @@
 
 > 安全模型：本服务没有账号、没有 token。写操作（登记/删除连接、新建书源）受**同源写门**保护：`POST/PUT/DELETE` **只有在带了 `Origin` 头**时才检查它是否指向服务自己（`ServerIdentity` 的绑定 host+port），带了跨站 Origin 就 403；**不带 Origin 的请求直接放行**（本机 curl / 脚本 / AI 客户端都属于这一类）。`GET/HEAD/OPTIONS` 无论带什么都放行。唯一反向例外是 WebSocket：那条把「没有 Origin」当作跨站拒掉。服务**仅绑定 127.0.0.1，绝不绑定 0.0.0.0**。所有外部 HTTP 调用走 JDK `java.net.http.HttpClient`；受控实例由 `NetworkSecurity.newHttpClient()` 签发，
 `send/sendAsync` 前会**重解析 DNS 并复查回环/私网**（防 DNS 重绑定）。
-> ⚠️ 已知缺口（未修）：`ai/ProviderHttp.kt` 用的仍是裸 `HttpClient.newBuilder()`（默认跟随重定向），
-> 只在**构造请求时**校验 `baseUrl` —— AI 这一条路上因此还留着"解析时公网、建连时内网"与"302 跳内网"两个口子。
+> ✅ `ai/ProviderHttp.kt` 已与这道闸门口径统一：每次 `client.send` 前贴着复查一次目标地址（收窄
+> "解析时公网、建连时被重绑到内网"的 TOCTOU 窗口），且其 `HttpClient` 不再自动跟随重定向（封死
+> "302 跳内网"）。AI 这一条路与书源/订阅/封面/媒体代理共用同一套出站闸门。
 
 ---
 
