@@ -2,14 +2,14 @@
 // 这些类型引用挂在它身上。（AGENTS §5 那个 classic JSX 的同形坑：`VirtualChapterList` 被
 // `renderToStaticMarkup` 静态渲染才需要默认 React 在作用域里 —— 那件组件已拆进
 // `VirtualChapterList.tsx`，那条理由与它的默认导入一起搬过去了。）
-import React, { CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { zh } from '../../i18n/zh'
 import { api, BookDetails, BookNote, Chapter, SearchResult, TocRuleOption } from '../../lib/api'
 import { getBrand } from '../../lib/brandStore'
 import { ContextMenuItem, showContextMenu } from '../../components/ContextMenu'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
-import { calculatePaginationLayout, contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundary, isAtTopBoundary, isInteractiveReaderTarget, isSameSiteAsset, isTapGesture, paginateWheelStep, swipeDirection, TOC_ROW_HEIGHT, ViewportBounds } from './readerInteractions'
+import { calculatePaginationLayout, contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundary, isAtTopBoundary, isInteractiveReaderTarget, isSameSiteAsset, isTapGesture, paginateWheelStep, swipeDirection, ViewportBounds } from './readerInteractions'
 import { readerImageSrc } from './readerImage'
 import { TapAction, zoneAt } from './tapZones'
 import { isMediaType } from '../bookshelf/bookType'
@@ -18,20 +18,14 @@ import { NoteToolbar, type NoteDraft } from './NoteToolbar'
 import { MarkingMenu } from './MarkingMenu'
 import { setAiChatOpen } from '../ai/aiChatStore'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
-import { NotesPanel } from './NotesPanel'
 import { BookSearchDialog } from './BookSearchDialog'
 import { RefreshChaptersModal } from './RefreshChaptersModal'
-import { TocDrawerHeader } from './TocDrawerHeader'
 import { ReaderHeader } from './ReaderHeader'
 import { ExtensionSlot } from '../../plugins/ExtensionSlot'
 import { Md3BottomBar, Md3TopBar } from './Md3Chrome'
-import { ReaderSheet } from './ReaderSheet'
-import { OtherSettingsPanel } from './OtherSettingsPanel'
 import { reportProgress } from './readerProgress'
 import { MediaBlock } from './MediaBlock'
-import { IconButton } from './IconButton'
 import { ReaderContentSkeleton } from './ReaderContentSkeleton'
-import { ReaderSettingsControls } from './ReaderSettingsControls'
 import { clampScrollPosition, effectiveReaderFontFamily, isBuiltinSkinHidden, readerBackgroundVars, ReaderSettings, resolveTheme, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './readerSettings'
 import { stepFontSize } from './fontSizeControl'
 import { ReaderMenuAction } from './readerMenu'
@@ -44,9 +38,10 @@ import { SourceSwitchModal } from '../source-editor/SourceSwitchModal'
 import { cleanAuthor, cleanTitle } from '../../lib/searchFilters'
 import { toast } from '../../components/Toast'
 import { ReplaceRulesModal } from '../../components/ReplaceRulesModal'
+import { ReaderCatalog } from './ReaderCatalog'
+import { ReaderSettingsSheet } from './ReaderSettingsSheet'
 import { ReaderTtsManager } from './ReaderTtsManager'
 import { TtsContext, useTts } from './ReaderTtsContext'
-import { VirtualChapterList } from './VirtualChapterList'
 import { TtsSettingsModal } from './TtsSettingsModal'
 import { resetTtsBarPosition } from './ttsBarPosition'
 import { ITtsEngine, WebSpeechEngine, HttpAudioTtsEngine, TtsPlayState, TtsSpeakMode, isPlayInterruptedError } from './ttsEngine'
@@ -151,8 +146,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [loadedChapterUrl, setLoadedChapterUrl] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
-  const [chapterQuery, setChapterQuery] = useState('')
-  const deferredQuery = useDeferredValue(chapterQuery)
   const [activeDrawer, setActiveDrawer] = useState<'toc' | 'settings' | 'other' | null>(null)
   /** 「在正文上编辑点击区域」那层开着没有（见 TapZoneEditor）。 */
   const [tapZoneEditing, setTapZoneEditing] = useState(false)
@@ -533,20 +526,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
   }, [bookName, chapter?.title, convert])
 
-  const filteredChapters = useMemo(() => {
-    const query = deferredQuery.trim().toLowerCase()
-    if (!query) return currentBook.chapters
-    const numQuery = /^\d+$/.test(query) ? parseInt(query, 10) : null
-    return currentBook.chapters.filter(item => {
-      if (item.title.toLowerCase().includes(query)) return true
-      if (numQuery !== null && (item.index === numQuery - 1 || item.index === numQuery)) return true
-      return false
-    })
-  }, [deferredQuery, currentBook.chapters])
-
-  // 目录倒序（借鉴 Legado TocActivity 的 reverse_toc）：仅影响抽屉显示顺序，跳转仍用章节原始 index。
-  const [tocReverse, setTocReverse] = useState(false)
-  const tocList = useMemo(() => (tocReverse ? filteredChapters.slice().reverse() : filteredChapters), [filteredChapters, tocReverse])
   // 正文配图点击放大（借鉴 Legado「点击预览图片」）：position:fixed 遮罩，点任意处关闭。
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   /**
@@ -2513,112 +2492,58 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onBookSearch={() => setBookSearchOpen(true)}
     />}
 
-    {/* TOC Drawer (Left)：桌面与移动统一为覆盖式抽屉，不挤压正文 */}
-    <aside className={`reader-drawer reader-drawer-left ${activeDrawer === 'toc' ? 'open' : ''}`} aria-label="目录抽屉">
-      <TocDrawerHeader
-        chapterTitle={chapter?.title ? convert(chapter.title) : null}
-        chapterCount={currentBook.chapters.length}
-        tocReverse={tocReverse}
-        onToggleReverse={() => setTocReverse(value => !value)}
-        notesPanel={notesPanel}
-        onBackToToc={() => setNotesPanel(false)}
-        onOpenSourceSwitch={() => { setActiveDrawer(null); setShowSourceSwitch(true) }}
-        onOpenRefresh={currentBook.details.sourceId === 'loc_book' ? undefined : () => setShowRefreshChapters(true)}
-        inShelf={inShelf}
-        onToggleShelf={() => void toggleShelf()}
-        onClose={() => setActiveDrawer(null)}
-      />
-      {notesPanel ? (
-        /* 「笔记」面板（PROPOSAL-019 E）：这本书的全部划线 / 备注，点一条跳到那一章。
-           导出需要书名与章名：书名从 currentBook 取，章名用 chapters 的标题表，
-           缺章名时导出那边会退回「第 N 章」，不编造。 */
-        <NotesPanel
-          notes={notes}
-          onJump={jumpToNote}
-          meta={{
-            bookName: currentBook.details.name,
-            author: currentBook.details.author,
-            sourceId: currentBook.details.sourceId,
-          }}
-          chapterTitles={Object.fromEntries(
-            currentBook.chapters.map((chapter, index) => [index, chapter.title]),
-          )}
-        />
-      ) : (
-        <>
-          <div className="chapter-search">
-            <Icon name="search" />
-            <input value={chapterQuery} onChange={event => setChapterQuery(event.target.value)} placeholder="搜索章节" />
-          </div>
-          <VirtualChapterList
-            chapters={tocList}
-            activeChapterIndex={chapterIndex}
-            cachedUrlsSet={cachedChapterUrls}
-            wordCounts={chapterWordCounts}
-            onSelect={index => {
-              changeChapter(index)
-              setActiveDrawer(null)
-            }}
-            itemHeight={TOC_ROW_HEIGHT}
-            overscan={8}
-            convertTitle={convert}
-            autoScrollKey={activeDrawer === 'toc' ? 1 : 0}
-          />
-        </>
+    {/* TOC Drawer (Left)：桌面与移动统一为覆盖式抽屉，不挤压正文；内容在 ReaderCatalog 里 */}
+    <ReaderCatalog
+      open={activeDrawer === 'toc'}
+      chapterTitle={chapter?.title ? convert(chapter.title) : null}
+      chapters={currentBook.chapters}
+      chapterIndex={chapterIndex}
+      cachedUrlsSet={cachedChapterUrls}
+      wordCounts={chapterWordCounts}
+      convertTitle={convert}
+      onSelectChapter={(index) => {
+        changeChapter(index)
+        setActiveDrawer(null)
+      }}
+      onCloseDrawer={() => setActiveDrawer(null)}
+      notesPanel={notesPanel}
+      onBackToToc={() => setNotesPanel(false)}
+      onOpenSourceSwitch={() => {
+        setActiveDrawer(null)
+        setShowSourceSwitch(true)
+      }}
+      onOpenRefresh={currentBook.details.sourceId === 'loc_book' ? undefined : () => setShowRefreshChapters(true)}
+      inShelf={inShelf}
+      onToggleShelf={() => void toggleShelf()}
+      notes={notes}
+      onJumpNote={jumpToNote}
+      bookMeta={{
+        bookName: currentBook.details.name,
+        author: currentBook.details.author,
+        sourceId: currentBook.details.sourceId,
+      }}
+      chapterTitles={Object.fromEntries(
+        currentBook.chapters.map((chapter, index) => [index, chapter.title]),
       )}
-    </aside>
+      autoScrollKey={activeDrawer === 'toc' ? 1 : 0}
+    />
 
-    {/* 阅读设置：一颗齿轮 + 单个弹层，层内用「阅读 / 其它」标签页切换两批设置。
-     *  （原来「界面」「设置」各占一颗齿轮、各一个弹层，用户反馈「现在有两个设置处理一下」。） */}
-    {uiV2 ? <>
-      <ReaderSheet open={activeDrawer === 'settings'} title="阅读设置" onClose={() => setActiveDrawer(null)}>
-        <nav className="settings-tabs is-two" role="tablist" aria-label="设置分组">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={settingsTab === 'reader'}
-            className={`settings-tab${settingsTab === 'reader' ? ' selected' : ''}`}
-            onClick={() => setSettingsTab('reader')}
-          ><Icon name="columns" />阅读</button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={settingsTab === 'other'}
-            className={`settings-tab${settingsTab === 'other' ? ' selected' : ''}`}
-            onClick={() => setSettingsTab('other')}
-          ><Icon name="sliders" />其它</button>
-        </nav>
-        {settingsTab === 'reader' ? (
-          <ReaderSettingsControls settings={settings} onChange={onSettingsChange} />
-        ) : (
-          <OtherSettingsPanel
-            settings={settings}
-            onChange={onSettingsChange}
-            onOpenReplaceRules={() => setShowReplaceRules(true)}
-            onEditTapZones={() => { setActiveDrawer(null); setTapZoneEditing(true) }}
-            localBook={currentBook.details.sourceId === 'loc_book' ? { name: bookName, tocRule: shelfTocRule } : null}
-            tocRuleOptions={tocRuleOptions}
-            onReparseLocal={currentBook.details.sourceId === 'loc_book' ? reparseLocalBook : undefined}
-          />
-        )}
-      </ReaderSheet>
-    </> : <aside className={`reader-drawer reader-drawer-right ${activeDrawer === 'settings' ? 'open' : ''}`} aria-label="阅读设置">
-      <header className="drawer-header">
-        <div className="drawer-title"><Icon name="settings" /><strong>阅读设置</strong></div>
-        <IconButton label="关闭设置" icon="close" onClick={() => setActiveDrawer(null)} />
-      </header>
-      {/* 旧界面把「界面」三标签与「设置」那批都挂在这条抽屉里，功能不缺。 */}
-      <ReaderSettingsControls settings={settings} onChange={onSettingsChange} />
-      <OtherSettingsPanel
-        settings={settings}
-        onChange={onSettingsChange}
-        onOpenReplaceRules={() => setShowReplaceRules(true)}
-        onEditTapZones={() => { setActiveDrawer(null); setTapZoneEditing(true) }}
-        localBook={currentBook.details.sourceId === 'loc_book' ? { name: bookName, tocRule: shelfTocRule } : null}
-        tocRuleOptions={tocRuleOptions}
-        onReparseLocal={currentBook.details.sourceId === 'loc_book' ? reparseLocalBook : undefined}
-      />
-    </aside>}
+    {/* 阅读设置：弹层（MD3）或右侧抽屉（旧界面），内容与标签页在 ReaderSettingsSheet 里 */}
+    <ReaderSettingsSheet
+      uiV2={uiV2}
+      open={activeDrawer === 'settings'}
+      settings={settings}
+      onSettingsChange={onSettingsChange}
+      onClose={() => setActiveDrawer(null)}
+      onOpenReplaceRules={() => setShowReplaceRules(true)}
+      onEditTapZones={() => {
+        setActiveDrawer(null)
+        setTapZoneEditing(true)
+      }}
+      localBook={currentBook.details.sourceId === 'loc_book' ? { name: bookName, tocRule: shelfTocRule } : null}
+      tocRuleOptions={tocRuleOptions}
+      onReparseLocal={currentBook.details.sourceId === 'loc_book' ? reparseLocalBook : undefined}
+    />
 
     {/* Backdrop for Drawers：目录抽屉两种界面都用；设置抽屉在 MD3 下改由弹层自带遮罩 */}
     {activeDrawer && (activeDrawer === 'toc' || !uiV2) && (

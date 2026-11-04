@@ -185,9 +185,12 @@ test('底部弹层只在开着的时候接 Esc', () => {
     '关闭态不许接 Esc（0.7.0 那轮的修法）')
   assert.doesNotMatch(sheet, /useEscapeClose\(onClose\)/,
     '反向对照：无条件接 Esc 的写法')
-  const screen = read('features', 'reader', 'ReaderScreen.tsx')
-  assert.equal((screen.match(/<ReaderSheet /g) ?? []).length, 1,
+  // 0.2.15：设置块整块拆进 ReaderSettingsSheet.tsx，判据跟着搬（仍然只许一张 ReaderSheet）。
+  const settingsSheet = read('features', 'reader', 'ReaderSettingsSheet.tsx')
+  assert.equal((settingsSheet.match(/<ReaderSheet /g) ?? []).length, 1,
     '阅读设置合并成一张弹层；再冒出第二张说明又把两个设置拆回去了')
+  const screen = read('features', 'reader', 'ReaderScreen.tsx')
+  assert.doesNotMatch(screen, /<ReaderSheet /, '弹层不许再回到 ReaderScreen 里各挂一张')
 })
 
 test('MD3 外壳的注释不许把"默认"写回旧界面', () => {
