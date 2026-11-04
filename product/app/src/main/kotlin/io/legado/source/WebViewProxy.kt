@@ -24,6 +24,7 @@ import io.legado.data.cookieBucketsForHosts
 import io.legado.data.getCookieForUrl
 import io.legado.data.setCookieFromSetCookie
 import io.legado.ops.NetworkSecurity
+import io.legado.port.SourceUrlProbe
 import io.legado.ops.LogLevel
 import io.legado.ops.logSystem
 
@@ -435,12 +436,6 @@ class WebViewProxy(private val database: Database) {
         fun defaultStartUrl(sourceJson: String): String? = URL_PATTERN.find(sourceJson)?.value
 
         /**
-         * 协议相对地址（`//accounts.example.com/login`）。登录脚本里以 `//` 开头的**注释**远比这种地址常见，
-         * 所以只认“确实像主机名”的那一种，别把 `// 登录地址` 当成网址。
-         */
-        private val PROTOCOL_RELATIVE = Regex("""^//[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?(?:[/?#].*)?$""")
-
-        /**
          * 书源静态 `loginUrl` 指向的登录页；`loginUrl` 是 JS 脚本或为空时返回 null。
          *
          * 库内实测 12 份书源把登录地址写成相对路径（`/`、`/my/profile.html`）。以前这些值被当成
@@ -448,25 +443,7 @@ class WebViewProxy(private val database: Database) {
          * 相对路径按 `bookSourceUrl` 解析即可，协议相对地址补上 `bookSourceUrl` 的 scheme。
          * `/*…*/` 开头的值是登录 JS 的块注释，不是路径，这里必须让开。
          */
-        fun loginPageUrl(sourceJson: String): String? {
-            val obj = runCatching { Json.parseToJsonElement(sourceJson).jsonObject }.getOrNull() ?: return null
-            val raw = (obj["loginUrl"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
-            if (raw.isEmpty()) return null
-            if (raw.startsWith("http://", true) || raw.startsWith("https://", true)) return raw
-            val base = (obj["bookSourceUrl"] as? JsonPrimitive)?.contentOrNull?.trim()
-                ?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
-                ?: return null
-            if (raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/*")) {
-                return runCatching { URI(base).resolve(raw).toString() }.getOrNull()
-            }
-            if (raw.startsWith("./") || raw.startsWith("../")) {
-                return runCatching { URI(base).resolve(raw).toString() }.getOrNull()
-            }
-            if (PROTOCOL_RELATIVE.matches(raw)) {
-                return runCatching { URI(base).scheme?.let { scheme -> "$scheme:$raw" } }.getOrNull()
-            }
-            return null
-        }
+        fun loginPageUrl(sourceJson: String): String? = SourceUrlProbe.loginPageUrl(sourceJson)
 
         /**
          * 这份书源**实际会带凭据去访问的主机**，按「最该登录的那个排前面」：
@@ -480,19 +457,7 @@ class WebViewProxy(private val database: Database) {
          * 读取时再逐级回退到父域的（比上游更严格：`hm.baidu.com` 的 Cookie 不会发给别的 baidu 子域），
          * 界面列出来的必须和罐子里的键、和浏览器 devtools 里看到的主机是同一个东西，否则用户无从核对。
          */
-        fun credentialDomains(sourceJson: String): List<String> {
-            val ordered = linkedSetOf<String>()
-            fun add(host: String?) {
-                val normalized = host?.trim()?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() && it.contains('.') } ?: return
-                ordered.add(normalized)
-            }
-            val obj = runCatching { Json.parseToJsonElement(sourceJson).jsonObject }.getOrNull()
-            listOf("loginUrl", "bookSourceUrl").forEach { key ->
-                add((obj?.get(key) as? JsonPrimitive)?.contentOrNull?.let { hostOf(it.trim()) })
-            }
-            URL_PATTERN.findAll(sourceJson).forEach { match -> add(hostOf(match.value)) }
-            return ordered.toList()
-        }
+        fun credentialDomains(sourceJson: String): List<String> = SourceUrlProbe.credentialDomains(sourceJson)
 
         /** 书源允许代理的域名集合，来源于书源自身配置中的全部 http(s) 地址。 */
         fun allowedDomains(sourceJson: String): Set<String> {

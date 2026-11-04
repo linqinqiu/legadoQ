@@ -23,7 +23,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import io.legado.data.Database
 import io.legado.data.getSource
-import io.legado.source.WebViewProxy
+import io.legado.port.SourceUrlProbe
 
 data class JsExecutionContext(
     val sourceId: String? = null,
@@ -347,7 +347,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 // 外加它自己的主域（源没入库时也能读到自己那份）。注意这是**文本**判定 ——
                 // 一个铁了心的恶意源把域名写进规则串就能越过这条线，真正的底线仍然是"只导入信任书源"。
                 val storedJson = db?.getSource(sourceId)?.json
-                val scriptHosts = ((storedJson?.let(WebViewProxy::credentialDomains) ?: emptyList()) + listOfNotNull(
+                val scriptHosts = ((storedJson?.let(SourceUrlProbe::credentialDomains) ?: emptyList()) + listOfNotNull(
                     sourceId,
                     bindings["baseUrl"]?.toString(),
                     bindings["bookSourceUrl"]?.toString(),
@@ -1276,7 +1276,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val db = execContext?.database ?: return ""
                 val ownId = execContext?.sourceId ?: return ""
                 // 与 cookie 桥同一道软闸：配置里出现过的域 + 它自己的主域。
-                val stored = db.getSource(ownId)?.json?.let(WebViewProxy::credentialDomains) ?: emptyList()
+                val stored = db.getSource(ownId)?.json?.let(SourceUrlProbe::credentialDomains) ?: emptyList()
                 val store = db.asCookieStore()
                 val bucket = store.cookieBucket(tag)
                 if ((stored + ownId).none { host -> store.cookieBucket(host) == bucket }) return ""

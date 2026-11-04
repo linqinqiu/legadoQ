@@ -50,7 +50,7 @@
 | 边界 | 现状 | 处置 |
 |---|---|---|
 | `rules → data` **28→13** | 初 23 条具体 import；**Cookie 组(6)+Variable 组(4) 已端口化**（`Database.asCookieStore()/asVariableStore()` → `io.legado.port` 接口，rules 不再 import 这些扩展） | 剩 13：脚本缓存 3 + 登录态 5 + Database 句柄&读 4（+WebViewProxy 环 1）。基线 24→14 |
-| `rules ↔ source` **成环** | `rules→source.WebViewProxy` 2、`source→rules` 4 | 基线冻结 `source.WebViewProxy` 1 条，待抽 `LegadoWebViewFetcher` 端口断环 |
+| `rules ↔ source` **已断环** | 原 `rules→source.WebViewProxy`(2)、`source→rules`(4) | `credentialDomains`/`loginPageUrl` 逐字搬到 `io.legado.port.SourceUrlProbe`，WebViewProxy 委托之（Cookie 域名闸 `allowedDomains`/`defaultStartUrl` 一行没动）；rules 改 import SourceUrlProbe，**不再依赖 source** |
 | `NetworkSecurity` 曾住 `http/` | `rules→http.NetworkSecurity`、`ai→http` 6 向上够安全原语 | **已下沉**：`NetworkSecurity` + `GuardedHttpClient` 整体搬到 `io.legado.ops`（纯 JDK 自包含安全单元），`rules→http` 边清零，基线 25→24 |
 
 `rules→model` 12 是只读视图依赖，属**软边界**，本测试**不钉**（钉太死会逼出一堆无意义接口）。

@@ -62,7 +62,7 @@ import io.legado.ops.logEngine
 import io.legado.ops.logNetwork
 import io.legado.ops.logParsing
 import io.legado.ops.logRuleExecution
-import io.legado.source.WebViewProxy
+import io.legado.port.SourceUrlProbe
 import io.legado.model.BookDetails
 import io.legado.model.Chapter
 import io.legado.model.ChapterContent
@@ -1217,7 +1217,7 @@ class RuleRunner(
 
         if (loginUiStr.isNullOrBlank()) {
             // 网址型 loginUrl（含相对路径 / 协议相对地址）都生成按钮；纯 JS 脚本没有可直开的页面。
-            val loginPage = WebViewProxy.loginPageUrl(sourceJson)
+            val loginPage = SourceUrlProbe.loginPageUrl(sourceJson)
             if (loginPage != null) {
                 return listOf(
                     SourceLoginUiItem(
@@ -1293,7 +1293,7 @@ class RuleRunner(
             source.string("jsLib")?.let { LOGIN_FUNCTION.containsMatchIn(it) } == true
         if (loginArgs != null && !hasLoginFunction) {
             // 网址型 loginUrl（含相对路径）交给统一的入口解析；纯 JS 脚本已在 hasLoginFunction 里算过。
-            val loginPage = WebViewProxy.loginPageUrl(sourceJson)
+            val loginPage = SourceUrlProbe.loginPageUrl(sourceJson)
             return SourceLoginActionResult(
                 success = true,
                 toastMessages = listOf(
@@ -1345,7 +1345,7 @@ class RuleRunner(
         val jsLib = source.string("jsLib") ?: ""
 
         if (loginCheckJs.isNullOrBlank()) {
-            val jar = database?.asCookieStore()?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
+            val jar = database?.asCookieStore()?.cookieBucketsForHosts(SourceUrlProbe.credentialDomains(sourceJson)).orEmpty()
             val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
             val hasCookie = jar.isNotEmpty()
             val hasInfo = state?.loginInfo?.isNotEmpty() == true
@@ -1364,7 +1364,7 @@ class RuleRunner(
         val execContext = sourceContext(source, sourceUrl)
         val result = jsSandbox.eval(loginCheckJs, mapOf("sourceId" to sourceUrl, "baseUrl" to sourceUrl), execContext)?.trim()
         val isSuccess = result == "true" || (result != null && result.isNotBlank() && result != "false" && result != "0" && !result.contains("未登录"))
-        val jar = database?.asCookieStore()?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
+        val jar = database?.asCookieStore()?.cookieBucketsForHosts(SourceUrlProbe.credentialDomains(sourceJson)).orEmpty()
         val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
         val hasCredential = isSuccess || jar.isNotEmpty() || state?.loginInfo?.isNotEmpty() == true || state?.loginHeader?.isNotEmpty() == true
         return SourceLoginCheckResult(
