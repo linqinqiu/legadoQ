@@ -4,11 +4,15 @@ import io.legado.data.Database
 import io.legado.data.cookieBucket
 import io.legado.data.deleteScriptCache
 import io.legado.data.getCookieForUrl
+import io.legado.data.getEnabledReplaceRulesForScope
 import io.legado.data.getScriptCache
+import io.legado.data.getSource
 import io.legado.data.getSourceKv
 import io.legado.data.getSourceLoginState
 import io.legado.data.getSourceVariable
+import io.legado.data.getTocCache
 import io.legado.data.putScriptCache
+import io.legado.data.shelfBook
 import io.legado.data.saveSourceKv
 import io.legado.data.saveSourceLoginHeader
 import io.legado.data.saveSourceLoginInfo
@@ -84,5 +88,16 @@ class StorePortEquivalenceTest {
         assertEquals(db.getSourceLoginState(id)?.loginInfo, db.asLoginStateStore().getSourceLoginState(id)?.loginInfo)
         db.asLoginStateStore().saveSourceLoginHeader(id, "{\"Authorization\":\"Bearer x\"}")
         assertEquals(db.getSourceLoginState(id)?.loginHeader, db.asLoginStateStore().getSourceLoginState(id)?.loginHeader)
+    }
+
+    @Test
+    fun `KernelReader 端口与 Database 读投影行为一致`() {
+        val db = freshDb()
+        val id = "https://nope.example"
+        // 空库下"未命中"路径：端口与扩展必须给同样的 null / 空集，锁住委托接线不漂移。
+        assertEquals(db.getSource(id), db.asReader().getSource(id))
+        assertEquals(db.shelfBook(id, "b"), db.asReader().shelfBook(id, "b"))
+        assertEquals(db.getTocCache(id, "t"), db.asReader().getTocCache(id, "t"))
+        assertEquals(db.getEnabledReplaceRulesForScope(null, id, null), db.asReader().getEnabledReplaceRulesForScope(null, id, null))
     }
 }

@@ -1,7 +1,11 @@
 package io.legado.port
 
+import io.legado.model.BookshelfItem
+import io.legado.model.Chapter
 import io.legado.model.CookieBucket
+import io.legado.model.ReplaceRule
 import io.legado.model.SourceLoginStateRecord
+import io.legado.model.SourceRecord
 
 /**
  * 书源 Cookie 存储端口 —— 规则内核（`rules/`）按能力向宿主索取，而不是直接 import
@@ -72,4 +76,15 @@ interface LoginStateStore {
     fun saveSourceLoginHeader(sourceId: String, header: String?): Boolean
     fun removeSourceLoginHeader(sourceId: String): Boolean
     fun removeSourceLoginInfo(sourceId: String): Boolean
+}
+
+/**
+ * 只读投影端口 —— `rules → data` 的「读取组」（4 条）。规则内核按需读源/书架/目录缓存/净化规则，
+ * 全部返回 model 纯数据类，端口不引入 data 类型。
+ */
+interface KernelReader {
+    fun getSource(id: String): SourceRecord?
+    fun shelfBook(sourceId: String, bookUrl: String): BookshelfItem?
+    fun getTocCache(sourceId: String, tocUrl: String): List<Chapter>?
+    fun getEnabledReplaceRulesForScope(bookName: String?, sourceUrl: String?, sourceName: String?): List<ReplaceRule>
 }

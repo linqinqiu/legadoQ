@@ -25,7 +25,7 @@ import kotlin.io.path.readText
  * 2. **`model/` 不得反向依赖** —— `model/` 任何文件都不得 import 除 `io.legado.model` 外的
  *    `io.legado.*` 包。当前实测 **0**，此判据把它锁死，防"数据类反吞宿主/上层类型"回流。
  * 3. **`rules/` 不得直连实现层** —— `rules/` 不得 import `data/` `source/` `http/` 下的**具体实现类**，
- *    已知横穿进入 [RULES_CONCRETE_BASELINE]（初测 25 → NetworkSecurity 下沉 −1 → Cookie/Variable 端口化 −10 → ScriptCache/LoginState 端口化 −8 → 断 rules↔source 环 −1，现 5 条），断言**相等**：
+ *    已知横穿进入 [RULES_CONCRETE_BASELINE]（初测 25 → NetworkSecurity 下沉 −1 → Cookie/Variable 端口化 −10 → ScriptCache/LoginState 端口化 −8 → 断 rules↔source 环 −1 → 只读投影端口化 −4，现 1 条=宽 Database 句柄），断言**相等**：
  *    新横穿＝红；某条随端口化（VariableStorePort/CookieStorePort/WebViewFetcher/NetworkSecurity）
  *    被消掉，也必须从基线同步删除（红→逼你缩小基线）。基线只允许单调缩小。
  *
@@ -189,16 +189,15 @@ class ArchitectureBoundaryTest {
         )
 
         /**
-         * `rules → data/source/http` 已知横穿基线 —— 5 条。
+         * `rules → data/source/http` 已知横穿基线 —— 1 条。
          * 演进：25 → NetworkSecurity 下沉(−1) → Cookie+Variable 端口化(−10) → ScriptCache+LoginState 端口化(−8)
-         * → 断开 rules↔source 环(−1)。只剩最终锚：`data.Database` 句柄 + 只读投影 4
-         * （getSource/shelfBook/getTocCache/getEnabledReplaceRulesForScope）。这 5 条要等 P-final 把宽
-         * `Database?` 换成窄端口集合才能清零。
+         * → 断 rules↔source 环(−1) → 只读投影端口化(−4)。只剩宽 `data.Database` 句柄本身。
+         * 要清零（P-final 最后一步）：把 `RuleRunner.database: Database?` 与 `JsExecutionContext.database`
+         * 换成端口集合，需动 `Application.kt` + 49 个 `RuleRunner(db)` 测试构造点，是牵面最广的一步，单列。
          */
         val RULES_CONCRETE_BASELINE = setOf(
-            // rules → data（5：最终锚，P-final 处理）
-            "data.Database", "data.getEnabledReplaceRulesForScope", "data.getSource",
-            "data.getTocCache", "data.shelfBook",
+            // rules → data（1：宽 Database 句柄，唯一残留）
+            "data.Database",
             // rules → source 已断环：credentialDomains/loginPageUrl 逐字搬到 io.legado.port.SourceUrlProbe，
             //   WebViewProxy 委托之（Cookie 域名闸等安全方法未动）；rules 不再 import io.legado.source。
             // rules → http 现为空：NetworkSecurity 已从 http/ 下沉到 ops/（见 docs/architecture-audit.md §3）。

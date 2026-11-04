@@ -1,8 +1,13 @@
 package io.legado.data
 
+import io.legado.model.BookshelfItem
+import io.legado.model.Chapter
 import io.legado.model.CookieBucket
+import io.legado.model.ReplaceRule
 import io.legado.model.SourceLoginStateRecord
+import io.legado.model.SourceRecord
 import io.legado.port.CookieStore
+import io.legado.port.KernelReader
 import io.legado.port.LoginStateStore
 import io.legado.port.ScriptCacheStore
 import io.legado.port.VariableStore
@@ -60,4 +65,15 @@ internal class DatabaseLoginStateStore(private val db: Database) : LoginStateSto
         db.saveSourceLoginHeader(sourceId, header)
     override fun removeSourceLoginHeader(sourceId: String): Boolean = db.removeSourceLoginHeader(sourceId)
     override fun removeSourceLoginInfo(sourceId: String): Boolean = db.removeSourceLoginInfo(sourceId)
+}
+
+/**
+ * [KernelReader] 的 `Database` 落地：委托 SourcesDao/ShelfDao/CacheDao/ReplaceRuleDao 里既有的只读扩展。
+ */
+internal class DatabaseKernelReader(private val db: Database) : KernelReader {
+    override fun getSource(id: String): SourceRecord? = db.getSource(id)
+    override fun shelfBook(sourceId: String, bookUrl: String): BookshelfItem? = db.shelfBook(sourceId, bookUrl)
+    override fun getTocCache(sourceId: String, tocUrl: String): List<Chapter>? = db.getTocCache(sourceId, tocUrl)
+    override fun getEnabledReplaceRulesForScope(bookName: String?, sourceUrl: String?, sourceName: String?): List<ReplaceRule> =
+        db.getEnabledReplaceRulesForScope(bookName, sourceUrl, sourceName)
 }

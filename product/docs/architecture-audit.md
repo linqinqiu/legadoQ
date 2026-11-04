@@ -71,7 +71,8 @@
 
 - ✅ **P0 第一刀（已完成）= `CookieStorePort`(6) + `VariableStorePort`(4) = 10 条**。落地方式：`io.legado.port` 放两个窄接口，`data` 侧 `DatabaseCookieStore/DatabaseVariableStore` 适配器**委托既有扩展（不删扩展，http/ai 调用零波及）**，`Database` 加成员 `asCookieStore()/asVariableStore()`。rules 改调 `db.asCookieStore()?.xxx(...)`——返回类型靠推断、rules **连 `io.legado.port` 都不用 import**。做完 `rules→data` 23→13、总基线 24→14（930 项测试全绿）。
 - ✅ **P1（已完成）= `ScriptCachePort`(3) + `LoginStatePort`(5)**：同 P0 手法（`Database.asScriptCacheStore()/asLoginStateStore()` 委托扩展，rules 改走成员、不 import 端口类型）。基线 14→6。行为由 `StorePortEquivalenceTest` 锁「端口↔扩展」等值。
-- **P2（最后）= 剩余 5 条**：`data.Database` 是**锚**——只要 `RuleRunner` / `JsSandbox` 还持有 `Database?`，这条 import 就消不掉。真正清零要把这两个宽句柄换成窄端口集合，并把 `getSource/shelfBook/getTocCache/getEnabledReplaceRulesForScope` 归入一个只读投影端口。**这一步风险最高**（牵动 930 项测试的构造注入），单列一轮做。
+- ✅ **P-final-A（已完成）= 只读投影 `KernelReader`(4)**：`getSource/shelfBook/getTocCache/getEnabledReplaceRulesForScope` 经 `Database.asReader()` 端口化（同 P0/P1 手法，零构造波及）。基线 **5→1**。
+- ⛳ **P-final-B（真正的最后一步，未做）= 宽 `data.Database` 句柄（剩 1 条）**：只要 `RuleRunner.database: Database?` / `JsExecutionContext.database` 还以 `Database` 类型存在，这条 import 就消不掉。清零要把这两个宽句柄换成端口集合（`KernelPorts` 聚合 `asCookieStore/asVariableStore/asScriptCacheStore/asLoginStateStore/asReader`），牵动 `Application.kt` + **49 个 `RuleRunner(db)` 测试构造点**——是面最广、需专门一轮 + 全量兜底的改动。当前框架已到 `rules→data` 仅 1 条、`rules→source`/`rules→http` 均 0 的干净态。
 - 每消一组，除了从 `RULES_CONCRETE_BASELINE` 删条目，还应**在同测试文件加正向断言**：`rules→data` import 集合 == 基线（等值，非子集），杜绝端口化过程中又有人新 import `data` 具体类。
 
 **Stage B 触发判据（何时才该从 `:app` 单模块升级为独立 Gradle 模块）**——借 legado-with-MD3 的 Stage A/B/C 纪律，但**不照搬它的 Compose/MVI**：

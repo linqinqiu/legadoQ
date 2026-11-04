@@ -47,9 +47,6 @@ import io.legado.content.applyReplaceEntry
 import io.legado.decodeStrict
 import io.legado.decodeTextAuto
 import io.legado.data.Database
-import io.legado.data.getEnabledReplaceRulesForScope
-import io.legado.data.getTocCache
-import io.legado.data.shelfBook
 import io.legado.ops.NetworkSecurity
 import io.legado.model.FlexChildStyle
 import io.legado.model.SourceLoginActionResult
@@ -824,8 +821,8 @@ class RuleRunner(
         val withChapter = base.copy(chapterUrl = chapterUrl)
         val db = database ?: return withChapter
         if (sourceId.isNullOrBlank() || bookUrl.isNullOrBlank()) return withChapter
-        val shelf = db.shelfBook(sourceId, bookUrl) ?: return withChapter
-        val chapters = db.getTocCache(sourceId, shelf.tocUrl)
+        val shelf = db.asReader().shelfBook(sourceId, bookUrl) ?: return withChapter
+        val chapters = db.asReader().getTocCache(sourceId, shelf.tocUrl)
         val index = chapters?.indexOfFirst { it.url == chapterUrl }?.takeIf { it >= 0 }
         return withChapter.copy(
             bookUrl = bookUrl,
@@ -841,7 +838,7 @@ class RuleRunner(
         val source = sourceJson.objectValue()
         val sourceUrl = source.string("bookSourceUrl")
         val sourceName = source.string("bookSourceName")
-        val replaceRules = database?.getEnabledReplaceRulesForScope(bookName, sourceUrl, sourceName).orEmpty()
+        val replaceRules = database?.asReader()?.getEnabledReplaceRulesForScope(bookName, sourceUrl, sourceName).orEmpty()
 
         if (source.string("mainJs")?.isNotBlank() == true) {
             val result = JsSourceRunner(this, source).content(chapterUrl)
