@@ -1,7 +1,10 @@
 package io.legado.data
 
 import io.legado.model.CookieBucket
+import io.legado.model.SourceLoginStateRecord
 import io.legado.port.CookieStore
+import io.legado.port.LoginStateStore
+import io.legado.port.ScriptCacheStore
 import io.legado.port.VariableStore
 
 /**
@@ -32,4 +35,29 @@ internal class DatabaseVariableStore(private val db: Database) : VariableStore {
     override fun saveSourceKv(sourceId: String, key: String, value: String?): Boolean =
         db.saveSourceKv(sourceId, key, value)
     override fun getSourceKv(sourceId: String, key: String): String? = db.getSourceKv(sourceId, key)
+}
+
+/**
+ * [ScriptCacheStore] 的 `Database` 落地：委托 `ScriptCacheDao` 里既有的脚本缓存扩展函数。
+ * `now` 由调用方传入，适配器原样透传。
+ */
+internal class DatabaseScriptCacheStore(private val db: Database) : ScriptCacheStore {
+    override fun getScriptCache(sourceId: String, key: String, now: Long): String? =
+        db.getScriptCache(sourceId, key, now)
+    override fun putScriptCache(sourceId: String, key: String, value: String, deadline: Long): Boolean =
+        db.putScriptCache(sourceId, key, value, deadline)
+    override fun deleteScriptCache(sourceId: String, key: String): Boolean = db.deleteScriptCache(sourceId, key)
+}
+
+/**
+ * [LoginStateStore] 的 `Database` 落地：委托 `LoginDao` 里既有的登录态扩展函数。
+ */
+internal class DatabaseLoginStateStore(private val db: Database) : LoginStateStore {
+    override fun getSourceLoginState(sourceId: String): SourceLoginStateRecord? = db.getSourceLoginState(sourceId)
+    override fun saveSourceLoginInfo(sourceId: String, loginInfo: Map<String, String>): Boolean =
+        db.saveSourceLoginInfo(sourceId, loginInfo)
+    override fun saveSourceLoginHeader(sourceId: String, header: String?): Boolean =
+        db.saveSourceLoginHeader(sourceId, header)
+    override fun removeSourceLoginHeader(sourceId: String): Boolean = db.removeSourceLoginHeader(sourceId)
+    override fun removeSourceLoginInfo(sourceId: String): Boolean = db.removeSourceLoginInfo(sourceId)
 }

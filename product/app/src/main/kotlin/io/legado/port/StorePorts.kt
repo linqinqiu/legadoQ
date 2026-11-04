@@ -1,6 +1,7 @@
 package io.legado.port
 
 import io.legado.model.CookieBucket
+import io.legado.model.SourceLoginStateRecord
 
 /**
  * 书源 Cookie 存储端口 —— 规则内核（`rules/`）按能力向宿主索取，而不是直接 import
@@ -49,4 +50,26 @@ interface VariableStore {
 
     /** 单个键值读。 */
     fun getSourceKv(sourceId: String, key: String): String?
+}
+
+/**
+ * 书源脚本全局 `cache`（上游 CacheManager）的落盘层端口 —— `rules → data` 的「脚本缓存组」（3 条）。
+ * `now` 由调用方显式传入（deadline 判定口径归调用方，接口不 baked 系统时钟）。
+ */
+interface ScriptCacheStore {
+    fun getScriptCache(sourceId: String, key: String, now: Long): String?
+    fun putScriptCache(sourceId: String, key: String, value: String, deadline: Long): Boolean
+    fun deleteScriptCache(sourceId: String, key: String): Boolean
+}
+
+/**
+ * 书源登录态（loginInfo / loginHeader）存储端口 —— `rules → data` 的「登录态组」（5 条）。
+ * 返回的 [SourceLoginStateRecord] 是 model 纯数据类，端口不引入 data 类型。
+ */
+interface LoginStateStore {
+    fun getSourceLoginState(sourceId: String): SourceLoginStateRecord?
+    fun saveSourceLoginInfo(sourceId: String, loginInfo: Map<String, String>): Boolean
+    fun saveSourceLoginHeader(sourceId: String, header: String?): Boolean
+    fun removeSourceLoginHeader(sourceId: String): Boolean
+    fun removeSourceLoginInfo(sourceId: String): Boolean
 }

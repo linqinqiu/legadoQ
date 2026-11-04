@@ -70,9 +70,18 @@
 **切口顺序（以"基线条目单调下降"为验收）**：
 
 - ✅ **P0 第一刀（已完成）= `CookieStorePort`(6) + `VariableStorePort`(4) = 10 条**。落地方式：`io.legado.port` 放两个窄接口，`data` 侧 `DatabaseCookieStore/DatabaseVariableStore` 适配器**委托既有扩展（不删扩展，http/ai 调用零波及）**，`Database` 加成员 `asCookieStore()/asVariableStore()`。rules 改调 `db.asCookieStore()?.xxx(...)`——返回类型靠推断、rules **连 `io.legado.port` 都不用 import**。做完 `rules→data` 23→13、总基线 24→14（930 项测试全绿）。
-- **P1 = `ScriptCachePort`(3) + `LoginStatePort`(5)**。
+- ✅ **P1（已完成）= `ScriptCachePort`(3) + `LoginStatePort`(5)**：同 P0 手法（`Database.asScriptCacheStore()/asLoginStateStore()` 委托扩展，rules 改走成员、不 import 端口类型）。基线 14→6。行为由 `StorePortEquivalenceTest` 锁「端口↔扩展」等值。
 - **P2（最后）= 剩余 5 条**：`data.Database` 是**锚**——只要 `RuleRunner` / `JsSandbox` 还持有 `Database?`，这条 import 就消不掉。真正清零要把这两个宽句柄换成窄端口集合，并把 `getSource/shelfBook/getTocCache/getEnabledReplaceRulesForScope` 归入一个只读投影端口。**这一步风险最高**（牵动 930 项测试的构造注入），单列一轮做。
 - 每消一组，除了从 `RULES_CONCRETE_BASELINE` 删条目，还应**在同测试文件加正向断言**：`rules→data` import 集合 == 基线（等值，非子集），杜绝端口化过程中又有人新 import `data` 具体类。
+
+**Stage B 触发判据（何时才该从 `:app` 单模块升级为独立 Gradle 模块）**——借 legado-with-MD3 的 Stage A/B/C 纪律，但**不照搬它的 Compose/MVI**：
+
+- legadoQ 当前**主动停在 Stage A**（`:app` 内 feature-first 包 + `ArchitectureBoundaryTest` 钉边界），起点比 MD3 干净得多（MD3 从 803 个混杂文件的 `ui/` 往外理，这里只有 14 个领域包 + 6 条横穿）。"不建模块"不是保守，是与 MD3 同构的**低成本等价选择**——ArchUnit 式等值断言 + 例外清单已经能钉住边界。
+- 只有满足以下**真实依赖证据**才升 Stage B（独立 `:port` / `:feature` 模块），不为"看起来该拆了"而拆：
+  1. 端口层（`io.legado.port`）被 **≥3 个消费者**依赖（例如 `rules/`、未来的 CLI 调试工具、第三宿主同时用），且
+  2. **每个消费者只用其中 ≤2 个方法**（依赖集明显小于整体），或某 feature 被两个宿主同时消费；
+  3. 且文件移动 / 业务重构 / 模块抽取**不在同一个 PR** 里混做（MD3 的评审教训）。
+- 在此之前，端口接口零外部依赖、只被 `rules`↔`data` 两家够着，建模块的收益抵不过构建配置成本 → **保持 Stage A**。
 
 ## 4. 变更流程（比测试更重要：测试防回退，流程防"顺手加一个"）
 

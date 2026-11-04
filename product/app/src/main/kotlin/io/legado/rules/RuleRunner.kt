@@ -48,9 +48,7 @@ import io.legado.decodeStrict
 import io.legado.decodeTextAuto
 import io.legado.data.Database
 import io.legado.data.getEnabledReplaceRulesForScope
-import io.legado.data.getSourceLoginState
 import io.legado.data.getTocCache
-import io.legado.data.saveSourceLoginInfo
 import io.legado.data.shelfBook
 import io.legado.ops.NetworkSecurity
 import io.legado.model.FlexChildStyle
@@ -1055,7 +1053,7 @@ class RuleRunner(
                 execContext,
             )
         }.getOrNull()
-        val stored = database?.getSourceLoginState(sourceUrl)?.loginInfo ?: emptyMap()
+        val stored = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)?.loginInfo ?: emptyMap()
         val rows = parseLoginUiV2Rows(raw)
         if (rows == null) {
             // 把实际返回截一段带上：字段名写错/忘了 rows 时，只给一句"格式错误"没法排。
@@ -1153,7 +1151,7 @@ class RuleRunner(
         val close = (closeEl as? JsonPrimitive)?.booleanOrNull ?: false
         val loginInfo = (loginEl as? JsonObject)?.let(::loginInfoFromJson)
         if (loginInfo != null) {
-            database?.saveSourceLoginInfo(sourceUrl, loginInfo)
+            database?.asLoginStateStore()?.saveSourceLoginInfo(sourceUrl, loginInfo)
         }
         return SourceLoginUiActionResponse(
             ok = true,
@@ -1321,7 +1319,7 @@ class RuleRunner(
         )
 
         jsSandbox.eval(fullScript, bindings, execContext)
-        val state = database?.getSourceLoginState(sourceUrl)
+        val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
         val failure = execContext.lastError
 
         return SourceLoginActionResult(
@@ -1348,7 +1346,7 @@ class RuleRunner(
 
         if (loginCheckJs.isNullOrBlank()) {
             val jar = database?.asCookieStore()?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
-            val state = database?.getSourceLoginState(sourceUrl)
+            val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
             val hasCookie = jar.isNotEmpty()
             val hasInfo = state?.loginInfo?.isNotEmpty() == true
             val hasHeader = state?.loginHeader?.isNotEmpty() == true
@@ -1367,7 +1365,7 @@ class RuleRunner(
         val result = jsSandbox.eval(loginCheckJs, mapOf("sourceId" to sourceUrl, "baseUrl" to sourceUrl), execContext)?.trim()
         val isSuccess = result == "true" || (result != null && result.isNotBlank() && result != "false" && result != "0" && !result.contains("未登录"))
         val jar = database?.asCookieStore()?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
-        val state = database?.getSourceLoginState(sourceUrl)
+        val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
         val hasCredential = isSuccess || jar.isNotEmpty() || state?.loginInfo?.isNotEmpty() == true || state?.loginHeader?.isNotEmpty() == true
         return SourceLoginCheckResult(
             loggedIn = isSuccess,
@@ -1739,7 +1737,7 @@ class RuleRunner(
             }
         }
         if (db != null && !sourceId.isNullOrBlank()) {
-            parseHeaderJson(db.getSourceLoginState(sourceId)?.loginHeader).forEach { (name, value) -> put(name, value) }
+            parseHeaderJson(db.asLoginStateStore().getSourceLoginState(sourceId)?.loginHeader).forEach { (name, value) -> put(name, value) }
             db.asCookieStore().getCookieForUrl(uri.toString())?.let { put("Cookie", it) }
         }
         options?.headers?.forEach { (name, value) -> put(name, value) }

@@ -1,9 +1,6 @@
 package io.legado.rules
 
 import io.legado.data.Database
-import io.legado.data.deleteScriptCache
-import io.legado.data.getScriptCache
-import io.legado.data.putScriptCache
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -60,7 +57,7 @@ internal object ScriptCache {
         if (!onlyDisk) {
             getFromMemory(sourceId, key, now)?.let { return it }
         }
-        val stored = runCatching { db?.getScriptCache(sourceId ?: "-", key, now) }.getOrNull() ?: return null
+        val stored = runCatching { db?.asScriptCacheStore()?.getScriptCache(sourceId ?: "-", key, now) }.getOrNull() ?: return null
         // 只有默认的读路径回填内存；onlyDisk 的语义就是「绕过内存层」。
         if (!onlyDisk) putMemory(sourceId, key, stored)
         return stored
@@ -70,11 +67,11 @@ internal object ScriptCache {
         val now = System.currentTimeMillis()
         val deadline = if (saveTimeSeconds <= 0) 0 else now + saveTimeSeconds * 1000L
         lock.withLock { memory[key(sourceId, key)] = Entry(value, deadline) }
-        runCatching { db?.putScriptCache(sourceId ?: "-", key, value, deadline) }
+        runCatching { db?.asScriptCacheStore()?.putScriptCache(sourceId ?: "-", key, value, deadline) }
     }
 
     fun delete(sourceId: String?, key: String, db: Database?) {
         lock.withLock { memory.remove(key(sourceId, key)) }
-        runCatching { db?.deleteScriptCache(sourceId ?: "-", key) }
+        runCatching { db?.asScriptCacheStore()?.deleteScriptCache(sourceId ?: "-", key) }
     }
 }

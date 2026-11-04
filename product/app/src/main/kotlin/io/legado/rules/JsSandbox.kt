@@ -23,11 +23,6 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import io.legado.data.Database
 import io.legado.data.getSource
-import io.legado.data.getSourceLoginState
-import io.legado.data.removeSourceLoginHeader
-import io.legado.data.removeSourceLoginInfo
-import io.legado.data.saveSourceLoginHeader
-import io.legado.data.saveSourceLoginInfo
 import io.legado.source.WebViewProxy
 
 data class JsExecutionContext(
@@ -835,7 +830,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "getLoginInfo", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val current = execContext?.initialLoginInfo?.takeIf { it.isNotEmpty() }
-                    ?: db?.getSourceLoginState(sourceId)?.loginInfo
+                    ?: db?.asLoginStateStore()?.getSourceLoginState(sourceId)?.loginInfo
                     ?: emptyMap()
                 return Json.encodeToString(current)
             }
@@ -846,7 +841,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "getLoginInfoMap", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val current = execContext?.initialLoginInfo?.takeIf { it.isNotEmpty() }
-                    ?: db?.getSourceLoginState(sourceId)?.loginInfo
+                    ?: db?.asLoginStateStore()?.getSourceLoginState(sourceId)?.loginInfo
                     ?: emptyMap()
                 return JsMapObject(scope, current)
             }
@@ -860,7 +855,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 if (execContext != null) {
                     execContext.initialLoginInfo.putAll(map)
                 }
-                db?.saveSourceLoginInfo(sourceId, execContext?.initialLoginInfo ?: map)
+                db?.asLoginStateStore()?.saveSourceLoginInfo(sourceId, execContext?.initialLoginInfo ?: map)
                 return true
             }
         })
@@ -869,7 +864,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "removeLoginInfo", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 execContext?.initialLoginInfo?.clear()
-                db?.removeSourceLoginInfo(sourceId)
+                db?.asLoginStateStore()?.removeSourceLoginInfo(sourceId)
                 return true
             }
         })
@@ -877,14 +872,14 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // source.getLoginHeader()
         ScriptableObject.putProperty(api, "getLoginHeader", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
-                return db?.getSourceLoginState(sourceId)?.loginHeader ?: ""
+                return db?.asLoginStateStore()?.getSourceLoginState(sourceId)?.loginHeader ?: ""
             }
         })
 
         // source.getLoginHeaderMap() -> Map（同上，给 Map 语义）
         ScriptableObject.putProperty(api, "getLoginHeaderMap", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
-                val header = db?.getSourceLoginState(sourceId)?.loginHeader ?: ""
+                val header = db?.asLoginStateStore()?.getSourceLoginState(sourceId)?.loginHeader ?: ""
                 val map = runCatching { Json.decodeFromString<Map<String, String>>(header) }.getOrDefault(emptyMap())
                 return JsMapObject(scope, map)
             }
@@ -894,7 +889,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "putLoginHeader", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val h = args.firstOrNull()?.toString() ?: ""
-                db?.saveSourceLoginHeader(sourceId, h)
+                db?.asLoginStateStore()?.saveSourceLoginHeader(sourceId, h)
                 return true
             }
         })
@@ -902,7 +897,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // source.removeLoginHeader()
         ScriptableObject.putProperty(api, "removeLoginHeader", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
-                db?.removeSourceLoginHeader(sourceId)
+                db?.asLoginStateStore()?.removeSourceLoginHeader(sourceId)
                 return true
             }
         })
