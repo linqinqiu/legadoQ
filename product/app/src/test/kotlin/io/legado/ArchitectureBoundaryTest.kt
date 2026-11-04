@@ -25,7 +25,7 @@ import kotlin.io.path.readText
  * 2. **`model/` 不得反向依赖** —— `model/` 任何文件都不得 import 除 `io.legado.model` 外的
  *    `io.legado.*` 包。当前实测 **0**，此判据把它锁死，防"数据类反吞宿主/上层类型"回流。
  * 3. **`rules/` 不得直连实现层** —— `rules/` 不得 import `data/` `source/` `http/` 下的**具体实现类**，
- *    已知横穿进入 [RULES_CONCRETE_BASELINE]（初测 25 条；NetworkSecurity 下沉 `ops/` 后 24 条），断言**相等**：
+ *    已知横穿进入 [RULES_CONCRETE_BASELINE]（初测 25 → NetworkSecurity 下沉 −1 → Cookie/Variable 端口化 −10，现 14 条），断言**相等**：
  *    新横穿＝红；某条随端口化（VariableStorePort/CookieStorePort/WebViewFetcher/NetworkSecurity）
  *    被消掉，也必须从基线同步删除（红→逼你缩小基线）。基线只允许单调缩小。
  *
@@ -189,20 +189,18 @@ class ArchitectureBoundaryTest {
         )
 
         /**
-         * `rules → data/source/http` 已知横穿基线 —— 24 条（初测 25，NetworkSecurity 下沉 `ops/` 后 −1）。
-         * 只能缩小：等 VariableStorePort/CookieStorePort/WebViewFetcher 抽出后逐条从此集合删除。
-         * （`rules → http` 已随 NetworkSecurity 下沉清零，见本文件 §3 边界说明。）
+         * `rules → data/source/http` 已知横穿基线 —— 14 条。
+         * 演进：初测 25 → NetworkSecurity 下沉 `ops/`（−1）→ Cookie 组(6)+Variable 组(4) 端口化（−10）。
+         * 仍走具体实现的是：脚本缓存 3、登录态 5、Database 句柄 + 读 4（getSource/shelfBook/getTocCache/
+         * getEnabledReplaceRulesForScope）、WebViewProxy 环 1。按 docs/architecture-audit.md §3.1 继续单调缩。
          */
         val RULES_CONCRETE_BASELINE = setOf(
-            // rules → data（23：变量/Cookie/脚本缓存/登录态/书籍读写仍走具体实现）
-            "data.Database", "data.cookieBucket", "data.cookieBucketsForHosts",
-            "data.deleteScriptCache", "data.getCookieForUrl", "data.getEnabledReplaceRulesForScope",
-            "data.getScriptCache", "data.getSource", "data.getSourceKv",
-            "data.getSourceLoginState", "data.getSourceVariable", "data.getTocCache",
-            "data.putScriptCache", "data.removeCookieBucket", "data.removeSourceLoginHeader",
-            "data.removeSourceLoginInfo", "data.saveSourceKv", "data.saveSourceLoginHeader",
-            "data.saveSourceLoginInfo", "data.saveSourceVariable", "data.setCookieForUrl",
-            "data.setCookieFromSetCookie", "data.shelfBook",
+            // rules → data（13）
+            "data.Database", "data.deleteScriptCache", "data.getEnabledReplaceRulesForScope",
+            "data.getScriptCache", "data.getSource", "data.getSourceLoginState",
+            "data.getTocCache", "data.putScriptCache", "data.removeSourceLoginHeader",
+            "data.removeSourceLoginInfo", "data.saveSourceLoginHeader", "data.saveSourceLoginInfo",
+            "data.shelfBook",
             // rules → source（1：WebView 抓取应经 LegadoWebViewFetcher 端口，而非直连 WebViewProxy）
             "source.WebViewProxy",
             // rules → http 现为空：NetworkSecurity 已从 http/ 下沉到 ops/（见 docs/architecture-audit.md §3）。

@@ -22,20 +22,12 @@ import java.util.SimpleTimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import io.legado.data.Database
-import io.legado.data.cookieBucket
-import io.legado.data.getCookieForUrl
 import io.legado.data.getSource
-import io.legado.data.getSourceKv
 import io.legado.data.getSourceLoginState
-import io.legado.data.getSourceVariable
-import io.legado.data.removeCookieBucket
 import io.legado.data.removeSourceLoginHeader
 import io.legado.data.removeSourceLoginInfo
-import io.legado.data.saveSourceKv
 import io.legado.data.saveSourceLoginHeader
 import io.legado.data.saveSourceLoginInfo
-import io.legado.data.saveSourceVariable
-import io.legado.data.setCookieForUrl
 import io.legado.source.WebViewProxy
 
 data class JsExecutionContext(
@@ -383,7 +375,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                     }
                     if (sourceId != null && text.isNotBlank()) {
                         // 与上游 `BaseSource.putVariable(String)` 同一份存储（source.variable）。
-                        (context?.database ?: runner?.database)?.saveSourceVariable(sourceId, text)
+                        (context?.database ?: runner?.database)?.asVariableStore()?.saveSourceVariable(sourceId, text)
                     }
                     return text
                 }
@@ -918,7 +910,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         // source.getVariable()
         ScriptableObject.putProperty(api, "getVariable", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
-                return db?.getSourceVariable(sourceId) ?: ""
+                return db?.asVariableStore()?.getSourceVariable(sourceId) ?: ""
             }
         })
 
@@ -927,7 +919,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         val saveVariable = object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val v = args.firstOrNull()?.toString() ?: ""
-                db?.saveSourceVariable(sourceId, v)
+                db?.asVariableStore()?.saveSourceVariable(sourceId, v)
                 return v
             }
         }
@@ -939,7 +931,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val k = args.getOrNull(0)?.toString() ?: return Context.getUndefinedValue()
                 val v = args.getOrNull(1)?.toString()
-                db?.saveSourceKv(sourceId, k, v)
+                db?.asVariableStore()?.saveSourceKv(sourceId, k, v)
                 return v ?: Context.getUndefinedValue()
             }
         })
@@ -948,7 +940,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "get", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val k = args.firstOrNull()?.toString() ?: return Context.getUndefinedValue()
-                return db?.getSourceKv(sourceId, k) ?: Context.getUndefinedValue()
+                return db?.asVariableStore()?.getSourceKv(sourceId, k) ?: Context.getUndefinedValue()
             }
         })
     }
@@ -963,8 +955,9 @@ class JsSandbox(private val runner: RuleRunner? = null) {
 
         // 只放行这本书源配置里真正会访问的域（按注册域比对，与存桶键同一口径）
         fun allowed(url: String): Boolean {
-            val bucket = db?.cookieBucket(url) ?: return false
-            return allowedHosts.any { host -> db.cookieBucket(host) == bucket }
+            val store = db?.asCookieStore()
+            val bucket = store?.cookieBucket(url) ?: return false
+            return allowedHosts.any { host -> store.cookieBucket(host) == bucket }
         }
 
         // cookie.getCookie(url)
@@ -972,7 +965,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val url = args.firstOrNull()?.toString() ?: return ""
                 if (!allowed(url)) return ""
-                return db?.getCookieForUrl(url) ?: ""
+                return db?.asCookieStore()?.getCookieForUrl(url) ?: ""
             }
         })
 
@@ -983,7 +976,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val url = args.getOrNull(0)?.toString() ?: return ""
                 val c = args.getOrNull(1)?.toString() ?: return ""
-                if (allowed(url)) db?.setCookieForUrl(url, c)
+                if (allowed(url)) db?.asCookieStore()?.setCookieForUrl(url, c)
                 return ""
             }
         }
@@ -997,7 +990,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         ScriptableObject.putProperty(api, "removeCookie", object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {
                 val url = args.firstOrNull()?.toString() ?: return ""
-                if (allowed(url)) db?.removeCookieBucket(url)
+                if (allowed(url)) db?.asCookieStore()?.removeCookieBucket(url)
                 return ""
             }
         })
@@ -1008,7 +1001,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val url = args.getOrNull(0)?.toString() ?: return ""
                 val key = args.getOrNull(1)?.toString() ?: return ""
                 if (!allowed(url)) return ""
-                val cookieStr = db?.getCookieForUrl(url) ?: ""
+                val cookieStr = db?.asCookieStore()?.getCookieForUrl(url) ?: ""
                 val map = parseCookieString(cookieStr)
                 return map[key] ?: ""
             }
@@ -1289,9 +1282,10 @@ class JsSandbox(private val runner: RuleRunner? = null) {
                 val ownId = execContext?.sourceId ?: return ""
                 // 与 cookie 桥同一道软闸：配置里出现过的域 + 它自己的主域。
                 val stored = db.getSource(ownId)?.json?.let(WebViewProxy::credentialDomains) ?: emptyList()
-                val bucket = db.cookieBucket(tag)
-                if ((stored + ownId).none { host -> db.cookieBucket(host) == bucket }) return ""
-                val cookie = db.getCookieForUrl(tag) ?: ""
+                val store = db.asCookieStore()
+                val bucket = store.cookieBucket(tag)
+                if ((stored + ownId).none { host -> store.cookieBucket(host) == bucket }) return ""
+                val cookie = store.getCookieForUrl(tag) ?: ""
                 val key = args.getOrNull(1)?.toString()?.takeIf { it.isNotBlank() } ?: return cookie
                 return cookie.split(';').map { it.trim() }.firstOrNull { it.startsWith("$key=") }?.substringAfter('=') ?: ""
             }

@@ -47,13 +47,10 @@ import io.legado.content.applyReplaceEntry
 import io.legado.decodeStrict
 import io.legado.decodeTextAuto
 import io.legado.data.Database
-import io.legado.data.cookieBucketsForHosts
-import io.legado.data.getCookieForUrl
 import io.legado.data.getEnabledReplaceRulesForScope
 import io.legado.data.getSourceLoginState
 import io.legado.data.getTocCache
 import io.legado.data.saveSourceLoginInfo
-import io.legado.data.setCookieFromSetCookie
 import io.legado.data.shelfBook
 import io.legado.ops.NetworkSecurity
 import io.legado.model.FlexChildStyle
@@ -1350,7 +1347,7 @@ class RuleRunner(
         val jsLib = source.string("jsLib") ?: ""
 
         if (loginCheckJs.isNullOrBlank()) {
-            val jar = database?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
+            val jar = database?.asCookieStore()?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
             val state = database?.getSourceLoginState(sourceUrl)
             val hasCookie = jar.isNotEmpty()
             val hasInfo = state?.loginInfo?.isNotEmpty() == true
@@ -1369,7 +1366,7 @@ class RuleRunner(
         val execContext = sourceContext(source, sourceUrl)
         val result = jsSandbox.eval(loginCheckJs, mapOf("sourceId" to sourceUrl, "baseUrl" to sourceUrl), execContext)?.trim()
         val isSuccess = result == "true" || (result != null && result.isNotBlank() && result != "false" && result != "0" && !result.contains("未登录"))
-        val jar = database?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
+        val jar = database?.asCookieStore()?.cookieBucketsForHosts(WebViewProxy.credentialDomains(sourceJson)).orEmpty()
         val state = database?.getSourceLoginState(sourceUrl)
         val hasCredential = isSuccess || jar.isNotEmpty() || state?.loginInfo?.isNotEmpty() == true || state?.loginHeader?.isNotEmpty() == true
         return SourceLoginCheckResult(
@@ -1611,7 +1608,7 @@ class RuleRunner(
                 // 按入口地址存会把 A 站的 Cookie 发给 B 站。
                 val cookieUrl = request.uri().toString()
                 setCookies.forEach { cookieStr ->
-                    db.setCookieFromSetCookie(cookieUrl, cookieStr)
+                    db.asCookieStore().setCookieFromSetCookie(cookieUrl, cookieStr)
                 }
             }
             if (response.statusCode() !in 300..399) {
@@ -1743,7 +1740,7 @@ class RuleRunner(
         }
         if (db != null && !sourceId.isNullOrBlank()) {
             parseHeaderJson(db.getSourceLoginState(sourceId)?.loginHeader).forEach { (name, value) -> put(name, value) }
-            db.getCookieForUrl(uri.toString())?.let { put("Cookie", it) }
+            db.asCookieStore().getCookieForUrl(uri.toString())?.let { put("Cookie", it) }
         }
         options?.headers?.forEach { (name, value) -> put(name, value) }
         // 不能写成 apply { ... put(...) }：那个 put 会绑到上面那个局部 put 上，返回的表永远是空的

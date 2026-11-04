@@ -32,6 +32,8 @@ import io.legado.model.ReplaceRule
 import io.legado.model.ReplaceRuleImportResponse
 import io.legado.model.SourceLoginStateRecord
 import io.legado.ops.LogEntry
+import io.legado.port.CookieStore
+import io.legado.port.VariableStore
 import io.legado.source.ParsedRssSource
 import io.legado.source.ParsedSource
 import io.legado.source.SourceCodec
@@ -166,6 +168,16 @@ class Database(private val path: String) : Closeable, AutoCloseable {
         cookieMentions.invalidate()
         MentionsWarmer.schedule(this)
     }
+
+    /**
+     * 以 [CookieStore] 端口视角暴露本库的 Cookie 能力。规则内核（`rules/`）据此按能力索取，
+     * 不再直接 import `io.legado.data` 的 Cookie 扩展函数（见 docs/architecture-audit.md §3.1）。
+     * 内部委托给仍保留的扩展实现，http/ai 等既有调用点不受影响。
+     */
+    fun asCookieStore(): CookieStore = DatabaseCookieStore(this)
+
+    /** 以 [VariableStore] 端口视角暴露本库的书源变量/键值能力。同上，委托既有扩展，不删扩展。 */
+    fun asVariableStore(): VariableStore = DatabaseVariableStore(this)
 }
 
 /** 书源并发改写的乐观锁异常，由 HTTP 层转成 409 version_conflict。 */

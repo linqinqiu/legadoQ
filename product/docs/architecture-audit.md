@@ -49,7 +49,7 @@
 
 | 边界 | 现状 | 处置 |
 |---|---|---|
-| `rules → data` **28** | 23 条具体 import：`saveSourceVariable/getCookieForUrl/setCookieForUrl/Database/shelfBook…`（变量与 Cookie 存储**没走端口**） | 基线冻结，待抽 `VariableStorePort/CookieStorePort` 后逐条缩 |
+| `rules → data` **28→13** | 初 23 条具体 import；**Cookie 组(6)+Variable 组(4) 已端口化**（`Database.asCookieStore()/asVariableStore()` → `io.legado.port` 接口，rules 不再 import 这些扩展） | 剩 13：脚本缓存 3 + 登录态 5 + Database 句柄&读 4（+WebViewProxy 环 1）。基线 24→14 |
 | `rules ↔ source` **成环** | `rules→source.WebViewProxy` 2、`source→rules` 4 | 基线冻结 `source.WebViewProxy` 1 条，待抽 `LegadoWebViewFetcher` 端口断环 |
 | `NetworkSecurity` 曾住 `http/` | `rules→http.NetworkSecurity`、`ai→http` 6 向上够安全原语 | **已下沉**：`NetworkSecurity` + `GuardedHttpClient` 整体搬到 `io.legado.ops`（纯 JDK 自包含安全单元），`rules→http` 边清零，基线 25→24 |
 
@@ -69,7 +69,7 @@
 
 **切口顺序（以"基线条目单调下降"为验收）**：
 
-- **P0 第一刀 = `CookieStorePort`(6) + `VariableStorePort`(4) = 10 条**，二者共享同一横穿带、与登录/脚本/书籍读取无耦合，可干净拆。做完 `rules→data` 基线 23→13、总基线 24→14。端口只声明这 10 个实际用到的方法（与桥白名单同纪律：不多声明一个）。
+- ✅ **P0 第一刀（已完成）= `CookieStorePort`(6) + `VariableStorePort`(4) = 10 条**。落地方式：`io.legado.port` 放两个窄接口，`data` 侧 `DatabaseCookieStore/DatabaseVariableStore` 适配器**委托既有扩展（不删扩展，http/ai 调用零波及）**，`Database` 加成员 `asCookieStore()/asVariableStore()`。rules 改调 `db.asCookieStore()?.xxx(...)`——返回类型靠推断、rules **连 `io.legado.port` 都不用 import**。做完 `rules→data` 23→13、总基线 24→14（930 项测试全绿）。
 - **P1 = `ScriptCachePort`(3) + `LoginStatePort`(5)**。
 - **P2（最后）= 剩余 5 条**：`data.Database` 是**锚**——只要 `RuleRunner` / `JsSandbox` 还持有 `Database?`，这条 import 就消不掉。真正清零要把这两个宽句柄换成窄端口集合，并把 `getSource/shelfBook/getTocCache/getEnabledReplaceRulesForScope` 归入一个只读投影端口。**这一步风险最高**（牵动 930 项测试的构造注入），单列一轮做。
 - 每消一组，除了从 `RULES_CONCRETE_BASELINE` 删条目，还应**在同测试文件加正向断言**：`rules→data` import 集合 == 基线（等值，非子集），杜绝端口化过程中又有人新 import `data` 具体类。
