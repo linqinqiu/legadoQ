@@ -118,7 +118,7 @@ for (const name of files()) {
 }
 
 test('书源在界面上以名字出现，不再直接甩 sourceId', () => {
-  const switchModal = fs.readFileSync(path.join(SRC, 'features', 'source-editor', 'SourceSwitchModal.tsx'), 'utf8')
+  const switchModal = fs.readFileSync(path.join(SRC, 'components', 'SourceSwitchModal.tsx'), 'utf8')
   assert.ok(switchModal.includes('sourceLabel('), '换源弹窗要用 sourceLabel，而不是把裸 sourceId 当标题')
   assert.ok(!/<strong>\{c\.result\.sourceId\}<\/strong>/.test(switchModal), '候选行不许再直接渲染 sourceId')
   const offline = fs.readFileSync(path.join(SRC, 'components', 'OfflineCacheModal.tsx'), 'utf8')

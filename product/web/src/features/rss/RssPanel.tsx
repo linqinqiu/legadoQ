@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, type ExploreTab, type RssArticle, type RssSourceSummary } from '../lib/api'
-import { Icon } from '../icons'
-import { useEscapeClose } from '../lib/useEscapeClose'
-import { Notice } from '../components/Notice'
-import { EmptyGuide } from '../features/bookshelf/EmptyGuide'
-import { Select } from '../components/Select'
-import { exploreLabel } from '../lib/exploreLabel'
-import { rssImageSrc } from '../lib/rssImage'
+import { api, type ExploreTab, type RssArticle, type RssSourceSummary } from '../../lib/api'
+import { Icon } from '../../icons'
+import { useEscapeClose } from '../../lib/useEscapeClose'
+import { Notice } from '../../components/Notice'
+import { EmptyGuide } from '../../components/EmptyGuide'
+import { Select } from '../../components/Select'
+import { exploreLabel } from '../../lib/exploreLabel'
+import { rssImageSrc } from '../../lib/rssImage'
 
 /**
  * 「订阅」页的主体：手机 Legado「订阅」页那一栏（`rssSources.json`），即要**读**的 RSS 源。

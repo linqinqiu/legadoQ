@@ -19,7 +19,7 @@ import {
   toggleAiChat,
   useAiChat,
   type ChatLine,
-} from './aiChatStore'
+} from '../../lib/aiChatStore'
 
 /**
  * 全局 AI 悬浮球 —— 解决用户说的「不能随时随地使用，不能在对应地点研究」。

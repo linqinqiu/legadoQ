@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { zh } from '../../i18n/zh'
-import { api, Chapter, SearchResult, SearchStreamEvent, SourceSummary, streamSearch } from '../../lib/api'
-import { cleanTitle } from '../../lib/searchFilters'
-import { sourceLabel, sourcePickerOptions } from './sourceOrder'
-import { splitSourceGroups } from './sourceGrouping'
-import { Icon } from '../../icons'
-import { Select } from '../../components/Select'
-import { toast } from '../../components/Toast'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { zh } from '../i18n/zh'
+import { api, Chapter, SearchResult, SearchStreamEvent, SourceSummary, streamSearch } from '../lib/api'
+import { cleanTitle } from '../lib/searchFilters'
+import { sourceLabel, sourcePickerOptions } from '../lib/sourceOrder'
+import { splitSourceGroups } from '../lib/sourceGrouping'
+import { Icon } from '../icons'
+import { Select } from './Select'
+import { toast } from './Toast'
+import { useEscapeClose } from '../lib/useEscapeClose'
 
 
 export type SourceCandidate = {

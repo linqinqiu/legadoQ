@@ -35,7 +35,7 @@ test('悬浮球带连接状态点（未连/已连一眼可见）', () => {
 })
 
 test('多会话：store 支持新建 / 切换 / 删除', () => {
-  const store = read('../src/features/ai/aiChatStore.ts')
+  const store = read('../src/lib/aiChatStore.ts')
   assert.match(store, /sessions:\s*ChatSession\[\]/, '状态里有多会话')
   assert.match(store, /activeSessionId/, '有当前会话指针')
   assert.match(store, /export function newAiSession/, '能新建会话')
@@ -46,13 +46,13 @@ test('多会话：store 支持新建 / 切换 / 删除', () => {
 })
 
 test('多会话迁移：上一版单会话对话不能丢', () => {
-  const store = read('../src/features/ai/aiChatStore.ts')
+  const store = read('../src/lib/aiChatStore.ts')
   assert.match(store, /LEGACY_KEY|legado\.ai\.chat\.v1/, '要读旧格式并迁移')
   assert.match(store, /legado\.ai\.chat\.v2/, '新格式带版本号')
 })
 
 test('系统提示词模板可一键切换', () => {
-  const store = read('../src/features/ai/aiChatStore.ts')
+  const store = read('../src/lib/aiChatStore.ts')
   assert.match(store, /SYSTEM_PROMPT_TEMPLATES/, '模板清单')
   assert.match(store, /书源调试/, '有书源调试模板')
   const fab = read('../src/features/ai/AiFloatingBall.tsx')

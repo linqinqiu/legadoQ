@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { api } from '../../lib/api'
-import { cleanTitle } from '../../lib/searchFilters'
+import { api } from '../lib/api'
+import { cleanTitle } from '../lib/searchFilters'
 
 /**
  * 占位封面。网格卡上是 138~153px 宽的一张"书封"，只写两个字等于把封面浪费掉 ——

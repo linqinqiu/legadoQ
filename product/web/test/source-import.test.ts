@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractSourcesFromRaw, parseSourceJsonText, sanitizeImageUrl } from '../src/features/source-editor/sourceImport.ts'
+import { extractSourcesFromRaw, parseSourceJsonText, sanitizeImageUrl } from '../src/lib/sourceImport.ts'
 
 test('Source Import - extractSourcesFromRaw handles direct array', () => {
   const sources = [

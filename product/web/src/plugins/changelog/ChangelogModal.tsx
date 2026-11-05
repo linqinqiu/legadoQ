@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChangelogPage } from '../../pages/ChangelogPage'
+import { ChangelogPage } from './ChangelogPage'
 import { PageDialog } from '../../components/PageDialog'
 
 /**

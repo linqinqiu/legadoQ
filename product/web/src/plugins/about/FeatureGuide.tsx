@@ -1,5 +1,5 @@
 import React from 'react'
-import guideMarkdown from '../../../docs/功能说明.md?raw'
+import guideMarkdown from '../../../../docs/功能说明.md?raw'
 
 /**
  * 「功能说明」浮层（2026-10-28 从「关于」页里拆出来）。

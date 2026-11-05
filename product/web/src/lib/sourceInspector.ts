@@ -1,5 +1,5 @@
-import { api, Chapter, SearchResult } from '../../lib/api'
-import type { OpenBook } from '../reader/openBook'
+import { api, Chapter, SearchResult } from './api'
+import type { OpenBook } from './openBook'
 
 export type SourceHealthStatus = 'idle' | 'checking' | 'valid' | 'vip_restricted' | 'incomplete' | 'error'
 

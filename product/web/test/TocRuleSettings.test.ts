@@ -38,7 +38,7 @@ test('目录规则不参与朗读会话身份（换规则不该打断正在读�
  * 阅读设置抽屉 = 只对着手上这本（暂选，不写全局）。
  */
 test('默认规则长在书架的导入动作旁边，不在「皮肤」浮层里', () => {
-  const skin = read('../src/components/SkinModal.tsx')
+  const skin = read('../src/features/reader/SkinModal.tsx')
   // 判的是代码痕迹，不是那句"搬走了"的说明文字
   assert.doesNotMatch(skin, /api\.tocRules|txtTocRule|<Select/, '皮肤浮层只剩皮肤；分章规则的代码别再长回来')
   // 0.8.2 拆组：弹窗挂在书架页（pages/ShelfPage.tsx），那份阅读设置仍在宿主（main.tsx），
@@ -53,7 +53,7 @@ test('默认规则长在书架的导入动作旁边，不在「皮肤」浮层�
   assert.match(modal, /onClick=\{onImport\}/, '弹窗里能直接接着导书，不用关掉再找那颗按钮')
 
   // 备份里那份要真的能套用到服务端规则表（不是只"收下"）
-  const backup = read('../src/pages/BackupPage.tsx')
+  const backup = read('../src/plugins/backup/BackupPage.tsx')
   assert.match(backup, /api\.applyTocRulesFromBackup\(\)/, '备份页对这条有真的套用动作')
   assert.match(backup, /TXT 分章规则/, '「原样收下的条目」清单里说得出它能套用')
   const store = read('../../app/src/main/kotlin/io/legado/backup/BackupStore.kt')

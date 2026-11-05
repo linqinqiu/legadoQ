@@ -66,7 +66,7 @@ test('构建号写进 jar 资源，并从 /healthz 与 /api/about 报出来', ()
 })
 
 test('关于页把构建号显示出来，且不写死版本或构建号', () => {
-  const page = read('product/web/src/pages/AboutPage.tsx')
+  const page = read('product/web/src/plugins/about/AboutPage.tsx')
   assert.match(page, /<dt>构建<\/dt>/)
   assert.match(page, /info\.build/)
   assert.match(page, /info\.build !== '0'/)

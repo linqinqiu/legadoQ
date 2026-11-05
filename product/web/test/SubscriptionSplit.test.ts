@@ -46,8 +46,8 @@ function auditSubscriptionSplit(files: { name: string; text: string }[]): string
   const problems: string[] = []
   const byName = new Map(files.map(f => [f.name, f.text]))
   const sourcesPageText = byName.get('features/source-editor/SourcesPage.tsx') ?? ''
-  const rssPage = stripComments(byName.get('pages/RssPage.tsx') ?? '')
-  const panel = byName.get('features/source-editor/SourceSubscriptionPanel.tsx') ?? ''
+  const rssPage = stripComments(byName.get('features/rss/RssPage.tsx') ?? '')
+  const panel = byName.get('features/rss/SourceSubscriptionPanel.tsx') ?? ''
 
   // ① 页签不许长回来：`.subscription-tabs` 在界面与样式表里都不该再出现
   for (const f of files) {
@@ -71,15 +71,15 @@ function auditSubscriptionSplit(files: { name: string; text: string }[]): string
 
   // ③ 订阅页必须装两块：书源订阅 + RSS
   if (!rssPage.includes('<SourceSubscriptionPanel')) {
-    problems.push('pages/RssPage.tsx 没有渲染 <SourceSubscriptionPanel —— 书源订阅没在「订阅」页')
+    problems.push('features/rss/RssPage.tsx 没有渲染 <SourceSubscriptionPanel —— 书源订阅没在「订阅」页')
   }
   if (!rssPage.includes('<RssPanel')) {
-    problems.push('pages/RssPage.tsx 没有渲染 <RssPanel —— RSS 文章源丢了')
+    problems.push('features/rss/RssPage.tsx 没有渲染 <RssPanel —— RSS 文章源丢了')
   }
 
   // ④ 书源订阅面板必须仍由 sources/ 提供（它在书源域，只是换了宿主）
   if (!panel.includes('export function SourceSubscriptionPanel')) {
-    problems.push('sources/SourceSubscriptionPanel.tsx 里找不到 SourceSubscriptionPanel —— 组件被误删或改名')
+    problems.push('features/rss/SourceSubscriptionPanel.tsx 里找不到 SourceSubscriptionPanel —— 组件被误删或改名')
   }
 
   // ⑤ 旧的两个内联件不许复活
@@ -105,22 +105,22 @@ test('订阅两件事分居同页：书源页干净、订阅页装两块、页�
 
 test('形状核对：书源页只剩编辑器，订阅页两块并列', () => {
   const pages = read('app/pages.tsx')
-  assert.match(pages, /import \{ RssPage \} from '\.\.\/pages\/RssPage'/, '「订阅」页要由 pages/RssPage 提供')
+  assert.match(pages, /import \{ RssPage \} from '\.\.\/features\/rss\/RssPage'/, '「订阅」页要由 features/rss/RssPage 提供')
 
   const sourcesPage = stripComments(functionBody(read('features/source-editor/SourcesPage.tsx'), 'SourcesPage'))
   assert.ok(sourcesPage.length > 3000, `SourcesPage 只切出 ${sourcesPage.length} 字，切分本身没在做事`)
   assert.doesNotMatch(sourcesPage, /SourceSubscriptionPanel/, '书源页不该再引用订阅面板')
   assert.doesNotMatch(sourcesPage, /订阅地址/, '书源页不该再有「订阅地址」')
 
-  const rssPage = read('pages/RssPage.tsx')
+  const rssPage = read('features/rss/RssPage.tsx')
   assert.match(rssPage, /import \{ SourceSubscriptionPanel \}/, '订阅页要引入书源订阅面板')
   assert.match(rssPage, /import \{ RssPanel \}/, '订阅页要引入 RSS 面板')
   assert.match(rssPage, /subscription-block/, '两块要有各自的分区容器（视觉上分得清）')
 
   // 书源订阅面板的 onClose 现在是可选的（订阅页里没有"收起这一档"）
-  assert.match(read('features/source-editor/SourceSubscriptionPanel.tsx'), /onClose\?:/, 'onClose 应为可选')
+  assert.match(read('features/rss/SourceSubscriptionPanel.tsx'), /onClose\?:/, 'onClose 应为可选')
 
-  const rss = read('pages/RssPanel.tsx')
+  const rss = read('features/rss/RssPanel.tsx')
   assert.doesNotMatch(rss, /onChanged/, 'RssPanel 的 onChanged 只为页签计数而存在，页签没了就该一起删')
 })
 
@@ -130,7 +130,7 @@ test('反向对照：把旧形状塞回去必须报，而且逐项报得出是�
     base.map(f => (f.name === name ? { ...f, text: fn(f.text) } : f))
 
   // 页签长回来
-  const tabs = auditSubscriptionSplit(patch('pages/RssPage.tsx', t => `${t}\n<nav className="subscription-tabs" />\n`))
+  const tabs = auditSubscriptionSplit(patch('features/rss/RssPage.tsx', t => `${t}\n<nav className="subscription-tabs" />\n`))
   assert.ok(tabs.some(p => p.includes('.subscription-tabs')), `加了页签没报：${tabs.join(' / ')}`)
 
   // 书源页又把订阅塞回来（注入到函数体内，才等于"书源页真的又渲染了它"）
@@ -141,7 +141,7 @@ test('反向对照：把旧形状塞回去必须报，而且逐项报得出是�
   assert.ok(back.some(p => p.includes('subsOpen')), `塞回 subsOpen 没报：${back.join(' / ')}`)
 
   // 订阅页丢掉书源订阅
-  const dropped = auditSubscriptionSplit(patch('pages/RssPage.tsx', t => t.split('<SourceSubscriptionPanel').join('')))
+  const dropped = auditSubscriptionSplit(patch('features/rss/RssPage.tsx', t => t.split('<SourceSubscriptionPanel').join('')))
   assert.ok(dropped.some(p => p.includes('没有渲染 <SourceSubscriptionPanel')), `拆掉书源订阅没报：${dropped.join(' / ')}`)
 
   // 解散掉的合体组件复活

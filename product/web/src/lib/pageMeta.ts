@@ -1,4 +1,4 @@
-import type { Page } from '../lib/nav'
+import type { Page } from './nav'
 
 /**
  * 一级页面的**元数据表** —— 路由的唯一来源。
@@ -9,6 +9,13 @@ import type { Page } from '../lib/nav'
  *
  * 这里**只放纯数据**，不放 React 组件 —— 快捷键表、顶栏、路由解析都读它，
  * 不该因为多一张表就把整棵页面树拖进测试。
+ *
+ * ★ 为什么住 `lib/`（shared）而不是 `app/`（shell）：顶栏（`components/`）与快捷键表
+ * （`features/reader/`）都要读它，而这两者都**不允许依赖 shell** —— 放在 `app/` 里会让
+ * 「组合根」变成共享数据的存放地，于是 shared 与 features 各自反向依赖 shell 一次
+ * （实测正是 2 条：`app/AppHeader.tsx`、`features/reader/shortcuts.ts`）。
+ * 它是纯数据、零 React 依赖，本来就属于 shared。判据见
+ * `web/test/ArchitectureBoundary.test.ts`「shell 只能被组合根 import」。
  */
 export type PageMeta = {
   /** 路由 key，对应 `#<key>`。 */

@@ -44,14 +44,14 @@ test('重名分栏编号，而且编号按清洗后的名字算', () => {
 })
 
 test('清洗真的接在发现页上，原文不再直接上屏', () => {
-  const page = read('../src/pages/ExplorePage.tsx')
+  const page = read('../src/features/explore/ExplorePage.tsx')
   assert.match(page, /labelExploreTabs\(tabs\)/, '发现页没在用那份清洗 + 编号')
   assert.doesNotMatch(page, /tab\?\.title/, '分栏标题还在直接画原文 —— 那一排方框会回来')
   assert.match(page, /\{activeLabel\}/, '面板标题也要跟着用清洗后的名字')
 })
 
 test('RSS 的栏目走同一份清洗；那句"不依赖外部服务"的谎话已经改掉', () => {
-  const rss = read('../src/pages/RssPanel.tsx')
+  const rss = read('../src/features/rss/RssPanel.tsx')
   assert.match(rss, /\{exploreLabel\(item\.title\)\}/, 'RSS 栏目名与发现分栏是同一类东西（源自己写的标题），不能只洗一处')
   assert.doesNotMatch(rss, /不依赖任何外部服务|点开即读/,
     '条目是现取上游站点的 —— 这两句把"列表在本机"说成了"读起来不靠网络"，而门禁里就有一条在验取不到时的说明')

@@ -9,7 +9,7 @@ import path from 'node:path'
  * 所以按名字逐项判，而不是"页面上有字"。
  */
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
-const page = read('../src/pages/AboutPage.tsx')
+const page = read('../src/plugins/about/AboutPage.tsx')
 
 /**
  * 判"某句话不许出现在界面上"要先把注释摘掉。
@@ -106,7 +106,7 @@ test('路由与样式都接上了', () => {
   // 深链映射到对应浮层，页面本身在 plugins/about/AboutModal.tsx 里渲染。
   assert.match(read('../src/main.tsx'), /'#about': 'about'/, '旧深链要映射到「关于」浮层')
   assert.match(read('../src/plugins/about/AboutModal.tsx'), /<AboutPage[\s\S]{0,300}onOpenChangelog=\{/)
-  assert.match(read('../src/components/AppHeader.tsx'), /<span>关于<\/span>/)
+  assert.match(read('../src/app/AppHeader.tsx'), /<span>关于<\/span>/)
   assert.match(read('../src/styles.css'), /\.about-page \{/)
 })
 
@@ -132,7 +132,7 @@ test('「我的」菜单不再重复列「更新日志」「快捷键」，这�
   // 同一轮把 5 个弹窗布尔收成一个 openModal，写法从 setShowShortcuts(true) 变成 setOpenModal('shortcuts')。
   assert.match(read('../src/main.tsx'), /openShortcuts: \(\) => openModalDirect\('shortcuts'\)/,
     '宿主那边要真的把 openShortcuts 接上，不是摆个死按钮')
-  const header = read('../src/components/AppHeader.tsx')
+  const header = read('../src/app/AppHeader.tsx')
   assert.doesNotMatch(header, /<span>快捷键<\/span>/, '菜单里那条已经收进「关于」')
   assert.doesNotMatch(header, /<span>更新日志<\/span>/, '菜单里那条与顶栏版本芯片是同一个目标，留芯片')
   assert.match(header, /onClick=\{\(\) => onOpenChangelog\?\.\(\)\}/, '顶栏那颗版本芯片仍然直接进更新日志')
@@ -153,5 +153,5 @@ test('功能说明是独立浮层，从关于进，正文只有文档一份', ()
   const modal = read('../src/plugins/about/GuideModal.tsx')
   assert.match(modal, /title="功能说明"/)
   assert.match(modal, /<FeatureGuide \/>/)
-  assert.match(read('../src/pages/FeatureGuide.tsx'), /功能说明\.md\?raw/, '正文必须读随包文档，不许另写一套')
+  assert.match(read('../src/plugins/about/FeatureGuide.tsx'), /功能说明\.md\?raw/, '正文必须读随包文档，不许另写一套')
 })

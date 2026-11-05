@@ -6,7 +6,7 @@ import path from 'node:path'
 import { testFiles } from './discover.ts'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { SkinModal } from '../src/components/SkinModal'
+import { SkinModal } from '../src/features/reader/SkinModal'
 import { ColorTab } from '../src/features/reader/settingsPanel/ColorTab'
 import { BackgroundLibrary } from '../src/features/reader/settingsPanel/BackgroundLibrary'
 import {
@@ -415,7 +415,7 @@ test('SkinModal 显示内置皮肤的状态：已修改、已删除、使用中�
 })
 
 test('SkinModal 把内置 id 挡在自定义保存入口，并给内置删除 / 恢复留路径', () => {
-  const source = read('..', 'src', 'components', 'SkinModal.tsx')
+  const source = read('..', 'src', 'features', 'reader', 'SkinModal.tsx')
   assert.match(source, /isBuiltinSkinId\(sanitized\)/, '自定义皮肤保存时必须先拒绝内置 id')
   assert.match(source, /这些名字被预设皮肤占用了/, '拒绝时要说清为什么，而不是静默保存失败')
   assert.match(source, /isBuiltinSkinId\(skin\.id\)\) return/, '删除自定义皮肤的入口也要兜底挡住内置 id')
@@ -494,8 +494,8 @@ test('样式表里这几张界面都有规则（更新日志页、皮肤弹窗�
   // W2 并档：两张弹窗自己的宽高没了，几何在共用那一档里 —— 所以断言也搬到那一档上。
   assert.match(css, /^\.dialog-shell \{/m, '弹窗外壳那一档不见了，两张弹窗都会退回裸 div')
   assert.match(css, /^\.dialog-head \{/m, '弹窗页头那一档不见了')
-  assert.match(read('..', 'src', 'components', 'SkinModal.tsx'), /className="dialog-shell[^"]*skin-dialog"/)
-  assert.match(read('..', 'src', 'components', 'WallpaperModal.tsx'), /className="dialog-shell[^"]*wallpaper-dialog"/)
+  assert.match(read('..', 'src', 'features', 'reader', 'SkinModal.tsx'), /className="dialog-shell[^"]*skin-dialog"/)
+  assert.match(read('..', 'src', 'features', 'settings', 'WallpaperModal.tsx'), /className="dialog-shell[^"]*wallpaper-dialog"/)
   assert.match(read('..', 'src', 'components', 'TocRulesModal.tsx'), /className="dialog-shell[^"]*toc-rules-modal"/)
   assert.match(css, /\.changelog-page \{/)
   assert.match(css, /\.theme-swatch-custom/)

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { api, type ChangelogRelease } from '../lib/api'
-import { Notice } from '../components/Notice'
+import { api, type ChangelogRelease } from '../../lib/api'
+import { Notice } from '../../components/Notice'
 
 /** 首屏先给最近几版；更早的放在「展开」后面，免得一页滚不到底。 */
 const RECENT_RELEASES = 6

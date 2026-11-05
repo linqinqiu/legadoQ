@@ -4,11 +4,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AppHeader } from '../src/components/AppHeader'
+import { AppHeader } from '../src/app/AppHeader'
 import { toast } from '../src/components/Toast'
 import { defaultReaderSettings } from '../src/features/reader/readerSettings'
-import { BackupPage, reportImportSummary } from '../src/pages/BackupPage'
-import { applyPreferencePatch, mapReadStyle } from '../src/lib/backupPreferences'
+import { BackupPage, reportImportSummary } from '../src/plugins/backup/BackupPage'
+import { applyPreferencePatch, mapReadStyle } from '../src/features/reader/backupPreferences'
 
 const SRC = path.resolve(import.meta.dirname, '../src')
 

@@ -3,7 +3,7 @@ import { api, type SourceSubscription } from '../../lib/api'
 import { describeSyncError } from '../../lib/syncErrors'
 import { Icon } from '../../icons'
 import { Notice } from '../../components/Notice'
-import { EmptyGuide } from '../bookshelf/EmptyGuide'
+import { EmptyGuide } from '../../components/EmptyGuide'
 
 /**
  * 书源订阅（远程书源 JSON 直链 → 同步进书源库，上游 `RuleSub` / `sourceSub.json`）。

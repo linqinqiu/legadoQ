@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { parseChangelog, ChangelogPage } from '../src/pages/ChangelogPage'
+import { parseChangelog, ChangelogPage } from '../src/plugins/changelog/ChangelogPage'
 
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
 

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Icon, type IconName } from '../../icons'
+import { Icon, type IconName } from '../icons'
 
 /**
  * 空态引导：说清这张列表装的是什么、东西从哪来，并把去处做成按钮。

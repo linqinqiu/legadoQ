@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, ReadingLogEntry } from '../lib/api'
+import { api, ReadingLogEntry } from '../../lib/api'
 
 /**
  * 阅读记录（PROPOSAL-019 D）。按天画一条时间轴：每天读了多久、读了哪几本。

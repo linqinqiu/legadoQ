@@ -55,12 +55,12 @@ test('一级目的地只在顶栏列一次；规则/备份 收在「设置」页
   // 2026-10-08 用户定的框架（对齐 Legado-with-MD3）：顶栏只留 书库/书架/发现/订阅/设置，
   // 书源 / 替换净化规则 / 备份包 从顶栏搬进「设置」页；2026-10-09 用户要求把「书源」放回顶栏。
   // 判的仍是同一件事：**不许有功能只剩下一个找不到的入口**，也不许同一个目的地在两处各留一条路。
-  const header = read('../src/components/AppHeader.tsx')
+  const header = read('../src/app/AppHeader.tsx')
   assert.match(header, /PRIMARY_PAGES\.map/, '顶栏入口由那张表渲染（手写一排按钮迟早漏一项）')
   assert.ok(!/<span>设置<\/span>/.test(header), '「设置」已是一级入口，不该再在「我的」菜单里留第二条路')
   assert.ok(!/<span>规则<\/span>|<span>备份<\/span>|<span>书源<\/span>/.test(header), '规则 / 备份 / 书源 不在菜单里重复')
 
-  const table = read('../src/app/pageMeta.ts')
+  const table = read('../src/lib/pageMeta.ts')
   // 书源已回到顶栏：它必须是一级入口，且不再出现在收编清单里
   assert.ok(/\{ key: 'sources'/.test(table), '书源要回到顶栏一级表里')
   // 规则 / 备份 仍从「设置」页进：规则是悬浮层（PageDialog），备份是**成熟功能浮层**
@@ -109,9 +109,9 @@ test('一级目的地只在顶栏列一次；规则/备份 收在「设置」页
 
 test('路由与"去书架开弹窗"的信号接上了', () => {
   // 0.8.2 拆组：路由与信号发出在 main.tsx，消费那半在 pages/ShelfPage.tsx。
-  // P2 起路由解析搬到 app/pageMeta.ts，页面渲染表在 app/pages.tsx —— 读整个应用面，
+  // P2 起路由解析搬到 lib/pageMeta.ts，页面渲染表在 app/pages.tsx —— 读整个应用面，
   // 断言仍是"接上了"，不放宽任何一条。
-  const route = read('../src/app/pageMeta.ts')
+  const route = read('../src/lib/pageMeta.ts')
   assert.match(route, /pageFromHash/, 'hash 解析要由页面元数据表提供')
   assert.match(route, /\{ key: 'settings'/, 'settings 必须在页面表里')
   const pages = read('../src/app/pages.tsx')

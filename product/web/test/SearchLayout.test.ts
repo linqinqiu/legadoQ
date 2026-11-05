@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { DEFAULT_LAYOUT, DEFAULT_SEARCH_LAYOUT, readSearchLayout, readShelfLayout, writeSearchLayout, writeShelfLayout } from '../src/features/bookshelf/shelfLayout'
+import { DEFAULT_LAYOUT, DEFAULT_SEARCH_LAYOUT, readSearchLayout, readShelfLayout, writeSearchLayout, writeShelfLayout } from '../src/lib/shelfLayout'
 import { pickBlurb, SearchGroup } from '../src/lib/searchFilters'
 
 /**
@@ -83,7 +83,7 @@ test('搜索布局 - localStorage 不可用时不抛', () => {
 })
 
 test('搜索页 - 三档入口都在、无障碍名齐、且都写进同一份 DOM', () => {
-  const source = read('../src/pages/LibraryPage.tsx')
+  const source = read('../src/features/bookshelf/LibraryPage.tsx')
   assert.match(source, /aria-label="搜索结果布局"/, 'picker 要有自己的无障碍名（书架那颗叫「书架布局」）')
   for (const label of ['封面网格', '列表', '紧凑列表']) {
     assert.ok(source.includes(`aria-label="${label}"`), `少了「${label}」这一档入口`)
@@ -94,7 +94,7 @@ test('搜索页 - 三档入口都在、无障碍名齐、且都写进同一份 D
 })
 
 test('搜索页 - 换档不许弄丢门禁与无障碍依赖的文案', () => {
-  const source = read('../src/pages/LibraryPage.tsx')
+  const source = read('../src/features/bookshelf/LibraryPage.tsx')
   // book-detail-check.mjs 用 /(\d+)\s*个书源/ 从 .search-card-sources 抽数字挑候选书
   assert.match(source, /className="search-card-sources"/, '类名不许消失')
   assert.match(source, /个书源/, '「N 个书源」这句不许消失')

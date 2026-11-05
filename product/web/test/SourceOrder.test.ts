@@ -29,7 +29,7 @@ test('顺序只有一个来源：服务端排，客户端只做原位回填', ()
 
 test('书源拖动与书架共用同一份手势，且批量模式让路', () => {
   const main = sourcesPage()
-  assert.match(main, /from '[.][./]*(bookshelf|shelf)\/dragSort'/, '手势在 dragSort.ts 里，两处共用一份')
+  assert.match(main, /from '[.][./]*lib\/dragSort'/, '手势在 dragSort.ts 里，两处共用一份')
   assert.match(main, /itemSelector: '\.source-list-item'/)
   assert.match(main, /enabled: \(\) => !isBatchMode/, '批量模式里点按是勾选，不能抢成拖动')
   assert.match(main, /onPointerDown=\{onSourcePointerDown\(index\)\}/)

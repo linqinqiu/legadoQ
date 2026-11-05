@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { dayLabel, formatDuration, groupByDay } from '../src/pages/ReadingLogPage'
+import { dayLabel, formatDuration, groupByDay } from '../src/plugins/reading-log/ReadingLogPage'
 import type { ReadingLogEntry } from '../src/lib/api'
 
 /**
@@ -57,7 +57,7 @@ test('接线：阅读页真的按停留上报（api.addReadingLog + 30 秒一段
 })
 
 test('接线：「我的」菜单有「阅读记录」入口，且开的是同一个悬浮层', () => {
-  const header = fs.readFileSync(path.resolve(import.meta.dirname, '../src/components/AppHeader.tsx'), 'utf8')
+  const header = fs.readFileSync(path.resolve(import.meta.dirname, '../src/app/AppHeader.tsx'), 'utf8')
   assert.match(header, /onOpenReadingLog/, '菜单要能触发')
   assert.match(header, /阅读记录/)
   const main = fs.readFileSync(path.resolve(import.meta.dirname, '../src/main.tsx'), 'utf8')

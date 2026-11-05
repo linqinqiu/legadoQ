@@ -14,7 +14,7 @@ import {
   stopHealthRun,
   type HealthRunStart,
 } from '../src/features/source-editor/sourceHealthRun'
-import { autoTagBatches, HEALTH_TAGS } from '../src/features/source-editor/sourceGrouping'
+import { autoTagBatches, HEALTH_TAGS } from '../src/lib/sourceGrouping'
 import type { SourceHealthCheckItem } from '../src/lib/api'
 
 /**

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { api, type SourceHealthCheckItem } from '../../lib/api'
-import { autoTagBatches, diffHealthTiers, HEALTH_TAGS, tierCounts, type HealthTierDiff } from './sourceGrouping'
+import { autoTagBatches, diffHealthTiers, HEALTH_TAGS, tierCounts, type HealthTierDiff } from '../../lib/sourceGrouping'
 
 /**
  * 书源体检的"跑在组件外面"的那一半（用户 2026-10-02：

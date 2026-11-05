@@ -3,6 +3,14 @@ import { DEFAULT_READER_MENU, parseReaderMenu, type ReaderMenuAction } from './r
 import { parseScriptMode, type ScriptMode } from './scriptConvert'
 import type { PageTurnAnim } from './pageTurn'
 import { READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN } from './fontSizeControl'
+import { clampNumber, clampScrollPosition, scrollPosition } from '../../lib/scrollProgress'
+
+/**
+ * 这三个纯函数已下沉到 `lib/scrollProgress.ts`（它们不引用任何 `ReaderSettings`，
+ * 而 shared 侧的 `BookDetailModal` 也要用 `scrollPosition`，放在这里就是一条
+ * shared → feature 反向依赖）。此处**原样再导出**，既有同域调用点不受影响。
+ */
+export { clampNumber, clampScrollPosition, scrollPosition }
 
 /** 内置七套皮肤；同时允许任意自定义 id —— 配合注入 `.theme-<id>` 的 CSS 变量即可加皮肤，不必改这个类型。 */
 export type ReaderTheme = 'light' | 'paper' | 'dark' | (string & {})
@@ -200,25 +208,6 @@ export const defaultReaderSettings: ReaderSettings = {
   tapZones: { paginate: DEFAULT_MAPS.paginate, scroll: DEFAULT_MAPS.scroll },
   menuItems: DEFAULT_READER_MENU,
   scriptMode: 'off',
-}
-
-export function clampScrollPosition(value: number): number {
-  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
-}
-
-export function scrollPosition(scrollTop: number, scrollHeight: number, clientHeight: number): number {
-  return clampScrollPosition(scrollTop / Math.max(1, scrollHeight - clientHeight))
-}
-
-/**
- * 数值项的读取一律走这里。以前各字段自己写 `typeof x === 'number' ? Math.min(...)`，
- * 而 `NaN` 也满足 `typeof === 'number'`，`Math.min/max(NaN)` 又返回 `NaN` ——
- * localStorage 里存进一个 NaN（旧版本或被改坏的 JSON）就会让 `--reader-font-size: NaNpx`
- * 这种无效值一路发到 CSS，浏览器整条声明作废，界面表现为"设置突然不生效"。
- */
-export function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.min(max, Math.max(min, value))
 }
 
 export function parseReaderFont(font: unknown): ReaderFont {

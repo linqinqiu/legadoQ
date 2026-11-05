@@ -57,6 +57,24 @@ test('两处挂载点都在：阅读器那一支单独包，根上再兜一层',
   assert.doesNotMatch(main, /createRoot\([^)]*\)!\.render\(<App \/>\)/)
 })
 
+test('扩展崩了只丢那一块：每个 Extension 各自包一层边界', () => {
+  const slot = fs.readFileSync(path.join(SRC, 'plugins', 'ExtensionSlot.tsx'), 'utf8')
+  assert.match(slot, /from '\.\.\/components\/ErrorBoundary'/, '必须复用既有的边界组件，别另写一套')
+  // 渲染路径的每一项都要落在边界里 —— 扩展是外部来源的代码，宿主不该为它的 bug 陪葬
+  assert.match(
+    slot,
+    /attachments\.map\(\(a\) => \(\s*<ErrorBoundary/,
+    'attachments 的每一项都要被 ErrorBoundary 包住；否则一个扩展抛错会把整棵树卸载成白屏',
+  )
+  assert.match(
+    slot,
+    /<ErrorBoundary[^>]*region=\{`扩展「/,
+    'region 要说清是哪个扩展崩的，否则用户只看到一句没有线索的"这块崩了"',
+  )
+  // 反向对照：裸 <Suspense> 直接挂在 map 里 = 退回"扩展抛错卸载整棵树"
+  assert.doesNotMatch(slot, /attachments\.map\(\(a\) => \(\s*<Suspense/)
+})
+
 test('崩了要留痕：componentDidCatch 把堆栈打进 console，界面只给一句人话', () => {
   const src = fs.readFileSync(path.join(SRC, 'components', 'ErrorBoundary.tsx'), 'utf8')
   assert.match(src, /componentDidCatch\([\s\S]*console\.error/)

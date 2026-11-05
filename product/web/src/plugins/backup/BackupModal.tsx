@@ -1,5 +1,5 @@
 import React from 'react'
-import { BackupPage } from '../../pages/BackupPage'
+import { BackupPage } from './BackupPage'
 import { PageDialog } from '../../components/PageDialog'
 
 /**

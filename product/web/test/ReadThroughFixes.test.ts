@@ -160,7 +160,7 @@ test('Esc 只挂一份、登录浮层保留本地界面与两条凭据路径、�
 
   assert.doesNotMatch(read('features', 'source-editor', 'bookSourceFields.ts'), /SOURCE_FIELD_COUNT/,
     '与列表漂移的死常量不回来（总数由编辑器现算）')
-  assert.doesNotMatch(read('features', 'source-editor', 'sourceInspector.ts'), /createInitialInspections/,
+  assert.doesNotMatch(read('lib', 'sourceInspector.ts'), /createInitialInspections/,
     '纯别名不回来')
 })
 

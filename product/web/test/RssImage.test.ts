@@ -45,7 +45,7 @@ test('不是 http(s) 也不是站内路径的一律不画（javascript: 之类�
 })
 
 test('反向对照：那一页不许再把外域地址直接写进 <img src>', () => {
-  const panel = read('..', 'src', 'pages', 'RssPanel.tsx')
+  const panel = read('..', 'src', 'features', 'rss', 'RssPanel.tsx')
   const rows = panel.split(/\r?\n/).filter(line => line.includes('<img') && /src=\{/.test(line))
   assert.ok(rows.length >= 2, `只解析到 ${rows.length} 处 <img src>，这条在演空戏`)
   for (const row of rows) {

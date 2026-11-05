@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { zh } from '../i18n/zh'
-import { Icon } from '../icons'
-import { useEscapeClose } from '../lib/useEscapeClose'
+import { zh } from '../../i18n/zh'
+import { Icon } from '../../icons'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 import {
   activeSkin,
   availableSkins,
@@ -20,7 +20,7 @@ import {
   type BuiltinSkinId,
   type CustomSkin,
   type ReaderSettings,
-} from '../features/reader/readerSettings'
+} from './readerSettings'
 
 /**
  * 「皮肤」浮层：只管配色与皮肤，壁纸另有 `WallpaperModal`。

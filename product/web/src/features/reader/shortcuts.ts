@@ -8,7 +8,7 @@
  * `keys` 是 `normalizeKey` 之后的形状（小写、` ` 记成 `space`、`Escape` 记成 `esc`），
  * `display` 是给人看的那一列 —— 两者分开是因为键盘上印的是「←」而代码里是 `arrowleft`。
  */
-import { PRIMARY_PAGES } from '../../app/pageMeta'
+import { PRIMARY_PAGES } from '../../lib/pageMeta'
 
 export { PRIMARY_PAGES }
 
@@ -88,7 +88,7 @@ export const READER_SHORTCUTS: Shortcut[] = [
  * `nav` 是顶栏上那两个字，`label` 是这张表里说全的名字。
  */
 /**
- * 一级入口表已搬到 `app/pageMeta.ts` —— 顶栏、数字键、路由解析共用同一张表。
+ * 一级入口表已搬到 `lib/pageMeta.ts`（shared）—— 顶栏、数字键、路由解析共用同一张表。
  * 这里 re-export，既有调用点与判据不用改 import 路径。
  */
 

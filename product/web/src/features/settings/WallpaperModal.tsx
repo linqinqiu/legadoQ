@@ -1,7 +1,7 @@
-import { Icon } from '../icons'
-import { zh } from '../i18n/zh'
-import { useEscapeClose } from '../lib/useEscapeClose'
-import { WallpaperSection } from '../features/settings/WallpaperSection'
+import { Icon } from '../../icons'
+import { zh } from '../../i18n/zh'
+import { useEscapeClose } from '../../lib/useEscapeClose'
+import { WallpaperSection } from '../../features/settings/WallpaperSection'
 
 /**
  * 「壁纸」浮层：只管整站背景图，不再和皮肤挤在同一张弹窗里。

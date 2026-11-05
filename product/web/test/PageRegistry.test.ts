@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { PAGES, PRIMARY_PAGES, pageFromHash } from '../src/app/pageMeta.ts'
+import { PAGES, PRIMARY_PAGES, pageFromHash } from '../src/lib/pageMeta.ts'
 
 /**
  * 路由表的判据。
@@ -39,5 +39,5 @@ test('hash 解析由表驱动：每个 key 都能往返，不认识的回书库'
 test('主壳不再自己写 hash 三元链', () => {
   const main = fs.readFileSync(path.resolve(import.meta.dirname, '../src/main.tsx'), 'utf8')
   assert.doesNotMatch(main, /location\.hash === '#(sources|subscriptions|shelf|explore|reader|settings)'/,
-    '路由解析应只住在 app/pageMeta.ts')
+    '路由解析应只住在 lib/pageMeta.ts')
 })

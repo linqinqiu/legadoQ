@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
-import { AppHeader, APP_THEMES } from '../src/components/AppHeader'
+import { AppHeader, APP_THEMES } from '../src/app/AppHeader'
 import type { Page } from '../src/lib/nav'
 import { Logo } from '../src/components/Logo'
 import { defaultReaderSettings, ReaderSettings } from '../src/features/reader/readerSettings'
@@ -85,7 +85,7 @@ test('HeaderMenu - 版本号来自 /healthz，前端不写死', () => {
   assert.ok(!html.includes('已登录'), '认证删掉之后不许再出现"已登录"这种谎话')
 
   // 版本号的显示契约落在源码里：唯一的值是 /healthz 报上来的那个，取不到时如实说"未取到"。
-  const header = fs.readFileSync(path.resolve(import.meta.dirname, '../src/components/AppHeader.tsx'), 'utf8')
+  const header = fs.readFileSync(path.resolve(import.meta.dirname, '../src/app/AppHeader.tsx'), 'utf8')
   assert.match(header, /version\?:\s*string/, 'AppHeader 必须把版本号做成 prop（值由外层从 /healthz 取）')
   assert.match(header, /\{version \|\| '未取到'\}/, '没取到版本号时要显示"未取到"，不能空着让人以为版本未知是正常')
   assert.match(header, /className="menu-version"/, '版本号要有自己的位置，跟状态位一起摆在菜单头部')

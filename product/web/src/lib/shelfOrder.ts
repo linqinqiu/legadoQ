@@ -1,4 +1,4 @@
-import type { BookshelfItem } from '../../lib/api'
+import type { BookshelfItem } from './api'
 
 /**
  * 书架自定义排序（用户 2026-10-02：「批量管理功能在，长按书籍可移动能排顺序（自定义）」）。

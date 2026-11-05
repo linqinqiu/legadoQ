@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diffHealthTiers, tierOf } from '../src/features/source-editor/sourceGrouping'
+import { diffHealthTiers, tierOf } from '../src/lib/sourceGrouping'
 
 /**
  * 重测后"哪些源和上次不一样"的判断（Issue #3）。

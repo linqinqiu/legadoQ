@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Icon } from '../icons'
-import { PRIMARY_PAGES } from '../app/pageMeta'
+import { PRIMARY_PAGES } from '../lib/pageMeta'
 import type { Page } from '../lib/nav'
 import { getBrand, subscribeBrand } from '../lib/brandStore'
-import { Logo } from './Logo'
-import { promptPwaInstall, subscribePwaInstall } from './PwaManager'
+import { Logo } from '../components/Logo'
+import { promptPwaInstall, subscribePwaInstall } from '../components/PwaManager'
 import { availableSkins, BUILTIN_SKINS, resolveTheme, type ReaderSettings } from '../features/reader/readerSettings'
 
 export interface AppHeaderProps {

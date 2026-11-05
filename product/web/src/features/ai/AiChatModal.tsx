@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { api, type AgentChatMessage } from '../../lib/api'
 import { EMPTY_UI_CONTEXT, uiContextMessage, type UiContext } from '../../lib/uiContext'
 import { loadAiToolPrefs, toolRoundGroups, aiToolTitle } from '../../lib/aiToolGroups'
-import { activeSession, setAiSystemPrompt, useAiChat } from './aiChatStore'
+import { activeSession, setAiSystemPrompt, useAiChat } from '../../lib/aiChatStore'
 import { streamAgentChat, type AgentStreamDraft } from './agentStream'
 import { AiPanel } from './AiPanel'
 

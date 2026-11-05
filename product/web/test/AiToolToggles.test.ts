@@ -79,7 +79,7 @@ test('两个对话入口都把 disabledTools 发出去', () => {
 })
 
 test('工具区块给出逐项复选框，并解释 program 组为什么不能停', () => {
-  const section = read('../src/features/settings/AiToolsSection.tsx')
+  const section = read('../src/features/ai/AiToolsSection.tsx')
   assert.match(section, /loadAiToolPrefs/, '状态读的是完整偏好')
   assert.match(section, /toggleTool/, '有逐项开关的处理')
   assert.match(section, /aria-label=\{`启用 \$\{tool\.id\}`\}/, '每个工具一条可勾选项，且有可读标签')

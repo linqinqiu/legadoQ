@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { api, type AboutInfo, type UpdateCheckResult } from '../lib/api'
-import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../lib/agreement'
-import { FEEDBACK_BODY_MAX, FEEDBACK_TITLE_MAX, buildFeedbackUrl } from '../features/feedback/feedbackUrl'
+import { api, type AboutInfo, type UpdateCheckResult } from '../../lib/api'
+import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../../lib/agreement'
+import { FEEDBACK_BODY_MAX, FEEDBACK_TITLE_MAX, buildFeedbackUrl } from '../../lib/feedbackUrl'
 
 /**
  * 「关于」（用户 2026-10-02：「加入关于（名称，开发者，更新日志，检查更新，用户协议，开源许可，免责声明）」）。

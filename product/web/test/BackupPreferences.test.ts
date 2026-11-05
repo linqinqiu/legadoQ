@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../src/lib/backupPreferences'
+import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../src/features/reader/backupPreferences'
 import { defaultReaderSettings } from '../src/features/reader/readerSettings'
 
 /**

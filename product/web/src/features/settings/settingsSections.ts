@@ -13,7 +13,7 @@ export type SettingsRow = {
 
 /**
  * 一档设置只有一张行表。控件不内联在这一页：点开那一行回到原来的编辑器，
- * 实现仍然只有一份（`components/SkinModal.tsx`、`components/WallpaperModal.tsx` 等）。
+ * 实现仍然只有一份（`features/reader/SkinModal.tsx`、`features/settings/WallpaperModal.tsx` 等）。
  */
 export type SettingsSection = { title: string; rows: SettingsRow[] }
 

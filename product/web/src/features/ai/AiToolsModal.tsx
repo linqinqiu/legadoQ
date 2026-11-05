@@ -1,6 +1,6 @@
 import React from 'react'
 import { AiPanel } from './AiPanel'
-import { AiToolsSection } from '../settings/AiToolsSection'
+import { AiToolsSection } from './AiToolsSection'
 
 /**
  * 「AI 工具」浮层：勾选模型能调用哪一组能力。

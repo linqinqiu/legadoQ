@@ -99,7 +99,7 @@ test('书源上下文只在书源页生效（selected 是跨页保留的状态�
 })
 
 test('对话历史活在组件之外：跨页面、跨会话都还在', () => {
-  const store = read('../src/features/ai/aiChatStore.ts')
+  const store = read('../src/lib/aiChatStore.ts')
   // 模块级可变状态 + useSyncExternalStore：组件卸载不影响它
   assert.match(store, /let state: AiChatState/, '状态要在模块级，不能是组件 useState')
   assert.match(store, /useSyncExternalStore/, '用外部 store 订阅，卸载不丢')
@@ -114,7 +114,7 @@ test('对话历史活在组件之外：跨页面、跨会话都还在', () => {
 })
 
 test('刷新后不自动弹面板（open 是瞬时状态，不持久化）', () => {
-  const store = read('../src/features/ai/aiChatStore.ts')
+  const store = read('../src/lib/aiChatStore.ts')
   assert.match(store, /open: false/, '读回时要强制收起')
   // 持久化时只写 messages 与 systemPrompt，不写 open
   const persistBlock = store.slice(store.indexOf('function persist'), store.indexOf('function replace'))

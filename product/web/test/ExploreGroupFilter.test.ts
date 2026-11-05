@@ -33,7 +33,7 @@ test('筛选 - 全部分组给回全部，未分组只给没组的', () => {
 })
 
 test('发现页确实接上了这套筛选（不只是一个没人调用的模块）', () => {
-  const page = read('../src/pages/ExplorePage.tsx')
+  const page = read('../src/features/explore/ExplorePage.tsx')
   assert.match(page, /ariaLabel="按分组筛选发现页书源"/, '页面上有这颗分组选择器')
   assert.match(page, /value=\{group\}[\s\S]*?onChange=\{chooseGroup\}/, '它绑的是本页的分组状态')
   assert.match(page, /options=\{pickable\.map/, '选源下拉列的是**筛过**的那批，不是全部 sources')

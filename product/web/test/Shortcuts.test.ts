@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { GLOBAL_SHORTCUTS, PRIMARY_PAGES, READER_SHORTCUTS, SHORTCUT_TABLES, isTypingTarget, normalizeKey, shortcutFor } from '../src/features/reader/shortcuts'
-import { PAGES } from '../src/app/pageMeta'
+import { PAGES } from '../src/lib/pageMeta'
 import { ShortcutHelp } from '../src/features/reader/ShortcutHelp'
 
 /**
@@ -124,7 +124,7 @@ test('处理器引用的动作必须都在表里（改了键忘了改表，这�
 test('一级入口只有一张表：顶栏、数字键、Alt 循环都从 PRIMARY_PAGES 取', () => {
   // 改之前是三份表：顶栏手写一排 <button>、main.tsx 的 NAV 一份（顺序还和顶栏相反）、
   // 这张表又一份 —— 三份各自漏过不同的页面。归属判据见 shortcuts.ts 的表头注释。
-  const header = fs.readFileSync(new URL('../src/components/AppHeader.tsx', import.meta.url), 'utf8')
+  const header = fs.readFileSync(new URL('../src/app/AppHeader.tsx', import.meta.url), 'utf8')
   assert.match(header, /PRIMARY_PAGES\.map/, '顶栏不再渲染这张表，就是有人手写了一排按钮')
   assert.match(appSource, /const NAV: Page\[\] = PRIMARY_PAGES\.map/, 'Alt + ←/→ 的循环顺序必须与顶栏同一份来源')
   // 顶栏里不许再出现手写的入口按钮（品牌位点回书库是另一件事）

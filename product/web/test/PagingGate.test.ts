@@ -19,14 +19,14 @@ test('旗标从服务端一路带到界面，只有一份判据', () => {
   const models = read('..', '..', 'app', 'src', 'main', 'kotlin', 'io', 'legado', 'model', 'Models.kt')
   assert.ok(/data class ExploreTab\([^)]*supportsPaging: Boolean = true/.test(models), '服务端 ExploreTab 没有这个字段')
   // 前端不许自己再写一份"能不能翻页"的判断
-  for (const name of [path.join('pages', 'ExplorePage.tsx'), path.join('pages', 'RssPanel.tsx')]) {
+  for (const name of [path.join('features', 'explore', 'ExplorePage.tsx'), path.join('features', 'rss', 'RssPanel.tsx')]) {
     const text = read('..', 'src', ...name.split(path.sep))
     assert.ok(!/page=\{\{/.test(text) && !/<\[\^>\]*,/.test(text), `${name} 里不该出现按规则文本猜翻页的写法`)
   }
 })
 
 test('发现页：不吃页码的栏目不挂「加载更多」，翻页函数自己也拦一道', () => {
-  const page = read('..', 'src', 'pages', 'ExplorePage.tsx')
+  const page = read('..', 'src', 'features', 'explore', 'ExplorePage.tsx')
   assert.ok(/tab\?\.supportsPaging !== false && hasMore &&/.test(page), '「加载更多」没按旗标收')
   assert.ok(/supportsPaging === false/.test(page.split('const loadMore')[1] ?? ''), 'loadMore 里没有对应的守卫（只收按钮，函数还是能被别处调到）')
   // 反向对照：老写法（只看 hasMore）必须被这两条逮住
@@ -35,6 +35,6 @@ test('发现页：不吃页码的栏目不挂「加载更多」，翻页函数�
 })
 
 test('RSS 那一页同一条纪律', () => {
-  const panel = read('..', 'src', 'pages', 'RssPanel.tsx')
+  const panel = read('..', 'src', 'features', 'rss', 'RssPanel.tsx')
   assert.ok(/tab\?\.supportsPaging !== false/.test(panel), 'RSS 的「下一页」没按旗标收')
 })

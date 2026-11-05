@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type BackupImportSummary, type BackupSnapshotInfo, type KeptBackupEntry } from '../lib/api'
-import { toast } from '../components/Toast'
-import { Icon } from '../icons'
-import { loadReaderSettings, saveReaderSettings } from '../features/reader/readerSettings'
-import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../lib/backupPreferences'
-import { fetchImportUrl, fileNameFromUrl } from '../lib/importFromUrl'
+import { api, type BackupImportSummary, type BackupSnapshotInfo, type KeptBackupEntry } from '../../lib/api'
+import { toast } from '../../components/Toast'
+import { Icon } from '../../icons'
+import { loadReaderSettings, saveReaderSettings } from '../../features/reader/readerSettings'
+import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../../features/reader/backupPreferences'
+import { fetchImportUrl, fileNameFromUrl } from '../../lib/importFromUrl'
 
 /**
  * 「备份」页：把 Legado（或 MD3 / Max / Ink / Night-Reader 等兄弟项目）导出的备份选进来就恢复，

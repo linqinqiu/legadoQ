@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { api, type ExploreTab, type SearchResult, type SourceSummary } from '../lib/api'
-import { Icon } from '../icons'
-import { Select } from '../components/Select'
-import { filterByGroup, sourceGroups, UNGROUPED } from '../lib/exploreGroups'
-import { labelExploreTabs } from '../lib/exploreLabel'
-import { sanitizeImageUrl } from '../features/source-editor/sourceImport'
-import { DeferredCover } from '../features/bookshelf/Cover'
+import { api, type ExploreTab, type SearchResult, type SourceSummary } from '../../lib/api'
+import { Icon } from '../../icons'
+import { Select } from '../../components/Select'
+import { filterByGroup, sourceGroups, UNGROUPED } from '../../lib/exploreGroups'
+import { labelExploreTabs } from '../../lib/exploreLabel'
+import { sanitizeImageUrl } from '../../lib/sourceImport'
+import { DeferredCover } from '../../components/Cover'
 
 export interface ExplorePageProps {
   onOpen: (book: SearchResult) => Promise<void>

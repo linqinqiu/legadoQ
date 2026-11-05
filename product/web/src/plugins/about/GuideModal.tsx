@@ -1,5 +1,5 @@
 import React from 'react'
-import { FeatureGuide } from '../../pages/FeatureGuide'
+import { FeatureGuide } from './FeatureGuide'
 import { PageDialog } from '../../components/PageDialog'
 
 /**

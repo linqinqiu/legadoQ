@@ -7,7 +7,7 @@ import {
   VIP_DETECTION_REGEX,
   MIN_LEGITIMATE_CHAPTER_LENGTH,
   SourceHealthInspection,
-} from '../src/features/source-editor/sourceInspector'
+} from '../src/lib/sourceInspector'
 import { Chapter } from '../src/lib/api'
 
 test('SourceInspector - inspectChapterContent distinguishes author notes / leave notices from VIP truncation', () => {

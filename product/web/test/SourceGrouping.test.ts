@@ -8,7 +8,7 @@ import {
   tagPlan,
   tierCounts,
   tierOf,
-} from '../src/features/source-editor/sourceGrouping'
+} from '../src/lib/sourceGrouping'
 
 /**
  * 用户 2026-09-30：「书源体检……不能根据获得信息正确规划分组」。

@@ -31,7 +31,7 @@ test('统计带只有数得出东西的四档，没有恒为 0 的那一档', ()
 
 test('界面上不再出现「JS 书源」这个说法', () => {
   // 反向断言：扫得更广才更严（拆出来的书源/书库/书架页与两个弹窗也一并进面）
-  const files = ['main.tsx', path.join('features', 'source-editor', 'SourcesPage.tsx'), path.join('pages', 'LibraryPage.tsx'), path.join('features', 'bookshelf', 'ShelfPage.tsx'), path.join('components', 'SourceChoiceList.tsx'), path.join('components', 'BookDetailModal.tsx'), path.join('features', 'source-editor', 'SourceEditorPanel.tsx'), path.join('lib', 'api.ts')]
+  const files = ['main.tsx', path.join('features', 'source-editor', 'SourcesPage.tsx'), path.join('features', 'bookshelf', 'LibraryPage.tsx'), path.join('features', 'bookshelf', 'ShelfPage.tsx'), path.join('components', 'SourceChoiceList.tsx'), path.join('components', 'BookDetailModal.tsx'), path.join('features', 'source-editor', 'SourceEditorPanel.tsx'), path.join('lib', 'api.ts')]
   for (const name of files) {
     const text = codeOnly(read('..', 'src', ...name.split(path.sep)))
     assert.ok(!text.includes('JS 书源'), `${name} 里还写着「JS 书源」`)

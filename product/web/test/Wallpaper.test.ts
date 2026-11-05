@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { WallpaperModal } from '../src/components/WallpaperModal'
+import { WallpaperModal } from '../src/features/settings/WallpaperModal'
 import {
   DEFAULT_WALLPAPER_SETTINGS,
   getWallpaperSnapshot,

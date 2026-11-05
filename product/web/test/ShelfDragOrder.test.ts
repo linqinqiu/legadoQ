@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { compareCustomSort, dropIndexAt, moveWithin } from '../src/features/bookshelf/shelfOrder'
+import { compareCustomSort, dropIndexAt, moveWithin } from '../src/lib/shelfOrder'
 import type { BookshelfItem } from '../src/lib/api'
 
 /**
@@ -58,7 +58,7 @@ test('书架确实接上了拖动排序（不只是一个没人调用的模块�
   assert.match(main, /清除自定义顺序/)
   assert.match(main, /onPointerDown=\{onPointerDown\(index\)\}/)
   assert.match(main, /onClickCapture=\{onClickCapture\}/, '拖完那一下不能被当成"点开这本书"')
-  const layout = read('../src/features/bookshelf/shelfLayout.ts')
+  const layout = read('../src/lib/shelfLayout.ts')
   assert.match(layout, /SORT_VALUES: ShelfSort\[\] = \[[^\]]*'custom'/, 'custom 是合法持久值，否则刷新就弹回默认档')
   // 0.8.2 拆组：书架面住在 ShelfRoutes.kt
   const server = read('../..', 'app/src/main/kotlin/io/legado/http/ShelfRoutes.kt')

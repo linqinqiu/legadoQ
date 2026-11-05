@@ -1,19 +1,19 @@
 import React from 'react'
-import { ExplorePage } from '../pages/ExplorePage'
-import { LibraryPage } from '../pages/LibraryPage'
-import { RssPage } from '../pages/RssPage'
+import { ExplorePage } from '../features/explore/ExplorePage'
+import { LibraryPage } from '../features/bookshelf/LibraryPage'
+import { RssPage } from '../features/rss/RssPage'
 import { ShelfPage } from '../features/bookshelf/ShelfPage'
 import { SourcesPage } from '../features/source-editor/SourcesPage'
 import { SettingsPage, type SettingsSection } from '../features/settings/SettingsPage'
 import type { BookshelfItem, SearchResult, SourceSummary } from '../lib/api'
-import type { OpenBook } from '../features/reader/openBook'
+import type { OpenBook } from '../lib/openBook'
 import type { ReaderSettings } from '../features/reader/readerSettings'
 import type { AppModal, Page, PageDialogKind } from '../lib/nav'
 
 /**
  * 页面渲染表 —— 路由的另一半。
  *
- * `pageMeta.ts` 管"有哪些页面、怎么解析 hash"，这里管"每一页渲染什么"。
+ * `lib/pageMeta.ts`（shared）管"有哪些页面、怎么解析 hash"，这里管"每一页渲染什么"。
  * 宿主（`main.tsx`）只负责把状态与回调打包成 [PageContext]，不再写 `page === 'x' ? … : …`
  * 那条会越接越长的三元链。
  *

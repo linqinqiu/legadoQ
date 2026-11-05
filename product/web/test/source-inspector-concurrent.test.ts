@@ -8,7 +8,7 @@ import {
   inspectAllSourcesConcurrently,
   findMainChapter,
   isNoticeOrNonMainChapter,
-} from '../src/features/source-editor/sourceInspector.ts'
+} from '../src/lib/sourceInspector.ts'
 
 test('source inspector - notice detection and main chapter fallback', () => {
   assert.equal(isNoticeOrNonMainChapter('完结感言'), true)

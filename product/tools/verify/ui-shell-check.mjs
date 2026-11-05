@@ -458,7 +458,8 @@ try {
   // 一行写着 PASS、后面跟着 [命中了 v2 选择器]，读的人只会当成红了 —— 判据写得再对也没人信。
   const v2Left = ['.app-rail', '.rail-item', '.page-bar', '.app-frame', '.rail-tabs'].filter(name => css.includes(name))
   check('⑥样式表里没有 v2 的类名残留', v2Left.length === 0, v2Left.length ? `还留着 ${v2Left.join('、')}` : '干净')
-  const skinPath = path.join(srcDir, 'components', 'SkinModal.tsx')
+  // 「皮肤」浮层 2026-11 随前端分层搬到 `features/reader/`（另一个消费者 `ColorTab` 也在阅读域内）。
+  const skinPath = path.join(srcDir, 'features', 'reader', 'SkinModal.tsx')
   const tocBack = fs.readFileSync(skinPath, 'utf8').includes('tocRules')
   const legacyModal = fs.existsSync(path.join(srcDir, 'components', 'CustomizeModal.tsx'))
   check('⑥「皮肤」浮层的代码里没有分章规则那一段，旧的「自定义」弹窗也确实删了（判代码，不只是判界面）',

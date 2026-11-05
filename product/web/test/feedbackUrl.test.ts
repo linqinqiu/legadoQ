@@ -6,7 +6,7 @@ import {
   FEEDBACK_TITLE_MAX,
   buildFeedbackUrl,
   clampText,
-} from '../src/features/feedback/feedbackUrl.ts'
+} from '../src/lib/feedbackUrl.ts'
 
 const base = {
   repository: 'linqinqiu/legadoQ',

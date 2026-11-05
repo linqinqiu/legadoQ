@@ -1,5 +1,5 @@
 import React from 'react'
-import { ReadingLogPage } from '../../pages/ReadingLogPage'
+import { ReadingLogPage } from './ReadingLogPage'
 import { PageDialog } from '../../components/PageDialog'
 
 /**

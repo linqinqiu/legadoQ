@@ -60,7 +60,7 @@ test('品牌 store：默认回落内置名，写入后同步标签页标题', as
 
 /** 「legadoQ」不许再作为**显示值**硬编码回来（顶栏与阅读器标题都读品牌 store）。 */
 test('顶栏与阅读器标题读品牌 store，不写死应用名', () => {
-  const header = read('components/AppHeader')
+  const header = read('app/AppHeader')
   assert.match(header, /getBrand|useSyncExternalStore\(subscribeBrand/, '顶栏品牌字要读单一来源')
   assert.doesNotMatch(header, /<strong>legadoQ<\/strong>|aria-label="legadoQ"/, '顶栏不许留硬编码的「legadoQ」')
 

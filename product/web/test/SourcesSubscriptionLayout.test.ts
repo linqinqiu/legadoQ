@@ -52,7 +52,7 @@ test('书源页右栏仍分两块：页头 .editor-region 与编辑器 .sources-
 })
 
 test('订阅页接管书源订阅：两块并列、各有分区容器', () => {
-  const rss = read('pages/RssPage.tsx')
+  const rss = read('features/rss/RssPage.tsx')
   assert.ok(rss.includes('<SourceSubscriptionPanel'), '「订阅」页要渲染书源订阅面板')
   assert.ok(rss.includes('<RssPanel'), '「订阅」页要渲染 RSS 面板')
   assert.ok(rss.includes('subscription-block'), '两块要有各自的分区容器，视觉上分得清')
@@ -64,14 +64,14 @@ test('订阅页接管书源订阅：两块并列、各有分区容器', () => {
 })
 
 test('书源订阅面板不再强制要求 onClose（订阅页里没有"收起这一档"）', () => {
-  const panel = read('features/source-editor/SourceSubscriptionPanel.tsx')
+  const panel = read('features/rss/SourceSubscriptionPanel.tsx')
   assert.match(panel, /onClose\?:/, 'onClose 应为可选参数')
   // 只在传了 onClose 时才渲染收起按钮
   assert.match(panel, /\{onClose &&/, '收起按钮要按 onClose 是否存在来决定')
 })
 
 test('空订阅时页头不摆一颗按不动的「全部同步」', () => {
-  const panel = read('features/source-editor/SourceSubscriptionPanel.tsx')
+  const panel = read('features/rss/SourceSubscriptionPanel.tsx')
   // 动作区只在有订阅（或宿主提供收起）时才渲染 —— 否则窄屏会孤零零掉在说明下面
   assert.match(panel, /\{\(items\.length > 0 \|\| onClose\) && \(/,
     '空状态下不该渲染页头动作区')

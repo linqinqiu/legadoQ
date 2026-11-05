@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { api, type SourceSummary } from '../../lib/api'
-import { buildGroupingPlan, HEALTH_TAGS, type HealthTier } from './sourceGrouping'
+import { buildGroupingPlan, HEALTH_TAGS, type HealthTier } from '../../lib/sourceGrouping'
 import { dropHealthResults, getHealthRun, startHealthRun, stopHealthRun, useHealthRun } from './sourceHealthRun'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'

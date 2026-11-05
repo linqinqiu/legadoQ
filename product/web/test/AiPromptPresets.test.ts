@@ -98,7 +98,7 @@ test('两处气泡都回报"这轮带上了什么"', () => {
     assert.match(source, /提示词 \{m\.promptsUsed\.length\} 条/, `${file}：要显示注入了几条预设`)
     assert.match(source, /已裁历史 \{m\.trimmed\} 条/, `${file}：裁过历史要如实说出来`)
   }
-  const store = read('../src/features/ai/aiChatStore.ts')
+  const store = read('../src/lib/aiChatStore.ts')
   assert.match(store, /promptsUsed\?: string\[\]/, '会话消息类型装得下 promptsUsed')
   assert.match(store, /trimmed\?: number/, '会话消息类型装得下 trimmed')
 })
