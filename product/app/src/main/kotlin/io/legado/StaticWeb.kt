@@ -37,7 +37,23 @@ private object BundledAssets {
     private class Loaded(val bytes: ByteArray, val contentType: ContentType, val etag: String, val gzipped: ByteArray?)
 
     private val cache = ConcurrentHashMap<String, Loaded>()
-    private val missing = ConcurrentHashMap.newKeySet<String>()
+    // 这里**故意不缓存"找不到"**（历史上有个 `missing` 集合，已删除）。
+    //
+    // 一次查找失败就永久记住，省下的是后续每一次的 classloader 查询 ——微秒级；
+    // 而"找不到"有可能是**瞬时**的（jar 正在被重打、产物写到一半）。用"必须重启才能恢复"
+    // 换微秒，是负收益。命中的结果照旧缓存（`cache` 连 gzip 和 ETag 一起存），
+    // 热路径一点没变慢；代价只落在 404 这条冷路径上。
+    //
+    // ⚠️ 但要说清楚：**删掉它并没有修掉"重打 jar 后运行中的实例发不出新 bundle"那件事。**
+    // 那件事的真正原因是 JDK 的 URLClassPath 缓存了启动时的 jar 入口表：
+    //   · `getResourceAsStream`（本文件这条路）走**旧入口表** → 新名字查不到 → 404
+    //   · Ktor 的 `respondResource`（`/` 那条路）拿到 URL 后**重新打开连接** → 读到当前 jar → 新内容
+    // 于是出现"`/` 发的新 HTML 引用新 bundle，而那个 bundle 404"的劈叉。
+    // 现场证据：同一台机器上，1234（11-04 启动的旧实例）`/assets/index-<新哈希>.js` 404
+    // 而 `/assets/index-*.css`、`/assets/hls-*.js` 200（后两者的名字与内容在两次构建里没变、旧表里有）；
+    // 1235（重打 jar 之后新起的进程）同一个名字 200。
+    // 结论是运维性的：**不要替换正在运行的进程脚下的 jar；重打之后必须重启。**
+    // 否定缓存只是让这件事更难恢复（重启前的失败被永久固化），所以删它仍然是对的。
 
     private fun gzipOf(input: ByteArray): ByteArray {
         val out = ByteArrayOutputStream(input.size / 3 + 64)
@@ -51,13 +67,11 @@ private object BundledAssets {
             type == ContentType.Application.JavaScript || type == ContentType.Image.SVG
 
     private fun load(resource: String): Loaded? {
-        if (resource in missing) return null
         cache[resource]?.let { return it }
         val bytes = runCatching {
             BundledAssets::class.java.classLoader.getResourceAsStream(resource)?.use { it.readAllBytes() }
         }.getOrNull()
         if (bytes == null) {
-            missing.add(resource)
             return null
         }
         val base = ContentType.fromFilePath(resource).firstOrNull() ?: ContentType.Application.OctetStream

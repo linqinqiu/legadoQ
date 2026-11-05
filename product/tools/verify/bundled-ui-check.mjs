@@ -58,10 +58,39 @@ if (!jar) {
   else if (inside === '') record('fatJar 内前端', 'skip', '包里没有 static/index.html 或工具不可用')
 }
 
+/**
+ * 带超时地取一次 URL，并且**一定**把定时器收掉。
+ *
+ * 不能用 `AbortSignal.timeout()`：它留下的定时器会在 `process.exit()` 时撞上 libuv 的
+ * handle 收尾，Windows 上直接
+ * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src/win/async.c:94`
+ * —— 五项判据全 PASS 也会因此判红（本轮实测踩到）。所以自己建 controller，finally 里清定时器。
+ */
+async function timed(url, ms) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  try {
+    return await fetch(url, { signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 try {
-  const html = await fetch(`${BASE}/`, { signal: AbortSignal.timeout(3000) }).then((r) => r.text())
+  const html = await timed(`${BASE}/`, 3000).then((r) => r.text())
   const live = fingerprint(html)
   if (live) record('运行中的实例与 dist 一致', live === dist, `dist=${dist} 运行中=${live}`)
+
+  // ⚠️ 只比对 HTML 里写的那个 bundle 名是不够的 —— 名字对上了，文件仍可能取不到。
+  // 真踩到过：实例发的 HTML 是新的（引用新哈希），但 `/assets/<新哈希>.js` 回 404，
+  // 页面白屏；而上面那条 "运行中的实例与 dist 一致" 照样 PASS，因为两边都写着同一个名字。
+  // 浏览器真正需要的是「HTML + 它引用的脚本都能取到」，所以这里必须真去拉一次。
+  if (live) {
+    const status = await timed(`${BASE}/assets/${live}`, 5000)
+      .then((r) => r.status)
+      .catch(() => 0)
+    record('运行中的实例真能发出它引用的 bundle', status === 200, `/assets/${live} → http=${status || '取不到'}`)
+  }
 } catch {
   record('运行中的实例', 'skip', `${BASE} 没在跑（这条只在校验已部署实例时才看）`)
 }
@@ -77,4 +106,7 @@ if (failed) {
   console.log('  node stop.mjs && npm run build && node start.mjs')
 }
 console.log(`\n${results.length - failed} 项通过 / ${failed} 项失败`)
-process.exit(failed ? 1 : 0)
+// 不要用 `process.exit()`：socket 还没收干净就硬退，Windows 上 libuv 会
+// `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src/win/async.c:94`，
+// 于是"5 项全通过"变成一次崩溃 —— 判据红得没道理。设 exitCode，让事件循环自己排空。
+process.exitCode = failed ? 1 : 0
