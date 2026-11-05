@@ -200,42 +200,85 @@ function pidsOnPort(target) {
  * 为什么按"进程启动时间 vs jar 的 mtime"而不是直接看 jar 文件：jar 被重建覆盖时，旧进程仍持有
  * 旧内容（Windows 允许覆盖被打开的文件），磁盘上 jar 的 mtime 已经是新的 —— 只看文件看不出陈旧。
  * 只有"进程启动早于 jar 的 mtime"才说明它加载的是重建前的那一份。
- * 拿不到启动时间（非 Windows / PowerShell 不可用）时返回空数组，退化成原来的幂等行为。
+ *
+ * **三态返回，不要退化成空数组。** 曾经这里所有失败路径都 `return []`，调用方把"空"读成
+ * "没有陈旧实例"，于是打印「legadoQ 已在运行」并退出 —— 而真相是"我根本没查清"。
+ * 提权进程的 `CommandLine` 读不到（`Get-CimInstance` 返回空）正好落进这个陷阱：端口被一个
+ * 旧实例占着、界面是白屏，启动器却报"已在运行"，用户和代理都拿不到任何修复入口。
+ * 所以：查不清就报 unknown，让调用方明确告知并给出可执行的下一步。
+ *
+ * @returns {{kind: 'none'|'stale'|'unknown', pids: string[], reason?: string}}
  */
 function staleRunningPids(target, jarPath) {
-  if (process.platform !== 'win32') return [];
+  // 非 Windows 没有这条检测通道。这不影响正确性（那边没有"覆盖被打开的 jar"的语义），
+  // 但必须标明是"不适用"而不是"已检查且干净"。
+  if (process.platform !== 'win32') return { kind: 'none', pids: [], reason: '非 Windows 平台不适用' };
   let jarMtime;
-  try { jarMtime = statSync(jarPath).mtimeMs; } catch { return []; }
+  try { jarMtime = statSync(jarPath).mtimeMs; } catch (error) {
+    // 连当前 jar 都 stat 不到，就无法判断谁新谁旧。
+    return { kind: 'unknown', pids: [], reason: `读不到当前 jar 的 mtime（${jarPath}）` };
+  }
   const portPids = pidsOnPort(target);
-  if (!portPids.length) return [];
+  // 端口上没人监听：不是"陈旧"，是"可以干净启动"。
+  if (!portPids.length) return { kind: 'none', pids: [] };
   let rows;
   try {
     rows = execFileSync('powershell', ['-NoProfile', '-Command',
       `Get-CimInstance Win32_Process -Filter "Name='java.exe'" | ForEach-Object { $_.ProcessId.ToString() + '|' + ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() + '|' + $_.CommandLine }`,
     ], { encoding: 'utf8' }).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  } catch { return []; }
+  } catch (error) {
+    return { kind: 'unknown', pids: portPids, reason: `进程清单查询失败（${error instanceof Error ? error.message : error}）` };
+  }
   const stale = [];
+  // 端口上有监听者、但进程清单里一个都没匹配到 —— 典型的"进程信息读不全"（提权进程
+  // 的 CommandLine 对非提权调用方不可见），绝不能当成"没有陈旧实例"。
+  let sawPortPid = false;
   for (const row of rows) {
     const [pid, ms, ...rest] = row.split('|');
     if (!portPids.includes(pid)) continue;
+    sawPortPid = true;
     if (!/legado-.*-all\.jar/.test(rest.join('|'))) continue;
     const start = Number(ms);
     if (Number.isFinite(start) && start > 0 && start < jarMtime) stale.push(pid);
   }
-  return stale;
+  if (!sawPortPid) {
+    return {
+      kind: 'unknown',
+      pids: portPids,
+      reason: `端口 ${target} 被 PID ${portPids.join(',')} 占用，但查不到该进程的命令行（常见于提权运行的实例）`,
+    };
+  }
+  return stale.length ? { kind: 'stale', pids: stale } : { kind: 'none', pids: [] };
 }
 
 // 幂等 + 防陈旧：已经在跑时，若它跑的是比磁盘上这份 jar 更老的构建（jar 重建过、旧进程还占着端口），
 // 先停旧再起新；否则只开界面 —— 重复点图标不该报"端口被占"，也不该再起第二个实例。
 if (await isReady(url)) {
-  const stale = staleRunningPids(runtime.port, path.join(runtime.libs, jar));
-  if (!stale.length) {
+  const probe = staleRunningPids(runtime.port, path.join(runtime.libs, jar));
+  if (probe.kind === 'unknown') {
+    // 查不清就别假装"没事"。端口被占着、旧实例在应答，但我们不知道它跑的是哪个构建 ——
+    // 这时说「legadoQ 已在运行」会让人以为一切正常，实际可能是一个界面已经对不上磁盘 jar 的旧进程。
+    // 直接把现状 + 可执行的下一步交给用户（提权实例那条命令是实测能用的）。
+    console.error(`无法确认端口 ${runtime.port} 上那个 legadoQ 是不是当前构建。`);
+    console.error(`  原因：${probe.reason}`);
+    console.error(`  地址：${url}（/healthz 仍在应答，说明是旧实例占着端口）`);
+    console.error('');
+    console.error('  下一步任选其一：');
+    console.error(`    1) 换个端口起一个新的：node start.mjs --port ${runtime.port + 1}`);
+    console.error(`    2) 结束占用者 PID ${probe.pids.join(',') || '(未知)'}，再重新运行本命令。`);
+    console.error('       普通权限结束不掉时（提权实例），在本机开一个 PowerShell 执行：');
+    for (const pid of (probe.pids.length ? probe.pids : ['<PID>'])) {
+      console.error(`       (Get-WmiObject Win32_Process -Filter 'ProcessId=${pid}').Terminate()`);
+    }
+    process.exit(1);
+  }
+  if (probe.kind === 'none') {
     console.log(`legadoQ 已在运行 ${url}`);
     if (args.open) openBrowser(url);
     process.exit(0);
   }
   console.log('运行中的实例比当前 jar 更旧（jar 重建过）—— 先停旧实例再起新的');
-  for (const pid of stale) {
+  for (const pid of probe.pids) {
     try { execFileSync('taskkill', ['/PID', pid, '/F']); console.log(`已停止旧实例 PID ${pid}`); }
     catch (error) { console.log(`停止 PID ${pid} 失败：${error instanceof Error ? error.message : error}`); }
   }
