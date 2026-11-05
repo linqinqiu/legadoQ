@@ -123,6 +123,7 @@ jobs:
           node-version-file: product/.nvmrc
 
       # 把「不要太深」钉成红线：后端 io/legado 域包不建子子包、前端 web/src 不再往下嵌。
-      # 阈值按当前实测结构标定（见 tools/verify/depth-check.mjs 顶部），只有新增更深文件才红。
+      # 阈值按当前实测结构标定（见 tools/verify/depth-check.mjs 顶部）。
+      # 2026-11 起改为「显式基线 + 只许单调缩小」：新过深文件红，基线该缩没缩也红。
       - name: 目录深度门禁
         run: node tools/verify/depth-check.mjs
