@@ -25,8 +25,8 @@ import io.legado.data.getCookieForUrl
 import io.legado.data.setCookieFromSetCookie
 import io.legado.ops.NetworkSecurity
 import io.legado.port.SourceUrlProbe
-import io.legado.ops.LogLevel
-import io.legado.ops.logSystem
+import io.legado.port.LogLevel
+import io.legado.port.logSystem
 
 /** 反向代理失败时抛出，由路由层转换为 4xx 响应。 */
 class WebViewException(message: String) : RuntimeException(message)

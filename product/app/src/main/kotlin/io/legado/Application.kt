@@ -24,13 +24,13 @@ import io.legado.data.DbSnapshot
 import io.legado.data.MentionsWarmer
 import io.legado.data.getCookieForUrl
 import io.legado.http.SameOriginWriteGate
-import io.legado.http.ServerIdentity
+import io.legado.ops.ServerIdentity
 import io.legado.http.StrictJsonConverter
 import io.legado.http.apiRoutes
 import io.legado.http.requireLoopbackBind
 import io.legado.model.HealthStatus
 import io.legado.ops.LogService
-import io.legado.ops.logSystem
+import io.legado.port.logSystem
 import io.legado.rules.RuleRunner
 import io.legado.subscription.SubscriptionService
 import io.legado.ai.AgentModule

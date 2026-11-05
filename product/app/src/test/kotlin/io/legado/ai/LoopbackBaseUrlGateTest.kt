@@ -1,7 +1,7 @@
 package io.legado.ai
 
 import io.legado.ops.NetworkSecurity
-import io.legado.http.ServerIdentity
+import io.legado.ops.ServerIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue

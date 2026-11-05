@@ -21,14 +21,14 @@ import java.util.Locale
 import java.util.SimpleTimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import io.legado.data.Database
+import io.legado.port.PortBundle
 import io.legado.port.SourceUrlProbe
 
 data class JsExecutionContext(
     val sourceId: String? = null,
     val sourceName: String? = null,
     val sourceComment: String? = null,
-    val database: Database? = null,
+    val database: PortBundle? = null,
     val initialLoginInfo: MutableMap<String, String> = mutableMapOf(),
     val isLongClick: Boolean = false,
     val toastMessages: MutableList<String> = mutableListOf(),
@@ -807,7 +807,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
     private fun createSourceBridge(
         scope: Scriptable,
         sourceId: String,
-        db: Database?,
+        db: PortBundle?,
         execContext: JsExecutionContext?,
     ): NativeObject = NativeObject().also { api ->
         api.parentScope = scope
@@ -942,7 +942,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
     private fun createCookieBridge(
         scope: Scriptable,
         sourceId: String,
-        db: Database?,
+        db: PortBundle?,
         allowedHosts: List<String>,
     ): NativeObject = NativeObject().also { api ->
         api.parentScope = scope
@@ -1021,7 +1021,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
      *
      * 键按书源隔离、内存层认 deadline（与上游的差异见 ScriptCache 的注释）。
      */
-    private fun createCacheBridge(scope: Scriptable, sourceId: String?, db: Database?): NativeObject = NativeObject().also { api ->
+    private fun createCacheBridge(scope: Scriptable, sourceId: String?, db: PortBundle?): NativeObject = NativeObject().also { api ->
         api.parentScope = scope
         fun fn(read: (Context, List<Any?>) -> Any?) = object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any? =

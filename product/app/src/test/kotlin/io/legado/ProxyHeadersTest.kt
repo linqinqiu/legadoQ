@@ -1,6 +1,6 @@
 package io.legado
 
-import io.legado.http.proxyRequestHeaders
+import io.legado.ops.proxyRequestHeaders
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

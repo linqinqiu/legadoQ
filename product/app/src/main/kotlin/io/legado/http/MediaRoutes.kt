@@ -1,5 +1,6 @@
 package io.legado.http
 import io.legado.ops.NetworkSecurity
+import io.legado.ops.proxyRequestHeaders
 
 
 import io.ktor.http.*
@@ -20,7 +21,7 @@ import io.legado.decodeTextAuto
 import io.legado.model.ApiError
 import io.legado.model.RefreshedImage
 import io.legado.ops.LogService
-import io.legado.ops.logNetwork
+import io.legado.port.logNetwork
 import java.net.URI
 import java.nio.file.Path
 import java.util.UUID

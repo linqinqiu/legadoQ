@@ -26,7 +26,7 @@ import io.legado.model.TocRuleSaveRequest
 import io.legado.model.TocRuleSaveResult
 import io.legado.model.TocRuleToggleRequest
 import io.legado.model.TocRuleToggleResult
-import io.legado.ops.logParsing
+import io.legado.port.logParsing
 import java.nio.file.Path
 
 /**

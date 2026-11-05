@@ -7,7 +7,8 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.response.respond
 import java.net.URI
-import io.legado.ops.logGuard
+import io.legado.ops.ServerIdentity
+import io.legado.port.logGuard
 import io.legado.model.ApiError
 import io.legado.AppConfig
 
@@ -25,13 +26,6 @@ import io.legado.AppConfig
  * 挡掉的是"用户打开的某个网页驱动他的浏览器往 127.0.0.1:1234 写数据"；
  * 放行的是本机界面（同源）、命令行与不带 Origin 的非浏览器客户端（curl、扩展、服务间调用）。
  */
-
-/** 服务端真实绑定身份：Application 启动时写入，闸门比对它而不是请求头。 */
-object ServerIdentity {
-    @Volatile var host: String = "127.0.0.1"
-    @Volatile var port: Int = 1234
-    fun init(host: String, port: Int) { this.host = host; this.port = port }
-}
 
 private val SAFE_METHODS = setOf(HttpMethod.Get, HttpMethod.Head, HttpMethod.Options)
 

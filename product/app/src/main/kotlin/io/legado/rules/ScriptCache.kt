@@ -1,6 +1,6 @@
 package io.legado.rules
 
-import io.legado.data.Database
+import io.legado.port.PortBundle
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -52,7 +52,7 @@ internal object ScriptCache {
         lock.withLock { memory.remove(key(sourceId, key)) }
     }
 
-    fun get(sourceId: String?, key: String, db: Database?, onlyDisk: Boolean = false): Any? {
+    fun get(sourceId: String?, key: String, db: PortBundle?, onlyDisk: Boolean = false): Any? {
         val now = System.currentTimeMillis()
         if (!onlyDisk) {
             getFromMemory(sourceId, key, now)?.let { return it }
@@ -63,14 +63,14 @@ internal object ScriptCache {
         return stored
     }
 
-    fun put(sourceId: String?, key: String, value: String, saveTimeSeconds: Int, db: Database?) {
+    fun put(sourceId: String?, key: String, value: String, saveTimeSeconds: Int, db: PortBundle?) {
         val now = System.currentTimeMillis()
         val deadline = if (saveTimeSeconds <= 0) 0 else now + saveTimeSeconds * 1000L
         lock.withLock { memory[key(sourceId, key)] = Entry(value, deadline) }
         runCatching { db?.asScriptCacheStore()?.putScriptCache(sourceId ?: "-", key, value, deadline) }
     }
 
-    fun delete(sourceId: String?, key: String, db: Database?) {
+    fun delete(sourceId: String?, key: String, db: PortBundle?) {
         lock.withLock { memory.remove(key(sourceId, key)) }
         runCatching { db?.asScriptCacheStore()?.deleteScriptCache(sourceId ?: "-", key) }
     }

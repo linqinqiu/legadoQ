@@ -19,7 +19,7 @@ import io.legado.data.Database
 import io.legado.data.forgetCover
 import io.legado.data.generatedLocalCoverKeys
 import io.legado.ops.NetworkSecurity
-import io.legado.http.proxyRequestHeaders
+import io.legado.ops.proxyRequestHeaders
 
 data class CachedCover(val key: String, val contentType: String)
 

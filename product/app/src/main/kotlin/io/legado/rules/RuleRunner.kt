@@ -46,7 +46,7 @@ import io.legado.content.LooseJson
 import io.legado.content.applyReplaceEntry
 import io.legado.decodeStrict
 import io.legado.decodeTextAuto
-import io.legado.data.Database
+import io.legado.port.PortBundle
 import io.legado.ops.NetworkSecurity
 import io.legado.model.FlexChildStyle
 import io.legado.model.SourceLoginActionResult
@@ -54,11 +54,11 @@ import io.legado.model.SourceLoginCheckResult
 import io.legado.model.SourceLoginUiActionResponse
 import io.legado.model.SourceLoginUiItem
 import io.legado.model.SourceLoginUiRenderResponse
-import io.legado.ops.LogLevel
-import io.legado.ops.logEngine
-import io.legado.ops.logNetwork
-import io.legado.ops.logParsing
-import io.legado.ops.logRuleExecution
+import io.legado.port.LogLevel
+import io.legado.port.logEngine
+import io.legado.port.logNetwork
+import io.legado.port.logParsing
+import io.legado.port.logRuleExecution
 import io.legado.port.SourceUrlProbe
 import io.legado.model.BookDetails
 import io.legado.model.Chapter
@@ -75,13 +75,13 @@ import io.legado.model.SearchResult
  */
 class RuleRunner(
     private val responseFetcher: ((String) -> String)? = null,
-    internal var database: Database? = null,
+    internal var database: PortBundle? = null,
     /** 规则处理器调度器；缺省时按原有内置逻辑走（向后兼容）。 */
     internal val ruleDispatcher: RuleDispatcher? = null,
 ) {
-    constructor(database: Database) : this(null, database, null)
+    constructor(database: PortBundle) : this(null, database, null)
     constructor(responseFetcher: (String) -> String) : this(responseFetcher, null, null)
-    constructor(database: Database, ruleDispatcher: RuleDispatcher) : this(null, database, ruleDispatcher)
+    constructor(database: PortBundle, ruleDispatcher: RuleDispatcher) : this(null, database, ruleDispatcher)
 
     /**
      * 测试与离线注入的**完整响应**替身：正文之外还要给状态码、响应头、Set-Cookie。
@@ -1374,7 +1374,7 @@ class RuleRunner(
         )
     }
 
-    internal fun fetch(url: String, sourceId: String? = null, database: Database? = null): String {
+    internal fun fetch(url: String, sourceId: String? = null, database: PortBundle? = null): String {
         val (cleanUrl, options) = splitUrlOptions(url)
         // 凭据（库内登录头 + 该域名的 Cookie 罐）由 buildRequest 按**每一跳的地址**合，这里不再预置
         return fetchUrl(cleanUrl, options, null, sourceId, database ?: this.database)
@@ -1391,7 +1391,7 @@ class RuleRunner(
         headers: Map<String, String> = emptyMap(),
         body: String? = null,
         sourceId: String? = null,
-        database: Database? = null,
+        database: PortBundle? = null,
     ): Fetched {
         val (cleanUrl, parsed) = splitUrlOptions(url)
         val verb = method.uppercase().takeIf { it == "POST" || it == "HEAD" } ?: "GET"
@@ -1538,7 +1538,7 @@ class RuleRunner(
         options: UrlOptions?,
         keyword: String?,
         sourceId: String? = null,
-        database: Database? = null,
+        database: PortBundle? = null,
     ): String = fetchDetailed(url, options, keyword, sourceId, database).body
 
     /**
@@ -1569,7 +1569,7 @@ class RuleRunner(
         options: UrlOptions?,
         keyword: String?,
         sourceId: String? = null,
-        database: Database? = null,
+        database: PortBundle? = null,
     ): Fetched {
         fetchedFetcher?.let { return it(url) }
         responseFetcher?.let { return Fetched(url, it(url), 200, emptyMap()) }
@@ -1672,7 +1672,7 @@ class RuleRunner(
         options: UrlOptions?,
         keyword: String?,
         sourceId: String?,
-        db: Database?,
+        db: PortBundle?,
     ): HttpRequest {
         validateTarget(initial)
         val builder = HttpRequest.newBuilder(initial)
@@ -1723,7 +1723,7 @@ class RuleRunner(
      * 优先级照上游 `AnalyzeUrl.setCookie()`：库内登录头 → 该域名的 Cookie 罐 → 本次 URL 自带的 options.headers。
      * Cookie 按键位合并而不是整串覆盖，否则临时 cookie 会把登录留下的其它键抹掉。
      */
-    internal fun effectiveHeaders(uri: URI, options: UrlOptions?, sourceId: String?, db: Database?): Map<String, String> {
+    internal fun effectiveHeaders(uri: URI, options: UrlOptions?, sourceId: String?, db: PortBundle?): Map<String, String> {
         val byKey = LinkedHashMap<String, Pair<String, String>>()
         fun put(name: String, value: String) {
             val key = name.lowercase()

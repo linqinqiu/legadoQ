@@ -14,6 +14,10 @@ import io.legado.data.clearLogEntries
 import io.legado.data.ensureLogTable
 import io.legado.data.insertLog
 import io.legado.data.queryLogs
+import io.legado.port.LogCategory
+import io.legado.port.LogLevel
+import io.legado.port.LogSink
+import io.legado.port.logSink
 
 /**
  * 结构化日志服务：按类别收集，落库 + 单行写文件 + 单行写标准输出，前端「运行日志」读这里。
@@ -27,7 +31,7 @@ import io.legado.data.queryLogs
  * 3. **同类要合并** —— 同一（类别, 等级, 消息, 关键上下文）在 [DEDUPE_WINDOW_MS] 内只占一行，
  *    次数记在 `count` 上；一个坏源就能把保留窗口整个吃掉，把真问题挤出去。
  */
-object LogService {
+object LogService : LogSink {
     private const val MAX_IN_MEMORY = 1000
     private const val DEDUPE_WINDOW_MS = 60_000L
     /** 单行里消息与上下文各自的长度上限：够定位，又不会一行撑成一段文章。 */
@@ -45,7 +49,19 @@ object LogService {
     private var logFile: File? = null
     private var database: Database? = null
 
+    /**
+     * 把本实现装成全局日志出口。
+     *
+     * 这是 `port/Logging.kt` 那套门面的**装配点**：域层与 engine 只认 `LogSink`，
+     * 不知道 `LogService` 存在。幂等。`initialize()` 会先调它，
+     * 单独暴露出来是给测试与嵌入式用法准备的（它们不建库、不落文件，但需要日志真的被收下）。
+     */
+    fun install() {
+        logSink = this
+    }
+
     fun initialize(databasePath: String, logDirectory: String = "logs") {
+        install()
         this.database = try { Database(databasePath) } catch (_: Exception) { null }
         // 自建日志表：本方法比 Application 的 database.initialize() 更早跑，
         // 不先建表的话，紧随其后的「服务器启动」SYSTEM 日志会落库失败。
@@ -55,12 +71,13 @@ object LogService {
         logFile = File(dir, "legado-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"))}.log")
     }
 
-    fun log(
+    /** 默认值写在 `LogSink` 接口上，覆写里不能再重复一遍（Kotlin 不允许）。 */
+    override fun log(
         category: LogCategory,
         level: LogLevel,
         rawMessage: String,
-        context: Map<String, String> = emptyMap(),
-        exception: Throwable? = null,
+        context: Map<String, String>,
+        exception: Throwable?,
     ) {
         val message = oneLine(rawMessage, MESSAGE_MAX)
         val cleanContext = context
@@ -171,51 +188,10 @@ data class LogEntry(
     val count: Int = 1,
 )
 
-enum class LogCategory {
-    ENGINE,         // 规则引擎
-    NETWORK,        // 网络请求
-    PARSING,        // 内容解析
-    RULE_EXECUTION, // 书源规则
-    DATABASE,       // 数据库
-    CACHE,          // 缓存服务
-    GUARD,          // 同源闸门
-    SYSTEM,         // 系统事件
-}
-
-enum class LogLevel {
-    DEBUG, INFO, WARN, ERROR
-}
-
-// 便捷扩展函数，让现有代码无需大幅改动即可接入。
-// 等级默认值就是这些调用点的真实严重程度 —— 需要 ERROR 的地方显式传，别靠默认。
-fun Any.logEngine(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.ERROR) {
-    LogService.log(LogCategory.ENGINE, level, message, context, exception)
-}
-
-fun Any.logNetwork(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.WARN) {
-    LogService.log(LogCategory.NETWORK, level, message, context, exception)
-}
-
-fun Any.logParsing(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.WARN) {
-    LogService.log(LogCategory.PARSING, level, message, context, exception)
-}
-
-fun Any.logRuleExecution(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.ERROR) {
-    LogService.log(LogCategory.RULE_EXECUTION, level, message, context, exception)
-}
-
-fun Any.logDatabase(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.ERROR) {
-    LogService.log(LogCategory.DATABASE, level, message, context, exception)
-}
-
-fun Any.logCache(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.WARN) {
-    LogService.log(LogCategory.CACHE, level, message, context, exception)
-}
-
-fun Any.logGuard(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.WARN) {
-    LogService.log(LogCategory.GUARD, level, message, context, exception)
-}
-
-fun Any.logSystem(message: String, context: Map<String, String> = emptyMap(), exception: Throwable? = null, level: LogLevel = LogLevel.INFO) {
-    LogService.log(LogCategory.SYSTEM, level, message, context, exception)
-}
+// `LogCategory` / `LogLevel` 与八个 `logXxx` 便捷函数已下沉到 `port/Logging.kt` ——
+// 原先它们长在这里，导致 rules / content / localbook 三个 engine 包**仅仅为了打一行日志**
+// 就反向够 infra（判据 5 上 4 条 engine → infra 里有 3 条是这个原因）。
+// 日志是横切关注点，门面归域层、实现留 infra，装配走 `install()`。
+//
+// `LogEntry` 仍留在这里：它是本服务自己的记录类型，只有 data 与 http 会读它，
+// 而 data → ops 是合法方向（infra 向下够），搬走它反而要多动十几个文件。

@@ -1,11 +1,11 @@
-package io.legado.http
+package io.legado.ops
 
 import java.net.URI
 
 /**
  * 代取书源资源（封面 / 正文配图 / 音视频流）时该带的请求头，**一处定死**。
  *
- * 为什么要抽出来：这三条路以前各写各的 —— 文本链路（搜索 / 详情 / 目录 / 正文）每次都带上
+ * 为什么抽出来：这三条路以前各写各的 —— 文本链路（搜索 / 详情 / 目录 / 正文）每次都带上
  * 该书源在本机的 Cookie，而代理链路一条都不带。浏览器自己发 `<img>` / `<audio>` / `<video>`
  * 时无法自定义请求头，所以这些资源只能由服务端代取；代取不补凭据，结果就是
  * 「登录成功了、目录正文都读得出，图和音频流一打开还是 403」—— 登录白做。
@@ -16,6 +16,10 @@ import java.net.URI
  * - **Referer 是调用方给的原始页面**，重定向后仍然带着：不少图站是「主域 → 图片 CDN」两跳，
  *   收掉 Referer 会把现在能出图的站打回 403。（CoverCache 原来的注释写的是"跳转后不再补发"，
  *   与它自己的代码不符，这里按代码的事实写。）
+ *
+ * 为什么住 `ops/` 而不是 `http/`：它是**代取请求头的纯构造**（只依赖 `java.net.URI`），
+ * 不是 HTTP 路由适配的一部分。`cache/CoverCache.kt` 属 infra，却要用它 —— 留在 `http/`
+ * 会让 infra 反向依赖 api。与 `NetworkSecurity` / `GuardedHttpClient` 同址。
  */
 fun proxyRequestHeaders(
     uri: URI,

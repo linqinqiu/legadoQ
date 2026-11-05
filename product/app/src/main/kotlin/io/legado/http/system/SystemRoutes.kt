@@ -14,13 +14,13 @@ import io.legado.model.ApiError
 import io.legado.model.ServerInfo
 import io.legado.model.ServerPortRequest
 import io.legado.model.ServerPortResult
-import io.legado.ops.LogCategory
-import io.legado.ops.LogLevel
+import io.legado.port.LogCategory
+import io.legado.port.LogLevel
 import io.legado.ops.LogService
 import io.legado.ops.Metrics
 import io.legado.ops.UpdateCheck
 import io.legado.http.RouteCatalog
-import io.legado.http.ServerIdentity
+import io.legado.ops.ServerIdentity
 import io.legado.http.requireSameOriginWrite
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files

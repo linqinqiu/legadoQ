@@ -3,7 +3,7 @@ package io.legado.ai
 import io.legado.AppConfig
 import io.legado.cache.CoverCache
 import io.legado.data.Database
-import io.legado.ops.logSystem
+import io.legado.port.logSystem
 import io.legado.rules.RuleRunner
 import io.legado.source.SourceDebugger
 import io.legado.source.SourceHealth

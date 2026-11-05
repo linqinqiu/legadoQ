@@ -2,8 +2,8 @@ package io.legado.content
 
 import java.util.regex.PatternSyntaxException
 import io.legado.model.ReplaceRule
-import io.legado.ops.logParsing
-import io.legado.ops.logRuleExecution
+import io.legado.port.logParsing
+import io.legado.port.logRuleExecution
 import io.legado.rules.JsSandbox
 
 object ContentProcessor {

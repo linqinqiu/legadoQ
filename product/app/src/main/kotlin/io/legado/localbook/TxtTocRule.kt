@@ -2,8 +2,8 @@ package io.legado.localbook
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import io.legado.ops.logParsing
-import io.legado.ops.logSystem
+import io.legado.port.logParsing
+import io.legado.port.logSystem
 
 /**
  * 本地 TXT 的目录规则（用户 2026-10-02：「txt目录规则，这个可以放到阅读设置里」）。
