@@ -243,14 +243,19 @@ internal class JavaPackages(
         "java.lang.Thread" -> jsClass(full, statics = mapOf(
             "sleep" to { args ->
                 val millis = (args.firstOrNull() as? Number)?.toLong() ?: 0L
-                runCatching { Thread.sleep(millis.coerceAtLeast(0)) }
+                // 单次 sleep 上限。书源里 sleep 只用来"礼貌等一下"，没有睡超过 1 秒的正当理由；
+                // 而不设上限时它是一条**绕开 JsGuard 的通道**：Thread.sleep 是宿主阻塞，不消耗 Rhino
+                // 指令，observeInstructionCount 永远等不到回调 —— 一句
+                // Packages.java.lang.Thread.sleep(999999) 就能占死工作线程，墙钟守卫完全看不见。
+                runCatching { Thread.sleep(millis.coerceIn(0L, MAX_SLEEP_MS)) }
                 Context.getUndefinedValue()
             },
             "currentThread" to { _ ->
                 obj(
                     "getName" to fn { "main" },
                     "sleep" to fn { args ->
-                        runCatching { Thread.sleep((args.firstOrNull() as? Number)?.toLong() ?: 0L) }
+                        val millis = (args.firstOrNull() as? Number)?.toLong() ?: 0L
+                        runCatching { Thread.sleep(millis.coerceIn(0L, MAX_SLEEP_MS)) }
                         Context.getUndefinedValue()
                     },
                 )
@@ -267,7 +272,10 @@ internal class JavaPackages(
                     else -> ""
                 }
             },
-            "getenv" to { args -> System.getenv(args.firstOrNull()?.toString() ?: "") ?: "" },
+            // 原本这里直通 System.getenv(...)，已移除：书源脚本不可信，没有任何一条规则需要读宿主
+            // 环境变量，而它会把部署方放在环境变量里的凭据（API key / token）暴露给任意一份导入的源。
+            // 保留 key 本身、恒返回空串，是为了让"探测环境变量是否存在"的脚本不会抛 TypeError。
+            "getenv" to { _ -> "" },
             "arraycopy" to { args -> arraycopy(args); Context.getUndefinedValue() },
         ))
         "java.lang.String" -> jsClass(
@@ -304,7 +312,10 @@ internal class JavaPackages(
             }
             method("setLength") { a ->
                 val length = (a.getOrNull(0) as? Number)?.toInt() ?: 0
-                sb.setLength(length.coerceAtLeast(0))
+                // 上限。setLength 会**立即分配**对应大小的 char 数组，是脚本能直接触发的宿主内存分配：
+                // 一句 sb.setLength(1_000_000_000) 就是 2GB，抛 OutOfMemoryError（Error，runCatching 兜不住）。
+                // 1MB 对任何真实的字符串规则都绰绰有余。
+                sb.setLength(length.coerceIn(0, MAX_STRING_BUILDER_LENGTH))
                 Context.getUndefinedValue()
             }
             method("charAt") { a ->
@@ -573,7 +584,7 @@ internal class JavaPackages(
         ))
         "cn.hutool.core.util.ZipUtil" -> jsClass(full, statics = mapOf(
             "gzip" to { a -> bytesArray(gzip(bytesOf(a.firstOrNull()))) },
-            "unGzip" to { a -> bytesArray(runCatching { GZIPInputStream(bytesOf(a.firstOrNull()).inputStream()).use { it.readBytes() } }.getOrDefault(ByteArray(0))) },
+            "unGzip" to { a -> bytesArray(runCatching { unGzipBounded(bytesOf(a.firstOrNull())) }.getOrDefault(ByteArray(0))) },
         ))
         "cn.hutool.crypto.digest.DigestUtil" -> jsClass(full, statics = mapOf(
             "md5Hex" to { a -> digestHex(textOf(a.firstOrNull()), "MD5") },
@@ -964,6 +975,35 @@ internal class JavaPackages(
         return output.toByteArray()
     }
 
+    /**
+     * 限量解压（防"压缩炸弹"）。
+     *
+     * 原先这里是一句 `GZIPInputStream(...).use { it.readBytes() }`：`readBytes()` 无上限，
+     * 而一个几百字节的 GZIP 能解出几十 GB —— 解压是**宿主侧的内存分配**，不产生 Rhino 指令，
+     * `JsGuard` 的指令观察器与墙钟守卫都拦不住，直接 `OutOfMemoryError` 打掉进程。
+     *
+     * 改成流式读、边读边记账，超过 [MAX_UNZIP_BYTES] 立即抛错中断。
+     * 抛 `IllegalArgumentException` 而不是 `Error`，这样脚本层的 `runCatching`（以及调用方的
+     * `runCatching`）能正常兜住并降级成空结果，而不是把整条线程炸掉。
+     */
+    private fun unGzipBounded(input: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(16 * 1024)
+        GZIPInputStream(input.inputStream()).use { stream ->
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                if (out.size() + read > MAX_UNZIP_BYTES) {
+                    throw IllegalArgumentException(
+                        "GZIP 解压超过 ${MAX_UNZIP_BYTES / (1024 * 1024)}MB 上限，已中断（疑似压缩炸弹）",
+                    )
+                }
+                out.write(buffer, 0, read)
+            }
+        }
+        return out.toByteArray()
+    }
+
     private fun jsList(): Scriptable {
         val array = cx.newArray(top, emptyArray<Any>())
         fun push(value: Any?) {
@@ -1167,6 +1207,24 @@ internal class JavaPackages(
 
     companion object {
         private const val ANDROID_URL_SAFE = 8
+
+        /**
+         * 宿主侧资源硬上限。
+         *
+         * 这三条拦的是**不消耗 Rhino 指令**的逃逸 —— `JsGuard.observeInstructionCount`
+         * 永远等不到回调，墙钟守卫对它们完全失效：
+         * - `Thread.sleep` 是宿主阻塞；
+         * - `setLength` 是宿主内存分配；
+         * - GZIP 解压是宿主内存分配（且可被"压缩炸弹"放大几十万倍）。
+         *
+         * 判据见 `JsSandboxResourceLimitTest`。
+         */
+        /** 单次 `Thread.sleep` 的上限（毫秒）。书源脚本没有睡更久的正当理由。 */
+        private const val MAX_SLEEP_MS = 1_000L
+        /** `StringBuilder.setLength` 的上限（字符数，约 2MB 内存），防止脚本直接触发大额分配。 */
+        private const val MAX_STRING_BUILDER_LENGTH = 1_000_000
+        /** 单次 GZIP 解压的输出上限。真实书源页面压缩包里没有这么大的东西。 */
+        private const val MAX_UNZIP_BYTES = 16 * 1024 * 1024
 
         private val OBJECT_MEMBERS = setOf(
             "toString", "valueOf", "hasOwnProperty", "constructor", "__proto__", "toJSON", "isPrototypeOf",
