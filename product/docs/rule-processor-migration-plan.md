@@ -36,7 +36,7 @@
 | XPath | `//div[@id='list']/a` | `XPathProcessor` |
 | JSONPath | `$.data.list[*].name` | `JsonPathProcessor` |
 | JS 片段 `<js>...</js>` / `@js:` | `<js>result.replace(...)</js>` | `RhinoProcessor` |
-| `||` 备选、`,` 合并、`##` 排除 | `rule1||rule2` | 交给上层组合（不是处理器） |
+| `\|\|` 备选、`,` 合并、`##` 排除 | `rule1\|\|rule2` | 交给上层组合（不是处理器） |
 
 盘点结果决定 `canHandle()` 的判定顺序 —— 现在占位实现里的 `canHandle` 是猜的，必须以语料为准。
 
