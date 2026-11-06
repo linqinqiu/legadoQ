@@ -16,6 +16,11 @@ name: 覆盖率报告
 on:
   push:
     branches: [main]
+    # 文档提交不改变被测代码，覆盖率数字一个字节都不会动 —— 省掉整轮 2 分 40 秒。
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
   pull_request:
     branches: [main]
   workflow_dispatch:

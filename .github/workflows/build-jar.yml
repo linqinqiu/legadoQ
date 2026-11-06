@@ -15,6 +15,13 @@ on:
   push:
     branches: [main, master]
     tags: ['v*']
+    # 只动文档的推送不产出新二进制：白跑 3.5 分钟的打包，还会把 latest 的产物时间戳刷成
+    # 一次没有任何代码变化的构建。GitHub 只在**分支**推送时评估 paths/paths-ignore，
+    # tag 推送（发版）照跑不误 —— 这条只挡文档提交。
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
   pull_request:
     branches: [main, master]
   workflow_dispatch:

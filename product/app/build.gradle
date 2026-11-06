@@ -30,6 +30,13 @@ test {
     // —— 红的是 JVM 起不来，不是任何一条用例失败（实测过一次，崩溃日志落在 app/ 下）。
     maxHeapSize = '768m'
     systemProperty "java.io.tmpdir", legadoTestTmp
+    // 并行 fork：958 条用例串在一个 JVM 里跑是流水线最贵的一步（CI 上约 130s，占整轮 60%）。
+    // 上限 4，且不超过核数 —— CI runner 4 核、开发机 8 核，两边都是 4。
+    // 本机实测（同机、测试类已编译、cleanTest 后重跑）：
+    //   1 fork 4m43s / 4 forks 3m25s，958 条全绿，省 78s（-27%）。
+    // 用例本身按"每例一个临时库 + ktor testApplication"写的，没有真实端口与共享文件，
+    // 所以并行是安全的；哪天有人写了抢固定端口的用例，这里会以随机失败的形式报警。
+    maxParallelForks = Math.min(4, Runtime.runtime.availableProcessors())
     // 失败时打全量异常（默认 SHORT 只有类名和行号，跨平台差异排查要消息与栈）。
     testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
     finalizedBy jacocoTestReport
