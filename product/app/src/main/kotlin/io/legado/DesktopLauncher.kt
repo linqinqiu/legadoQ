@@ -85,9 +85,19 @@ fun main(args: Array<String>) {
     var port = readPortFile(imageRoot) ?: pick("LEGADO_PORT", "1234").toIntOrNull() ?: 1234
 
     // 数据目录：.env / 环境变量显式给的优先；相对路径相对"镜像根"（exe 所在目录）解析；
-    // 都没给就落在 <镜像根>/data（便携、不写系统盘）。不静默迁移，首屏用 .env 记住选择即可。
-    val dataDirRaw = pick("LEGADO_DATA_DIR", "data")
-    val dataDir = if (File(dataDirRaw).isAbsolute) Path.of(dataDirRaw) else imageRoot.resolve(dataDirRaw).toAbsolutePath()
+    // 都没给就落在 <镜像根>/data（便携、不写系统盘）。
+    // 装进 `C:\Program Files` 时那里默认不可写 —— 退回 %LOCALAPPDATA%\legadoQ\data，
+    // 而不是启动失败（规则与判据见 DesktopDataDir.kt）。
+    val choice = chooseDataDir(
+        imageRoot = imageRoot,
+        configured = env["LEGADO_DATA_DIR"] ?: System.getenv("LEGADO_DATA_DIR"),
+        localAppData = System.getenv("LOCALAPPDATA"),
+        writable = ::isWritableDir,
+    )
+    val dataDir = choice.path
+    if (choice.fellBack) {
+        logDesktop("安装目录不可写，数据改存 $dataDir（可用 .env 里的 LEGADO_DATA_DIR 指定别处）")
+    }
     val databasePath = env["LEGADO_DATABASE"] ?: System.getenv("LEGADO_DATABASE")
         ?: dataDir.resolve("legado.sqlite").absolutePathString()
 

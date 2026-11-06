@@ -19,7 +19,8 @@ import { fileURLToPath } from 'node:url'
  *     --jlink            强制重裁 jlink 运行时（默认复用上一次）。
  *     --no-zip           只出 app-image 目录，不打 zip。
  *
- * 前置：JAVA_HOME 指向带 jpackage/jlink 的 JDK（本机 Temurin 17）。fat jar 与 web/dist 缺失时自动补构建。
+ * 前置：JAVA_HOME 指向带 jpackage/jlink 的 JDK（本机 Temurin 17）。web/dist 缺失会自动构建；
+ *       fat jar **不会**自动重建，缺失直接失败 —— 先跑 `npm run build`。
  */
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const fail = message => { console.error(`FAIL  ${message}`); process.exit(1) }
@@ -41,7 +42,7 @@ if (!fs.existsSync(webDist)) {
   if (ran.status !== 0) fail('npm run build 失败')
 }
 
-// 2) fat jar：缺失就补构建（内存吃紧时给 gradle 限一下，避免 mmap 撞 errno=1455）。
+// 2) fat jar：必须已由 `npm run build` 产出；本脚本不重建 jar，缺失直接失败。
 const jarName = `legado-${version}-all.jar`
 const jar = path.join(ROOT, 'app/build/libs', jarName)
 if (!fs.existsSync(jar)) fail(`没有 ${path.relative(ROOT, jar)}，先跑 ./gradlew :app:fatJar`)
@@ -51,6 +52,9 @@ const MODULES = 'java.base,java.datatransfer,java.xml,java.prefs,java.desktop,ja
   'java.security.sasl,java.naming,java.net.http,java.scripting,java.transaction.xa,java.sql,' +
   'jdk.crypto.ec,jdk.dynalink,jdk.unsupported'
 function resolveRuntime(target) {
+  // 复用分支只匹配 `dist/legadoq-X.Y.Z/` 目录。当前 dist/ 下只有 `_desktop-runtime/` 与
+  // `desktop/`，没有这种目录，因此**实际总是重裁**；`--jlink` 在当前结构下是显式冗余（带上无害）。
+  // 真要复用，需让这里也认 `dist/_desktop-runtime/`——那是优化，不是当前缺口。
   if (!hasFlag('--jlink')) {
     const prev = fs.readdirSync(path.join(ROOT, 'dist')).filter(n => /^legadoq-\d+\.\d+\.\d+$/.test(n))
       .sort().reverse().find(n => fs.existsSync(path.join(ROOT, 'dist', n, 'runtime', 'bin', 'java.exe')))
@@ -111,6 +115,30 @@ if (!fs.existsSync(path.join(imageRoot, 'legadoq.exe'))) fail('没生成 legadoq
 if (fs.existsSync(icon)) fs.copyFileSync(icon, path.join(imageRoot, 'app.ico'))
 const trayIcon = path.join(ROOT, 'web/public/brand-logo-96.png')
 if (fs.existsSync(trayIcon)) fs.copyFileSync(trayIcon, path.join(imageRoot, 'app.png'))
+
+// 5.5) 便携包的自解释文件：解压后双击哪个、数据在哪、怎么卸。
+//      没有安装器时，这三句就是"便捷使用"的全部说明 —— 不能指望用户去看 README。
+fs.writeFileSync(
+  path.join(imageRoot, '使用说明.txt'),
+  [
+    'legadoQ 便携版',
+    '',
+    '启动：双击 legadoq.exe（或 启动.bat）。',
+    '界面：启动后会自动打开窗口；关掉窗口不会退出，右下角托盘图标里点「退出」才真的停。',
+    '数据：默认在 本目录\\data（书架、书源、阅读进度、登录凭据都在这里）。',
+    '      若本目录不可写（例如放在 C:\\Program Files），会自动改用 %LOCALAPPDATA%\\legadoQ\\data，',
+    '      启动日志里会写一行实际路径，托盘菜单「数据目录」也能直接打开。',
+    '卸载：退出后整个目录删掉即可 —— 不写注册表、不装服务。',
+    '',
+    '想换端口或数据目录：在本目录建 .env，写 LEGADO_PORT=1234 / LEGADO_DATA_DIR=D:\\legado-data。',
+  ].join('\r\n'),
+  'utf8',
+)
+fs.writeFileSync(
+  path.join(imageRoot, '启动.bat'),
+  ['@echo off', 'cd /d "%~dp0"', 'start "" "%~dp0legadoq.exe"', 'exit /b 0', ''].join('\r\n'),
+  'utf8',
+)
 
 // 6) 可选：把数据目录指向现有书架（本机首次打包用，不静默迁移）。
 const dataDir = arg('--data-dir')
