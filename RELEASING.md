@@ -116,6 +116,19 @@ npm run release
 **tag 指向记录提交，表里的 Commit 是代码提交。** 两者差一个 commit 是正常的：记录提交只改
 `RELEASES.md`，代码提交是它前面那个 HEAD。想回看某一版代码，用表里的 commit，不要用 tag 解引用。
 
+这张表由判据 `web/test/VersionTracks.test.ts` 逐行复算：每行的 commit 在仓库里必须存在、
+那个提交上的 `version` 与 `BUILD_NUMBER` 必须等于行里的两个号、tag 必须存在且记录提交落在
+它的历史里、构建号与版本号必须递增、**比最早一行更新的 tag 都必须有一行**、最后一行必须等于
+当前仓库状态。判据认的是「记录提交在 tag 的历史里」而不是「两者相等」—— 下面是三处**已冻结的
+历史例外**，新版本不许再加：
+
+- `0.2.10`：tag 打在记录提交的下一个提交上（当次发布脚本自己对 `inherit` 分支的 null 返回值
+  trim 而崩，修完脚本才打的 tag）。
+- `0.2.15` / `0.2.16`：有 tag、有 Release，但当时没走 `npm run release`，表里漏了两行；
+  2026-11-06 核对时按 tag 与提交上的实际版本/构建号补齐（12 / 13）。
+- `0.2.17`：与 `0.2.16` 共用构建号 13（中间漏了一次 bump），tag 不移动所以留着；判据里这一条
+  是显式例外，写在 `BUILD_NUMBER_EXCEPTIONS`。
+
 CI 的 `version-gate` 与 `build-jar` 会在 tag 上运行，并创建 GitHub Release（jar + 整合包）。
 若 CI 失败，修的是下一版；已推的 tag 不移动、不删除。
 

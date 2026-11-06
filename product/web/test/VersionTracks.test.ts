@@ -123,3 +123,122 @@ test('文档不再把 release 说成会自动改版本，tag 与代码提交的�
   assert.match(readme, /`product\/`：\*\*GPL-3\.0\*\*/)
   assert.doesNotMatch(readme, /`legado\/`：\*\*GPL-3\.0\*\*/)
 })
+
+/**
+ * `RELEASES.md` 的每一行都要能被 git 复算。
+ *
+ * 它不是手写日志，而是「版本 ← 构建号 ← 代码提交」的映射表：表错了，就再也回查不到
+ * 「这一版到底是哪份代码」。2026-11-06 核对时量出三类历史缺口：
+ *
+ *  1. `0.2.15` / `0.2.16` 有 tag、有 Release，表里却没有行 —— 那两次是手工打 tag 发的，
+ *     没走 `npm run release`（`git show v0.2.15:RELEASES.md` 里确实没有它们）。
+ *  2. `0.2.10` 的 tag 打在「记录提交的下一个提交」上：当次发布脚本自己有 bug
+ *     （`inherit` 分支对 null 返回值 trim），修完脚本才打的 tag。
+ *  3. `0.2.16` 与 `0.2.17` 共用构建号 13：中间漏了一次 bump，tag 不移动所以留着。
+ *
+ * 所以判据按「记录提交必须落在 tag 提交的历史里」判，而不是要求两者相等 —— 后者会把 0.2.10
+ * 判红，而那是真的、且按仓库规矩不能改的历史。构建号允许**一条**例外，列在下面，新版本不许再加。
+ */
+const BUILD_NUMBER_EXCEPTIONS: Record<string, string> = {
+  '0.2.17': '与 0.2.16 共用 13（那次漏了 bump）；tag 不移动，只能留着',
+}
+
+test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / tag', () => {
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8' }).trim()
+  const tryGit = (...args: string[]) => {
+    try { return git(...args) } catch { return null }
+  }
+  const cmpVersion = (a: string, b: string) => {
+    const x = a.split('.').map(Number), y = b.split('.').map(Number)
+    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]
+    return 0
+  }
+
+  const text = read('RELEASES.md')
+  const rows = [...text.matchAll(/^\| (\d+\.\d+\.\d+) \| (\d+) \| ([0-9a-f]{7,40}) \|$/gm)]
+    .map(m => ({ version: m[1], build: Number(m[2]), commit: m[3] }))
+  assert.ok(rows.length >= 7, `RELEASES.md 只解析出 ${rows.length} 行，表头或格式被改坏了`)
+  assert.match(text, /^\| 对外版本 \| 构建号 \| Commit \|$/m, '表头三列不能改')
+
+  const problems: string[] = []
+
+  /*
+   * 一次 `cat-file --batch` 取回所有行要的两个文件：逐行 `git show` 要起 14 个进程，
+   * 实测把这条判据拖到 2.5s（整套前端判据才 13s）。批量接口一次就够。
+   * 切片按 header 里的**字节数**，不能按行切 —— build.gradle 里有中文注释，字节数≠字符数。
+   */
+  const wanted = rows.flatMap(row => [`${row.commit}:product/app/build.gradle`, `${row.commit}:BUILD_NUMBER`])
+  const batch = execFileSync('git', ['cat-file', '--batch'], { cwd: REPO, input: wanted.join('\n') + '\n' })
+  const blobs: string[] = []
+  let cursor = 0
+  for (const spec of wanted) {
+    const headerEnd = batch.indexOf(0x0a, cursor)
+    assert.ok(headerEnd > cursor, `cat-file 没回 ${spec} 的 header`)
+    const header = batch.subarray(cursor, headerEnd).toString('utf8')
+    if (/ missing$/.test(header)) {
+      blobs.push('')
+      cursor = headerEnd + 1
+      continue
+    }
+    const size = Number(header.split(' ')[2])
+    const start = headerEnd + 1
+    blobs.push(batch.subarray(start, start + size).toString('utf8'))
+    cursor = start + size + 1
+  }
+
+  // tag → 它指向的提交，也是一次取全（annotated tag 的 `%(*objectname)` 才是提交，`%(objectname)` 是 tag 对象）
+  const tagCommits = new Map<string, string>()
+  for (const line of git('for-each-ref', '--format=%(refname:short)|%(objectname)|%(*objectname)', 'refs/tags').split('\n')) {
+    const [name, object, peeled] = line.trim().split('|')
+    if (name) tagCommits.set(name, peeled || object)
+  }
+
+  let previousBuild = 0
+  let previousVersion = '0.0.0'
+  rows.forEach((row, index) => {
+    const gradle = blobs[index * 2]
+    const buildFile = blobs[index * 2 + 1]
+    if (!gradle || !buildFile) { problems.push(`${row.version}：记录里的提交 ${row.commit} 在仓库里不存在`); return }
+
+    // 记录提交上的两个号必须就是这一行写的号
+    const version = /^\s*version\s*=\s*['"]([^'"]+)/m.exec(gradle)?.[1]
+    const build = Number(buildFile.trim())
+    if (version !== row.version) problems.push(`${row.version}：提交 ${row.commit} 上的 version 是 ${version}`)
+    if (build !== row.build) problems.push(`${row.version}：提交 ${row.commit} 上的 BUILD_NUMBER 是 ${build}`)
+
+    // tag 必须存在，且记录提交要落在它的历史里（相等或祖先）
+    const tag = `v${row.version}`
+    const tagCommit = tagCommits.get(tag)
+    if (!tagCommit) problems.push(`${row.version}：没有 tag ${tag}`)
+    // 相等是常态（发布脚本把 tag 打在记录提交上），只有 0.2.10 那种历史例外才需要再查祖先。
+    else if (tagCommit !== row.commit && tryGit('merge-base', '--is-ancestor', row.commit, tagCommit) === null) {
+      problems.push(`${row.version}：记录提交 ${row.commit} 不在 tag ${tag} 的历史里`)
+    }
+
+    if (row.build <= previousBuild) {
+      const excuse = BUILD_NUMBER_EXCEPTIONS[row.version]
+      if (!excuse) problems.push(`${row.version}：构建号 ${row.build} 没有大于上一行的 ${previousBuild}`)
+    }
+    if (cmpVersion(row.version, previousVersion) <= 0) problems.push(`${row.version}：版本号没有大于上一行的 ${previousVersion}`)
+    previousBuild = row.build
+    previousVersion = row.version
+  })
+
+  // 反向：比最早一行更新的 tag 都必须在表里 —— 漏记过的正是 0.2.15 / 0.2.16
+  const oldest = rows[0].version
+  const missing = [...tagCommits.keys()]
+    .map(t => t.replace(/^v/, ''))
+    .filter(v => /^\d+\.\d+\.\d+$/.test(v) && cmpVersion(v, oldest) >= 0)
+    .filter(v => !rows.some(row => row.version === v))
+  if (missing.length) problems.push(`有 tag 但表里没有行：${missing.join('、')}`)
+
+  // 最后一行就是当前仓库状态
+  const currentVersion = /^\s*version\s*=\s*['"]([^'"]+)/m.exec(read('product/app/build.gradle'))?.[1]
+  const currentBuild = Number(read('BUILD_NUMBER').trim())
+  const last = rows[rows.length - 1]
+  if (last.version !== currentVersion || last.build !== currentBuild) {
+    problems.push(`最后一行是 ${last.version}/${last.build}，但仓库现在是 ${currentVersion}/${currentBuild}`)
+  }
+
+  assert.deepEqual(problems, [], `RELEASES.md 与 git 对不上：\n  ${problems.join('\n  ')}`)
+})
