@@ -11,6 +11,20 @@ export interface ExplorePageProps {
   onOpen: (book: SearchResult) => Promise<void>
 }
 
+/**
+ * 卡片副标题：只拼真有的那几项。
+ *
+ * 源站的列表页常把「没有」写成符号而不是留空 —— 00小说网实测 `lastChapter` 返回的就是
+ * 一个「•」，于是每张卡下面都挂着一行孤零零的圆点（用户看到的不是"没信息"，是"乱码"）。
+ * 纯标点/占位串一律当没有；三样都没有就整行不渲染。
+ */
+export function exploreMeta(...parts: Array<string | number | undefined | null>): string {
+  return parts
+    .map(part => (part === undefined || part === null ? '' : String(part).trim()))
+    .filter(part => part !== '' && !/^[·•・.,;:\-–—_~|\s]+$/.test(part))
+    .join(' · ')
+}
+
 /** 「发现」页：读取书源的 exploreUrl 分栏，按 Legado 语义列出推荐书籍。 */
 export function ExplorePage({ onOpen }: ExplorePageProps) {
   const [sources, setSources] = useState<SourceSummary[]>([])
@@ -238,18 +252,21 @@ export function ExplorePage({ onOpen }: ExplorePageProps) {
         <section className="explore-results">
           <header><h2>{activeLabel}</h2></header>
           <div className="explore-grid">
-            {books.map((book, index) => (
+            {books.map((book, index) => {
+              const meta = exploreMeta(book.kind, book.wordCount, book.lastChapter)
+              return (
               <button type="button" key={`${book.sourceId}::${book.bookUrl}::${index}`} className="explore-card" onClick={() => void open(book)}>
                 <span className="explore-cover">
                   <DeferredCover cover={coverOf(book) ?? null} name={book.name} author={book.author} referer={book.sourceId} />
                 </span>
                 <strong title={book.name}>{book.name}</strong>
                 <small>{book.author || '未知作者'}</small>
-                {(book.kind || book.lastChapter || book.wordCount) && (
-                  <small>{[book.kind, book.wordCount, book.lastChapter].filter(Boolean).join(' · ')}</small>
+                {meta && (
+                  <small>{meta}</small>
                 )}
               </button>
-            ))}
+              )
+            })}
           </div>
           {/* 这一栏吃不吃页码由服务端按规则写法判（`supportsPaging`）：不吃就不挂这颗永远白发一次请求的按钮。 */}
           {tab?.supportsPaging !== false && hasMore && (

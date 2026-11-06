@@ -179,6 +179,12 @@ svg { width: 18px; height: 18px; flex: none; }
   -ms-overflow-style: none;
 }
 .app-page-header nav::-webkit-scrollbar { display: none; }
+/* 真溢出时才挂（AppHeader 按 scrollWidth 加类）：右侧渐隐，提示这排还能往右滑。
+   没有它，390px 上「设置」被裁成「设」，用户读到的是"顶栏坏了"而不是"这里可以滑"。 */
+.app-page-header nav.is-overflowing {
+  mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+}
 .app-page-header nav button {
   position: relative;
   height: 100%;
@@ -1394,6 +1400,12 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .agreement-body p + p { margin-top: 8px; }
 .agreement-intro { font-weight: 600; color: var(--ink, #1c1c1c) !important; }
 .agreement-body { overflow: auto; min-height: 0; padding-right: 6px; }
+/* 还有下文时才挂（组件按 scrollTop 加类）：底边渐隐，让"被切掉半行"读成"下面还有"。
+   滚到底自动摘掉，否则最后一行会被渐隐糊掉。 */
+.agreement-body.is-more {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+}
 .agreement-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
 .agreement-actions .primary-button[disabled] { opacity: .55; cursor: default; }
 /* 页脚只报状态（当前页属于哪一章 + 页码），不再放翻页键。
@@ -1429,7 +1441,9 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
     gap: 0;
   }
   .app-page-header nav button {
-    padding: 0 8px;
+    /* 8px 时 390px 实测 6 个入口共 252px，比可用的 234px 多 18px —— 「设置」正好被裁掉半个字。
+       收到 6px 后是 228px，放得下；更窄的机器仍有渐隐兜底。 */
+    padding: 0 6px;
     font-size: 13px;
     min-height: 44px;
   }
@@ -4617,7 +4631,10 @@ input[type=range] { min-height: 24px; }
 .shelf-card { border-radius: var(--r-2); }
 .shelf-card-name { font-size: var(--t-lg); min-height: 0; line-height: 1.4; }
 .shelf-card-info { padding: 10px 11px 4px; gap: 3px; }
-.shelf-card-meta { display: flex; align-items: center; gap: 7px; }
+.shelf-card-meta { display: flex; flex-wrap: wrap; align-items: center; column-gap: 7px; row-gap: 2px; }
+/* 窄屏 3 列时一张卡只有 ~109px：不给子项 nowrap，flex 会把「漫画」「第 4 章」压成竖排
+   （390px 实测：徽章 37×39、章节 34×32，两个字上下叠着）。宁可换行，也不许竖排。 */
+.shelf-card-meta > * { flex: 0 0 auto; white-space: nowrap; }
 .shelf-meta-percent { color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 .shelf-meta-when { display: none; margin-left: auto; color: var(--muted); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 
@@ -4997,14 +5014,19 @@ input[type=range] { min-height: 24px; }
 
 /* —— 书架分组（book_group）—— */
 /* 分组栏一行装不下时以前是整条往下堆：二十个分组能把书架正文推到首屏之外。
-   改成单行横向滚动，「新建/删除分组」钉在右端不会随着滚走。 */
-.shelf-group-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s-2); margin-top: var(--s-3); overflow-x: auto; scrollbar-width: thin; }
-.shelf-group-bar > * { flex: none; }
+   改成单行横向滚动，右端的「新建/删除分组」不随分组滚走 —— 但它**不能盖在分组上**：
+   原来用 `position: sticky; right: 0` 钉住，390px 实测（滑轨 clientW 354 / scrollW 539）
+   按钮直接压在「本地 0」上，计数被遮掉，看起来像分组名丢了数字。
+   现在分两层：`.shelf-group-scroll` 横滑，按钮是它外面的普通 flex 子项，永远在滑轨右侧。 */
+.shelf-group-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s-2); margin-top: var(--s-3); }
+.shelf-group-scroll { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s-2); flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.shelf-group-scroll > * { flex: none; }
+.shelf-group-bar > .shelf-group-new, .shelf-group-bar > .shelf-group-remove { flex: none; }
 .shelf-group-bar button { display: inline-flex; align-items: center; gap: 6px; min-height: var(--ctl-sm); padding: 0 12px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--muted); font-size: var(--t-md); }
 .shelf-group-bar button:hover { border-color: var(--accent); color: var(--accent-ink); }
 .shelf-group-bar button.active { background: var(--accent-soft); color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); font-weight: 600; }
 .shelf-group-bar small { color: inherit; font-size: var(--t-xs); }
-.shelf-group-bar .shelf-group-new, .shelf-group-bar .shelf-group-remove { margin-left: auto; border-style: dashed; position: sticky; right: 0; background: var(--surface); }
+.shelf-group-bar .shelf-group-new, .shelf-group-bar .shelf-group-remove { margin-left: auto; border-style: dashed; background: var(--surface); }
 /* 分组接口失败时的"没载入 + 重试"，别让它长得像另一个分组档 */
 .shelf-group-failed { display: inline-flex; align-items: center; gap: 6px; color: var(--danger); font-size: var(--t-sm); }
 .shelf-group-failed button { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: var(--t-sm); text-decoration: underline; }

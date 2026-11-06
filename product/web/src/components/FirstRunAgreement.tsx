@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../lib/agreement'
 
@@ -24,7 +24,29 @@ export function FirstRunAgreement() {
     try { return !window.localStorage.getItem(STORAGE_KEY) } catch { return true }
   })
   const [seconds, setSeconds] = useState(READ_SECONDS)
+  /*
+    正文在手机上装不下（390×844 实测：可视 471px / 内容 715px），底部那一行会被硬切成半行。
+    移动端没有可见滚动条，于是"还有一段没读"看起来就是"文字被裁了"。
+    只在**真的还有下文**时给底边一道渐隐，滚到底就摘掉 —— 否则最后一行会被渐隐糊掉。
+  */
+  const [more, setMore] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
   useEscapeClose(() => setVisible(false))
+
+  useEffect(() => {
+    if (!visible) return
+    const el = bodyRef.current
+    if (!el) return
+    const sync = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 2)
+    sync()
+    el.addEventListener('scroll', sync, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync)
+    observer?.observe(el)
+    return () => {
+      el.removeEventListener('scroll', sync)
+      observer?.disconnect()
+    }
+  }, [visible])
 
   useEffect(() => {
     if (!visible || seconds <= 0) return
@@ -43,7 +65,7 @@ export function FirstRunAgreement() {
       <div className="dialog-shell agreement-card">
         <h1>用户协议与免责声明</h1>
         <p className="agreement-intro">{PRODUCT_INTRO}</p>
-        <div className="agreement-body">
+        <div className={more ? 'agreement-body is-more' : 'agreement-body'} ref={bodyRef}>
           <h2>用户协议</h2>
           {paragraphs(TERMS_TEXT)}
           <h2>免责声明</h2>

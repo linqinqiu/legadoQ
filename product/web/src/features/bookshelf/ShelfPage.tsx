@@ -963,16 +963,24 @@ export function ShelfPage({
       </nav>
 
       {groups.length > 0 && (
+        /*
+          分组条是**横滑**的（分组可能几十个，换行会把书架顶下去），但「新建分组」不能跟它一起滑：
+          它原来靠 `position: sticky; right: 0` 钉在右端，390px 实测（clientW 354 / scrollW 539）
+          直接压在「本地 0」这颗 chip 上 —— 计数被盖住，看上去像分组名丢了数字。
+          所以拆成两层：里层横滑，外层那颗按钮是普通 flex 子项，永远在滑轨右侧、不遮内容。
+        */
         <div className="shelf-group-bar">
-          <button type="button" className={groupFilter === null ? 'active' : ''} onClick={() => setGroupFilter(null)}>全部分组</button>
-          {groups.map(group => (
-            <button key={group.id} type="button" className={groupFilter === group.id ? 'active' : ''} onClick={() => setGroupFilter(group.id)}>
-              {group.name}<small>{group.bookCount}</small>
+          <div className="shelf-group-scroll">
+            <button type="button" className={groupFilter === null ? 'active' : ''} onClick={() => setGroupFilter(null)}>全部分组</button>
+            {groups.map(group => (
+              <button key={group.id} type="button" className={groupFilter === group.id ? 'active' : ''} onClick={() => setGroupFilter(group.id)}>
+                {group.name}<small>{group.bookCount}</small>
+              </button>
+            ))}
+            <button type="button" className={groupFilter === 0 ? 'active' : ''} onClick={() => setGroupFilter(0)}>
+              未分组<small>{items.filter(item => !item.groupId).length}</small>
             </button>
-          ))}
-          <button type="button" className={groupFilter === 0 ? 'active' : ''} onClick={() => setGroupFilter(0)}>
-            未分组<small>{items.filter(item => !item.groupId).length}</small>
-          </button>
+          </div>
           {groupFilter === null || groupFilter === 0 ? (
             <button type="button" className="ghost-button shelf-group-new" onClick={() => setAddingGroup(true)}>新建分组</button>
           ) : (

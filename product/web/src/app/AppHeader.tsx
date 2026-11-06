@@ -100,6 +100,31 @@ export function AppHeader({
   /** 顶栏这一项是不是"当前所在"。规则 / 备份 / 关于 / 更新日志 0.6.27 起改为悬浮层，不再参与导航高亮。 */
   const navActive = (navPage: string) => page === navPage
 
+  /*
+    窄屏（≤720px）六个入口一屏放不下：这一排是可横滑的，但滚动条被藏掉了，
+    于是被裁掉的那半个字看起来就是"顶栏坏了"（390px 实测：「设置」只露出一个「设」）。
+    所以做两件事 —— 选中项变化时把它滚进视野中心；真溢出时给右侧一道渐隐，提示"后面还有"。
+    渐隐只在 scrollWidth 真的超过可视宽度时加，放得下的时候不该平白压掉最后一个字的边。
+  */
+  const navRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    const active = nav.querySelector<HTMLElement>('button.active')
+    active?.scrollIntoView({ block: 'nearest', inline: 'center' })
+    const syncOverflow = () => {
+      nav.classList.toggle('is-overflowing', nav.scrollWidth - nav.clientWidth > 1)
+    }
+    syncOverflow()
+    window.addEventListener('resize', syncOverflow)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(syncOverflow)
+    observer?.observe(nav)
+    return () => {
+      window.removeEventListener('resize', syncOverflow)
+      observer?.disconnect()
+    }
+  }, [page])
+
   const handleThemeChange = (theme: ReaderSettings['theme']) => {
     onSettingsChange({ ...settings, theme })
   }
@@ -135,7 +160,7 @@ export function AppHeader({
         )}
       </div>
 
-      <nav aria-label="主导航">
+      <nav aria-label="主导航" ref={navRef}>
         {/*
           入口不再一个个手写：顶栏、数字键 1–6、Alt + ←/→ 的循环顺序全部取自
           shortcuts.ts 里的 PRIMARY_PAGES。手写一排 <button> 的代价已经付过一次：
