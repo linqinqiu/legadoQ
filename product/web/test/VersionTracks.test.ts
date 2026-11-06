@@ -143,6 +143,16 @@ const BUILD_NUMBER_EXCEPTIONS: Record<string, string> = {
   '0.2.17': '与 0.2.16 共用 13（那次漏了 bump）；tag 不移动，只能留着',
 }
 
+/**
+ * 远端没有 tag 的版本。`0.2.13` 的 tag 只在本地：那次 `npm run release` 的 push 没成功，
+ * 记录行与本地 tag 都留下来了，远端从来没有这个 tag（所以也一直没有 GitHub Release）。
+ * 不补推：推上去会触发 tag 构建，按 `make_latest` 的规则把 0.2.13 顶成 Latest、
+ * 再发一个旧版本的包 —— 代价比"这一行只有本地能验"大得多。
+ */
+const TAG_EXCEPTIONS: Record<string, string> = {
+  '0.2.13': 'tag 从未推到远端（那次 release 的 push 失败）；补推会把它顶成 Latest',
+}
+
 test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / tag', (t) => {
   const git = (...args: string[]) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8' }).trim()
   const tryGit = (...args: string[]) => {
@@ -218,7 +228,9 @@ test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / 
     // tag 必须存在，且记录提交要落在它的历史里（相等或祖先）
     const tag = `v${row.version}`
     const tagCommit = tagCommits.get(tag)
-    if (!tagCommit) problems.push(`${row.version}：没有 tag ${tag}`)
+    if (!tagCommit) {
+      if (!TAG_EXCEPTIONS[row.version]) problems.push(`${row.version}：没有 tag ${tag}`)
+    }
     // 相等是常态（发布脚本把 tag 打在记录提交上），只有 0.2.10 那种历史例外才需要再查祖先。
     else if (tagCommit !== row.commit && tryGit('merge-base', '--is-ancestor', row.commit, tagCommit) === null) {
       problems.push(`${row.version}：记录提交 ${row.commit} 不在 tag ${tag} 的历史里`)
