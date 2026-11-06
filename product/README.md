@@ -39,7 +39,9 @@ node scripts/package-desktop.mjs   # 需要 JAVA_HOME 指向带 jpackage/jlink �
   浏览器可执行文件不按机器默认找的顺序时，用 `.env` 写 `LEGADO_BROWSER_PATH=<路径>` 指定；
 - 运行输出写在 exe 旁的 `server.log`（可用 `.env` 的 `LEGADO_LOG_FILE` 改），超过 5MB 轮转成 `server.log.1`；
   结构化运行日志在 `logs/`，托盘的「打开日志目录」直达；
-- 数据默认放在 exe 旁边的 `data/`；想用已有的书架，在 exe 旁放一个 `.env` 写 `LEGADO_DATA_DIR=<你的数据目录>`；
+- 数据默认放在 exe 旁边的 `data/`；**那里不可写时（例如解压到 `C:\Program Files`）自动改用
+  `%LOCALAPPDATA%\legadoQ\data`**，启动日志会写实际路径，托盘的「打开数据目录」直达。
+  想用已有的书架，在 exe 旁放一个 `.env` 写 `LEGADO_DATA_DIR=<你的数据目录>`（显式指定不会被改写）；
 - 端口上已经是 legadoQ 在跑 → 不再起第二个进程，只把界面打开；端口被**别的程序**占了 → 从下一个端口起顺延找一个空闲的（往后 20 个内），并用它写回 `port.txt`，下次启动仍稳定在那个端口（界面上「设置 → 服务 → 服务端口」看到的也是它）。
 
 ## 技术栈

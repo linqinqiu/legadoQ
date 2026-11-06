@@ -114,7 +114,7 @@ tasks.register('testCoverageReport', JacocoReport) {
 
 
 group = 'io.legado'
-version = '0.2.17'
+version = '0.2.18'
 
 /**
  * 内部构建号（与对外版本解耦）。

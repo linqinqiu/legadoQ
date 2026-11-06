@@ -147,16 +147,28 @@ class JsSandboxResourceLimitTest {
         // （JS 数组按元素装箱）会让**测试进程自己**先 OOM。实测 17 / 20 / 24MB 三种 payload
         // 全部触发 `Native memory allocation (mmap) failed`（DOS error 1455 = 页面文件打满），
         // 挂掉的是 Gradle 测试执行器，测不到被测代码。与其写一条会随机打爆 CI 的用例，
-        // 不如钉住"解压必须走限量实现"这个结构事实；上限本身的正确性由 `unGzipBounded`
+        // 不如钉住"解压必须走限量实现"这个结构事实；上限本身的正确性由 `unzipBounded`
         // 的实现保证。行为验证留给人工：手工喂压缩炸弹看进程是否存活。
-        val source = java.io.File("src/main/kotlin/io/legado/rules/JavaPackages.kt").readText()
+        //
+        // 2026-11-06：限量解压从 JavaPackages 抽进了 GzipLimits（`unzipBounded`），
+        // 判据跟着拆成两半 —— 调用点看 JavaPackages，上限检查看 GzipLimits。
+        val javaPackages = java.io.File("src/main/kotlin/io/legado/rules/JavaPackages.kt").readText()
         assertTrue(
-            "`unGzip` 必须调用限量解压 `unGzipBounded`，不能回退到无上限的 readBytes()",
-            source.contains("unGzipBounded(bytesOf("),
+            "`unGzip` 必须调用限量解压 `GzipLimits.unzipBounded`，不能回退到无上限的 readBytes()",
+            javaPackages.contains("GzipLimits.unzipBounded(bytesOf("),
         )
         assertTrue(
-            "`unGzipBounded` 必须真的检查输出上限",
-            source.contains("out.size() + read > MAX_UNZIP_BYTES"),
+            "JavaPackages 里不该再出现无上限的 `GZIPInputStream(...).readBytes()`",
+            !javaPackages.contains("GZIPInputStream"),
+        )
+        val gzipLimits = java.io.File("src/main/kotlin/io/legado/rules/GzipLimits.kt").readText()
+        assertTrue(
+            "`unzipBounded` 必须真的检查输出上限（且用减法避免 Int 溢出）",
+            gzipLimits.contains("out.size() > maxBytes - read"),
+        )
+        assertTrue(
+            "上限常量必须存在，且不是 0 或负数",
+            gzipLimits.contains("MAX_UNZIP_BYTES: Int = 16 * 1024 * 1024"),
         )
     }
 }
