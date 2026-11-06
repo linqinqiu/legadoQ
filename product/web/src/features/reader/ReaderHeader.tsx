@@ -1,6 +1,6 @@
 import { IconButton } from './IconButton'
-import { ReaderMenuAction } from './readerMenu'
-import { TtsPlayState } from './ttsEngine'
+import { ReaderMenuAction } from './interaction/readerMenu'
+import { TtsPlayState } from './tts/ttsEngine'
 
 /**
  * 阅读器顶部那条浮动工具栏：返回 / 目录 / 上一章 / 下一章 / 书名 / 可配置的按钮排（PROPOSAL-019 B）。

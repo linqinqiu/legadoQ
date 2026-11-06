@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { clampFontSize, READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN, stepFontSize } from '../src/features/reader/fontSizeControl'
+import { clampFontSize, READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN, stepFontSize } from '../src/features/reader/content/fontSizeControl'
 
 /**
  * 字号口径的唯一出处（P1 收敛）：设置步进器/快捷键/Ctrl+滚轮都走这里。

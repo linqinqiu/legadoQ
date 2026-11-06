@@ -9,8 +9,8 @@ import {
   READER_MENU_ITEMS,
   toggleReaderMenu,
   type ReaderMenuAction,
-} from '../src/features/reader/readerMenu'
-import { defaultReaderSettings } from '../src/features/reader/readerSettings'
+} from '../src/features/reader/interaction/readerMenu'
+import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 
 /**
  * 「阅读菜单可配置」（用户 2026-10-11）。判据钉三件事：清单是唯一来源、读回来的值一定安全、
@@ -58,17 +58,17 @@ test('工具栏按 settings.menuItems 渲染，且与配置面板同源', () => 
   // 工具栏在 PROPOSAL-019 F 里抽成了 ReaderHeader：清单从 settings.menuItems 传进去，逐项渲染。
   assert.match(readerScreen, /menuItems=\{settings\.menuItems\}/, '工具栏要拿 settings.menuItems')
   assert.match(read('../src/features/reader/ReaderHeader.tsx'), /menuItems\.map\(/, '工具栏要逐项渲染')
-  assert.match(read('../src/features/reader/OtherSettingsPanel.tsx'), /READER_MENU_ITEMS\.map\(/, '配置面板要按同一份清单列（PROPOSAL-020 P4 后这一节住在「设置」弹层）')
+  assert.match(read('../src/features/reader/settingsPanel/OtherSettingsPanel.tsx'), /READER_MENU_ITEMS\.map\(/, '配置面板要按同一份清单列（PROPOSAL-020 P4 后这一节住在「设置」弹层）')
   // 旧版那四个写死的按钮不该再直接挂在 header 里（否则配置改了它也不动）
   assert.doesNotMatch(readerScreen, /<IconButton label="切换书源" icon="sliders"/)
   // 「换源」只留在目录抽屉顶部：两套顶栏都不许再挂；抽屉那条是唯一可见入口。
   assert.doesNotMatch(readerScreen, /onOpenSourceSwitch=\{\(\) => setShowSourceSwitch\(true\)\}/,
     '顶栏不该再直接接换源（目录抽屉已经有一条）')
-  assert.match(read('../src/features/reader/TocDrawerHeader.tsx'), /label="换源"/, '目录抽屉顶部的换源要保留')
+  assert.match(read('../src/features/reader/dialogs/TocDrawerHeader.tsx'), /label="换源"/, '目录抽屉顶部的换源要保留')
 })
 
 test('桌面端目录是普通覆盖式抽屉：没有固定侧栏与拖宽', () => {
-  const header = read('../src/features/reader/TocDrawerHeader.tsx')
+  const header = read('../src/features/reader/dialogs/TocDrawerHeader.tsx')
   const styles = read('../src/styles.css')
   assert.doesNotMatch(header, /desktop-pin-btn|onTogglePin|pinOff|sidebarPinned/, '抽屉里不再有固定键与固定态文案')
   assert.match(header, /label="关闭目录"/, '关闭键只负责关闭抽屉')
@@ -81,5 +81,5 @@ test('桌面端目录是普通覆盖式抽屉：没有固定侧栏与拖宽', ()
 
 test('设置项随包存读：默认带 menuItems，读时过清洗', () => {
   assert.deepEqual(defaultReaderSettings.menuItems, DEFAULT_READER_MENU)
-  assert.match(read('../src/features/reader/readerSettings.ts'), /menuItems: parseReaderMenu\(saved\.menuItems\)/)
+  assert.match(read('../src/features/reader/settingsPanel/readerSettings.ts'), /menuItems: parseReaderMenu\(saved\.menuItems\)/)
 })

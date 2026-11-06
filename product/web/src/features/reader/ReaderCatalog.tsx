@@ -1,11 +1,11 @@
 import React, { useDeferredValue, useMemo, useState } from 'react'
 import type { BookNote, Chapter } from '../../lib/api'
 import { Icon } from '../../icons'
-import { NotesPanel } from './NotesPanel'
-import { TocDrawerHeader } from './TocDrawerHeader'
+import { NotesPanel } from './notes/NotesPanel'
+import { TocDrawerHeader } from './dialogs/TocDrawerHeader'
 import { VirtualChapterList } from './VirtualChapterList'
-import { TOC_ROW_HEIGHT } from './readerInteractions'
-import type { NoteExportMeta } from './noteExport'
+import { TOC_ROW_HEIGHT } from './interaction/readerInteractions'
+import type { NoteExportMeta } from './notes/noteExport'
 
 /**
  * 目录抽屉：标题栏 + 章节搜索 + 虚拟列表 +（可切换的）笔记面板。

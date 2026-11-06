@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { GLOBAL_SHORTCUTS, PRIMARY_PAGES, READER_SHORTCUTS, SHORTCUT_TABLES, isTypingTarget, normalizeKey, shortcutFor } from '../src/features/reader/shortcuts'
+import { GLOBAL_SHORTCUTS, PRIMARY_PAGES, READER_SHORTCUTS, SHORTCUT_TABLES, isTypingTarget, normalizeKey, shortcutFor } from '../src/features/reader/interaction/shortcuts'
 import { PAGES } from '../src/lib/pageMeta'
-import { ShortcutHelp } from '../src/features/reader/ShortcutHelp'
+import { ShortcutHelp } from '../src/features/reader/interaction/ShortcutHelp'
 
 /**
  * 快捷键这张表与真正生效的处理器不许各说一套（用户 2026-10-02：「加入一些快捷键快捷方式」）。

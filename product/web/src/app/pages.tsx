@@ -7,7 +7,7 @@ import { SourcesPage } from '../features/source-editor/SourcesPage'
 import { SettingsPage, type SettingsSection } from '../features/settings/SettingsPage'
 import type { BookshelfItem, SearchResult, SourceSummary } from '../lib/api'
 import type { OpenBook } from '../lib/openBook'
-import type { ReaderSettings } from '../features/reader/readerSettings'
+import type { ReaderSettings } from '../features/reader/settingsPanel/readerSettings'
 import type { AppModal, Page, PageDialogKind } from '../lib/nav'
 
 /**

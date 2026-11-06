@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Icon } from '../../icons'
-import { Select } from '../../components/Select'
-import type { TocRuleOption } from '../../lib/api'
+import { Icon } from '../../../icons'
+import { Select } from '../../../components/Select'
+import type { TocRuleOption } from '../../../lib/api'
 import { type ReaderSettings } from './readerSettings'
-import { SCRIPT_MODE_OPTIONS } from './scriptConvert'
-import { moveReaderMenu, READER_MENU_ITEMS, toggleReaderMenu } from './readerMenu'
-import { SettingGroup } from './settingsPanel/SettingRow'
+import { SCRIPT_MODE_OPTIONS } from '../content/scriptConvert'
+import { moveReaderMenu, READER_MENU_ITEMS, toggleReaderMenu } from '../interaction/readerMenu'
+import { SettingGroup } from './SettingRow'
 
 /**
  * 「设置」底部弹层的内容（PROPOSAL-020 P4）：从原「行为」标签页拆出的**工具/其它**项 ——

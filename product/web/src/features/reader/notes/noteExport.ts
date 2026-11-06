@@ -1,4 +1,4 @@
-import type { BookNote } from '../../lib/api'
+import type { BookNote } from '../../../lib/api'
 
 /**
  * 把一本书的划线 / 笔记导出成 Markdown。

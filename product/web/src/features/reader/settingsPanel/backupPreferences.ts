@@ -1,6 +1,6 @@
 import type { ReaderSettings, ReaderFont } from './readerSettings'
 import { defaultReaderSettings } from './readerSettings'
-import { clampFontSize } from './fontSizeControl'
+import { clampFontSize } from '../content/fontSizeControl'
 
 /**
  * 把备份包里"阅读样式 / 朗读引擎"两条映射到本机 `ReaderSettings`。

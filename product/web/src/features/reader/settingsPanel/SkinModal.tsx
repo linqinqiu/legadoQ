@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { zh } from '../../i18n/zh'
-import { Icon } from '../../icons'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { zh } from '../../../i18n/zh'
+import { Icon } from '../../../icons'
+import { useEscapeClose } from '../../../lib/useEscapeClose'
 import {
   activeSkin,
   availableSkins,

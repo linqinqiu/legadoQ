@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../../icons'
-import { SkinModal } from '../SkinModal'
-import { availableSkins, parseBgImage, resolveTheme, type ReaderSettings } from '../readerSettings'
+import { SkinModal } from './SkinModal'
+import { availableSkins, parseBgImage, resolveTheme, type ReaderSettings } from './readerSettings'
 import { BackgroundLibrary } from './BackgroundLibrary'
 import { SettingGroup, SettingRange } from './SettingRow'
 

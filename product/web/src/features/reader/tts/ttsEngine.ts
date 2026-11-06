@@ -1,5 +1,5 @@
-import { api, TtsSessionChunkRequest } from '../../lib/api'
-import { effectiveTtsVoice, ReaderSettings, ttsSessionKey } from './readerSettings'
+import { api, TtsSessionChunkRequest } from '../../../lib/api'
+import { effectiveTtsVoice, ReaderSettings, ttsSessionKey } from '../settingsPanel/readerSettings'
 
 export type TtsPlayState = 'idle' | 'buffering' | 'playing' | 'paused'
 export type TtsSpeakMode = 'replace' | 'continue'

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { chapterConsumed, flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, prependLandingPage, SectionBox, sectionAtPage, sectionProgress } from '../src/features/reader/readerFlow'
+import { chapterConsumed, flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, prependLandingPage, SectionBox, sectionAtPage, sectionProgress } from '../src/features/reader/content/readerFlow'
 
 /**
  * 连续滚动的算术（用户 2026-10-02：「章节间的连接还是不对，怎么能跳转呢，不是一体的吗」）。

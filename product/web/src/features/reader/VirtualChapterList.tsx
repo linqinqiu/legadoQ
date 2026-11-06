@@ -5,10 +5,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Icon } from '../../icons'
 import type { Chapter } from '../../lib/api'
-import { TOC_ROW_HEIGHT } from './readerInteractions'
-import { IDENTITY_CONVERTER } from './scriptConvert'
-import { computeCenterScrollOffset, computeVirtualWindow } from './virtualSlice'
-import { getProgress, subscribeProgress } from './readerProgress'
+import { TOC_ROW_HEIGHT } from './interaction/readerInteractions'
+import { IDENTITY_CONVERTER } from './content/scriptConvert'
+import { computeCenterScrollOffset, computeVirtualWindow } from './content/virtualSlice'
+import { getProgress, subscribeProgress } from './content/readerProgress'
 
 /** 当前阅读章内的细进度条：只挂在这一行上、自订阅进度 store，不拖累整张虚拟列表重渲染。 */
 function CurrentChapterProgress({ chapterIndex }: { chapterIndex: number }) {

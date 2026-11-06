@@ -5,7 +5,7 @@ import type { Page } from '../lib/nav'
 import { getBrand, subscribeBrand } from '../lib/brandStore'
 import { Logo } from '../components/Logo'
 import { promptPwaInstall, subscribePwaInstall } from '../components/PwaManager'
-import { availableSkins, BUILTIN_SKINS, resolveTheme, type ReaderSettings } from '../features/reader/readerSettings'
+import { availableSkins, BUILTIN_SKINS, resolveTheme, type ReaderSettings } from '../features/reader/settingsPanel/readerSettings'
 
 export interface AppHeaderProps {
   page: Page

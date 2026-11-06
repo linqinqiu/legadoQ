@@ -5,7 +5,7 @@ import path from 'node:path'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ReaderScreen } from '../src/features/reader/ReaderScreen'
-import { defaultReaderSettings } from '../src/features/reader/readerSettings'
+import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 import type { OpenBook } from '../src/lib/openBook'
 
 /**
@@ -72,7 +72,7 @@ test('阅读器能静态渲染：章名、书名、五个入口都在，且不�
 
 test('朗读状态只有一个持有者：ReaderScreen 调 hook 并下发，ReaderTtsManager 只消费', () => {
   const screen = read('ReaderScreen.tsx')
-  const manager = read('ReaderTtsManager.tsx')
+  const manager = read('tts/ReaderTtsManager.tsx')
 
   // ① 阅读器自己调 hook（参数齐全），并且不再从 Context 读状态
   assert.match(screen, /const ttsCtx = useReaderTts\(/, '朗读 hook 必须由阅读器自己调用')

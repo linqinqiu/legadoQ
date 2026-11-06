@@ -1,4 +1,4 @@
-import type { BookNote } from '../../lib/api'
+import type { BookNote } from '../../../lib/api'
 import { downloadMarkdown, notesExportFileName, notesToMarkdown, type NoteExportMeta } from './noteExport'
 
 /**

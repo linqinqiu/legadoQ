@@ -2,7 +2,7 @@
  * 字号的唯一口径（P1 收敛）：设置步进器、快捷键、Ctrl+滚轮三处原来各写一份
  * `Math.min(28, Math.max(15, …))`，改边界要改三处。现在只有这里一个出处 ——
  * 连"读回 localStorage 时夹一遍"（`readerSettings.ts`）与"备份包里的 dp 折算"
- * （`features/reader/backupPreferences.ts`）也引这里，那两处原本把 15/28 又抄了一遍。
+ * （`features/reader/settingsPanel/backupPreferences.ts`）也引这里，那两处原本把 15/28 又抄了一遍。
  */
 export const READER_FONT_SIZE_MIN = 15
 export const READER_FONT_SIZE_MAX = 28

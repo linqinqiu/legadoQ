@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { readerImageSrc } from '../src/features/reader/readerImage'
+import { readerImageSrc } from '../src/features/reader/content/readerImage'
 
 /**
  * 正文配图（漫画每一页）的取法与"重取这一张"（`reader/readerImage.ts`）。

@@ -53,7 +53,7 @@ test('按钮档位都有全局基础档（换一处用不会变成裸文字）',
 })
 
 test('朗读悬浮条：挂载时就夹回视口，且不给底部导航让位的那条路已封住', () => {
-  const src = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/ttsBarPosition.ts'), 'utf8')
+  const src = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/tts/ttsBarPosition.ts'), 'utf8')
   // 存进去的坐标可能来自另一块屏；只监听 resize 的话手机上打开会留在屏幕外（连抓手一起）
   assert.match(src, /clampNow\(\)\s*\r?\n\s*window\.addEventListener\('resize'/,
     '挂载时必须先夹一次，而不是只等 resize')

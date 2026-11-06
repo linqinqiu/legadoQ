@@ -11,7 +11,7 @@ import {
   parseBgImage,
   type ReaderBackground,
   type ReaderSettings,
-} from '../readerSettings'
+} from './readerSettings'
 
 /**
  * 阅读背景预设库：把「颜色 + 图片地址 + 压暗」存成一条，之后一键套用。

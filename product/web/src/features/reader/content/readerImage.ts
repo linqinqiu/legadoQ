@@ -1,5 +1,5 @@
-import { api } from '../../lib/api'
-import { isSameSiteAsset } from './readerInteractions'
+import { api } from '../../../lib/api'
+import { isSameSiteAsset } from '../interaction/readerInteractions'
 
 /**
  * 正文配图（含漫画每一页）的地址算法，收在一处：渲染、预热、重取三处要用**同一个**地址，

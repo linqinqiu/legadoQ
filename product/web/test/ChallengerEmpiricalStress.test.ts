@@ -45,7 +45,7 @@ export function calculateVirtualChapterListState({
 }
 
 /**
- * Direct replication of scrollToActive calculation from web/src/features/reader/virtualSlice.ts
+ * Direct replication of scrollToActive calculation from web/src/features/reader/content/virtualSlice.ts
  * 的 computeCenterScrollOffset
  */
 export function calculateAutoScroll({

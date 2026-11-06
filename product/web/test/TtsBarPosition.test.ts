@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { clampPosition } from '../src/features/reader/ttsBarPosition'
+import { clampPosition } from '../src/features/reader/tts/ttsBarPosition'
 
 /**
  * 朗读悬浮条的位置（用户 2026-10-03：「长按可以调节位置，防止遮挡文本内容，
@@ -57,10 +57,10 @@ test('clampPosition - 窄屏要给底部导航让位，不然六颗键被糊住'
 })
 
 test('默认位置归 CSS：没拖过时一条内联样式都不写，"恢复默认"= 清掉那份覆盖', () => {
-  const bar = read('../src/features/reader/TtsPlayerBar.tsx')
+  const bar = read('../src/features/reader/tts/TtsPlayerBar.tsx')
   assert.match(bar, /style=\{style\}/, '位置由 hook 给，组件自己不算坐标')
   assert.match(bar, /className="tts-floating-bar"/, '默认位置仍然由样式表那一档决定')
-  const hook = read('../src/features/reader/ttsBarPosition.ts')
+  const hook = read('../src/features/reader/tts/ttsBarPosition.ts')
   assert.match(hook, /position \? \{ left: position\.x[\s\S]{0,120}transform: 'none' \} as const : undefined/,
     '没拖过 = undefined，不写内联样式（写了就有第二个事实来源）')
   assert.match(hook, /localStorage\.removeItem\(STORAGE_KEY\)/, '复位是把那份覆盖清掉，不是写回一组常量坐标')
@@ -68,7 +68,7 @@ test('默认位置归 CSS：没拖过时一条内联样式都不写，"恢复默
 })
 
 test('长按才进入拖动，且按在按钮上不抓走整条', () => {
-  const hook = read('../src/features/reader/ttsBarPosition.ts')
+  const hook = read('../src/features/reader/tts/ttsBarPosition.ts')
   assert.match(hook, /const HOLD_MS = 250/, '按住 250ms 才算"抓起来"')
   assert.match(hook, /const SLOP = 9/, '容差之内松手 = 一次普通点击')
   assert.match(hook, /if \(!active\.moved && Math\.hypot\(dx, dy\) < SLOP\) return/,
@@ -87,5 +87,5 @@ test('双击「朗读本章」接上了复位', () => {
   const header = read('../src/features/reader/ReaderHeader.tsx')
   assert.match(header, /onDoubleClick=\{onResetTtsBar\}/)
   assert.match(reader, /onResetTtsBar=\{resetTtsBarPosition\}/)
-  assert.match(reader, /import \{ resetTtsBarPosition \} from '\.\/ttsBarPosition'/)
+  assert.match(reader, /import \{ resetTtsBarPosition \} from '\.\/tts\/ttsBarPosition'/)
 })

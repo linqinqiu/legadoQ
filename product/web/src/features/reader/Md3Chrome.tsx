@@ -1,6 +1,6 @@
 import { Icon } from '../../icons'
-import { ReaderMenuAction } from './readerMenu'
-import { TtsPlayState } from './ttsEngine'
+import { ReaderMenuAction } from './interaction/readerMenu'
+import { TtsPlayState } from './tts/ttsEngine'
 
 /**
  * MD3 阅读外壳（PROPOSAL-020 P1）：顶栏 + 底栏，参照 legado-with-MD3 的阅读界面。

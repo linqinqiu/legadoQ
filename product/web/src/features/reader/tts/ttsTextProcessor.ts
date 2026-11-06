@@ -1,4 +1,4 @@
-import { contentImageUrl } from './readerInteractions'
+import { contentImageUrl } from '../interaction/readerInteractions'
 
 export type TtsSentence = {
   sentenceIndex: number

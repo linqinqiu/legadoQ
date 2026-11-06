@@ -4,8 +4,8 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { defaultReaderSettings, effectiveTtsVoice, loadReaderSettings, ttsSessionKey } from '../src/features/reader/readerSettings'
-import { TtsSettingsModal } from '../src/features/reader/TtsSettingsModal'
+import { defaultReaderSettings, effectiveTtsVoice, loadReaderSettings, ttsSessionKey } from '../src/features/reader/settingsPanel/readerSettings'
+import { TtsSettingsModal } from '../src/features/reader/tts/TtsSettingsModal'
 
 /**
  * 「朗读引擎在使用中切换会重音，都启动」+「小说阅读过程中章节之间的过渡没有做好」
@@ -26,7 +26,7 @@ const readerSource = readFileSync(fileURLToPath(new URL('../src/features/reader/
 // 0.8.2 结构重排：朗读集群（状态 + 9 个回调 + 2 个 effect）抽进了 useReaderTts.ts。
 // 判"阅读器这一面"时读两份拼起来的整体 —— 不是放水：只读一处会漏掉另一处，
 // 而拼起来之后任何一侧长回旧写法都会被下面的 match/doesNotMatch 逮住。
-const readerTtsSource = readFileSync(fileURLToPath(new URL('../src/features/reader/useReaderTts.ts', import.meta.url)), 'utf8')
+const readerTtsSource = readFileSync(fileURLToPath(new URL('../src/features/reader/tts/useReaderTts.ts', import.meta.url)), 'utf8')
 const readerSurface = readerSource + '\n' + readerTtsSource
 
 /** 取某个 `const 名字 = ...` 声明到它自己的依赖数组收尾（`\n  }, [`）为止。 */
@@ -109,7 +109,7 @@ test('朗读会话身份 - 排版与主题改动不该打断正在读的这一�
 })
 
 test('朗读引擎与 ttsEngine.ts 用的是同一套会话判据（两套名字迟早漂移）', () => {
-  const engineSource = readFileSync(fileURLToPath(new URL('../src/features/reader/ttsEngine.ts', import.meta.url)), 'utf8')
+  const engineSource = readFileSync(fileURLToPath(new URL('../src/features/reader/tts/ttsEngine.ts', import.meta.url)), 'utf8')
   assert.match(engineSource, /return ttsSessionKey\(settings\)/, 'HttpAudioTtsEngine.getSettingsKey 必须直接引 ttsSessionKey')
   assert.ok(
     !/settings\.ttsVoice\s*\|\|\s*'zh-CN-XiaoxiaoNeural'/.test(engineSource),

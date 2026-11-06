@@ -74,7 +74,7 @@ test('ReaderScreen 只把章节导航交给 legacy 顶栏，并沿用旧的先�
  * 免得和目录头的「加入书架」书签并排时像同一件事。
  */
 test('笔记入口只留一份：目录头不再重复，图标与书架键区分', () => {
-  const tocHeader = read('features', 'reader', 'TocDrawerHeader.tsx')
+  const tocHeader = read('features', 'reader', 'dialogs', 'TocDrawerHeader.tsx')
   assert.doesNotMatch(tocHeader, /onToggleNotes|notesCount/, '目录头不再接笔记开关')
   assert.doesNotMatch(tocHeader, /笔记（/, '目录头没有第二个笔记入口')
   assert.match(tocHeader, /label="回到目录"[\s\S]{0,60}?icon="arrowLeft"/, '「回到目录」要能返回，且别和倒序键共用 list 图标')

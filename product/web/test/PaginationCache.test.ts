@@ -24,7 +24,7 @@ import {
   getPagination,
   putPagination,
   evictIfNeeded,
-} from '../src/features/reader/paginationCache'
+} from '../src/features/reader/content/paginationCache'
 
 /** 构造一份默认的排版参数，便于在用例间微调单个字段做隔离测试。 */
 function baseParams(overrides: Partial<TypesetParams> = {}): TypesetParams {

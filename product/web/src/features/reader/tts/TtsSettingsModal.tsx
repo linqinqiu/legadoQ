@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { zh } from '../../i18n/zh'
-import { api, TtsVoice } from '../../lib/api'
-import { Icon } from '../../icons'
-import { ReaderSettings, TtsEngineType } from './readerSettings'
-import { Select } from '../../components/Select'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { zh } from '../../../i18n/zh'
+import { api, TtsVoice } from '../../../lib/api'
+import { Icon } from '../../../icons'
+import { ReaderSettings, TtsEngineType } from '../settingsPanel/readerSettings'
+import { Select } from '../../../components/Select'
+import { useEscapeClose } from '../../../lib/useEscapeClose'
 
 
 export type SleepTimerOption = 'off' | '15' | '30' | '45' | '60' | 'chapter'

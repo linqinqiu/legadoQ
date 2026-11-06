@@ -7,7 +7,7 @@ import {
   loadReaderSettings,
   parseTextIndent,
   saveReaderSettings,
-} from '../src/features/reader/readerSettings'
+} from '../src/features/reader/settingsPanel/readerSettings'
 
 /**
  * 「阅读设置 · 排版」这一组的判据。

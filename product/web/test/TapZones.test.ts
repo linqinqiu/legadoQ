@@ -14,7 +14,7 @@ import {
   TAP_PRESETS,
   zoneAt,
   type TapMap,
-} from '../src/features/reader/tapZones.ts'
+} from '../src/features/reader/interaction/tapZones.ts'
 
 /**
  * 点击分区（用户 2026-10-04：「可以自定义点击区域范围并设置，自定义管理」；

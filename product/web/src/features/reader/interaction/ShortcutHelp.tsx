@@ -3,8 +3,8 @@
 // 只会让套件里这一条红，页面与构建都看不出问题（AGENTS §5，PageBar/Notice 撞过同一坑）。
 import React from 'react'
 import { SHORTCUT_TABLES } from './shortcuts'
-import { Icon } from '../../icons'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { Icon } from '../../../icons'
+import { useEscapeClose } from '../../../lib/useEscapeClose'
 
 /**
  * 「快捷键」这张表（用户 2026-10-02：「加入一些快捷键快捷方式」）。

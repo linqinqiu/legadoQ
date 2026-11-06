@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { zh } from '../../i18n/zh'
-import { Chapter } from '../../lib/api'
+import { zh } from '../../../i18n/zh'
+import { Chapter } from '../../../lib/api'
 import { TtsPlayerBar } from './TtsPlayerBar'
 import { TtsSettingsModal } from './TtsSettingsModal'
-import { Icon } from '../../icons'
-import { toast } from '../../components/Toast'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { Icon } from '../../../icons'
+import { toast } from '../../../components/Toast'
+import { useEscapeClose } from '../../../lib/useEscapeClose'
 import { useTts } from './ReaderTtsContext'
 
 /**

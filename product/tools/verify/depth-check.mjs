@@ -3,8 +3,8 @@
 // 为什么需要它：本项目在包/目录深度上反复重构（0.8.2 路由重排、server→app），
 // 历来靠人盯。约定不进门禁等于没有约定——所以用脚本钉死已验证的浅结构：
 //   - 后端：io/legado 下每个域包平铺文件，不建子子包（io/legado/<域>/<文件>.kt）
-//   - 前端：web/src 下最多 src/<分区>/<子目录>/<文件>，不再往下嵌
-//     （如 reader/settingsPanel/TypographyTab.tsx 是上限；components/ 类目录也只放一层文件）
+//   - 前端：web/src 下最多 src/<分区>/<域>/<组>/<文件>，不再往下嵌
+//     （如 reader/tts/TtsPlayerBar.tsx 是上限；<组> 只用来收拢同一件事的文件）
 //
 // ⚠️ 2026-11 更正：本文件原先只有硬阈值、没有基线，而阈值按 2026-10-25 的 86 个 .kt 标定。
 // 仓库随后长到 125 个 .kt，前端也从 137 个 ts/tsx 长到 160+，出现了 27 个**合法的子系统**目录
@@ -36,7 +36,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 // 标定值：目录层数（不含文件名）——目标结构，不放宽
 const MAX_BACKEND_PKG_DIRS = 1;   // io/legado/<域>/File.kt
-const MAX_FRONTEND_DIRS = 2;      // web/src/<分区>/<子目录>/File.tsx
+// 前端目标结构：web/src/<分区>/<域>/<组>/File.tsx（2026-11-06 由 2 改 3）。
+// 改的理由不是"嫌麻烦"，是 2 层逼着把一个域的所有文件平铺：`features/reader` 因此长到
+// 50 个文件 9.9k 行，屏、TTS、排版、点按区、笔记、浮层全挤在一层，靠文件名猜归属。
+// 第 3 层只允许**组**（tts/ interaction/ content/ notes/ dialogs/），第 4 层仍然禁止；
+// 后端阈值不动。
+const MAX_FRONTEND_DIRS = 3;      // web/src/<分区>/<域>/<组>/File.tsx
 
 // 已知过深文件基线（ROOT 相对、正斜杠）。**只许缩小**：扁平化掉一个就从这里删一条。
 // 分后端/前端两块只是为了报告可读，判定是合并后统一比对的。
@@ -55,24 +60,8 @@ const KNOWN_DEEP = new Set([
   'app/src/main/kotlin/io/legado/rules/processor/demo/DemoHelloProcessor.kt',
   'app/src/main/kotlin/io/legado/rules/processor/demo/DemoMarkdownProcessor.kt',
 
-  // ---- 前端 16：lib/api/domains（按域拆分的端点契约，正是阶段④的落点）、
-  //      features/reader/{typeset,settingsPanel,dict}（排版引擎/设置面板/字典数据）----
-  'web/src/lib/api/domains/agent.ts',
-  'web/src/lib/api/domains/backup.ts',
-  'web/src/lib/api/domains/brand.ts',
-  'web/src/lib/api/domains/reader.ts',
-  'web/src/lib/api/domains/search.ts',
-  'web/src/lib/api/domains/sources.ts',
-  'web/src/lib/api/domains/system.ts',
-  'web/src/features/reader/dict/openccData.ts',
-  'web/src/features/reader/settingsPanel/BackgroundLibrary.tsx',
-  'web/src/features/reader/settingsPanel/BehaviorTab.tsx',
-  'web/src/features/reader/settingsPanel/ColorTab.tsx',
-  'web/src/features/reader/settingsPanel/SettingRow.tsx',
-  'web/src/features/reader/settingsPanel/TypographyTab.tsx',
-  'web/src/features/reader/typeset/layoutEngine.ts',
-  'web/src/features/reader/typeset/layoutWorker.ts',
-  'web/src/features/reader/typeset/typesetParams.ts',
+  // ---- 前端：2026-11-06 上限改到 3 层后，原来的 16 条（lib/api/domains、reader/{typeset,settingsPanel,dict}）
+  //      全部落进合法区间，基线清空。往后再出现过深文件，就是真的新嵌深。----
 ]);
 
 function walk(dir, exts, out) {

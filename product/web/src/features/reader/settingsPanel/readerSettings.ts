@@ -1,9 +1,9 @@
-import { DEFAULT_MAPS, looksLikeGrid, migrateGrid, sanitizeMap, type TapMap } from './tapZones'
-import { DEFAULT_READER_MENU, parseReaderMenu, type ReaderMenuAction } from './readerMenu'
-import { parseScriptMode, type ScriptMode } from './scriptConvert'
-import type { PageTurnAnim } from './pageTurn'
-import { READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN } from './fontSizeControl'
-import { clampNumber, clampScrollPosition, scrollPosition } from '../../lib/scrollProgress'
+import { DEFAULT_MAPS, looksLikeGrid, migrateGrid, sanitizeMap, type TapMap } from '../interaction/tapZones'
+import { DEFAULT_READER_MENU, parseReaderMenu, type ReaderMenuAction } from '../interaction/readerMenu'
+import { parseScriptMode, type ScriptMode } from '../content/scriptConvert'
+import type { PageTurnAnim } from '../interaction/pageTurn'
+import { READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN } from '../content/fontSizeControl'
+import { clampNumber, clampScrollPosition, scrollPosition } from '../../../lib/scrollProgress'
 
 /**
  * 这三个纯函数已下沉到 `lib/scrollProgress.ts`（它们不引用任何 `ReaderSettings`，

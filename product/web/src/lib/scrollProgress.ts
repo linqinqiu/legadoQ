@@ -1,7 +1,7 @@
 /**
  * 滚动进度的纯数学：**与阅读域无关**，所以住在 shared。
  *
- * 这三个函数原先在 `features/reader/readerSettings.ts` 里，但它们的签名与实现
+ * 这三个函数原先在 `features/reader/settingsPanel/readerSettings.ts` 里，但它们的签名与实现
  * 完全不引用 `ReaderSettings` —— `scrollPosition` 原来的两个真实消费者里，
  * 一个是阅读器（同域，没问题），另一个是 `components/BookDetailModal.tsx`（shared）。
  * 后者据此成为一条 shared → feature 反向依赖，而它要的只是这道除法。

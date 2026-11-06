@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
-import { Icon } from '../../icons'
-import { IconButton } from './IconButton'
+import { Icon } from '../../../icons'
+import { IconButton } from '../IconButton'
 import { OtherSettingsPanel } from './OtherSettingsPanel'
 import { ReaderSettingsControls } from './ReaderSettingsControls'
-import { ReaderSheet } from './ReaderSheet'
+import { ReaderSheet } from '../ReaderSheet'
 import type { ReaderSettings } from './readerSettings'
-import type { TocRuleOption } from '../../lib/api'
+import type { TocRuleOption } from '../../../lib/api'
 
 /**
  * 阅读设置的两套外形，共用同一份内容。

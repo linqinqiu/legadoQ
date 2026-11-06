@@ -6,7 +6,7 @@ import path from 'node:path'
 import { testFiles } from './discover.ts'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { SkinModal } from '../src/features/reader/SkinModal'
+import { SkinModal } from '../src/features/reader/settingsPanel/SkinModal'
 import { ColorTab } from '../src/features/reader/settingsPanel/ColorTab'
 import { BackgroundLibrary } from '../src/features/reader/settingsPanel/BackgroundLibrary'
 import {
@@ -36,7 +36,7 @@ import {
   themeClassNames,
   type CustomSkin,
   type ReaderSettings,
-} from '../src/features/reader/readerSettings'
+} from '../src/features/reader/settingsPanel/readerSettings'
 
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')
 const settings = (patch: Partial<ReaderSettings> = {}): ReaderSettings => ({ ...defaultReaderSettings, ...patch })
@@ -415,7 +415,7 @@ test('SkinModal 显示内置皮肤的状态：已修改、已删除、使用中�
 })
 
 test('SkinModal 把内置 id 挡在自定义保存入口，并给内置删除 / 恢复留路径', () => {
-  const source = read('..', 'src', 'features', 'reader', 'SkinModal.tsx')
+  const source = read('..', 'src', 'features', 'reader', 'settingsPanel', 'SkinModal.tsx')
   assert.match(source, /isBuiltinSkinId\(sanitized\)/, '自定义皮肤保存时必须先拒绝内置 id')
   assert.match(source, /这些名字被预设皮肤占用了/, '拒绝时要说清为什么，而不是静默保存失败')
   assert.match(source, /isBuiltinSkinId\(skin\.id\)\) return/, '删除自定义皮肤的入口也要兜底挡住内置 id')
@@ -428,7 +428,7 @@ test('SkinModal 把内置 id 挡在自定义保存入口，并给内置删除 / 
 })
 
 test('内置皮肤的 CSS 预填读出的是出厂规则，不读用户自己的追加样式', () => {
-  const source = read('..', 'src', 'features', 'reader', 'readerSettings.ts')
+  const source = read('..', 'src', 'features', 'reader', 'settingsPanel', 'readerSettings.ts')
   assert.match(source, /owner\?\.id === 'legado-custom-skin'/, '跳过注入点，否则编辑一次未改动的皮肤就会把追加样式当成出厂样式')
   assert.match(source, /function readBuiltinSkinCss/)
 })
@@ -473,7 +473,7 @@ test('应用只有一套外壳（旧版顶栏），侧栏与页头条那套文�
   assert.ok(!fs.existsSync(path.join(src, 'PageBar.tsx')), 'PageBar.tsx（v2 页头条）应该已经删掉')
   const testDir = path.resolve(import.meta.dirname)
   assert.ok(!fs.existsSync(path.join(testDir, 'AppRail.test.ts')), '配套用例也要一起撤，留着就是一条打不开的红')
-  const settingsSrc = read('..', 'src', 'features', 'reader', 'readerSettings.ts')
+  const settingsSrc = read('..', 'src', 'features', 'reader', 'settingsPanel', 'readerSettings.ts')
   assert.doesNotMatch(settingsSrc, /uiLayout/, '设置里不该再有"界面布局"这一档')
   const css = read('..', 'src', 'styles.css')
   for (const dead of ['.app-rail', '.rail-item', '.page-bar', '.app-frame', '.rail-tabs']) {
@@ -494,7 +494,7 @@ test('样式表里这几张界面都有规则（更新日志页、皮肤弹窗�
   // W2 并档：两张弹窗自己的宽高没了，几何在共用那一档里 —— 所以断言也搬到那一档上。
   assert.match(css, /^\.dialog-shell \{/m, '弹窗外壳那一档不见了，两张弹窗都会退回裸 div')
   assert.match(css, /^\.dialog-head \{/m, '弹窗页头那一档不见了')
-  assert.match(read('..', 'src', 'features', 'reader', 'SkinModal.tsx'), /className="dialog-shell[^"]*skin-dialog"/)
+  assert.match(read('..', 'src', 'features', 'reader', 'settingsPanel', 'SkinModal.tsx'), /className="dialog-shell[^"]*skin-dialog"/)
   assert.match(read('..', 'src', 'features', 'settings', 'WallpaperModal.tsx'), /className="dialog-shell[^"]*wallpaper-dialog"/)
   assert.match(read('..', 'src', 'components', 'TocRulesModal.tsx'), /className="dialog-shell[^"]*toc-rules-modal"/)
   assert.match(css, /\.changelog-page \{/)

@@ -28,7 +28,7 @@ test('阅读器：选中正文 → 浮层 → 保存，且偏移按章节内字�
   // 浮层外壳在 PROPOSAL-019 F 里抽成了 `NoteToolbar.tsx`：这里钉"ReaderScreen 真的挂了它" +
   // "外壳标记在那一份里"，两边都判，抽走之后不许变成没人渲染的死组件。
   assert.match(reader, /<NoteToolbar/, '浮层要在（挂在 ReaderScreen 上）')
-  assert.match(read('../src/features/reader/NoteToolbar.tsx'), /reader-note-toolbar/, '浮层外壳标记要在')
+  assert.match(read('../src/features/reader/notes/NoteToolbar.tsx'), /reader-note-toolbar/, '浮层外壳标记要在')
   assert.match(reader, /reader-note-highlight/, '正文要能画高亮')
 })
 
@@ -40,5 +40,5 @@ test('阅读器：抽屉里有「笔记」面板，按书查看', () => {
   assert.match(reader, /notesPanel/, '面板开关要在')
   assert.match(reader, /onJumpNote=\{jumpToNote\}/, '点一条要能跳章')
   assert.match(catalog, /<NotesPanel/, '面板要挂在抽屉里')
-  assert.match(read('../src/features/reader/NotesPanel.tsx'), /reader-notes-list/, '面板要列得出来')
+  assert.match(read('../src/features/reader/notes/NotesPanel.tsx'), /reader-notes-list/, '面板要列得出来')
 })

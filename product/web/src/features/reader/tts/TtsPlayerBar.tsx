@@ -1,5 +1,5 @@
 import React, { useRef } from 'react'
-import { Icon } from '../../icons'
+import { Icon } from '../../../icons'
 import { TtsPlayState } from './ttsEngine'
 import { SleepTimerOption } from './TtsSettingsModal'
 import { useTtsBarPosition } from './ttsBarPosition'

@@ -65,9 +65,9 @@ const CROSS_FEATURE_BASELINE: readonly string[] = []
  * | 原条目 | 判据 | 处置 |
  * |---|---|---|
  * | `AppHeader` → `reader/readerSettings` | 它是被 `main.tsx` 渲染一次的**全局顶栏**，是 shell 不是 shared | → `app/AppHeader.tsx` |
- * | `SkinModal` → `reader/readerSettings` | 皮肤浮层，另一个消费者 `ColorTab` 就在 `features/reader/` 内 | → `features/reader/SkinModal.tsx` |
+ * | `SkinModal` → `reader/readerSettings` | 皮肤浮层，另一个消费者 `ColorTab` 就在 `features/reader/` 内 | → `features/reader/settingsPanel/SkinModal.tsx` |
  * | `WallpaperModal` → `settings/WallpaperSection` | 壁纸浮层，唯一消费者就是那个设置分区 | → `features/settings/WallpaperModal.tsx` |
- * | `backupPreferences` → `reader/*` ×2 | 它构造的是 `ReaderSettings`，属**阅读域逻辑**；消费者是备份插件 | → `features/reader/backupPreferences.ts` |
+ * | `backupPreferences` → `reader/*` ×2 | 它构造的是 `ReaderSettings`，属**阅读域逻辑**；消费者是备份插件 | → `features/reader/settingsPanel/backupPreferences.ts` |
  * | `{BookDetailModal,SourceChoiceList}` → `sourceInspector` | `sourceInspector` **在 `features/source-editor/` 里零消费者**，只被这两个 shared 组件用；自身只 import `lib/` | → `lib/sourceInspector.ts` |
  * | `BookDetailModal` → `reader/readerSettings` | 它只要 `scrollPosition` —— 一个不引用任何 `ReaderSettings` 的**纯函数** | → `lib/scrollProgress.ts` |
  *
@@ -97,7 +97,7 @@ const SHELL_DIRS = new Set(['app'])
  * shell 目录名 —— 它只能被**组合根**（`src/` 根级文件，如 `main.tsx`）import。
  *
  * 别的层 import 它，就是把组合根当共享库用。实测原来有 2 条，且都指向同一处：
- * `components/AppHeader.tsx` 与 `features/reader/shortcuts.ts` 各自 `import ... from 'app/pageMeta'`
+ * `components/AppHeader.tsx` 与 `features/reader/interaction/shortcuts.ts` 各自 `import ... from 'app/pageMeta'`
  * —— 那张「有哪些页面」的纯数据表被误放在 `app/` 下。它搬到 `lib/pageMeta.ts` 后此判据为 0。
  */
 const SHELL_DIR = 'app'

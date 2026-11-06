@@ -7,7 +7,7 @@
 //
 // 返回值的**名字与原来逐字一致**，所以调用方组件体内那 590 行渲染代码一个字都不用改。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from '../../components/Toast'
+import { toast } from '../../../components/Toast'
 import {
   HttpAudioTtsEngine,
   ITtsEngine,
@@ -17,10 +17,10 @@ import {
   WebSpeechEngine,
 } from './ttsEngine'
 import { processChapterForTts, TtsChapterData } from './ttsTextProcessor'
-import { findFirstFullyVisibleParagraphIndex, ViewportBounds } from './readerInteractions'
-import { ttsSessionKey, TtsEngineType, type ReaderSettings } from './readerSettings'
+import { findFirstFullyVisibleParagraphIndex, ViewportBounds } from '../interaction/readerInteractions'
+import { ttsSessionKey, TtsEngineType, type ReaderSettings } from '../settingsPanel/readerSettings'
 import type { SleepTimerOption } from './TtsSettingsModal'
-import type { Chapter } from '../../lib/api'
+import type { Chapter } from '../../../lib/api'
 
 export type ReaderTtsDeps = {
   /** 当前章（用于取标题做朗读分片、以及"音频章"判定）。 */

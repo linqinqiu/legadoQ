@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { HttpAudioTtsEngine, isPlayInterruptedError } from '../src/features/reader/ttsEngine'
-import { defaultReaderSettings } from '../src/features/reader/readerSettings'
+import { HttpAudioTtsEngine, isPlayInterruptedError } from '../src/features/reader/tts/ttsEngine'
+import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 
 class FakeAudio {
   static instances: FakeAudio[] = []

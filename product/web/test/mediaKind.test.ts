@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { isDirectMedia, isHlsUrl, sniffMediaKind } from '../src/features/reader/mediaKind'
-import { MediaBlock } from '../src/features/reader/MediaBlock'
+import { isDirectMedia, isHlsUrl, sniffMediaKind } from '../src/features/reader/content/mediaKind'
+import { MediaBlock } from '../src/features/reader/content/MediaBlock'
 
 const proxy = (raw: string) => `/api/book/media?url=${encodeURIComponent(raw)}`
 

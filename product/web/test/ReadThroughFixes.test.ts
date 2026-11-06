@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { removeCut } from '../src/features/reader/tapZones'
-import { splitSentences } from '../src/features/reader/ttsTextProcessor'
+import { removeCut } from '../src/features/reader/interaction/tapZones'
+import { splitSentences } from '../src/features/reader/tts/ttsTextProcessor'
 import { searchStore } from '../src/lib/searchStore'
 
 /**
@@ -27,7 +27,7 @@ test('removeCut 按下标删线，横竖两条把手都用它', () => {
   assert.deepEqual(removeCut([0.5], 0), [], '只剩一条时双击要真的把它摘掉')
   assert.deepEqual(removeCut([0.5], 5), [0.5], '下标越界不该动任何东西')
 
-  const editor = read('features', 'reader', 'TapZoneEditor.tsx')
+  const editor = read('features', 'reader', 'interaction', 'TapZoneEditor.tsx')
   assert.equal((editor.match(/filter\(\(_, item\)/g) || []).length, 0, '按下标比值的写法要清零')
   assert.match(editor, /withCuts\('x', removeCut\(map\.x, index\)\)/, '竖线把手')
   assert.match(editor, /withCuts\('y', removeCut\(map\.y, index\)\)/, '横线把手（曾与竖线同一次笔误）')
@@ -40,8 +40,8 @@ test('全角数字与字母是有效内容，纯标点碎片仍然丢掉', () =>
     '反向对照：真·纯标点仍然要被丢掉')
   // 两处"什么算标点"必须同源：引擎侧与分句侧各写一份迟早漂
   const range = /\/\[\\s[^/\n]*\]\/g/g
-  const engine = read('features', 'reader', 'ttsEngine.ts').match(range) ?? []
-  const processor = read('features', 'reader', 'ttsTextProcessor.ts').match(range) ?? []
+  const engine = read('features', 'reader', 'tts', 'ttsEngine.ts').match(range) ?? []
+  const processor = read('features', 'reader', 'tts', 'ttsTextProcessor.ts').match(range) ?? []
   assert.equal(engine.length, 1, 'ttsEngine 里应当只有一处剥除区间')
   assert.equal(processor.length, 1, 'ttsTextProcessor 里应当只有一处剥除区间')
   assert.deepEqual(processor, engine, '两处剥除区间不许是两个答案')
@@ -186,7 +186,7 @@ test('底部弹层只在开着的时候接 Esc', () => {
   assert.doesNotMatch(sheet, /useEscapeClose\(onClose\)/,
     '反向对照：无条件接 Esc 的写法')
   // 0.2.15：设置块整块拆进 ReaderSettingsSheet.tsx，判据跟着搬（仍然只许一张 ReaderSheet）。
-  const settingsSheet = read('features', 'reader', 'ReaderSettingsSheet.tsx')
+  const settingsSheet = read('features', 'reader', 'settingsPanel', 'ReaderSettingsSheet.tsx')
   assert.equal((settingsSheet.match(/<ReaderSheet /g) ?? []).length, 1,
     '阅读设置合并成一张弹层；再冒出第二张说明又把两个设置拆回去了')
   const screen = read('features', 'reader', 'ReaderScreen.tsx')

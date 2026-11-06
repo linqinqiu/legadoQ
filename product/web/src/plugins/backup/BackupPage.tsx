@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type BackupImportSummary, type BackupSnapshotInfo, type KeptBackupEntry } from '../../lib/api'
 import { toast } from '../../components/Toast'
 import { Icon } from '../../icons'
-import { loadReaderSettings, saveReaderSettings } from '../../features/reader/readerSettings'
-import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../../features/reader/backupPreferences'
+import { loadReaderSettings, saveReaderSettings } from '../../features/reader/settingsPanel/readerSettings'
+import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../../features/reader/settingsPanel/backupPreferences'
 import { fetchImportUrl, fileNameFromUrl } from '../../lib/importFromUrl'
 
 /**

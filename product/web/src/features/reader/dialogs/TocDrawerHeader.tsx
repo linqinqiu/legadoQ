@@ -1,5 +1,5 @@
-import { Icon } from '../../icons'
-import { IconButton } from './IconButton'
+import { Icon } from '../../../icons'
+import { IconButton } from '../IconButton'
 
 /**
  * 目录抽屉的标题栏（章名 + 书架 / 换源 / 刷新 / 倒序 / 关闭五颗键）。

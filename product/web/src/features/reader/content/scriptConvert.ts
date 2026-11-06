@@ -140,7 +140,7 @@ export async function loadScriptConverter(mode: ScriptMode): Promise<ScriptConve
   if (mode === 'off') return IDENTITY_CONVERTER
   const ready = cache.get(mode)
   if (ready) return ready
-  const dict = await import('./dict/openccData')
+  const dict = await import('../dict/openccData')
   const converter = createConverter(mode, dict)
   cache.set(mode, converter)
   return converter

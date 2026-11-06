@@ -1,4 +1,4 @@
-import { zh } from '../../i18n/zh'
+import { zh } from '../../../i18n/zh'
 /**
  * 标记快捷条（MD3 MarkingSelectionMenu 形态，PROPOSAL 阅读器增强）：
  * 选中正文后先摆这一条，而不是立刻弹笔记输入框。四个动作：

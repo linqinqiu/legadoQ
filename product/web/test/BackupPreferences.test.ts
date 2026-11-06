@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../src/features/reader/backupPreferences'
-import { defaultReaderSettings } from '../src/features/reader/readerSettings'
+import { applyPreferencePatch, mapReadStyle, mapTtsEngine } from '../src/features/reader/settingsPanel/backupPreferences'
+import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 
 /**
  * 备份包「阅读样式 / 朗读引擎」→ 本机阅读设置的映射。

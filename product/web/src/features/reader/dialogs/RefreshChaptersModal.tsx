@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
-import { zh } from '../../i18n/zh'
-import { Icon } from '../../icons'
-import type { Chapter } from '../../lib/api'
-import { api } from '../../lib/api'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { zh } from '../../../i18n/zh'
+import { Icon } from '../../../icons'
+import type { Chapter } from '../../../lib/api'
+import { api } from '../../../lib/api'
+import { useEscapeClose } from '../../../lib/useEscapeClose'
 
 /**
  * 手动刷新正文（0.2.0）：正文平时一律先吃缓存，站点改了错字/补了内容时读者只能干等。

@@ -8,7 +8,7 @@
  * `keys` 是 `normalizeKey` 之后的形状（小写、` ` 记成 `space`、`Escape` 记成 `esc`），
  * `display` 是给人看的那一列 —— 两者分开是因为键盘上印的是「←」而代码里是 `arrowleft`。
  */
-import { PRIMARY_PAGES } from '../../lib/pageMeta'
+import { PRIMARY_PAGES } from '../../../lib/pageMeta'
 
 export { PRIMARY_PAGES }
 

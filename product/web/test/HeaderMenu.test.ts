@@ -7,7 +7,7 @@ import React from 'react'
 import { AppHeader, APP_THEMES } from '../src/app/AppHeader'
 import type { Page } from '../src/lib/nav'
 import { Logo } from '../src/components/Logo'
-import { defaultReaderSettings, ReaderSettings } from '../src/features/reader/readerSettings'
+import { defaultReaderSettings, ReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 
 test('HeaderMenu - APP_THEMES configuration', () => {
   // 皮肤单一来源是 BUILTIN_SKINS（readerSettings.ts）；这里钉清单与名单一致。

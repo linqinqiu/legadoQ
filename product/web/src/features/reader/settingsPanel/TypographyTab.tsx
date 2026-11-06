@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '../../../icons'
-import { stepFontSize } from '../fontSizeControl'
-import { defaultReaderSettings, type ReaderSettings } from '../readerSettings'
+import { stepFontSize } from '../content/fontSizeControl'
+import { defaultReaderSettings, type ReaderSettings } from './readerSettings'
 import {
   fontNameFromFile,
   fontNameFromUrl,

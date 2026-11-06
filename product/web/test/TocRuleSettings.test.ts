@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { defaultReaderSettings, parseTocRuleKey, ttsSessionKey } from '../src/features/reader/readerSettings'
+import { defaultReaderSettings, parseTocRuleKey, ttsSessionKey } from '../src/features/reader/settingsPanel/readerSettings'
 
 /**
  * 「阅读设置 → 本地书目录」（用户 2026-10-02：「txt目录规则，这个可以放到阅读设置里」）。
@@ -38,7 +38,7 @@ test('目录规则不参与朗读会话身份（换规则不该打断正在读�
  * 阅读设置抽屉 = 只对着手上这本（暂选，不写全局）。
  */
 test('默认规则长在书架的导入动作旁边，不在「皮肤」浮层里', () => {
-  const skin = read('../src/features/reader/SkinModal.tsx')
+  const skin = read('../src/features/reader/settingsPanel/SkinModal.tsx')
   // 判的是代码痕迹，不是那句"搬走了"的说明文字
   assert.doesNotMatch(skin, /api\.tocRules|txtTocRule|<Select/, '皮肤浮层只剩皮肤；分章规则的代码别再长回来')
   // 0.8.2 拆组：弹窗挂在书架页（pages/ShelfPage.tsx），那份阅读设置仍在宿主（main.tsx），
@@ -64,7 +64,7 @@ test('阅读设置抽屉里那一档只对着手上这本', () => {
   const reader = read('../src/features/reader/ReaderScreen.tsx')
   // PROPOSAL-020 P4：「本地书目录」这节从「行为」页搬去了「设置」弹层（OtherSettingsPanel），
   // 重切那两条链路（打到服务端、回填服务端说的那条）仍在 ReaderScreen 上。
-  const panel = read('../src/features/reader/OtherSettingsPanel.tsx')
+  const panel = read('../src/features/reader/settingsPanel/OtherSettingsPanel.tsx')
   assert.match(panel, /\{!!localBook && \(tocRuleOptions\?\.length \?\? 0\) > 0 && \(/,
     '在线书没有"目录规则"这件事，这一组就跟着本地书出现')
   assert.match(panel, /title="本地书目录"/, "面板里有这一组")
@@ -145,7 +145,7 @@ test('手动可选 与 参与自动打分 是两件事，界面和服务端都�
   assert.match(modal, /<code title=\{rule\.rule\}>/, '正则原文要露出来，否则没人判断得了它适不适合自己的书')
   assert.match(modal, /手动选一条不需要先"启用"它/, '界面文案把这两件事分开讲')
 
-  const panel = read('../src/features/reader/OtherSettingsPanel.tsx')
+  const panel = read('../src/features/reader/settingsPanel/OtherSettingsPanel.tsx')
   assert.match(panel, /\.filter\(option => !option\.broken\)/, '阅读设置里那颗选择器同样排除坏正则')
   assert.match(panel, /（不参与自动）/, '选得到但不打分的那几条要标出来，别让人以为勾了就等于生效')
 })

@@ -3,8 +3,8 @@
 // 少这一行时构建与页面都正常，只有套件红四条 —— 与 ShortcutHelp/useEscapeClose 那次同形。
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import { Icon } from '../../icons'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { Icon } from '../../../icons'
+import { useEscapeClose } from '../../../lib/useEscapeClose'
 import {
   addCut,
   removeCut,

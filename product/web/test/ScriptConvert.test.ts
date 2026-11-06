@@ -9,9 +9,9 @@ import {
   parseScriptMode,
   SCRIPT_MODE_OPTIONS,
   type ScriptDict,
-} from '../src/features/reader/scriptConvert'
+} from '../src/features/reader/content/scriptConvert'
 import * as realDict from '../src/features/reader/dict/openccData'
-import { defaultReaderSettings } from '../src/features/reader/readerSettings'
+import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 
 /**
  * 「简繁转换」（用户 2026-10-11 的 A–F 里 C 项）。
@@ -151,14 +151,14 @@ test('loadScriptConverter：off 不碰字典；同档只建一次', async () => 
 
 test('设置项：默认关着，读时过清洗', () => {
   assert.equal(defaultReaderSettings.scriptMode, 'off')
-  assert.match(read('../src/features/reader/readerSettings.ts'), /scriptMode: parseScriptMode\(saved\.scriptMode\)/)
+  assert.match(read('../src/features/reader/settingsPanel/readerSettings.ts'), /scriptMode: parseScriptMode\(saved\.scriptMode\)/)
 })
 
 test('设置面板那三档与转换器是同一份清单', () => {
   assert.deepEqual(SCRIPT_MODE_OPTIONS.map(option => option.id), ['off', 's2t', 't2s'])
   const readerScreen = read('../src/features/reader/ReaderScreen.tsx')
   // PROPOSAL-020 P4：简繁这一节从「行为」页搬去了「设置」弹层（OtherSettingsPanel）。
-  assert.match(read('../src/features/reader/OtherSettingsPanel.tsx'), /SCRIPT_MODE_OPTIONS\.map\(/, '面板要按同一份清单列，别各写一份')
+  assert.match(read('../src/features/reader/settingsPanel/OtherSettingsPanel.tsx'), /SCRIPT_MODE_OPTIONS\.map\(/, '面板要按同一份清单列，别各写一份')
   assert.match(readerScreen, /settings\.scriptMode/, '正文要真的按这一项走')
 })
 

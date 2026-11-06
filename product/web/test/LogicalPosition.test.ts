@@ -5,8 +5,8 @@ import {
   checksumText,
   offsetToParagraph,
   paragraphAnchor,
-} from '../src/features/reader/logicalPosition'
-import { findFirstIntersectingParagraphIndex } from '../src/features/reader/readerInteractions'
+} from '../src/features/reader/content/logicalPosition'
+import { findFirstIntersectingParagraphIndex } from '../src/features/reader/interaction/readerInteractions'
 
 test('LogicalPosition - starts: 段与段之间按一个换行累计', () => {
   assert.deepEqual(buildParagraphStarts([]), [])

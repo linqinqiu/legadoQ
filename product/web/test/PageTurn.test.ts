@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { coverDirection, pageTurnAnim, planNextPage, planPrevPage } from '../src/features/reader/pageTurn'
+import { coverDirection, pageTurnAnim, planNextPage, planPrevPage } from '../src/features/reader/interaction/pageTurn'
 
 /**
  * 翻页状态机的决策（PROPOSAL-019 A）。纯函数，不起浏览器。

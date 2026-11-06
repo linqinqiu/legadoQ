@@ -20,8 +20,8 @@
  *   TypesetParams / LayoutResult / serializePaginationKey / hashContent
  */
 
-import type { TypesetParams, LayoutResult } from './typeset/typesetParams'
-import { serializePaginationKey } from './typeset/typesetParams'
+import type { TypesetParams, LayoutResult } from '../typeset/typesetParams'
+import { serializePaginationKey } from '../typeset/typesetParams'
 
 const DB_NAME = 'legado-reader'
 const DB_VERSION = 1

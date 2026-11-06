@@ -13,7 +13,7 @@ import type { Page } from './nav'
  * ★ 为什么住 `lib/`（shared）而不是 `app/`（shell）：顶栏（`components/`）与快捷键表
  * （`features/reader/`）都要读它，而这两者都**不允许依赖 shell** —— 放在 `app/` 里会让
  * 「组合根」变成共享数据的存放地，于是 shared 与 features 各自反向依赖 shell 一次
- * （实测正是 2 条：`app/AppHeader.tsx`、`features/reader/shortcuts.ts`）。
+ * （实测正是 2 条：`app/AppHeader.tsx`、`features/reader/interaction/shortcuts.ts`）。
  * 它是纯数据、零 React 依赖，本来就属于 shared。判据见
  * `web/test/ArchitectureBoundary.test.ts`「shell 只能被组合根 import」。
  */

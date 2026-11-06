@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Icon } from '../../icons'
+import { Icon } from '../../../icons'
 import type { ReaderSettings } from './readerSettings'
-import { TypographyTab } from './settingsPanel/TypographyTab'
-import { ColorTab } from './settingsPanel/ColorTab'
-import { BehaviorTab } from './settingsPanel/BehaviorTab'
+import { TypographyTab } from './TypographyTab'
+import { ColorTab } from './ColorTab'
+import { BehaviorTab } from './BehaviorTab'
 
 /**
  * 阅读设置面板的内容 —— **三标签页容器**（P1，仿 legado「界面」面板的信息架构）。

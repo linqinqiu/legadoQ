@@ -6,9 +6,9 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AppHeader } from '../src/app/AppHeader'
 import { toast } from '../src/components/Toast'
-import { defaultReaderSettings } from '../src/features/reader/readerSettings'
+import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 import { BackupPage, reportImportSummary } from '../src/plugins/backup/BackupPage'
-import { applyPreferencePatch, mapReadStyle } from '../src/features/reader/backupPreferences'
+import { applyPreferencePatch, mapReadStyle } from '../src/features/reader/settingsPanel/backupPreferences'
 
 const SRC = path.resolve(import.meta.dirname, '../src')
 

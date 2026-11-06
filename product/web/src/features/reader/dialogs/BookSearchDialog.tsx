@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type BookSearchHit } from '../../lib/api'
-import { useEscapeClose } from '../../lib/useEscapeClose'
+import { api, type BookSearchHit } from '../../../lib/api'
+import { useEscapeClose } from '../../../lib/useEscapeClose'
 
 /**
  * 本书正文检索（搜索本书 feature，2026-10）：在**已离线缓存**的章节正文里按关键词找命中。

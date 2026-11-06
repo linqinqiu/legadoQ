@@ -1,6 +1,6 @@
 // 正文图片预热（0.8.2 结构重排从 ReaderScreen.tsx 逐字拆出）：把 `![图](url)` 提前发给服务端图片代理。
 // 只预热外域图；失败静默 —— 渲染层那一张会自己退化成「这张图没取到 + 重取这一张」。
-import { contentImageUrl, isSameSiteAsset } from './readerInteractions'
+import { contentImageUrl, isSameSiteAsset } from '../interaction/readerInteractions'
 import { readerImageSrc } from './readerImage'
 
 /**

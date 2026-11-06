@@ -1,4 +1,4 @@
-import { type ReaderSettings } from '../readerSettings'
+import { type ReaderSettings } from './readerSettings'
 import { SettingGroup } from './SettingRow'
 
 /**
