@@ -191,6 +191,34 @@ class ReadingRepositoryTest {
         }
     }
 
+    /**
+     * 一个常用词在一章里会出现很多次：只回第一条的话，用户看到的列表每章一行，
+     * 想找「第二次提到的地方」只能自己翻。所以每章按出现顺序回，最多五条，各带自己的偏移。
+     */
+    @Test
+    fun `searchBookContent returns every hit in a chapter up to the cap`() {
+        val path = temporaryDatabase()
+        val database = Database(path).also { it.initialize() }
+        try {
+            val repository = ReadingRepository(database)
+            database.saveTocCache("src", "book", listOf(Chapter(0, "第一章", "ch0")))
+            database.cacheBookContent(
+                "src",
+                "book",
+                "ch0",
+                ChapterContent(title = "第一章", content = "关键词一 关键词二 关键词三 关键词四 关键词五 关键词六"),
+            )
+            val hits = repository.searchBookContent("src", "book", "关键词")
+            assertEquals("一章最多回五条：再多就把列表冲成一页同义词", 5, hits.size)
+            assertEquals("按出现顺序排", hits.map { it.offset }.sorted(), hits.map { it.offset })
+            assertEquals("每条命中是不同位置", hits.size, hits.map { it.offset }.distinct().size)
+            assertEquals(0, hits[0].offset)
+        } finally {
+            database.close()
+            Files.deleteIfExists(java.nio.file.Path.of(path))
+        }
+    }
+
     /** 五章目录 + 只缓存第二、三章；窗口的 `cached` 必须逐章如实。 */
     private fun windowFixture(): Pair<Database, String> {
         val path = temporaryDatabase()

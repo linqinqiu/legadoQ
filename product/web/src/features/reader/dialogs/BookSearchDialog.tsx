@@ -32,6 +32,23 @@ export function BookSearchDialog({ sourceId, bookUrl, onJump, onClose }: {
 
   // 输入防抖后检索；空词不查。
   const debounced = useMemo(() => query.trim(), [query])
+  /**
+   * 每章命中几处：同一章回多条时要标「第 k 处」，否则列表里几行长得一模一样。
+   * 章节内顺序由后端保证（按出现位置），这里只数序号。
+   */
+  const ordinals = useMemo(() => {
+    const seen = new Map<number, number>()
+    return results.map(hit => {
+      const next = (seen.get(hit.chapterIndex) ?? 0) + 1
+      seen.set(hit.chapterIndex, next)
+      return next
+    })
+  }, [results])
+  const perChapter = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const hit of results) counts.set(hit.chapterIndex, (counts.get(hit.chapterIndex) ?? 0) + 1)
+    return counts
+  }, [results])
   useEffect(() => {
     if (!debounced) { setResults([]); setDone(false); setLoading(false); return }
     const handle = window.setTimeout(async () => {
@@ -63,19 +80,25 @@ export function BookSearchDialog({ sourceId, bookUrl, onJump, onClose }: {
             />
           </div>
           {loading && <p className="reader-book-search-status">检索中…</p>}
+          {!loading && done && results.length > 0 && (
+            <p className="reader-book-search-status">共 {results.length} 处命中（每章最多 5 处）。</p>
+          )}
           {!loading && done && results.length === 0 && (
             <p className="reader-book-search-status">没有命中。可能这一章还没缓存，或换个词试试。</p>
           )}
           {!debounced && <p className="reader-book-search-status">输入关键词开始检索。</p>}
           <ul className="reader-book-search-list">
-            {results.map(hit => (
-              <li key={`${hit.chapterUrl}-${hit.chapterIndex}`} className="reader-book-search-item">
+            {results.map((hit, index) => (
+              <li key={`${hit.chapterUrl}-${hit.offset}`} className="reader-book-search-item">
                 <button type="button" className="reader-book-search-main" onClick={() => onJump(hit, debounced)}>
-                  <span className="reader-book-search-chapter">第 {hit.chapterIndex + 1} 章 · {hit.title || '（无标题）'}</span>
+                  <span className="reader-book-search-chapter">
+                    第 {hit.chapterIndex + 1} 章 · {hit.title || '（无标题）'}
+                    {(perChapter.get(hit.chapterIndex) ?? 0) > 1 ? ` · 第 ${ordinals[index]} 处` : ''}
+                  </span>
                   <span className="reader-book-search-snippet">
-                    {splitByTerm(hit.snippet, debounced).map((chunk, index) => chunk.hit
-                      ? <mark key={index} className="reader-search-hit">{chunk.text}</mark>
-                      : <span key={index}>{chunk.text}</span>)}
+                    {splitByTerm(hit.snippet, debounced).map((chunk, chunkIndex) => chunk.hit
+                      ? <mark key={chunkIndex} className="reader-search-hit">{chunk.text}</mark>
+                      : <span key={chunkIndex}>{chunk.text}</span>)}
                   </span>
                 </button>
               </li>

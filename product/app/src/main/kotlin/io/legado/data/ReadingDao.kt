@@ -130,7 +130,12 @@ fun Database.deleteNote(id: Long): Boolean = write { db ->
  * 只覆盖 `book_content_cache` 里这本书已离线缓存的章节——没缓存的自然搜不到，
  * 调用方（前端）应当提示「仅检索已缓存章节」。LIKE 用 ESCAPE 转义 % / _，
  * 避免关键词里出现这两个通配符时被吞掉。SQLite 的 LIKE 对中文是逐字子串匹配，够用。
+ *
+ * 每章最多回 [MAX_HITS_PER_CHAPTER] 条：一个常用词在一章里能出现几十次，
+ * 全回会把结果列表冲成一页同义词，用户反而找不到不同章节。按出现顺序，带各自偏移。
  */
+private const val MAX_HITS_PER_CHAPTER = 5
+
 fun Database.searchBookContent(sourceId: String, bookUrl: String, query: String): List<BookSearchHit> = connect { db ->
     val escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     db.prepareStatement(
@@ -143,22 +148,24 @@ fun Database.searchBookContent(sourceId: String, bookUrl: String, query: String)
             val ctx = 24
             while (rs.next()) {
                 val content = rs.getString(4) ?: ""
-                val idx = content.indexOf(query)
-                val snippet = if (idx >= 0) {
+                val chapterUrl = rs.getString(1) ?: ""
+                val chapterIndex = rs.getInt(2)
+                val title = rs.getString(3) ?: ""
+                var from = 0
+                var emitted = 0
+                while (emitted < MAX_HITS_PER_CHAPTER) {
+                    val idx = content.indexOf(query, from)
+                    if (idx < 0) break
                     val start = (idx - ctx).coerceAtLeast(0)
                     val end = (idx + query.length + ctx).coerceAtMost(content.length)
-                    (if (start > 0) "…" else "") + content.substring(start, end) + (if (end < content.length) "…" else "")
-                } else {
-                    content.take(60)
+                    val snippet = (if (start > 0) "…" else "") +
+                        content.substring(start, end) +
+                        (if (end < content.length) "…" else "")
+                    list += BookSearchHit(chapterUrl, chapterIndex, title, snippet, idx)
+                    emitted++
+                    // 关键词可能重叠（「哈哈」在「哈哈哈」里出现两次），按一个词长前进，不按 idx+1 逐字扫。
+                    from = idx + query.length.coerceAtLeast(1)
                 }
-                list += BookSearchHit(
-                    rs.getString(1) ?: "",
-                    rs.getInt(2),
-                    rs.getString(3) ?: "",
-                    snippet,
-                    // 命中偏移随片段一起回：前端据此滚到那一段并高亮，不然跳过去还要自己找。
-                    idx.coerceAtLeast(0),
-                )
             }
             list
         }

@@ -42,7 +42,7 @@ test('切片 - 多次命中都标出来；空词原样返回；没有命中只�
 
 test('接线 - 后端回偏移，结果片段与正文都按它高亮', () => {
   const dao = read('../../app/src/main/kotlin/io/legado/data/ReadingDao.kt')
-  assert.match(dao, /idx\.coerceAtLeast\(0\)/, '命中偏移随结果一起回，没有偏移就只能跳章')
+  assert.match(dao, /idx\.coerceAtLeast\(0\)|BookSearchHit\(chapterUrl, chapterIndex, title, snippet, idx\)/, '命中偏移随结果一起回，没有偏移就只能跳章')
   const model = read('../../app/src/main/kotlin/io/legado/model/Models.kt')
   assert.match(model, /val offset: Int/, '契约里要有 offset 字段')
   const dialog = read('../src/features/reader/dialogs/BookSearchDialog.tsx')
@@ -53,4 +53,13 @@ test('接线 - 后端回偏移，结果片段与正文都按它高亮', () => {
   assert.match(screen, /charOffset: hit\.offset/, '落点用后端给的偏移，不是章首')
   assert.match(screen, /className="reader-search-hit"/, '正文里要画临时高亮')
   assert.match(screen, /window\.setTimeout\(\(\) => setSearchFlash\(null\), 6000\)/, '高亮是临时的，会自己消失')
+})
+
+test('每章多命中：后端最多 5 条、按位置排，前端标「第 k 处」', () => {
+  const dao = read('../../app/src/main/kotlin/io/legado/data/ReadingDao.kt')
+  assert.match(dao, /MAX_HITS_PER_CHAPTER = 5/, '一个常用词不该把列表冲成一页同义词')
+  assert.match(dao, /while \(emitted < MAX_HITS_PER_CHAPTER\)/, '按出现顺序逐条回，不是只回第一条')
+  const dialog = read('../src/features/reader/dialogs/BookSearchDialog.tsx')
+  assert.match(dialog, /第 \$\{ordinals\[index\]\} 处/, '同章多条要标第几处，否则几行长得一样')
+  assert.match(dialog, /key=\{\`\$\{hit\.chapterUrl\}-\$\{hit\.offset\}\`\}/, 'key 带偏移，同章多条不会撞 key')
 })
