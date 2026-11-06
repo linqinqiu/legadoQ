@@ -16,6 +16,7 @@ import { isMediaType } from '../../lib/bookType'
 import { TapZoneEditor } from './interaction/TapZoneEditor'
 import { NoteToolbar, type NoteDraft } from './notes/NoteToolbar'
 import { bookmarkPayload, findBookmarkAt } from './notes/bookmark'
+import { reanchorNotes } from './notes/reanchor'
 import { splitByTerm } from './searchTerm'
 import { MarkingMenu } from './interaction/MarkingMenu'
 import { setAiChatOpen } from '../../lib/aiChatStore'
@@ -638,6 +639,15 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   // persist / 首屏恢复都是长期闭包：经 ref 读当前章的段起点与校验值，避免把 persist 的依赖搅乱。
   const logicalMetaRef = useRef({ starts: paragraphStarts, checksum: positionChecksum })
   logicalMetaRef.current = { starts: paragraphStarts, checksum: positionChecksum }
+  /**
+   * 正文换了（源站改版 / 重取章节 / AI 覆盖）之后，把这一章的批注位置重新对一遍：
+   * 偏移漂了就把高亮与跳转拉回原文，实在认不出才标 stale。只改内存，不写库 ——
+   * 正文还会再变，把一次猜测固化进库更难撤回。
+   */
+  useEffect(() => {
+    if (!content || !chapter || !positionChecksum) return
+    setNotes(list => reanchorNotes(list, chapter.index, content, positionChecksum))
+  }, [content, chapter, positionChecksum])
   /**
    * 待保存 / 正在编辑的那一条。`id === null` = 刚从选区新建；否则是点已有高亮打开的。
    * `x`/`y` 是浮层要摆的位置（视口坐标，横向以选中处为中心）。

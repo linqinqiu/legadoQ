@@ -96,7 +96,7 @@ export function NotesPanel({ notes, onJump, meta, chapterTitles, onBookmarkHere 
               <span className="reader-note-item-excerpt">{note.excerpt}</span>
               {note.note && <span className="reader-note-item-text">{note.note}</span>}
               <span className="reader-note-item-meta">
-                第 {note.chapterIndex + 1} 章
+                第 {note.chapterIndex + 1} 章{note.stale ? ' · 原文已变，位置可能不准' : ''}
               </span>
             </button>
           </li>

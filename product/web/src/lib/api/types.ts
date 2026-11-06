@@ -175,6 +175,8 @@ export type BookNote = {
   paragraphAnchor?: string | null
   positionVersion?: number
   positionChecksum?: string | null
+  /** 只在前端：正文改过、这条批注的位置已对不上原文（`notes/reanchor.ts` 标出来的，不落库）。 */
+  stale?: boolean
 }
 
 export type BookNoteWrite = {
