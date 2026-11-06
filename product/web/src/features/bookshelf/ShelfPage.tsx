@@ -1,4 +1,4 @@
-// 书架页：分组/排序/拖拽/批量管理与换源
+// 书架页：分组/排序/批量管理与换源
 // 从 main.tsx 拆出（0.8.2 结构重排）：组件体逐字未动，import 由脚本按导出面索引补全。
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -12,11 +12,9 @@ import { SourceSwitchModal } from '../../components/SourceSwitchModal'
 import { TocRulesModal } from '../../components/TocRulesModal'
 import { bookTypeMeta } from '../../lib/bookType'
 import { cleanAuthor, cleanTitle } from '../../lib/searchFilters'
-import { compareCustomSort } from '../../lib/shelfOrder'
 import { sanitizeImageUrl } from '../../lib/sourceImport'
 import { showContextMenu } from '../../components/ContextMenu'
 import { toast } from '../../components/Toast'
-import { useDragSort } from '../../lib/dragSort'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { openSourceMenu } from '../../components/SourceChoiceList'
 import { BookDetailModal } from '../../components/BookDetailModal'
@@ -672,7 +670,6 @@ export function ShelfPage({
       case 'name': sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')); break
       case 'author': sorted.sort((a, b) => (a.author || '').localeCompare(b.author || '', 'zh-CN')); break
       case 'progress': sorted.sort((a, b) => progressOf(b) - progressOf(a)); break
-      case 'custom': sorted.sort(compareCustomSort); break
       default: sorted.sort((a, b) => b.lastReadAt - a.lastReadAt)
     }
     return sorted
@@ -686,32 +683,6 @@ export function ShelfPage({
   const shelfFailedEmpty = !!message && items.length === 0
   const counts = { reading: items.filter(item => !item.completed).length, completed: items.filter(item => item.completed).length, all: items.length }
 
-  /*
-    长按拖动排序（用户 2026-10-02：「批量管理功能在，长按书籍可移动能排顺序（自定义）」）。
-    只在「自定义」这一档生效：其它四档是按时间/名字排的，拖完下一次刷新就打回去了，
-    那种"能拖但拖不住"比不能拖更糟。发送的是**当前这一列**（分组与状态筛过之后的）新顺序。
-  */
-  const gridRef = useRef<HTMLElement | null>(null)
-  const applyOrder = useCallback((ordered: BookshelfItem[]) => {
-    const rank = new Map(ordered.map((item, index) => [`${item.sourceId}\u0000${item.bookUrl}`, index + 1]))
-    setItems(current => current.map(item => {
-      const next = rank.get(`${item.sourceId}\u0000${item.bookUrl}`)
-      return next === undefined ? item : { ...item, sortOrder: next }
-    }))
-    void api.reorderShelf(ordered.map(item => ({ sourceId: item.sourceId, bookUrl: item.bookUrl })))
-      .catch(() => { setMessage('排序没能保存，刷新后会回到原来的顺序'); void load() })
-  }, [load])
-  const clearOrder = async () => {
-    setItems(current => current.map(item => ({ ...item, sortOrder: null })))
-    try { await api.clearShelfOrder() } catch { setMessage('自定义顺序没能清掉，刷新后会回到原样'); void load() }
-  }
-  const { drag, onPointerDown, onClickCapture } = useDragSort({
-    itemSelector: '.shelf-card',
-    enabled: () => sort === 'custom' && !batchMode,
-    gridRef,
-    items: visibleItems,
-    onReorder: applyOrder,
-  })
   const chooseLayout = (next: ShelfLayout) => { setLayout(next); writeShelfLayout(next) }
   const [addingGroup, setAddingGroup] = useState(false)
   const [groupName, setGroupName] = useState('')
@@ -937,19 +908,8 @@ export function ShelfPage({
                 { value: 'name', label: '按书名' },
                 { value: 'author', label: '按作者' },
                 { value: 'progress', label: '按阅读进度' },
-                { value: 'custom', label: '自定义（长按拖动）' },
               ]}
             />
-            {sort === 'custom' && items.some(item => item.sortOrder != null) && (
-              <button
-                type="button"
-                className="subtle-button"
-                title="把全架的自定义位置清空，回到「从没拖过」的状态（切到别的排序档不会清，那一档只是不看它）"
-                onClick={() => void clearOrder()}
-              >
-                清除自定义顺序
-              </button>
-            )}
           </div>
         </div>
       </header>
@@ -1065,24 +1025,17 @@ export function ShelfPage({
         </section>
       ) : (
         <section
-          ref={gridRef}
-          className={`shelf-grid shelf-mode-${layout.mode} ${sort === 'custom' ? 'shelf-sortable' : ''}${batchMode ? ' is-batching' : ''}`}
+          className={`shelf-grid shelf-mode-${layout.mode}${batchMode ? ' is-batching' : ''}`}
         >
           {visibleItems.map((item, index) => {
             const isCaching = item.cacheState === 'caching'
             const isLocal = item.sourceId === 'loc_book'
             const percent = Math.min(100, Math.round((item.cachedChapters / Math.max(1, item.totalChapters || 1)) * 100))
 
-            // 落点线：拖到哪两格之间，就在那一格的左/右缘亮一条竖线（最后一格之后画右缘）
-            const dropBefore = drag !== null && drag.at === index && drag.from !== index
-            const dropAfter = drag !== null && drag.at === index + 1 && index === visibleItems.length - 1
-
             return (
               <article
                 key={`${item.sourceId}-${item.bookUrl}`}
-                className={`shelf-card ${batchMode && isBookSelected(item.sourceId, item.bookUrl) ? 'selected' : ''}${drag?.from === index ? ' shelf-card-dragging' : ''}${dropBefore ? ' shelf-card-drop-before' : ''}${dropAfter ? ' shelf-card-drop-after' : ''}`}
-                onPointerDown={onPointerDown(index)}
-                onClickCapture={onClickCapture}
+                className={`shelf-card ${batchMode && isBookSelected(item.sourceId, item.bookUrl) ? 'selected' : ''}`}
                 onContextMenu={event => {
                   // 分组超过 8 个时，右键菜单里只放前 7 个 + "更多分组…"，避免菜单过长
                   const availableGroups = groups.filter(group => group.id !== 0 && group.id !== (item.groupId ?? 0))

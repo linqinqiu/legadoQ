@@ -90,10 +90,10 @@ export function writeSearchLayout(layout: ShelfLayout) {
   writeStoredLayout(SEARCH_KEY, layout)
 }
 
-/** 书架排序偏好（桌面端库管理）。默认按最后阅读时间倒序。`custom` 是用户自己拖出来的顺序。 */
-export type ShelfSort = 'recent' | 'name' | 'author' | 'progress' | 'custom'
+/** 书架排序偏好（桌面端库管理）。默认按最后阅读时间倒序。 */
+export type ShelfSort = 'recent' | 'name' | 'author' | 'progress'
 const SORT_KEY = 'legado-shelf-sort-v1'
-const SORT_VALUES: ShelfSort[] = ['recent', 'name', 'author', 'progress', 'custom']
+const SORT_VALUES: ShelfSort[] = ['recent', 'name', 'author', 'progress']
 
 export function readShelfSort(): ShelfSort {
   try {

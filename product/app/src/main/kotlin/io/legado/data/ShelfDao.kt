@@ -17,7 +17,7 @@ import kotlinx.serialization.json.Json
  * 建表与迁移留在 `Database.kt`。跨包调用这些面需 `import io.legado.data.<方法>`（顶层扩展不是成员）。
  */
 /** 书架列表与单本查询共用同一份 SELECT：两处各写一遍迟早会漂移成不同字段。 */
-internal const val SHELF_SELECT = "select s.source_id,s.book_url,s.name,s.author,s.toc_url,s.cover_key,p.chapter_index,p.scroll_position,s.last_read_at,coalesce(c.cached_chapters,0),coalesce(c.total_chapters,0),coalesce(c.state,'idle'),c.last_error,s.completed,s.alternate_sources,s.group_id,(select max(t.updated_at) from book_toc_cache t where t.source_id=s.source_id and (t.toc_url=s.toc_url or t.toc_url=s.book_url)),s.toc_rule,s.sort_order,coalesce(json_extract(src.payload,'\$.bookSourceType'),0) from book_shelf s left join reading_progress p on p.source_id=s.source_id and p.book_url=s.book_url left join book_cache_status c on c.source_id=s.source_id and c.book_url=s.book_url left join source src on src.id=s.source_id"
+internal const val SHELF_SELECT = "select s.source_id,s.book_url,s.name,s.author,s.toc_url,s.cover_key,p.chapter_index,p.scroll_position,s.last_read_at,coalesce(c.cached_chapters,0),coalesce(c.total_chapters,0),coalesce(c.state,'idle'),c.last_error,s.completed,s.alternate_sources,s.group_id,(select max(t.updated_at) from book_toc_cache t where t.source_id=s.source_id and (t.toc_url=s.toc_url or t.toc_url=s.book_url)),s.toc_rule,coalesce(json_extract(src.payload,'\$.bookSourceType'),0) from book_shelf s left join reading_progress p on p.source_id=s.source_id and p.book_url=s.book_url left join book_cache_status c on c.source_id=s.source_id and c.book_url=s.book_url left join source src on src.id=s.source_id"
 
 fun Database.saveBookshelf(request: BookshelfWriteRequest, cover: CachedCover?): BookshelfItem = write { db ->
     val now = System.currentTimeMillis()
@@ -132,41 +132,6 @@ fun Database.assignBookGroup(sourceId: String, bookUrl: String, groupId: Long): 
         it.setLong(1, groupId); it.setString(2, sourceId); it.setString(3, bookUrl); it.executeUpdate()
     }
     getBookshelf(db, sourceId, bookUrl)
-}
-
-/**
- * 自定义排序：按给定的顺序写 `sort_order`（1 起）。只写点到的那些 ——
- * 没被拖过的书保持 null，界面上它们落在有序段之后、按最后阅读排。
- * 不在书架上的键跳过（前端拿的是上一次渲染的清单，中间可能已经移架）。
- */
-fun Database.reorderBookshelf(keys: List<BookIdentifier>): Int = write { db ->
-    db.autoCommit = false
-    try {
-        var written = 0
-        db.prepareStatement("update book_shelf set sort_order=? where source_id=? and book_url=?").use { statement ->
-            keys.forEachIndexed { index, key ->
-                statement.setInt(1, index + 1)
-                statement.setString(2, key.sourceId)
-                statement.setString(3, key.bookUrl)
-                written += statement.executeUpdate()
-            }
-        }
-        db.commit()
-        written
-    } catch (error: Exception) {
-        runCatching { db.rollback() }
-        throw error
-    } finally {
-        db.autoCommit = true
-    }
-}
-
-/**
- * 清掉全架的自定义顺序。切回「按最后阅读」不需要它 —— 那一档本来就无视 sort_order；
- * 这个动作是给"我把架子排乱了，想回到没拖过的状态"用的。
- */
-fun Database.clearBookshelfOrder(): Int = write { db ->
-    db.prepareStatement("update book_shelf set sort_order=null where sort_order is not null").use { it.executeUpdate() }
 }
 
 private fun Database.bookGroupExists(db: Connection, groupId: Long): Boolean =
@@ -385,10 +350,8 @@ private fun java.sql.ResultSet.toShelf(): BookshelfItem {
         groupId = getLong(16),
         // 第 18 列：这本本地书实际是用哪条目录规则切的（`builtin` 或规则 id；在线书为 null）
         tocRule = getString(18),
-        // 第 19 列：自定义排序位，null = 没参与过自定义排序
-        sortOrder = getObject(19) as? Int,
-        // 第 20 列：书源 `bookSourceType`（json_extract 自 source.payload；本地书无源行 → 0）
-        sourceType = getInt(20),
+        // 第 19 列：书源 `bookSourceType`（json_extract 自 source.payload；本地书无源行 → 0）
+        sourceType = getInt(19),
     )
 }
 

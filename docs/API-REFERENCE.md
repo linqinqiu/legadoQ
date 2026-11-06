@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.20 · 端点数：157 · 生成时间：2026-11-06
+> 版本：0.2.20 · 端点数：155 · 生成时间：2026-11-06
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -27,14 +27,14 @@
 | RSS | 7 |
 | 阅读 | 6 |
 | 净化规则 | 10 |
-| 书架 | 16 |
+| 书架 | 14 |
 | 分章规则 | 7 |
 | 离线缓存 | 3 |
 | 图片与媒体 | 6 |
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
 | AI 自定义接入 | 16 |
-| **合计** | **157** |
+| **合计** | **155** |
 
 ## 目录（1）
 
@@ -187,7 +187,7 @@
 | POST | `/api/replace-rules/import` | 是 | 一批导入净化规则（吃 GET /api/replace-rules/export 吐出来的那种字符串数组）；请求体：sources=["每条是规则的 JSON 字符串"] |
 | POST | `/api/replace-rules/preview` | 否 | 拿一段文本试规则（不落库、不发消息；它是只算一次的本地判定，所以不过写门）；请求体：text=要试的正文，rule=可选，整条规则对象（字段同 POST /api/replace-rules），不是规则字符串 —— 给它字符串会 400 invalid_request，bookName=可选，按书筛规则，sourceUrl=可选，按源筛 |
 
-## 书架（16）
+## 书架（14）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
@@ -198,8 +198,6 @@
 | POST | `/api/bookshelf/groups` | 是 | 新建一个书架分组；请求体：name=分组名 |
 | DELETE | `/api/bookshelf/groups/{id}` | 是 | 删一个分组（组里的书回到未分组，不删书） |
 | PUT | `/api/bookshelf/group` | 是 | 把一本书挪到某个分组；请求体：sourceId=哪本书，bookUrl=哪本书，groupId=目标分组，null 或 0 即未分组 |
-| PUT | `/api/bookshelf/order` | 是 | 存一份书架自定义排序（整串书的次序）；请求体：books=[{sourceId,bookUrl}]，按你想要的顺序 |
-| DELETE | `/api/bookshelf/order` | 是 | 清掉书架自定义排序，回到按最后阅读时间排（无请求体） |
 | DELETE | `/api/bookshelf` | 是 | 从书架删一本书（顺带清它的封面与离线缓存）；query：sourceId=哪本书（必填），bookUrl=哪本书（必填） |
 | PUT | `/api/bookshelf/status` | 是 | 标已读 / 取消已读；请求体：sourceId=哪本书，bookUrl=哪本书，completed=布尔 |
 | PUT | `/api/bookshelf/info` | 是 | 改书架上这本书自己的书名/作者/封面（不动书源）；请求体：sourceId=哪本书，bookUrl=哪本书，name=新书名，不许空，author=可选，coverUrl=可选 |

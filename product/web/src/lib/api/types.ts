@@ -221,8 +221,6 @@ export type BookshelfItem = {
   groupId?: number
   /** 这本本地书实际用的目录规则（`auto`/`builtin`/规则 id）；在线书没有 */
   tocRule?: string | null
-  /** 自定义排序位（1 起）；null/缺省 = 没参与过自定义排序 */
-  sortOrder?: number | null
   /** 书源 bookSourceType：0 文本 / 1 音频 / 2 漫画 / 3 文件 / 4 视频 */
   sourceType?: number
 }

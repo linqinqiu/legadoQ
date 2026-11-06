@@ -1164,25 +1164,6 @@
       "response": "更新后的那一条书架项；分组不存在或书不在架上 404"
     },
     {
-      "method": "PUT",
-      "path": "/api/bookshelf/order",
-      "write": true,
-      "group": "书架",
-      "purpose": "存一份书架自定义排序（整串书的次序）",
-      "body": {
-        "books": "[{sourceId,bookUrl}]，按你想要的顺序"
-      },
-      "response": "{updated}"
-    },
-    {
-      "method": "DELETE",
-      "path": "/api/bookshelf/order",
-      "write": true,
-      "group": "书架",
-      "purpose": "清掉书架自定义排序，回到按最后阅读时间排（无请求体）",
-      "response": "{updated}"
-    },
-    {
       "method": "DELETE",
       "path": "/api/bookshelf",
       "write": true,
@@ -1782,5 +1763,5 @@
       "response": "{ok,removed}；不存在 404 not_found"
     }
   ],
-  "count": 157
+  "count": 155
 }

@@ -4767,21 +4767,7 @@ input[type=range] { min-height: 24px; }
 .shelf-bar h1 { display: inline-flex; align-items: baseline; gap: 9px; font-family: Georgia, "Noto Serif SC", serif; font-size: 23px; font-weight: 600; line-height: 1.3; }
 .shelf-bar h1 small { color: var(--muted); font-family: Inter, "PingFang SC", sans-serif; font-size: var(--t-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
 
-/* —— 自定义排序（长按 250ms 后拖动，用户 2026-10-02）——
-   只有「自定义」这一档挂 .shelf-sortable：另外四档是按时间/名字算出来的，
-   拖得动但刷新就弹回去，比拖不动更让人困惑。落点线画在目标格的左/右缘内侧 ——
-   .shelf-card 是 overflow: hidden 的，画到外侧会被裁掉。 */
 .shelf-card { position: relative; }
-.shelf-sortable .shelf-card-cover { cursor: grab; touch-action: pan-y; }
-/* `<img>` 自带原生拖拽：不关掉的话从封面上起手会走 HTML5 拖图，长按排序的手势直接被浏览器抢走 */
-.shelf-sortable .shelf-card-cover img { -webkit-user-drag: none; }
-.shelf-card-dragging { opacity: .45; transform: none !important; }
-.shelf-card-dragging .shelf-card-cover { cursor: grabbing; }
-.shelf-card-drop-before::before, .shelf-card-drop-after::after {
-  content: ''; position: absolute; top: 10%; bottom: 10%; width: 3px; border-radius: 2px; background: var(--accent-solid);
-}
-.shelf-card-drop-before::before { left: 0; }
-.shelf-card-drop-after::after { right: 0; }
 
 /* —— 继续阅读条 —— */
 .shelf-resume { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 13px; padding: 11px 14px; border: 1px solid var(--line); border-radius: var(--r-3); background: var(--surface); box-shadow: var(--elev-1); }

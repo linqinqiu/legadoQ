@@ -648,8 +648,6 @@ data class CachedBookRequest(
      * 界面必须能说清现在是 B。
      */
     val tocRule: String? = null,
-    /** 自定义排序位（1 起）；null = 这本书没参与过自定义排序，界面上排在有序段之后、按最后阅读排。 */
-    val sortOrder: Int? = null,
     /** 书源的 `bookSourceType`：0 文本 / 1 音频 / 2 图片(漫画) / 3 文件 / 4 视频。 */
     val sourceType: Int = 0,
 )
@@ -736,9 +734,8 @@ data class CachedBookRequest(
 @Serializable data class BatchMoveGroupRequest(val books: List<BookIdentifier>, val groupId: Long?)
 @Serializable data class BatchMarkReadRequest(val books: List<BookIdentifier>, val isRead: Boolean)
 @Serializable data class BookIdentifier(val sourceId: String, val bookUrl: String)
-/** 自定义排序：整段可见清单按新顺序回传，服务端按位置写 `book_shelf.sort_order`。 */
-@Serializable data class ShelfOrderRequest(val books: List<BookIdentifier>)
-@Serializable data class ShelfOrderResult(val updated: Int)
+/** 自定义排序落库的结果：写进去 / 清掉了几行。 */
+@Serializable data class OrderResult(val updated: Int)
 /** 书源自定义排序：屏幕上这一列按新顺序回传，服务端按位置写 `source.sort_order`。 */
 @Serializable data class SourceOrderRequest(val ids: List<String>)
 

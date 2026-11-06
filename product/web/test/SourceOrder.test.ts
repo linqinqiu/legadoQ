@@ -5,7 +5,7 @@ import path from 'node:path'
 
 /**
  * 「自定义书源排序，优化书源编辑功能」（用户 2026-10-02）。
- * 拖动的算术由 `ShelfDragOrder.test.ts` 判（书架与书源现在共用同一个 `useDragSort`），
+ * 拖动的算术由 `DragSortMath.test.ts` 判（书架那一档已移除，`useDragSort` 现在只服务书源列表），
  * 这里判的是"书源这一侧真的接上了，而且顺序只有一个来源"。
  */
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, ...parts), 'utf8')

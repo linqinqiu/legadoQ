@@ -22,7 +22,6 @@ import {
   rss as newRss,
   bookshelf as newBookshelf,
   bookshelfGroups as newBookshelfGroups,
-  bookshelfOrder as newBookshelfOrder,
   progress as newProgress,
   readingLog as newReadingLog,
   notes as newNotes,
@@ -133,9 +132,6 @@ export const api = {
   createShelfGroup: newBookshelfGroups.create,
   removeShelfGroup: newBookshelfGroups.remove,
   setBookGroup: newBookshelfGroups.setBookGroup,
-  // bookshelf order
-  reorderShelf: newBookshelfOrder.reorder,
-  clearShelfOrder: newBookshelfOrder.clear,
   // local books
   importLocalBooks: newLocalBooks.import,
   // toc rules

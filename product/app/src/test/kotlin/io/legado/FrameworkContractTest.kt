@@ -127,10 +127,10 @@ class FrameworkContractTest {
         assertEquals(before, registry.size())
     }
 
-    // ===== 4. 端点计数契约（157 / 19 / 16） =====
+    // ===== 4. 端点计数契约（155 / 19 / 16） =====
 
     @Test
-    fun `agent-api 契约：157 端点、19 组、AI 自定义接入 16 条`() {
+    fun `agent-api 契约：155 端点、19 组、AI 自定义接入 16 条`() {
         // RouteCatalog 从 classpath 读 /agent-api.json，serve 会补齐 version、count 与 baseUrl。
         val raw = RouteCatalog.serve("0.0.0-contract", "http://127.0.0.1:1234")
         val root = Json.parseToJsonElement(raw).jsonObject
@@ -141,8 +141,8 @@ class FrameworkContractTest {
         val declaredCount = root["count"]?.jsonPrimitive?.int
         assertEquals("count 必须等于 endpoints 实际条数", endpoints.size, declaredCount)
 
-        // 全量契约：157 条端点（156 + 备份组新增 POST /api/backup/snapshots/restore）。
-        assertEquals("端点总数必须是 157", 157, endpoints.size)
+        // 全量契约：155 条端点（157 条后移除书架自定义排序的 PUT/DELETE /api/bookshelf/order）。
+        assertEquals("端点总数必须是 155", 155, endpoints.size)
 
         // baseUrl 必须按运行时地址注入，不能沿用文件里写死的端口。
         val injectedBase = root["howToConnect"]?.jsonObject?.get("baseUrl")?.jsonPrimitive?.content

@@ -143,18 +143,6 @@ export const bookshelfGroups = {
     }),
 }
 
-/** 自定义排序。 */
-export const bookshelfOrder = {
-  reorder: (books: Array<{ sourceId: string; bookUrl: string }>) =>
-    request<{ updated: number }>('/api/bookshelf/order', {
-      method: 'PUT',
-      body: JSON.stringify({ books }),
-    }),
-  clear: () => request<{ updated: number }>('/api/bookshelf/order', {
-    method: 'DELETE',
-  }),
-}
-
 /** 阅读进度。 */
 export const progress = {
   get: (sourceId: string, bookUrl: string, signal?: AbortSignal) =>

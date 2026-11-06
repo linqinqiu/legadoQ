@@ -1,21 +1,9 @@
-import type { BookshelfItem } from './api'
-
 /**
- * 书架自定义排序（用户 2026-10-02：「批量管理功能在，长按书籍可移动能排顺序（自定义）」）。
+ * 长按拖动排序的算术（书源列表在用，书架那一档已移除）。
  * 排序算术单独放一份：拖动这件事的现场（pointer 事件、rAF、滚动边缘）不适合写用例，
- * 但"落到第几格""挪完是什么顺序""谁排在谁前面"这三件事错了，用户看到的就是一片乱序，
+ * 但"落到第几格""挪完是什么顺序"错了，用户看到的就是一片乱序，
  * 而且只在真拖起来之后才看得见。
  */
-
-/** 排过序的在前，没排过的按最后阅读跟在有序段之后（服务端 `sort_order` 可空就是这个意思）。 */
-export function compareCustomSort(a: BookshelfItem, b: BookshelfItem): number {
-  const left = a.sortOrder ?? null
-  const right = b.sortOrder ?? null
-  if (left !== null && right !== null) return left - right
-  if (left !== null) return -1
-  if (right !== null) return 1
-  return b.lastReadAt - a.lastReadAt
-}
 
 export type Rect = { left: number; top: number; width: number; height: number }
 

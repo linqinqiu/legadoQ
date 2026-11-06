@@ -27,7 +27,6 @@ import { rss } from './domains/search'
 
 import { bookshelf } from './domains/reader'
 import { bookshelfGroups } from './domains/reader'
-import { bookshelfOrder } from './domains/reader'
 import { progress } from './domains/reader'
 import { readingLog } from './domains/reader'
 import { notes } from './domains/reader'
@@ -73,7 +72,6 @@ export {
   rss,
   bookshelf,
   bookshelfGroups,
-  bookshelfOrder,
   progress,
   readingLog,
   notes,

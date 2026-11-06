@@ -445,7 +445,7 @@ close()       = 关写连接 + 清空池 + 关掉所有曾创建的连接（Wind
 | 组 | 表 |
 |---|---|
 | 书源 | `source`（payload 存整份 JSON）、`source_login_state`、`cookie`、`source_health`（体检结论，搜索按它排序） |
-| 书架与阅读 | `book_shelf`（含 `toc_rule`、`group_id`、`sort_order`）、`book_group`、`reading_progress`、`reading_log`、`book_note` |
+| 书架与阅读 | `book_shelf`（含 `toc_rule`、`group_id`）、`book_group`、`reading_progress`、`reading_log`、`book_note` |
 | 内容缓存 | `book_content_cache`（正文，含 `chapter_index`）、`book_content_process`（AI 覆盖正文）、`book_cache_status`（缓存状态机）、`book_toc_cache`（目录 JSON）、`cover_cache` |
 | 规则 | `replace_rule` |
 | 订阅 | `source_subscription`、`rss_source` |

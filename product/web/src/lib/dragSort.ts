@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
-import { dropIndexAt, moveWithin, type Rect } from './shelfOrder'
+import { dropIndexAt, moveWithin, type Rect } from './dragSortMath'
 
 /** 按住多久算"我要拖动"而不是"我要点开"。250ms 是各家长按的常见档位，再长就手感发木。 */
 const HOLD_MS = 250

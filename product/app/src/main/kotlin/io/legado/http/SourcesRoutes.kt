@@ -40,7 +40,7 @@ import io.legado.model.ExternalLoginStatus
 import io.legado.model.GlobalCookieEntry
 import io.legado.model.GlobalCookieListResponse
 import io.legado.model.ImportRequest
-import io.legado.model.ShelfOrderResult
+import io.legado.model.OrderResult
 import io.legado.model.SourceBrowserCookieResponse
 import io.legado.model.SourceBrowserInlineRequest
 import io.legado.model.SourceBrowserInlineResponse
@@ -352,11 +352,11 @@ fun Route.sourcesRoutes(
             if (request.ids.isEmpty()) {
                 call.respond(HttpStatusCode.BadRequest, ApiError("empty_order", "没有要排序的书源")); return@put
             }
-            call.respond(ShelfOrderResult(database.reorderSources(request.ids)))
+            call.respond(OrderResult(database.reorderSources(request.ids)))
         }
         delete("/sources/order") {
             if (!call.requireSameOriginWrite()) return@delete
-            call.respond(ShelfOrderResult(database.clearSourceOrder()))
+            call.respond(OrderResult(database.clearSourceOrder()))
         }
         route("/sources/{id}") {
             get {

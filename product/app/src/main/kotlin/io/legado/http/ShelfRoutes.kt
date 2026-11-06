@@ -19,7 +19,6 @@ import io.legado.data.batchUpdateBookshelfGroup
 import io.legado.data.cachedChapterUrls
 import io.legado.data.cachedChapterWordCounts
 import io.legado.data.clearBookCacheContent
-import io.legado.data.clearBookshelfOrder
 import io.legado.data.createBookGroup
 import io.legado.data.deleteBookGroup
 import io.legado.data.getTocCache
@@ -27,7 +26,6 @@ import io.legado.data.importLocalBook
 import io.legado.data.listBookGroups
 import io.legado.data.listBookshelf
 import io.legado.data.removeBookshelf
-import io.legado.data.reorderBookshelf
 import io.legado.data.saveBookshelf
 import io.legado.data.setBookshelfCompleted
 import io.legado.data.switchBookshelf
@@ -50,8 +48,6 @@ import io.legado.model.CachedChaptersResponse
 import io.legado.model.LocalBookImportItem
 import io.legado.model.LocalBookImportResponse
 import io.legado.model.SearchResult
-import io.legado.model.ShelfOrderRequest
-import io.legado.model.ShelfOrderResult
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -59,7 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * 从 `Routes.kt` 拆出（0.8.2 结构重排）：书架清单、加删改、分组、排序、换源与批量操作。
+ * 从 `Routes.kt` 拆出（0.8.2 结构重排）：书架清单、加删改、分组、换源与批量操作。
  * 处理器文本逐字未动；本函数由 `Routes.kt` 的 `apiRoutes` 挂在 `route("/api")` 内，顺序与拆前一致。
  * 契约核对：`web/test/ApiCatalog.test.ts` 把本目录全部 `*Routes.kt` 视为挂在 `/api` 之下逐条比对。
  */
@@ -174,20 +170,6 @@ fun Route.shelfRoutes(
             val updated = database.assignBookGroup(request.sourceId, request.bookUrl, request.groupId)
                 ?: return@put call.respond(HttpStatusCode.NotFound, ApiError("not_found", "分组不存在或这本书不在书架上"))
             call.respond(updated)
-        }
-        put("/bookshelf/order") {
-            if (!call.requireSameOriginWrite()) return@put
-            val request = runCatching { call.receive<ShelfOrderRequest>() }.getOrElse {
-                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 JSON")); return@put
-            }
-            if (request.books.isEmpty()) {
-                call.respond(HttpStatusCode.BadRequest, ApiError("empty_order", "没有要排序的书")); return@put
-            }
-            call.respond(ShelfOrderResult(database.reorderBookshelf(request.books)))
-        }
-        delete("/bookshelf/order") {
-            if (!call.requireSameOriginWrite()) return@delete
-            call.respond(ShelfOrderResult(database.clearBookshelfOrder()))
         }
         delete("/bookshelf") {
             if (!call.requireSameOriginWrite()) return@delete
