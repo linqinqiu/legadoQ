@@ -161,7 +161,10 @@ jobs:
             ```
           draft: false
           prerelease: false
-          make_latest: true
+          # 只有版本 tag（v*）能当 “Latest”。滚动构建是 main 的连续产物，
+          # 若它也置 true，每次推 main 都会把 Latest 从版本页抢走（2026-11-06 实测：
+          # v0.2.19 发布后两次 docs 推送，Latest 徽章就落回了 Continuous Build）。
+          make_latest: ${{ startsWith(github.ref, 'refs/tags/v') && 'true' || 'false' }}
           files: |
             product/artifacts/legado.jar
             product/artifacts/legado-dist.zip
