@@ -33,7 +33,7 @@
 | --- | --- | --- |
 | `imageStyle` 未消费 | 只有编辑器字段 `bookSourceFields.ts:487`；后端 `grep imageStyle` 无命中 | `FULL`（铺满）不生效，图片永远按版心宽度显示 |
 | `imageDecode` 未消费 | 同样只有编辑器字段 `bookSourceFields.ts:494` | 需要 JS 解密图片字节的源（防盗链/加密图）读不出来 |
-| 没有漫画专用阅读模式 | 全仓无 `mangaMode` / 单图整屏 / 按图翻页 | 漫画只能按文本分页翻，长图被切页、跨页衔接不自然 |
+| 没有漫画专用阅读模式 | ~~全仓无 `mangaMode` / 单图整屏 / 按图翻页~~ **已落地（2026-11-07，0.2.27）**：单图整屏、双页对开、左右顺序、页进度记忆，见 `features/reader/content/mangaPages.ts` | 漫画只能按文本分页翻，长图被切页、跨页衔接不自然 |
 | 分页几何用估算占位 | `layoutEngine.ts:58` `imgH = colWidth * imagePlaceholderRatio` | 图片实际高度与估算不一致时，分页点会偏（双栏下更明显） |
 | 文件型（type 3）没有专门阅读器 | `mediaKind.ts` 按地址后缀分流播放器；文件类走下载/外链 | 文件源只能当媒体链接处理，没有「打开本地文件」的体验 |
 

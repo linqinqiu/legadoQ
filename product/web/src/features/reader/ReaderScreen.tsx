@@ -54,6 +54,7 @@ import { OfflineCacheModal } from '../../components/OfflineCacheModal'
 import { warmContentImages } from './content/contentImages'
 import { splitParagraphs } from './content/paragraphs'
 import { CHUNK_SIZE, ensureLimit, growLimit, shouldChunk } from './content/chunkedRender'
+import { mangaFraction, mangaIndexAtOffset, mangaNextStart, mangaPageLabel, mangaPages, mangaPrevStart, mangaSpreadPages, mangaSpreadSize, mangaSpreadStart } from './content/mangaPages'
 import type { OpenBook } from '../../lib/openBook'
 import {
   downloadChaptersToOffline,
@@ -245,11 +246,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     const timer = window.setTimeout(() => setFading(false), 150)
     return () => window.clearTimeout(timer)
   }, [pageIndex, pageAnim])
-  // 分页模式的进度上报（PROPOSAL-020 P2）：章内页码比例，供底栏进度条显示真实进度。
-  useEffect(() => {
-    if (settings.pageMode !== 'paginate') return
-    reportProgress({ chapterIndex, total: currentBook.chapters.length, fraction: pageCount > 1 ? pageIndex / (pageCount - 1) : 0 })
-  }, [chapterIndex, pageIndex, pageCount, settings.pageMode, currentBook.chapters.length])
+  // 分页模式的进度上报（PROPOSAL-020 P2）与漫画那一份一起放在文件后半段：
+  // 两者互斥，且都要读到漫画状态，摆在正文解析之前会用到尚未声明的 `isMangaMode`。
   /**
    * 覆盖动画（`pageAnim === 'cover'`）：逐页翻**不立刻改 pageIndex** ——
    * 先挂一层"新页"从一侧滑进来盖住旧页，动画结束才真正翻页。
@@ -606,29 +604,45 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [chunked, renderLimit, paragraphs.length])
 
   /**
-   * 漫画单图模式。
+   * 漫画阅读模式。
    *
    * 漫画源（`bookSourceType === 2`）的一章正文就是一串 `![图片](地址)` 占位行。默认把它们
    * 一屏一张地铺开、按图翻页：长图不会被文本分页从中间切开，跨页衔接也更接近漫画阅读器。
    * 关掉（`settings.mangaSinglePage === false`）就退回普通图文混排。
+   *
+   * 宽屏可以双页对开（`mangaSpread`），顺序按 `mangaDirection` 决定前一张在左还是在右；
+   * 窄屏一律单页 —— 两张并排各自不到 300px，不如一张大图。
    */
-  const mangaImages = useMemo(
-    () => paragraphs.map(line => contentImageUrl(line)).filter((url): url is string => Boolean(url)),
-    [paragraphs],
-  )
+  const mangaPageList = useMemo(() => mangaPages(paragraphs), [paragraphs])
+  const mangaImages = useMemo(() => mangaPageList.map(page => page.url), [mangaPageList])
   const isMangaMode = currentBook.details.sourceType === 2 && settings.mangaSinglePage && mangaImages.length > 0
   const [mangaIndex, setMangaIndex] = useState(0)
-  // 换章回到第一张；同一章内容刷新（重取正文）也从头开始，避免下标越界。
-  useEffect(() => { setMangaIndex(0) }, [chapter?.url, mangaImages.length])
-  // 预取下一张：翻页时直接命中服务端 7 天缓存，不等网络。
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth))
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const mangaSpread = mangaSpreadSize(settings.mangaSpread, viewportWidth)
+  /** 双页时把页号吸到这一屏的第一张：翻到第 3 张也要从第 2 张开始配对，跨屏不串页。 */
+  const mangaStart = mangaSpreadStart(Math.min(mangaIndex, Math.max(0, mangaImages.length - 1)), mangaSpread)
+  /** `readLogicalPosition` 是长期闭包：当前屏经 ref 取，免得把 persist 的依赖搅乱。 */
+  const mangaRef = useRef({ start: 0, pages: mangaPageList })
+  mangaRef.current = { start: mangaStart, pages: mangaPageList }
+  /** 换章后落在哪一屏：`last` = 往回翻跨章落到末屏，`first` = 从章首开始。 */
+  const mangaTargetRef = useRef<'first' | 'last' | null>(null)
+  /** 已经按存档恢复过的章地址：同一章正文刷新（重取）不再跳回第一张。 */
+  const mangaRestoredRef = useRef('')
+  // 预取下一屏：翻页时直接命中服务端 7 天缓存，不等网络。
   useEffect(() => {
     if (!isMangaMode) return
-    const next = mangaImages[mangaIndex + 1]
-    if (!next) return
-    const image = new Image()
-    image.decoding = 'async'
-    image.src = readerImageSrc(next, chapter?.url, imageGeneration[next] ?? 0, currentBook.details.sourceId)
-  }, [isMangaMode, mangaIndex, mangaImages, chapter?.url, imageGeneration])
+    const upcoming = mangaImages.slice(mangaStart + mangaSpread, mangaStart + mangaSpread * 2)
+    for (const next of upcoming) {
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = readerImageSrc(next, chapter?.url, imageGeneration[next] ?? 0, currentBook.details.sourceId)
+    }
+  }, [isMangaMode, mangaStart, mangaSpread, mangaImages, chapter?.url, imageGeneration, currentBook.details.sourceId])
 
   /**
    * 笔记 / 划线（PROPOSAL-019 E）。
@@ -665,6 +679,31 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   // persist / 首屏恢复都是长期闭包：经 ref 读当前章的段起点与校验值，避免把 persist 的依赖搅乱。
   const logicalMetaRef = useRef({ starts: paragraphStarts, checksum: positionChecksum })
   logicalMetaRef.current = { starts: paragraphStarts, checksum: positionChecksum }
+  /**
+   * 漫画换章后的落点：往回翻跨章要落在**上一章末屏**（原来一律回到第一张，等于白翻）；
+   * 正常进入这一章则按存档的字符偏移换回页号，读到哪里就从哪里继续。
+   * 只在"这一章第一次挂上图片"时做一次 —— 同一章重取正文不动当前页。
+   */
+  useEffect(() => {
+    if (!isMangaMode) {
+      setMangaIndex(0)
+      mangaRestoredRef.current = ''
+      return
+    }
+    const url = chapter?.url ?? ''
+    if (mangaRestoredRef.current === url || !mangaImages.length) return
+    mangaRestoredRef.current = url
+    const target = mangaTargetRef.current
+    mangaTargetRef.current = null
+    if (target === 'last') { setMangaIndex(mangaImages.length - 1); return }
+    if (target === 'first') { setMangaIndex(0); return }
+    const saved = currentBook.progress
+    if (saved && saved.chapterIndex === chapter?.index && saved.charOffset != null) {
+      setMangaIndex(mangaIndexAtOffset(paragraphStarts, mangaPageList, saved.charOffset))
+      return
+    }
+    setMangaIndex(0)
+  }, [chapter?.url, chapter?.index, isMangaMode, mangaImages.length, mangaPageList, paragraphStarts, currentBook.progress])
   /**
    * 正文换了（源站改版 / 重取章节 / AI 覆盖）之后，把这一章的批注位置重新对一遍：
    * 偏移漂了就把高亮与跳转拉回原文，实在认不出才标 stale。只改内存，不写库 ——
@@ -1001,6 +1040,20 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const readLogicalPosition = useCallback((targetChapter: Chapter): LogicalPosition | null => {
     const meta = logicalMetaRef.current
     if (!meta.starts.length || !meta.checksum) return null
+    /*
+      漫画模式没有 `[data-paragraph-index]`（一屏是图片，不是段落），DOM 量不出位置。
+      但每一页都知道自己是正文里的第几段，于是页号可以换成一个稳定的字符偏移 ——
+      与文本位置共用同一套进度模型，关掉再开就回到同一张。
+    */
+    if (isMangaMode) {
+      const page = mangaRef.current.pages[mangaRef.current.start]
+      if (!page) return null
+      return {
+        charOffset: meta.starts[page.paragraph] ?? 0,
+        paragraphAnchor: paragraphAnchor(page.paragraph),
+        positionChecksum: meta.checksum,
+      }
+    }
     const scope = settings.pageMode === 'paginate'
       ? bodyRef.current
       : document.querySelector<HTMLElement>('.reading-content')
@@ -1030,7 +1083,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       paragraphAnchor: paragraphAnchor(index),
       positionChecksum: meta.checksum,
     }
-  }, [settings.pageMode, settings.scriptMode])
+  }, [settings.pageMode, settings.scriptMode, isMangaMode])
 
   /** 把逻辑位置滚回视口。返回 false 表示 DOM 里找不到这一章/这一段，交给 fraction 兜底。 */
   const scrollToLogicalPosition = useCallback((position: LogicalPosition & { chapterIndex: number }): boolean => {
@@ -1314,31 +1367,42 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }
 
   /**
-   * 漫画单图：只渲染当前这一张，翻页交给 `goNextPage` / `goPrevPage`（它们已经接上按图翻）。
-   * 失败仍复用「重取这一张」的出路；页码角标让读者知道这一章还有几张。
+   * 漫画一屏：渲染当前这一屏（单页或双页），翻页交给 `goNextPage` / `goPrevPage`。
+   * 失败仍复用「重取这一张」的出路；页码角标让读者知道这一章还有几张、现在在第几张。
    */
-  const renderMangaContent = () => {
-    const image = mangaImages[Math.min(mangaIndex, mangaImages.length - 1)]
+  const renderMangaPage = (index: number) => {
+    const image = mangaImages[index]
     if (!image) return null
     const referer = chapter?.url
     const src = readerImageSrc(image, referer, imageGeneration[image] ?? 0)
-    const failure = failedImages[image]
+    if (failedImages[image]) return renderImageFailure(image, referer, index)
     return (
-      <div className="manga-page" data-manga-index={mangaIndex}>
-        {failure ? renderImageFailure(image, referer) : (
-          <img
-            className="manga-page-image"
-            src={src}
-            alt=""
-            decoding="async"
-            onClick={event => { event.stopPropagation(); setLightboxSrc(src) }}
-            onError={event => {
-              event.currentTarget.hidden = true
-              setFailedImages(current => (current[image] ? current : { ...current, [image]: '这张图没取到' }))
-            }}
-          />
-        )}
-        <span className="manga-page-count">{mangaIndex + 1} / {mangaImages.length}</span>
+      <img
+        key={index}
+        className="manga-page-image"
+        src={src}
+        alt=""
+        decoding="async"
+        onClick={event => { event.stopPropagation(); setLightboxSrc(src) }}
+        onError={event => {
+          event.currentTarget.hidden = true
+          setFailedImages(current => (current[image] ? current : { ...current, [image]: '这张图没取到' }))
+        }}
+      />
+    )
+  }
+
+  const renderMangaContent = () => {
+    const shown = mangaSpreadPages(mangaStart, mangaSpread, mangaImages.length, settings.mangaDirection)
+    if (!shown.length) return null
+    return (
+      <div
+        className={`manga-page${mangaSpread === 2 ? ' manga-page-spread' : ''}`}
+        data-manga-index={mangaStart}
+        data-manga-direction={settings.mangaDirection}
+      >
+        {shown.map(index => renderMangaPage(index))}
+        <span className="manga-page-count">{mangaPageLabel(mangaStart, mangaSpread, mangaImages.length)}</span>
       </div>
     )
   }
@@ -1387,6 +1451,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     targetInitialPageRef.current = targetPage === 'auto'
       ? (settings.pageMode === 'paginate' ? 'first' : null)
       : targetPage
+    // 漫画同一条规矩：主动换章从章首开始，往回翻跨章落到上一章末屏（原来一律回到第一张）。
+    if (isMangaMode) mangaTargetRef.current = targetPage === 'last' ? 'last' : 'first'
     // 既不清 content 也不清 loadedChapterUrl：这两个值成对描述"屏幕上挂的是哪一章"。
     // 历史上这里两者都清，是为了杜绝切章瞬间朗读误读上一章旧正文（AGENTS.md 的跨章竞态守卫）——
     // 那个目的现在由 ttsParagraphs 承担（过渡期间给朗读管线空数组），视觉侧不必跟着挖空。
@@ -1404,7 +1470,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     setFlowHead([])
     pendingPrependRef.current = null
     if (!keepContainer) setFlowKey(currentBook.chapters[nextIndex]?.url ?? `jump-${nextIndex}`)
-  }, [chapterIndex, currentBook.chapters.length, persist, settings.pageMode, settings.ttsEngine, showBoundaryNotice, stopTts, stopAllEngines])
+  }, [chapterIndex, currentBook.chapters.length, isMangaMode, persist, settings.pageMode, settings.ttsEngine, showBoundaryNotice, stopTts, stopAllEngines])
   // 把最新那份 changeChapter 交给朗读 hook（它要用 ref 打破循环依赖）。
   changeChapterRef.current = changeChapter
 
@@ -2016,10 +2082,11 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [content, loading, measurePagination, pageFillers, settings.pageMode, settlePrependedPage, windowChapters])
 
   const goNextPage = useCallback(() => {
-    // 漫画单图：章内按图翻，翻到最后一张再进下一章（与文本分页同一套入口）。
+    // 漫画：章内按屏翻（双页一屏两张），翻到末屏再进下一章（与文本分页同一套入口）。
     if (isMangaMode) {
-      if (mangaIndex < mangaImages.length - 1) setMangaIndex(mangaIndex + 1)
-      else changeChapter(chapterIndex + 1, 'first')
+      const next = mangaNextStart(mangaIndex, mangaSpread, mangaImages.length)
+      if (next === null) changeChapter(chapterIndex + 1, 'first')
+      else setMangaIndex(next)
       return
     }
     const plan = planNextPage(pageIndex, pageCount)
@@ -2031,7 +2098,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     // 已到本章最后一页：翻页模式下这是"下一页"而不是"跳一章"（不换容器 key，不重挂）
     changeChapter(chapterIndex + 1, 'first', settings.pageMode === 'paginate')
-  }, [chapterIndex, changeChapter, isMangaMode, mangaImages.length, mangaIndex, pageCount, pageIndex, pageAnim, settings.pageMode])
+  }, [chapterIndex, changeChapter, isMangaMode, mangaImages.length, mangaIndex, mangaSpread, pageCount, pageIndex, pageAnim, settings.pageMode])
 
   /**
    * 往回翻到窗口开头时，把**上一章接到窗口最前面**。
@@ -2064,10 +2131,11 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [chapter, currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId])
 
   const goPrevPage = useCallback(() => {
-    // 漫画单图：章内退一张，退到第一张再回上一章的末图。
+    // 漫画：章内退一屏，退到第一屏再回上一章的末屏。
     if (isMangaMode) {
-      if (mangaIndex > 0) setMangaIndex(mangaIndex - 1)
-      else changeChapter(chapterIndex - 1, 'last')
+      const prev = mangaPrevStart(mangaIndex, mangaSpread)
+      if (prev === null) changeChapter(chapterIndex - 1, 'last')
+      else setMangaIndex(prev)
       return
     }
     const plan = planPrevPage(pageIndex)
@@ -2091,7 +2159,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         showBoundaryNotice('已是第一章')
       }
     })
-  }, [chapterIndex, changeChapter, isMangaMode, mangaIndex, pageIndex, pageAnim, prependPreviousChapter, showBoundaryNotice])
+  }, [chapterIndex, changeChapter, isMangaMode, mangaIndex, mangaSpread, pageIndex, pageAnim, prependPreviousChapter, showBoundaryNotice])
 
   // Sync scroll / page progress
   useEffect(() => {
@@ -2167,7 +2235,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [persist, preloadNextChapter, preloadPrevChapter, settings.pageMode, currentBook.chapters])
 
   useEffect(() => {
-    if (settings.pageMode !== 'paginate') return
+    if (settings.pageMode !== 'paginate' || isMangaMode) return
     // 分母是"这一章有几页"，不是"这个窗口有几页" —— 与滚动模式同一份进度契约
     const position = pageSpansRef.current.length
       ? pageProgress(pageSpansRef.current, pageIndex)
@@ -2187,7 +2255,38 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         }, 1200)
       }
     }
-  }, [chapter, pageCount, pageIndex, persist, preloadNextChapter, preloadPrevChapter, settings.pageMode])
+  }, [chapter, pageCount, pageIndex, persist, preloadNextChapter, preloadPrevChapter, settings.pageMode, isMangaMode])
+
+  /**
+   * 分页模式的进度上报（PROPOSAL-020 P2）：章内页码比例，供底栏进度条显示真实进度。
+   * 漫画自己按屏上报（页数与文本页无关），这里让开。
+   */
+  useEffect(() => {
+    if (settings.pageMode !== 'paginate' || isMangaMode) return
+    reportProgress({ chapterIndex, total: currentBook.chapters.length, fraction: pageCount > 1 ? pageIndex / (pageCount - 1) : 0 })
+  }, [chapterIndex, pageIndex, pageCount, settings.pageMode, isMangaMode, currentBook.chapters.length])
+
+  /**
+   * 漫画的进度：分母是"这一章有几张"，与文本页数无关。
+   * 上报给底栏进度条，并按同一份比例决定预载下一章 / 上一章；
+   * 落库仍走 `persist`（读到的位置由 `readLogicalPosition` 换成当前屏第一张的字符偏移）。
+   */
+  useEffect(() => {
+    if (!isMangaMode || !chapter) return
+    const position = mangaFraction(mangaStart, mangaImages.length)
+    const current = currentRef.current
+    if (!current) return
+    current.position = position
+    reportProgress({ chapterIndex, total: currentBook.chapters.length, fraction: position })
+    if (position >= 0.7) preloadNextChapter(chapter.index)
+    else if (position <= 0.3) preloadPrevChapter(chapter.index)
+    if (timerRef.current === null) {
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null
+        persist()
+      }, 1200)
+    }
+  }, [isMangaMode, chapter, chapterIndex, mangaStart, mangaImages.length, currentBook.chapters.length, persist, preloadNextChapter, preloadPrevChapter])
 
   // Stop TTS on unmount
   useEffect(() => () => {
@@ -2300,6 +2399,11 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       const hit = shortcutFor(READER_SHORTCUTS, key)
       if (!hit) return
       const jumpWithinChapter = (end: boolean) => {
+        // 漫画没有可滚的正文：章首 / 章末就是首屏 / 末屏。
+        if (isMangaMode) {
+          setMangaIndex(end ? Math.max(0, mangaImages.length - 1) : 0)
+          return
+        }
         const section = anchorSectionRef.current
         if (!section) return
         const top = window.scrollY + section.getBoundingClientRect().top
@@ -2326,13 +2430,13 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           break
         case 'page-up':
           event.preventDefault()
-          if (settings.pageMode === 'paginate') goPrevPage()
+          if (settings.pageMode === 'paginate' || isMangaMode) goPrevPage()
           else if (isAtTopBoundary(window.scrollY)) changeChapter(chapterIndex - 1, 'last')
           else window.scrollBy({ top: -window.innerHeight * 0.85, behavior: 'smooth' })
           break
         case 'page-down':
           event.preventDefault()
-          if (settings.pageMode === 'paginate') goNextPage()
+          if (settings.pageMode === 'paginate' || isMangaMode) goNextPage()
           else if (isAtBottomBoundary(window.scrollY, document.documentElement.scrollHeight, window.innerHeight)) changeChapter(chapterIndex + 1, 'first')
           else window.scrollBy({ top: window.innerHeight * 0.85, behavior: 'smooth' })
           break
@@ -2398,7 +2502,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeDrawer, changeChapter, chapterIndex, goNextPage, goPrevPage, onSettingsChange, settings, toggleTts])
+  }, [activeDrawer, changeChapter, chapterIndex, goNextPage, goPrevPage, onSettingsChange, settings, toggleTts, isMangaMode, mangaImages.length])
 
   // Ctrl/⌘ + 滚轮直接调字号：不用先开设置抽屉再拖滑杆。必须 passive:false，否则拦不住浏览器的页面缩放。
   useEffect(() => {
@@ -2440,7 +2544,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    * 格子表在 `settings.tapZones`，出厂那张与改动前逐字一致；这里只负责"动作 → 行为"。
    */
   const runTapAction = useCallback((action: TapAction) => {
-    const paginate = settings.pageMode === 'paginate'
+    // 漫画即使开着"连续滚动"也是按屏翻 —— 一屏只有一张图，滚不动，点两侧该翻页而不是滚。
+    const paginate = settings.pageMode === 'paginate' || isMangaMode
     if (action === 'previous') {
       if (paginate) {
         goPrevPage()
@@ -2465,7 +2570,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     if (action === 'none') return
     setToolbarsVisible(visible => !visible)
-  }, [chapterIndex, changeChapter, goNextPage, goPrevPage, settings.pageMode])
+  }, [chapterIndex, changeChapter, goNextPage, goPrevPage, settings.pageMode, isMangaMode])
 
   /**
    * 正文区的视口矩形。
@@ -2507,7 +2612,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       return
     }
 
-    if (settings.pageMode === 'paginate') {
+    // 漫画按屏翻：与分页同一套手势与分区（滚动模式下也走这一支，见 runTapAction）。
+    if (settings.pageMode === 'paginate' || isMangaMode) {
       const swipe = swipeDirection(start.x, start.y, event.clientX, event.clientY)
       if (swipe === 'left') {
         goNextPage()

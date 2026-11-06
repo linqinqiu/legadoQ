@@ -33,5 +33,23 @@ export function BehaviorTab({ settings, onChange }: { settings: ReaderSettings; 
         <button className={!settings.mangaSinglePage ? 'selected' : ''} onClick={() => update({ mangaSinglePage: false })}>关</button>
       </div>
     </SettingGroup>
+    {settings.mangaSinglePage && (
+      <>
+        <SettingGroup title="漫画双页" hint="宽屏（≥720px）一屏并排两张，窄屏自动退回一张；页号按屏对齐（1–2、3–4）。">
+          <div className="page-modes">
+            <button className={settings.mangaSpread ? 'selected' : ''} onClick={() => update({ mangaSpread: true })}>开</button>
+            <button className={!settings.mangaSpread ? 'selected' : ''} onClick={() => update({ mangaSpread: false })}>关</button>
+          </div>
+        </SettingGroup>
+        {settings.mangaSpread && (
+          <SettingGroup title="双页顺序" hint="日漫从右往左读：前一张在右边。单页模式看不出区别。">
+            <div className="page-modes">
+              <button className={settings.mangaDirection === 'ltr' ? 'selected' : ''} onClick={() => update({ mangaDirection: 'ltr' })}>从左到右</button>
+              <button className={settings.mangaDirection === 'rtl' ? 'selected' : ''} onClick={() => update({ mangaDirection: 'rtl' })}>从右到左</button>
+            </div>
+          </SettingGroup>
+        )}
+      </>
+    )}
   </>
 }

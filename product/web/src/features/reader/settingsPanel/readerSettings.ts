@@ -1,6 +1,7 @@
 import { DEFAULT_MAPS, looksLikeGrid, migrateGrid, sanitizeMap, type TapMap } from '../interaction/tapZones'
 import { DEFAULT_READER_MENU, parseReaderMenu, type ReaderMenuAction } from '../interaction/readerMenu'
 import { parseScriptMode, type ScriptMode } from '../content/scriptConvert'
+import type { MangaDirection } from '../content/mangaPages'
 import type { PageTurnAnim } from '../interaction/pageTurn'
 import { READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN } from '../content/fontSizeControl'
 import { clampNumber, clampScrollPosition, scrollPosition } from '../../../lib/scrollProgress'
@@ -109,6 +110,13 @@ export type ReaderSettings = {
   textAlign: ReaderTextAlign
   /** 漫画单图模式：书源 `bookSourceType === 2` 时一屏一图、按图翻页；关掉则按普通图文混排。 */
   mangaSinglePage: boolean
+  /**
+   * 漫画双页对开：宽屏（≥720px）一屏并排两张，窄屏自动退回一张。
+   * 页号按屏对齐（1–2、3–4），跨屏不串页；末屏只剩一张时就是单页。
+   */
+  mangaSpread: boolean
+  /** 双页顺序：`ltr` 前一张在左（国漫），`rtl` 前一张在右（日漫）。单页模式看不出区别。 */
+  mangaDirection: MangaDirection
   ttsEngine: TtsEngineType
   ttsVoice: string
   ttsSpeed: number
@@ -188,6 +196,8 @@ export const defaultReaderSettings: ReaderSettings = {
   columnMode: 'auto',
   textAlign: 'justify',
   mangaSinglePage: true,
+  mangaSpread: false,
+  mangaDirection: 'ltr',
   ttsEngine: 'edge',
   ttsVoice: 'zh-CN-XiaoxiaoNeural',
   ttsSpeed: 1.0,
@@ -643,6 +653,8 @@ export function loadReaderSettings(): ReaderSettings {
   columnMode: parseColumnMode(saved.columnMode),
   textAlign: parseTextAlign(saved.textAlign),
       mangaSinglePage: typeof saved.mangaSinglePage === 'boolean' ? saved.mangaSinglePage : defaultReaderSettings.mangaSinglePage,
+      mangaSpread: typeof saved.mangaSpread === 'boolean' ? saved.mangaSpread : defaultReaderSettings.mangaSpread,
+      mangaDirection: saved.mangaDirection === 'rtl' ? 'rtl' : 'ltr',
       ttsEngine: parseTtsEngine(saved.ttsEngine),
       ttsVoice: typeof saved.ttsVoice === 'string' && saved.ttsVoice.trim() ? saved.ttsVoice : defaultReaderSettings.ttsVoice,
       ttsSpeed: clampNumber(saved.ttsSpeed, 0.5, 3.0, defaultReaderSettings.ttsSpeed),

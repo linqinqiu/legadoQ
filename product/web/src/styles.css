@@ -2210,6 +2210,10 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 /* 漫画单图：一屏一张、等比完整显示；角标告诉读者这一章还有几张。 */
 .manga-page { display: flex; align-items: center; justify-content: center; min-height: calc(100dvh - 150px); padding: 4px 0; }
 .manga-page-image { max-width: 100%; max-height: calc(100dvh - 150px); width: auto; height: auto; object-fit: contain; cursor: zoom-in; border-radius: 4px; }
+/* 双页对开：两张各占一半宽、各自等比缩到视口高；中间留一道缝。
+   顺序由 DOM 决定（从右到左＝前一张排在后面），这里不写 direction，免得连角标一起翻。 */
+.manga-page.manga-page-spread { gap: 6px; }
+.manga-page-spread .manga-page-image { max-width: calc(50% - 3px); }
 .manga-page-count { position: fixed; right: max(12px, var(--safe-right)); bottom: calc(14px + var(--safe-bottom)); padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--muted); font-family: Inter, "PingFang SC", sans-serif; font-size: var(--t-xs); pointer-events: none; }
 /* 正文配图取失败时的那一行：说清失败了、为什么，并给一条「重取这一张」的出路。
    以前这张图被整块藏掉，"取失败"与"这一页本来没图"在界面上是同一个样子。 */
