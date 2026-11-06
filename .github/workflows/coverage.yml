@@ -43,6 +43,10 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 全量历史：VersionTracks 那条判据要逐行复算 RELEASES.md 里的历史提交与 tag，
+          # 默认的 fetch-depth: 1 里那些对象根本不存在，会把整表判成"提交不存在"。
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

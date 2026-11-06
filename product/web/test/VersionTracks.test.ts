@@ -143,10 +143,19 @@ const BUILD_NUMBER_EXCEPTIONS: Record<string, string> = {
   '0.2.17': '与 0.2.16 共用 13（那次漏了 bump）；tag 不移动，只能留着',
 }
 
-test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / tag', () => {
+test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / tag', (t) => {
   const git = (...args: string[]) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8' }).trim()
   const tryGit = (...args: string[]) => {
     try { return git(...args) } catch { return null }
+  }
+  /*
+   * 浅克隆里历史提交与 tag 根本不在对象库里，逐行复算会得到"每一行都错"这种读不懂的红。
+   * 明确跳过并说清怎么补历史 —— 四个跑前端判据的 workflow 都已经 fetch-depth: 0，
+   * 本地浅克隆请 `git fetch --unshallow`。跳过会出现在 node:test 的 skipped 计数里，不是静默通过。
+   */
+  if (git('rev-parse', '--is-shallow-repository') === 'true') {
+    t.skip('仓库是浅克隆（fetch-depth: 1），拿不到 RELEASES.md 里的历史提交与 tag')
+    return
   }
   const cmpVersion = (a: string, b: string) => {
     const x = a.split('.').map(Number), y = b.split('.').map(Number)

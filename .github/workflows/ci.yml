@@ -66,6 +66,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 全量历史：VersionTracks 那条判据要逐行复算 RELEASES.md 里的历史提交与 tag，
+          # 默认的 fetch-depth: 1 里那些对象根本不存在，会把整表判成"提交不存在"。
+          fetch-depth: 0
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
