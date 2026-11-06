@@ -6005,6 +6005,9 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 }
 .reader-notes-tab small { font-size: 11px; font-variant-numeric: tabular-nums; }
 .reader-notes-tab.is-active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+/* 超大章节的分块补挂：滚到底自动补，observer 不可用时这颗按钮兜底。 */
+.reader-chunk-more { display: flex; justify-content: center; padding: 18px 0 26px; }
+
 /* 搜索命中的临时高亮（结果片段与正文里同一套）：用底色而不是下划线，
    和笔记高亮区分开 —— 笔记是用户留下的，搜索高亮几秒后就没了。 */
 .reader-search-hit {

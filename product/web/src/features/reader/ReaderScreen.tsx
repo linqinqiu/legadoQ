@@ -53,6 +53,7 @@ import { isTypingTarget, normalizeKey, READER_SHORTCUTS, shortcutFor } from './i
 import { OfflineCacheModal } from '../../components/OfflineCacheModal'
 import { warmContentImages } from './content/contentImages'
 import { splitParagraphs } from './content/paragraphs'
+import { CHUNK_SIZE, ensureLimit, growLimit, shouldChunk } from './content/chunkedRender'
 import type { OpenBook } from '../../lib/openBook'
 import {
   downloadChaptersToOffline,
@@ -578,6 +579,31 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    */
   const splitBody = useCallback((text: string) => splitParagraphs(text).map(convert), [convert])
   const paragraphs = useMemo(() => (content ? splitBody(content) : []), [content, splitBody])
+  /**
+   * 超大章节分块渲染：普通章节不受影响（阈值 400 段）。
+   * 分页模式不参与 —— 它要把整章量成列，缺段就量不出总页数。
+   */
+  const chunked = shouldChunk(settings.pageMode, paragraphs.length)
+  const [renderLimit, setRenderLimit] = useState(CHUNK_SIZE)
+  const chunkSentinelRef = useRef<HTMLDivElement | null>(null)
+  const shownParagraphs = chunked ? paragraphs.slice(0, renderLimit) : paragraphs
+  /** 换章 / 换正文就回到第一块：分块状态不能跨章带走。 */
+  useEffect(() => { setRenderLimit(CHUNK_SIZE) }, [content, chapter?.index])
+  /** 要把某一段挂出来（跳笔记 / 搜索命中 / 朗读跟读）：按块对齐地补，不多挂。 */
+  const revealParagraph = useCallback((index: number) => {
+    setRenderLimit(limit => ensureLimit(limit, index, paragraphs.length))
+  }, [paragraphs.length])
+  /** 滚到这一块末尾就自动补下一块；IntersectionObserver 不可用时下面的按钮也能补。 */
+  useEffect(() => {
+    if (!chunked || renderLimit >= paragraphs.length) return
+    const node = chunkSentinelRef.current
+    if (!node || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) setRenderLimit(limit => growLimit(limit, paragraphs.length))
+    }, { rootMargin: '800px 0px' })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [chunked, renderLimit, paragraphs.length])
 
   /**
    * 漫画单图模式。
@@ -1035,7 +1061,21 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    * `offsetLeft` 与 `rect.left` 混着量会稳定偏一整页。
    */
   const jumpToNotePosition = useCallback((position: LogicalPosition & { chapterIndex: number }): boolean => {
-    if (settings.pageMode !== 'paginate') return scrollToLogicalPosition(position)
+    if (settings.pageMode !== 'paginate') {
+      /*
+        分块章节里目标段可能还没挂出来：先补块，把落点交给 pending 的 effect，
+        等这一轮渲染完再滚（直接滚会找不到那一段，然后悄悄退化成章首）。
+      */
+      if (chunked && logicalMetaRef.current.starts.length) {
+        const { index } = offsetToParagraph(logicalMetaRef.current.starts, position.charOffset)
+        if (index >= renderLimit) {
+          pendingNoteJumpRef.current = position
+          revealParagraph(index)
+          return false
+        }
+      }
+      return scrollToLogicalPosition(position)
+    }
     const meta = logicalMetaRef.current
     const body = bodyRef.current
     if (!meta.starts.length || !body || stride <= 0) return false
@@ -1048,7 +1088,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     const offset = rect.left - body.getBoundingClientRect().left
     setPageIndex(Math.min(pageCount - 1, Math.max(0, Math.round(offset / stride))))
     return true
-  }, [scrollToLogicalPosition, settings.pageMode, stride, pageCount])
+  }, [scrollToLogicalPosition, settings.pageMode, stride, pageCount, chunked, renderLimit, revealParagraph])
 
   /** 跨章跳转的落点：正文挂进 DOM 之后才能滚，所以挂在 ref 上等这一条 effect。 */
   useEffect(() => {
@@ -1706,6 +1746,20 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     const targetMode = targetInitialPageRef.current
     const initialPos = initialPagePositionRef.current
     const initialLogical = initialLogicalPositionRef.current
+    /*
+      分块章节的首屏恢复：目标段还在后面没挂出来时，先补块再交给 pending 的 effect 精确滚 ——
+      直接按 fraction 兜底会落到估出来的高度上，差得远。
+    */
+    if (initialLogical && chunked && initialLogical.positionChecksum === positionChecksum && logicalMetaRef.current.starts.length) {
+      const { index } = offsetToParagraph(logicalMetaRef.current.starts, initialLogical.charOffset)
+      if (index >= renderLimit) {
+        initialLogicalPositionRef.current = null
+        initialPagePositionRef.current = null
+        pendingNoteJumpRef.current = initialLogical
+        revealParagraph(index)
+        return
+      }
+    }
     targetInitialPageRef.current = null
     initialPagePositionRef.current = null
     initialLogicalPositionRef.current = null
@@ -2213,6 +2267,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   // Auto-scroll / highlight follower effect
   useEffect(() => {
     if (!ttsActive || activeParagraphIndex < 0) return
+    // 分块章节里跟读到还没挂出来的段：先补块，等下一轮渲染再滚（找不到节点就什么都不会发生）。
+    if (chunked && activeParagraphIndex >= renderLimit) { revealParagraph(activeParagraphIndex); return }
 
     if (settings.pageMode === 'scroll') {
       // 同上：高亮跟读只在锚点那一章里找，不然会滚到续接进来的下一章的同名段落
@@ -2232,7 +2288,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         setPageIndex(targetPage)
       }
     }
-  }, [activeParagraphIndex, ttsActive, settings.pageMode, stride, pageCount])
+  }, [activeParagraphIndex, ttsActive, settings.pageMode, stride, pageCount, chunked, renderLimit, revealParagraph])
 
   useEffect(() => () => { if (boundaryTimerRef.current !== null) window.clearTimeout(boundaryTimerRef.current) }, [])
 
@@ -2799,7 +2855,18 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
             {isStaleContent && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingChapterTitle)}</p>}
             {loading && !content && <ReaderContentSkeleton />}
             {message && <p className="reader-error">{message}</p>}
-            {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : isMangaMode ? renderMangaContent() : paragraphs.map((line, index) => renderContentBlock(line, index))}
+            {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : isMangaMode ? renderMangaContent() : shownParagraphs.map((line, index) => renderContentBlock(line, index))}
+            {chunked && renderLimit < paragraphs.length && (
+              <div className="reader-chunk-more" ref={chunkSentinelRef}>
+                <button
+                  type="button"
+                  className="subtle-button"
+                  onClick={() => setRenderLimit(limit => growLimit(limit, paragraphs.length))}
+                >
+                  继续加载（已显示 {Math.min(renderLimit, paragraphs.length)} / {paragraphs.length} 段）
+                </button>
+              </div>
+            )}
           </section>
           {flowTail.map(item => (
             <section key={item.chapter.url} className="reader-flow-chapter reader-flow-tail" data-chapter-index={item.chapter.index}>

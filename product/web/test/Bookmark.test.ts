@@ -98,7 +98,8 @@ test('三处入口都接上了：顶栏 / 旧工具栏 / 笔记面板', () => {
 test('跳到书签要落到那一段，不是只切章；书签不画正文高亮', () => {
   const screen = read('../src/features/reader/ReaderScreen.tsx')
   assert.match(screen, /const jumpToNotePosition = useCallback/, '跳转要有自己的落点函数')
-  assert.match(screen, /settings\.pageMode !== 'paginate'\) return scrollToLogicalPosition/, '滚动模式滚视口')
+  assert.match(screen, /if \(settings\.pageMode !== 'paginate'\) \{/, '滚动模式走自己的分支')
+  assert.match(screen, /return scrollToLogicalPosition\(position\)/, '滚动模式滚视口')
   assert.match(screen, /setPageIndex\(Math\.min\(pageCount - 1/, '分页模式换页码，与朗读跟读同一套矩形差')
   assert.match(screen, /pendingNoteJumpRef\.current = target/, '跨章要等正文挂进 DOM 再滚')
   assert.match(screen, /jumpToNotePosition\(target\)/, '同章直接滚')
