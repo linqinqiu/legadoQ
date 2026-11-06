@@ -22,7 +22,6 @@ import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import java.util.IdentityHashMap
 import java.util.UUID
-import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -584,7 +583,7 @@ internal class JavaPackages(
         ))
         "cn.hutool.core.util.ZipUtil" -> jsClass(full, statics = mapOf(
             "gzip" to { a -> bytesArray(gzip(bytesOf(a.firstOrNull()))) },
-            "unGzip" to { a -> bytesArray(runCatching { unGzipBounded(bytesOf(a.firstOrNull())) }.getOrDefault(ByteArray(0))) },
+            "unGzip" to { a -> bytesArray(runCatching { GzipLimits.unzipBounded(bytesOf(a.firstOrNull())) }.getOrDefault(ByteArray(0))) },
         ))
         "cn.hutool.crypto.digest.DigestUtil" -> jsClass(full, statics = mapOf(
             "md5Hex" to { a -> digestHex(textOf(a.firstOrNull()), "MD5") },
@@ -975,35 +974,6 @@ internal class JavaPackages(
         return output.toByteArray()
     }
 
-    /**
-     * 限量解压（防"压缩炸弹"）。
-     *
-     * 原先这里是一句 `GZIPInputStream(...).use { it.readBytes() }`：`readBytes()` 无上限，
-     * 而一个几百字节的 GZIP 能解出几十 GB —— 解压是**宿主侧的内存分配**，不产生 Rhino 指令，
-     * `JsGuard` 的指令观察器与墙钟守卫都拦不住，直接 `OutOfMemoryError` 打掉进程。
-     *
-     * 改成流式读、边读边记账，超过 [MAX_UNZIP_BYTES] 立即抛错中断。
-     * 抛 `IllegalArgumentException` 而不是 `Error`，这样脚本层的 `runCatching`（以及调用方的
-     * `runCatching`）能正常兜住并降级成空结果，而不是把整条线程炸掉。
-     */
-    private fun unGzipBounded(input: ByteArray): ByteArray {
-        val out = ByteArrayOutputStream()
-        val buffer = ByteArray(16 * 1024)
-        GZIPInputStream(input.inputStream()).use { stream ->
-            while (true) {
-                val read = stream.read(buffer)
-                if (read < 0) break
-                if (out.size() + read > MAX_UNZIP_BYTES) {
-                    throw IllegalArgumentException(
-                        "GZIP 解压超过 ${MAX_UNZIP_BYTES / (1024 * 1024)}MB 上限，已中断（疑似压缩炸弹）",
-                    )
-                }
-                out.write(buffer, 0, read)
-            }
-        }
-        return out.toByteArray()
-    }
-
     private fun jsList(): Scriptable {
         val array = cx.newArray(top, emptyArray<Any>())
         fun push(value: Any?) {
@@ -1223,8 +1193,6 @@ internal class JavaPackages(
         private const val MAX_SLEEP_MS = 1_000L
         /** `StringBuilder.setLength` 的上限（字符数，约 2MB 内存），防止脚本直接触发大额分配。 */
         private const val MAX_STRING_BUILDER_LENGTH = 1_000_000
-        /** 单次 GZIP 解压的输出上限。真实书源页面压缩包里没有这么大的东西。 */
-        private const val MAX_UNZIP_BYTES = 16 * 1024 * 1024
 
         private val OBJECT_MEMBERS = setOf(
             "toString", "valueOf", "hasOwnProperty", "constructor", "__proto__", "toJSON", "isPrototypeOf",

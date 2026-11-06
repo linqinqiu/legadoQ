@@ -1,0 +1,8 @@
+{
+  "bookSourceUrl": "https://golden.example",
+  "bookSourceName": "金标准·正文",
+  "bookSourceType": 0,
+  "ruleContent": {
+    "content": "div#content@text"
+  }
+}

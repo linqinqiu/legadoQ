@@ -1,0 +1,12 @@
+{
+  "bookSourceUrl": "https://golden.example",
+  "bookSourceName": "金标准·CSS 搜索",
+  "bookSourceType": 0,
+  "searchUrl": "https://golden.example/search?q={{key}}",
+  "ruleSearch": {
+    "bookList": "div.result",
+    "name": "h3.title@text",
+    "author": "span.author@text",
+    "bookUrl": "a.detail@href"
+  }
+}

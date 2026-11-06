@@ -1,0 +1,12 @@
+{
+  "isScript": true,
+  "canOpenBrowser": true,
+  "uiVersion": 1,
+  "ui": [
+    { "name": "账号", "type": "text" },
+    { "name": "登录", "type": "button", "action": "login(true)" }
+  ],
+  "successToast": "登录成功",
+  "successLoginInfo": { "role": "vip" },
+  "failureToast": "账号或密码错误"
+}

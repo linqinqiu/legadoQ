@@ -1,0 +1,7 @@
+{
+  "bookSourceUrl": "https://golden.example",
+  "bookSourceName": "金标准·登录 v1",
+  "bookSourceType": 0,
+  "loginUrl": "function login(isVip) { var info = source.getLoginInfoMap(); if (info['user'] == 'admin') { java.toast('登录成功'); java.upLoginData({ role: 'vip' }); } else { java.toast('账号或密码错误'); } }",
+  "loginUi": "[{\"name\":\"账号\",\"type\":\"text\",\"style\":{\"layout_flexBasisPercent\":1.0}},{\"name\":\"登录\",\"type\":\"button\",\"action\":\"login(true)\"}]"
+}

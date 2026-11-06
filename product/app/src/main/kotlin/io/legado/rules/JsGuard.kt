@@ -3,21 +3,35 @@ package io.legado.rules
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContextFactory
 import org.mozilla.javascript.EvaluatorException
-import io.legado.AppConfig
 
 /**
  * 书源 JS / 规则脚本是**不可信**的：一条 `while(true)` 或 `for(;;)` 就能占死一条工作线程
  * （DoS）。Rhino 的解释器会周期性回调 `observeInstructionCount`，据此做一层**墙钟上限**守卫：
- * 每 [GRANULARITY] 条指令检查一次是否超过 [AppConfig.jsTimeoutMs]，超时即抛错中断这次执行。
+ * 每 [GRANULARITY] 条指令检查一次是否超过本次执行的上限，超时即抛错中断这次执行。
  *
- * 只在解释模式（`optimizationLevel = -1`，两处调用点都设了）下观察器会触发；合法规则都是
- * 毫秒级、远低于默认 30 秒上限，绝不会被误伤——这道闸只拦失控/死循环。
+ * 只在解释模式（`optimizationLevel = -1`）下观察器会触发；合法规则都是毫秒级、
+ * 远低于默认 30 秒上限，绝不会被误伤 —— 这道闸只拦失控/死循环。
+ *
+ * ## 超时为什么是参数而不是直接读 `AppConfig`
+ *
+ * 从前这里直接读 `AppConfig.jsTimeoutMs`（默认 30s，取自环境变量）。后果是**这层守卫没法测**：
+ * 判据要把超时缩到一两百毫秒才能在一秒内跑完「死循环必须被中断」，
+ * 而全局配置是进程级的、测试改不动它。于是 `observeInstructionCount` 会真的触发这件事
+ * 一直没有人验证过（`while(true){}` 要挂满 30 秒才抛，没人愿意在 CI 里等）。
+ *
+ * 现在上限由调用方传入：生产路径传 `AppConfig.jsTimeoutMs`，判据传 120ms。
+ * 顺带把这个文件对 `io.legado` 的唯一依赖摘掉了 —— 它不再需要知道应用配置在哪，
+ * 是将来把沙箱层拆成独立模块的前提。
  */
 private class BoundedContext : Context() {
     @Volatile var deadlineMs: Long = Long.MAX_VALUE
+
+    /** 本次执行的墙钟上限，仅用于报错文案；语义由 [deadlineMs] 承载。 */
+    @Volatile var timeoutMs: Long = BoundedJs.DEFAULT_TIMEOUT_MS
+
     override fun observeInstructionCount(instructionCount: Int) {
         if (System.currentTimeMillis() > deadlineMs) {
-            throw EvaluatorException("书源 JS 执行超过 ${AppConfig.jsTimeoutMs}ms 上限，已中断（疑似死循环）")
+            throw EvaluatorException("书源 JS 执行超过 ${timeoutMs}ms 上限，已中断（疑似死循环）")
         }
     }
 }
@@ -66,10 +80,20 @@ private object BoundedContextFactory : ContextFactory() {
 }
 
 object BoundedJs {
-    /** 进入一个带墙钟上限的 Rhino Context；用完必须配对 [exit]（与原 `Context.enter()/exit()` 对称）。 */
-    fun enter(): Context = (BoundedContextFactory.enter() as BoundedContext).apply {
-        deadlineMs = System.currentTimeMillis() + AppConfig.jsTimeoutMs
-    }
+    /** 生产默认值，与 `AppConfig.jsTimeoutMs` 的缺省一致（30 秒）。 */
+    const val DEFAULT_TIMEOUT_MS: Long = 30_000L
+
+    /**
+     * 进入一个带墙钟上限的 Rhino Context；用完必须配对 [exit]（与原 `Context.enter()/exit()` 对称）。
+     *
+     * @param timeoutMs 本次执行的墙钟上限。生产路径传 `AppConfig.jsTimeoutMs`；
+     *   判据会传一个很小的值（如 120ms），这样「死循环必须被中断」能在秒级内验完。
+     */
+    fun enter(timeoutMs: Long = DEFAULT_TIMEOUT_MS): Context =
+        (BoundedContextFactory.enter() as BoundedContext).apply {
+            this.timeoutMs = timeoutMs
+            deadlineMs = System.currentTimeMillis() + timeoutMs
+        }
 
     fun exit() { Context.exit() }
 }

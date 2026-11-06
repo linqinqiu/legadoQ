@@ -1,0 +1,15 @@
+{
+  "bookSourceUrl": "https://golden.example",
+  "bookSourceName": "金标准·详情与目录",
+  "bookSourceType": 0,
+  "ruleBookInfo": {
+    "name": "$.book.name",
+    "author": "$.book.author",
+    "tocUrl": "$.book.tocUrl"
+  },
+  "ruleToc": {
+    "chapterList": "$.chapters",
+    "chapterName": "$.title",
+    "chapterUrl": "$.url"
+  }
+}

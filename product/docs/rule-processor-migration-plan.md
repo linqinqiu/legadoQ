@@ -1,13 +1,13 @@
 # RuleProcessor 接入 RuleRunner：分阶段方案
 
 > 状态：**方案（未实施）**。0.2.15 只交付了契约（`RuleProcessor` / `RuleContext` / `RuleResult` / `RuleDispatcher`）
-> 与占位实现，`RuleRunner` 仍走原有内联链路。本文写清"要接入得先做什么"，避免下一个人直接动手改 2413 行。
+> 与占位实现，`RuleRunner` 仍走原有内联链路。本文写清"要接入得先做什么"，避免下一个人直接动手改 2405 行。
 
 ## 1. 现状与为什么不能一次替换
 
 | 事实 | 数字/位置 | 后果 |
 |---|---|---|
-| `RuleRunner.kt` 体量 | **2413 行**，单一类 | 任何"顺手重构"都会跨越搜索/详情/目录/正文/登录/JS 六条链路 |
+| `RuleRunner.kt` 体量 | **2405 行**，单一类 | 任何"顺手重构"都会跨越搜索/详情/目录/正文/登录/JS 六条链路 |
 | 规则求值入口 | `searchWithReason`(135) `bookItems`(201) `explore`(271) `details`(494) `chapters`(648) `parseTocPage`(710) `content`(845) `contentPage`(968) | 每个入口自己解析规则字符串、自己决定 CSS / JSONPath / JS |
 | 具体解析器耦合点 | Jsoup / Rhino / `Context.enter` 直接出现在 **15 处** | 处理器接口要收口它们，先得把"取节点"与"解释规则"拆开 |
 | 变量与跨页状态 | `@put/@get`、`vars`、`rememberRuleData` | `RuleContext` 的 `getVariable/putVariable` 必须承载同一语义，否则跨页规则静默失效 |

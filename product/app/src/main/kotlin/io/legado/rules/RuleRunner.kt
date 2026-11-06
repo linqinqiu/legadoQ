@@ -124,16 +124,28 @@ class RuleRunner(
      * 域名过期（66yy.net 回「域名已过期，暂无法访问」）、JS 验证拦截（hdzyk 回一段
      * `document.cookie=…; window.location.reload()`）、站点确实没这本书。
      */
-    fun searchWithReason(sourceJson: String, keyword: String): Pair<List<SearchResult>, String> {
-        val source = sourceJson.objectValue()
-        source.string("mainJs")?.takeIf { it.isNotBlank() }?.let {
-            return JsSourceRunner(this, source).search(keyword) to "JS 书源：条目由 mainJs 组装，响应线索不适用"
-        }
-        val rawSearchUrl = source.string("searchUrl") ?: throw RuleExecutionException("该书源未配置 searchUrl")
-        val sourceUrl = source.string("bookSourceUrl") ?: throw RuleExecutionException("书源缺少 bookSourceUrl")
-        // 整个搜索流程都在书源上下文内执行：规则里的 <js> 依赖 source.getVariable() 与 jsLib 工具函数
-        val execContext = sourceContext(source, sourceUrl)
-        return jsSandbox.withSourceContext(execContext) {
+    fun searchWithReason(sourceJson: String, keyword: String): Pair<List<SearchResult>, String> =
+        searchFlow.search(sourceJson, keyword)
+
+    private val searchFlow = SearchFlow(SearchHost())
+
+    /** 搜索编排的宿主实现：只提供原语，流程在 [SearchFlow] 里。 */
+    private inner class SearchHost : SearchFlow.Host {
+        override fun isJsSource(source: JsonObject): Boolean =
+            source.string("mainJs")?.isNotBlank() == true
+
+        override fun jsSourceSearch(source: JsonObject, keyword: String): List<SearchResult> =
+            JsSourceRunner(this@RuleRunner, source).search(keyword)
+
+        override fun <T> inSourceContext(source: JsonObject, sourceUrl: String?, block: () -> T): T =
+            jsSandbox.withSourceContext(sourceContext(source, sourceUrl), block)
+
+        override fun fetchSearchPage(
+            source: JsonObject,
+            sourceUrl: String,
+            rawSearchUrl: String,
+            keyword: String,
+        ): String {
             // URL 级的 `<js>…</js>` / `@js:` 要在切 `,{options}` **之前**执行（上游 `analyzeJs`）：
             // 脚本可以把整串地址连同参数尾巴一起拼出来，先切尾巴会把返回的 options 留在地址里。
             val searchUrl = applyUrlScripts(rawSearchUrl, keyword, 1, sourceUrl)
@@ -142,10 +154,19 @@ class RuleRunner(
             // 搜索永远只取第一页，但**页码要显式给**：`<a,b,c>` 那一段没有页码就不展开（本机 50 份源的
             // searchUrl 用这个写法），实测语料里另有 2,644 条栏目地址用它，不给页码等于留一串尖括号在网址里。
             val rendered = renderUrl(urlTemplate, keyword, sourceUrl, page = 1, expandScripts = false).absolute(sourceUrl)
-            val body = fetchUrl(rendered, mergedOptions, keyword, sourceUrl, database)
-            val rule = source.objectValue("ruleSearch") ?: throw RuleExecutionException("该书源未配置 ruleSearch")
-            bookItems(body, rule, sourceUrl, source.sourceType()) to responseClue(body)
+            return fetchUrl(rendered, mergedOptions, keyword, sourceUrl, database)
         }
+
+        override fun parseSearchItems(
+            body: String,
+            rule: JsonObject,
+            sourceUrl: String,
+            sourceType: Int,
+        ): List<SearchResult> = bookItems(body, rule, sourceUrl, sourceType)
+
+        override fun describeResponse(body: String): String = responseClue(body)
+
+        override fun sourceType(source: JsonObject): Int = source.sourceType()
     }
 
     /**

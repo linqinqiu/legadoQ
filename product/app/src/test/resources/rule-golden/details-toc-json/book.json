@@ -1,0 +1,7 @@
+{
+  "book": {
+    "name": "测试书",
+    "author": "作者甲",
+    "tocUrl": "https://golden.example/toc/1"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "测试书",
+  "author": "作者甲",
+  "tocUrl": "https://golden.example/toc/1",
+  "chapters": [
+    { "title": "第一章 起点", "url": "https://golden.example/c/1" },
+    { "title": "第二章 出发", "url": "https://golden.example/c/2" }
+  ]
+}

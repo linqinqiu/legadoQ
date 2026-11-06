@@ -1,0 +1,19 @@
+{
+  "isScript": true,
+  "canOpenBrowser": true,
+  "browserStartUrl": "https://golden.example/login/scan",
+  "uiVersion": 2,
+  "firstScreen": [
+    { "key": "phone", "name": "手机号", "type": "text", "hint": "请输入手机号" },
+    { "name": "发送验证码", "type": "button", "action": "sendCode", "countdown": 60 }
+  ],
+  "secondScreen": [
+    { "key": "code", "name": "验证码", "type": "text" },
+    { "name": "提交", "type": "button", "action": "submit" }
+  ],
+  "errorPhone": "手机号必填",
+  "errorCode": "验证码错误",
+  "loginInfo": { "token": "tk-golden", "phone": "13800000000" },
+  "unknownKeys": ["note"],
+  "checkLoggedIn": true
+}

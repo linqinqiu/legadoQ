@@ -1,0 +1,8 @@
+{
+  "bookSourceUrl": "https://golden.example",
+  "bookSourceName": "金标准·登录 v2",
+  "bookSourceType": 0,
+  "loginUi": "{\"version\":2}",
+  "loginCheckJs": "String(source.bookSourceUrl).indexOf('golden.example') >= 0",
+  "loginUrl": "function login(openBrowser, checkMode) { if (openBrowser) { java.startBrowserAwait('https://golden.example/login/scan', '扫码登录'); } return 'ok'; } function loginUi(state) { if (!state.step) { return { rows: [ { key: 'phone', name: '手机号', type: 'text', hint: '请输入手机号' }, { name: '发送验证码', type: 'button', action: 'sendCode', countdown: 60 } ] }; } return { rows: [ { key: 'code', name: '验证码', type: 'text' }, { name: '提交', type: 'button', action: 'submit' } ] }; } function loginAction(action, state, form) { if (action == 'sendCode') { if (!form.phone) { return { error: { phone: '手机号必填' } }; } return { state: { step: 'code', phone: form.phone } }; } if (form.code != '1234') { return { error: { code: '验证码错误' } }; } return { login: { token: 'tk-golden', phone: state.phone }, close: true, note: 'ignored' }; }"
+}

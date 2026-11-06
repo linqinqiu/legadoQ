@@ -1,0 +1,8 @@
+{
+  "sourceUrl": "https://golden.example/rss",
+  "sourceName": "金标准·RSS",
+  "ruleArticles": "div.article",
+  "ruleTitle": "h2@text",
+  "ruleLink": "a@href",
+  "rulePubDate": "span.date@text"
+}
