@@ -2,88 +2,51 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { zh } from '../../i18n/zh'
 import { Chapter } from '../../lib/api'
 import { TtsPlayerBar } from './TtsPlayerBar'
-import { TtsSettingsModal, SleepTimerOption } from './TtsSettingsModal'
-import { useReaderTts } from './useReaderTts'
-import {
-  WebSpeechEngine,
-  HttpAudioTtsEngine,
-  TtsPlayState,
-  TtsSpeakMode,
-  isPlayInterruptedError,
-} from './ttsEngine'
+import { TtsSettingsModal } from './TtsSettingsModal'
 import { Icon } from '../../icons'
 import { toast } from '../../components/Toast'
 import { useEscapeClose } from '../../lib/useEscapeClose'
-import { TtsContext, type TtsContextValue } from './ReaderTtsContext'
+import { useTts } from './ReaderTtsContext'
 
+/**
+ * 朗读浮层：只画界面，不持有朗读状态。
+ *
+ * 状态在 `ReaderScreen`（`useReaderTts` 调一次、`TtsContext.Provider` 往下发）。
+ * 这里曾经自己调 `useReaderTts` 并**向下**提供 Context，而父组件 `ReaderScreen` 又去
+ * `useTts()` 读它 —— 父读不到子提供的 Context，每开一本书都崩在 ErrorBoundary（11-06 修）。
+ */
 export interface ReaderTtsManagerProps {
   chapter: Chapter | undefined
-  chapterIndex: number
-  chapterCount: number
-  paragraphs: string[]
-  isCurrentChapterLoaded: boolean
-  convert: (text: string) => string
-  mediaSrc: string | null
-  content: string
-  settings: any
-  persist: () => void
-  preloadNextChapter: (index: number) => void
-  changeChapter: (rawIndex: number, targetPage?: 'first' | 'last' | 'auto', keepContainer?: boolean) => void
-  viewportRef: React.RefObject<HTMLDivElement | null>
   bookName: string
   bookAuthor?: string | null
   coverUrl?: string | null
+  settings: any
   onSettingsChange: (next: any) => void
 }
 
 export function ReaderTtsManager({
   chapter,
-  chapterIndex,
-  chapterCount,
-  paragraphs,
-  isCurrentChapterLoaded,
-  convert,
-  mediaSrc,
-  content,
-  settings,
-  persist,
-  preloadNextChapter,
-  changeChapter,
-  viewportRef,
   bookName,
   bookAuthor,
   coverUrl,
+  settings,
   onSettingsChange,
 }: ReaderTtsManagerProps) {
-  const [showTtsSettings, setShowTtsSettings] = useState(false)
-  const [offlineTtsConfirmOpen, setOfflineTtsConfirmOpen] = useState(false)
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
 
-  const tts = useReaderTts({
-    chapter,
-    chapterIndex,
-    chapterCount,
-    paragraphs,
-    isCurrentChapterLoaded,
-    convert,
-    mediaSrc,
-    content,
-    viewportRef,
-    settings,
-    persist,
-    preloadNextChapter,
-    changeChapterRef: { current: changeChapter },
-  })
+  const tts = useTts()
 
   const {
     ttsActive,
     setTtsActive,
     ttsPlayState,
-    setTtsPlayState,
     currentChunkIndex,
-    setCurrentChunkIndex,
     sleepTimer,
     setSleepTimer,
+    showTtsSettings,
+    setShowTtsSettings,
+    offlineTtsConfirmOpen,
+    setOfflineTtsConfirmOpen,
     toggleTts,
     handlePrevChunk,
     handleNextChunk,
@@ -94,7 +57,6 @@ export function ReaderTtsManager({
     stopTts,
     pauseTts,
     resumeTts,
-    stopAllEngines,
     activeParagraphIndex,
     ttsParagraphs,
     ttsData,
@@ -175,13 +137,11 @@ export function ReaderTtsManager({
     }
   }, [ttsActive, ttsPlayState])
 
-  const value: TtsContextValue = { ...tts, remainingSeconds }
-
   // 离线确认框是这一层唯一的挡片：Esc 必须能关，别只靠点背景。
   useEscapeClose(() => setOfflineTtsConfirmOpen(false))
 
   return (
-    <TtsContext.Provider value={value}>
+    <>
       {/* TTS Floating Player Bar */}
       {ttsActive && (
         <TtsPlayerBar
@@ -268,6 +228,6 @@ export function ReaderTtsManager({
           </div>
         </div>
       )}
-    </TtsContext.Provider>
+    </>
   )
 }

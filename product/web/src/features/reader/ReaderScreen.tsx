@@ -41,7 +41,8 @@ import { ReplaceRulesModal } from '../../components/ReplaceRulesModal'
 import { ReaderCatalog } from './ReaderCatalog'
 import { ReaderSettingsSheet } from './ReaderSettingsSheet'
 import { ReaderTtsManager } from './ReaderTtsManager'
-import { TtsContext, useTts } from './ReaderTtsContext'
+import { TtsContext } from './ReaderTtsContext'
+import { useReaderTts } from './useReaderTts'
 import { TtsSettingsModal } from './TtsSettingsModal'
 import { resetTtsBarPosition } from './ttsBarPosition'
 import { ITtsEngine, WebSpeechEngine, HttpAudioTtsEngine, TtsPlayState, TtsSpeakMode, isPlayInterruptedError } from './ttsEngine'
@@ -994,7 +995,31 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
 
   // 切章的 ref：ReaderTtsManager 里的 playTtsChunk 要跨章续播，而 changeChapter 又要 stopTts —— 环用 ref 打破
   const changeChapterRef = useRef<(rawIndex: number) => void>(() => undefined)
-  const ttsCtx = useTts()
+  /**
+   * 朗读状态由**阅读器自己**持有（2026-11-06 修）。
+   *
+   * 原来这里是 `useTts()`：它要一个 `TtsContext.Provider`，而唯一的 Provider 在
+   * `<ReaderTtsManager>` 里 —— 那是本组件的子节点。父组件读不到子组件提供的 Context，
+   * 于是每开一本书都抛 `useTts 必须在 <ReaderTtsManager> 内部使用`，被 ErrorBoundary
+   * 收成"阅读器崩了"（11-04 拆分 TTS 时引入，11-06 冒烟测试抓出）。
+   *
+   * 现在 hook 在这一层调用一次，Provider 由这一层往下发；`ReaderTtsManager` 退化成消费者。
+   */
+  const ttsCtx = useReaderTts({
+    chapter,
+    chapterIndex,
+    chapterCount: currentBook.chapters.length,
+    paragraphs,
+    isCurrentChapterLoaded,
+    convert,
+    mediaSrc,
+    content,
+    viewportRef,
+    settings,
+    persist,
+    preloadNextChapter,
+    changeChapterRef,
+  })
   const {
     ttsActive, setTtsActive, ttsPlayState, setTtsPlayState, currentChunkIndex, setCurrentChunkIndex,
     sleepTimer, setSleepTimer, showTtsSettings, setShowTtsSettings,
@@ -2438,7 +2463,9 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     </>
   )
 
-  return <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
+  return (
+    <TtsContext.Provider value={ttsCtx}>
+  <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
     {/* 顶栏：MD3 外壳（PROPOSAL-020）或旧浮动工具栏，由 uiV2 开关切换 */}
     {uiV2 ? <Md3TopBar
       bookName={bookName}
@@ -2685,21 +2712,10 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     {ttsActive && (
       <ReaderTtsManager
         chapter={chapter}
-        chapterIndex={chapterIndex}
-        chapterCount={currentBook.chapters.length}
-        paragraphs={paragraphs}
-        isCurrentChapterLoaded={isCurrentChapterLoaded}
-        convert={convert}
-        mediaSrc={mediaSrc}
-        content={content}
-        settings={settings}
-        persist={persist}
-        preloadNextChapter={preloadNextChapter}
-        changeChapter={changeChapter}
-        viewportRef={viewportRef}
         bookName={bookName}
         bookAuthor={currentBook.details.author}
         coverUrl={currentBook.details.coverUrl}
+        settings={settings}
         onSettingsChange={onSettingsChange}
       />
     )}
@@ -2860,4 +2876,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       />
     )}
   </main>
+    </TtsContext.Provider>
+  )
 }
