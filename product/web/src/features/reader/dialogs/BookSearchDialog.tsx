@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type BookSearchHit } from '../../../lib/api'
 import { useEscapeClose } from '../../../lib/useEscapeClose'
+import { splitByTerm } from '../searchTerm'
 
 /**
  * 本书正文检索（搜索本书 feature，2026-10）：在**已离线缓存**的章节正文里按关键词找命中。
@@ -14,8 +15,8 @@ import { useEscapeClose } from '../../../lib/useEscapeClose'
 export function BookSearchDialog({ sourceId, bookUrl, onJump, onClose }: {
   sourceId: string
   bookUrl: string
-  /** 跳到命中章：调用方负责切章并关弹窗。 */
-  onJump: (chapterIndex: number) => void
+  /** 跳到命中处：调用方负责切章、滚到那一段并高亮；term 是这次检索的关键词。 */
+  onJump: (hit: BookSearchHit, term: string) => void
   onClose: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -69,9 +70,13 @@ export function BookSearchDialog({ sourceId, bookUrl, onJump, onClose }: {
           <ul className="reader-book-search-list">
             {results.map(hit => (
               <li key={`${hit.chapterUrl}-${hit.chapterIndex}`} className="reader-book-search-item">
-                <button type="button" className="reader-book-search-main" onClick={() => onJump(hit.chapterIndex)}>
+                <button type="button" className="reader-book-search-main" onClick={() => onJump(hit, debounced)}>
                   <span className="reader-book-search-chapter">第 {hit.chapterIndex + 1} 章 · {hit.title || '（无标题）'}</span>
-                  <span className="reader-book-search-snippet">{hit.snippet}</span>
+                  <span className="reader-book-search-snippet">
+                    {splitByTerm(hit.snippet, debounced).map((chunk, index) => chunk.hit
+                      ? <mark key={index} className="reader-search-hit">{chunk.text}</mark>
+                      : <span key={index}>{chunk.text}</span>)}
+                  </span>
                 </button>
               </li>
             ))}

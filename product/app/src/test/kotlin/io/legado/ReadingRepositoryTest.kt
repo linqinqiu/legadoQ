@@ -183,6 +183,8 @@ class ReadingRepositoryTest {
             assertEquals(1, hits[0].chapterIndex)
             assertEquals("第二章", hits[0].title)
             assertTrue("命中片段应带上下文：${hits[0].snippet}", hits[0].snippet.contains("关键词"))
+            // 偏移是「跳到那一段」的唯一依据：它错了就滚到别处，而且只有真缓存了正文才测得出。
+            assertEquals("这一章里有 ".length, hits[0].offset)
         } finally {
             database.close()
             Files.deleteIfExists(java.nio.file.Path.of(path))

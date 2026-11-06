@@ -6005,6 +6005,13 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 }
 .reader-notes-tab small { font-size: 11px; font-variant-numeric: tabular-nums; }
 .reader-notes-tab.is-active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+/* 搜索命中的临时高亮（结果片段与正文里同一套）：用底色而不是下划线，
+   和笔记高亮区分开 —— 笔记是用户留下的，搜索高亮几秒后就没了。 */
+.reader-search-hit {
+  padding: 0 1px; border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: inherit;
+}
 /* 书签项：位置标记，不是正文摘录 —— 徽标在前，摘要照旧一行。 */
 .reader-note-badge {
   align-self: flex-start; padding: 1px 7px; border-radius: 999px;

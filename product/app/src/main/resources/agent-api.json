@@ -1,6 +1,6 @@
 {
   "service": "legadoQ",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统）。每条按 group 归类。",
   "howToConnect": {
     "baseUrl": "http://127.0.0.1:1234",
@@ -1473,7 +1473,7 @@
         "bookUrl": "哪本书（必填）",
         "q": "关键词（必填，非空）"
       },
-      "response": "[{chapterUrl,chapterIndex,title,snippet}]：snippet 是命中处前后截一段；空数组表示这本书还没缓存任何章节或没命中"
+      "response": "[{chapterUrl,chapterIndex,title,snippet,offset}]：snippet 是命中处前后截一段；offset 是关键词在该章正文里的字符偏移（跳到那一段并高亮用）；空数组表示这本书还没缓存任何章节或没命中"
     },
     {
       "method": "GET",

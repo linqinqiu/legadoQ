@@ -193,12 +193,14 @@ export type BookNoteWrite = {
   positionChecksum?: string | null
 }
 
-/** 本书正文检索命中（搜索本书 feature）：在已缓存章节正文里按关键词找，snippet 是命中处前后截一段。 */
+/** 本书正文检索命中（搜索本书 feature）：在已缓存章节正文里按关键词找，snippet 是命中处前后截一段。
+ *  `offset` 是关键词在该章正文里的字符偏移 —— 阅读器据此滚到那一段并高亮，不然跳过去还得自己找。 */
 export type BookSearchHit = {
   chapterUrl: string
   chapterIndex: number
   title: string
   snippet: string
+  offset: number
 }
 
 export type BookshelfItem = {

@@ -4,7 +4,7 @@
 // `VirtualChapterList.tsx`，那条理由与它的默认导入一起搬过去了。）
 import React, { CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { zh } from '../../i18n/zh'
-import { api, BookDetails, BookNote, Chapter, SearchResult, TocRuleOption } from '../../lib/api'
+import { api, BookDetails, BookNote, BookSearchHit, Chapter, SearchResult, TocRuleOption } from '../../lib/api'
 import { getBrand } from '../../lib/brandStore'
 import { ContextMenuItem, showContextMenu } from '../../components/ContextMenu'
 import { Icon } from '../../icons'
@@ -16,6 +16,7 @@ import { isMediaType } from '../../lib/bookType'
 import { TapZoneEditor } from './interaction/TapZoneEditor'
 import { NoteToolbar, type NoteDraft } from './notes/NoteToolbar'
 import { bookmarkPayload, findBookmarkAt } from './notes/bookmark'
+import { splitByTerm } from './searchTerm'
 import { MarkingMenu } from './interaction/MarkingMenu'
 import { setAiChatOpen } from '../../lib/aiChatStore'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
@@ -648,6 +649,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [noteEditorOpen, setNoteEditorOpen] = useState(false)
   /** 本书正文检索弹窗（搜索本书 feature，只在已缓存章节正文里找）。 */
   const [bookSearchOpen, setBookSearchOpen] = useState(false)
+  /** 刚跳过来的搜索命中：在正文里临时高亮几秒，过期自动清掉（见下面的 effect）。 */
+  const [searchFlash, setSearchFlash] = useState<{ chapterIndex: number; offset: number; term: string } | null>(null)
   /** 阅读设置弹层里的顶层标签页：阅读（排版/颜色/行为）或其它（简繁/点击区域/工具栏/本地书目录/净化）。
    *  用户要求「两颗齿轮合并成一颗，点开用标签页切换界面/其它」。 */
   const [settingsTab, setSettingsTab] = useState<'reader' | 'other'>('reader')
@@ -845,6 +848,25 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }
 
   /**
+   * 跳到搜索命中处：切章、滚到那一段、把关键词临时高亮几秒。
+   *
+   * 以前只给章号，跳过去还得自己找（STATUS 的已知缺口原话）。现在后端回了命中偏移，
+   * 落点复用笔记跳转那套（滚动滚视口、分页换页码），高亮只画在命中那一段上。
+   */
+  const jumpToSearchHit = (hit: BookSearchHit, term: string) => {
+    setBookSearchOpen(false)
+    setSearchFlash({ chapterIndex: hit.chapterIndex, offset: hit.offset, term })
+    const target = { chapterIndex: hit.chapterIndex, charOffset: hit.offset, paragraphAnchor: '', positionChecksum: '' }
+    const index = currentBook.chapters.findIndex(item => item.url === hit.chapterUrl)
+    if (index >= 0 && index !== chapterIndex) {
+      pendingNoteJumpRef.current = target
+      changeChapter(index, 'first')
+      return
+    }
+    jumpToNotePosition(target)
+  }
+
+  /**
    * 这一段里落着的笔记高亮。按 `excerpt` 在这段文字里定位 ——
    * 简繁转换只换字形不换词，转换后仍然找得到；找不到（原文被源站改过）就安静跳过。
    */
@@ -1026,6 +1048,13 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (jumpToNotePosition(pending)) pendingNoteJumpRef.current = null
   }, [content, loading, chapter, jumpToNotePosition])
 
+  /** 搜索高亮是临时的：6 秒后自己消失，不留在正文里（它不是笔记，不该被当成标记）。 */
+  useEffect(() => {
+    if (!searchFlash) return
+    const handle = window.setTimeout(() => setSearchFlash(null), 6000)
+    return () => window.clearTimeout(handle)
+  }, [searchFlash])
+
   const persist = useCallback(() => {
     const current = currentRef.current
     if (!current) return
@@ -1136,6 +1165,24 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     // 有笔记就先画高亮。一段里「笔记高亮」与「朗读到哪句」叠着画不出来，笔记优先。
     const highlighted = renderNoteHighlights(rawLine, ownerIndex)
     if (highlighted) return highlighted
+    /*
+      刚跳过来的搜索命中：只画在锚点章的那一段上。段起点来自本章 `paragraphStarts`，
+      续接进来的下一章没有这份偏移，硬算会标错位置。
+      偏移对不上（正文被源站改过）时退回本段里找关键词，找不到就安静地不高亮 —— 位置照旧滚到了。
+    */
+    if (searchFlash && ownerIndex === chapterIndex && searchFlash.chapterIndex === chapterIndex) {
+      const start = paragraphStarts[pIndex] ?? 0
+      const local = searchFlash.offset - start
+      const at = local >= 0 && rawLine.startsWith(searchFlash.term, local) ? local : rawLine.indexOf(searchFlash.term)
+      if (at >= 0) {
+        const end = at + searchFlash.term.length
+        return <>
+          {rawLine.slice(0, at)}
+          <mark className="reader-search-hit">{rawLine.slice(at, end)}</mark>
+          {rawLine.slice(end)}
+        </>
+      }
+    }
     if (!ttsActive || activeParagraphIndex !== pIndex || !currentChunk) {
       return rawLine
     }
@@ -2935,7 +2982,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       <BookSearchDialog
         sourceId={currentBook.details.sourceId}
         bookUrl={currentBook.bookUrl}
-        onJump={index => { if (index !== chapterIndex) changeChapter(index, 'first'); setBookSearchOpen(false) }}
+        onJump={jumpToSearchHit}
         onClose={() => setBookSearchOpen(false)}
       />
     )}

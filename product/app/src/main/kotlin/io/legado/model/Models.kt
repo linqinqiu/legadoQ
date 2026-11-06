@@ -533,13 +533,17 @@ data class SourceLoginStateRecord(
 @Serializable data class BookNoteUpdate(val note: String = "")
 /**
  * 本书正文检索命中（搜索本书 feature）：在已缓存的章节正文里按关键词找，
- * 回「哪一章 + 命中处前后截一段」。只覆盖已离线缓存的章节（没缓存的搜不到）。
+ * 回「哪一章 + 命中处前后截一段 + 命中处的章内字符偏移」。
+ * 偏移是给「跳到那一段并高亮」用的：只有章号的话，跳过去还得自己找。
+ * 只覆盖已离线缓存的章节（没缓存的搜不到）。
  */
 @Serializable data class BookSearchHit(
     val chapterUrl: String,
     val chapterIndex: Int,
     val title: String,
     val snippet: String,
+    /** 关键词在**这一章正文**里的字符偏移；正文与缓存不一致（AI 覆盖）时可能偏。 */
+    val offset: Int,
 )
 /**
  * AI 闭环（阅读器 AI 闭环 feature，2026-10）：一本书某一章被 AI 净化/润色后的「覆盖正文」。

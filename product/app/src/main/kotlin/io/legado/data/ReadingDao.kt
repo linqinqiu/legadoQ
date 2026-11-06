@@ -151,7 +151,14 @@ fun Database.searchBookContent(sourceId: String, bookUrl: String, query: String)
                 } else {
                     content.take(60)
                 }
-                list += BookSearchHit(rs.getString(1) ?: "", rs.getInt(2), rs.getString(3) ?: "", snippet)
+                list += BookSearchHit(
+                    rs.getString(1) ?: "",
+                    rs.getInt(2),
+                    rs.getString(3) ?: "",
+                    snippet,
+                    // 命中偏移随片段一起回：前端据此滚到那一段并高亮，不然跳过去还要自己找。
+                    idx.coerceAtLeast(0),
+                )
             }
             list
         }
