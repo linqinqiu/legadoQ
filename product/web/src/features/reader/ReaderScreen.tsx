@@ -15,6 +15,7 @@ import { TapAction, zoneAt } from './interaction/tapZones'
 import { isMediaType } from '../../lib/bookType'
 import { TapZoneEditor } from './interaction/TapZoneEditor'
 import { NoteToolbar, type NoteDraft } from './notes/NoteToolbar'
+import { bookmarkPayload, findBookmarkAt } from './notes/bookmark'
 import { MarkingMenu } from './interaction/MarkingMenu'
 import { setAiChatOpen } from '../../lib/aiChatStore'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
@@ -294,6 +295,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const initialPagePositionRef = useRef<number | null>(null)
   /** 首屏要恢复的语义位置；与 fraction 同时准备，语义位置校验通过时优先。 */
   const initialLogicalPositionRef = useRef<(LogicalPosition & { chapterIndex: number }) | null>(null)
+  /** 从笔记面板跳过来、还在等正文加载的那一条（跨章跳转用）。 */
+  const pendingNoteJumpRef = useRef<(LogicalPosition & { chapterIndex: number }) | null>(null)
   const wheelTimerRef = useRef<number | null>(null)
   // 滚轮增量累计量（像素）与"没在滚了就清零"的定时器：见 readerInteractions.paginateWheelStep
   const wheelAccumRef = useRef(0)
@@ -751,6 +754,43 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     setSelection(null)
   }
 
+  /**
+   * 书签：把当前读到的那一段记下来，再点一次取消。
+   *
+   * 位置用 `readLogicalPosition` 取（与保存进度同一套算法：翻页取视口第一段、滚动取第一段相交），
+   * 所以两种翻页模式都落在用户正看的地方。只标位置、不要求选中正文 —— 那是书签与划线的边界，
+   * 写在 `product/docs/待定功能.md` 里。同一段落只留一条，判重在 `findBookmarkAt`。
+   */
+  const toggleBookmark = async () => {
+    if (!chapter) return
+    const position = readLogicalPosition(chapter)
+    if (!position) { toast.warning('这一章还没排版好，稍等一下再试'); return }
+    const existing = findBookmarkAt(notes, chapter.index, position.paragraphAnchor, position.charOffset)
+    if (existing) {
+      const ok = await api.deleteNote(existing.id).then(() => true).catch(() => false)
+      if (!ok) { toast.warning('书签没能取消'); return }
+      setNotes(list => list.filter(item => item.id !== existing.id))
+      toast.success('已取消书签')
+      return
+    }
+    const payload = bookmarkPayload({
+      sourceId: currentBook.details.sourceId,
+      bookUrl: currentBook.bookUrl,
+      bookName,
+      chapterIndex: chapter.index,
+      chapterUrl: chapter.url,
+      charOffset: position.charOffset,
+      paragraphAnchor: position.paragraphAnchor,
+      positionChecksum: position.positionChecksum,
+      text: content.slice(position.charOffset, position.charOffset + 60),
+    })
+    if (!payload) { toast.warning('这一章还没有正文，等它加载完再试'); return }
+    const created = await api.addNote(payload).catch(() => null)
+    if (!created) { toast.warning('书签没能保存'); return }
+    setNotes(list => [...list, created])
+    toast.success('已加书签')
+  }
+
   /** 标记快捷条：划线（仅高亮，不写备注）。 */
   const highlightFromMenu = () => { void saveNote() }
   /** 标记快捷条：展开笔记编辑器。 */
@@ -780,12 +820,28 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     setNoteEditorOpen(true)
   }
 
-  /** 从「笔记」面板跳到那一条所在的章。 */
+  /**
+   * 从「笔记」面板跳到那一条所在的章，并滚到它的位置。
+   *
+   * 以前只切章、停在章首 —— 划线还能靠高亮认出来，书签只有一条摘要，等于"跳了但没到"。
+   * 跨章时正文是异步加载的，所以把目标位置挂到 ref 上，等内容挂进 DOM 再滚（见下面的 effect）。
+   */
   const jumpToNote = (note: BookNote) => {
+    const target = {
+      chapterIndex: note.chapterIndex,
+      charOffset: note.startOffset,
+      paragraphAnchor: note.paragraphAnchor ?? '',
+      positionChecksum: note.positionChecksum ?? '',
+    }
     const index = currentBook.chapters.findIndex(item => item.url === note.chapterUrl)
-    if (index >= 0 && index !== chapterIndex) changeChapter(index, 'first')
     setNotesPanel(false)
     setActiveDrawer(null)
+    if (index >= 0 && index !== chapterIndex) {
+      pendingNoteJumpRef.current = target
+      changeChapter(index, 'first')
+      return
+    }
+    jumpToNotePosition(target)
   }
 
   /**
@@ -793,7 +849,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    * 简繁转换只换字形不换词，转换后仍然找得到；找不到（原文被源站改过）就安静跳过。
    */
   const renderNoteHighlights = (text: string, ownerIndex: number) => {
-    const chapterNotes = notes.filter(note => note.chapterIndex === ownerIndex && note.excerpt && text.includes(note.excerpt))
+    // 书签不画高亮：它只标位置，正文上留一条彩色底纹反而像"这段被划了重点"。
+    const chapterNotes = notes.filter(note => !note.bookmark && note.chapterIndex === ownerIndex && note.excerpt && text.includes(note.excerpt))
     if (!chapterNotes.length) return null
     const marks: Array<{ start: number; end: number; note: BookNote }> = []
     for (const note of chapterNotes) {
@@ -939,6 +996,35 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     window.scrollTo({ top, behavior: 'auto' })
     return true
   }, [])
+
+  /**
+   * 跳到某一条笔记 / 书签的位置：滚动模式滚视口，分页模式换页码。
+   * 分页下的换算与朗读跟读（`activeParagraphIndex` 那条 effect）用同一套矩形差 ——
+   * `offsetLeft` 与 `rect.left` 混着量会稳定偏一整页。
+   */
+  const jumpToNotePosition = useCallback((position: LogicalPosition & { chapterIndex: number }): boolean => {
+    if (settings.pageMode !== 'paginate') return scrollToLogicalPosition(position)
+    const meta = logicalMetaRef.current
+    const body = bodyRef.current
+    if (!meta.starts.length || !body || stride <= 0) return false
+    const section = body.querySelector<HTMLElement>(`.reader-page-chapter[data-chapter-index="${position.chapterIndex}"]`)
+    const els = section ? Array.from(section.querySelectorAll<HTMLElement>('[data-paragraph-index]')) : []
+    if (!els.length) return false
+    const { index, within } = offsetToParagraph(meta.starts, position.charOffset)
+    const target = els.find(el => Number(el.dataset.paragraphIndex ?? 0) === index) ?? els[0]
+    const rect = textOffsetRect(target, within) ?? target.getBoundingClientRect()
+    const offset = rect.left - body.getBoundingClientRect().left
+    setPageIndex(Math.min(pageCount - 1, Math.max(0, Math.round(offset / stride))))
+    return true
+  }, [scrollToLogicalPosition, settings.pageMode, stride, pageCount])
+
+  /** 跨章跳转的落点：正文挂进 DOM 之后才能滚，所以挂在 ref 上等这一条 effect。 */
+  useEffect(() => {
+    const pending = pendingNoteJumpRef.current
+    if (!pending || loading || !content || !chapter) return
+    if (chapter.index !== pending.chapterIndex) return
+    if (jumpToNotePosition(pending)) pendingNoteJumpRef.current = null
+  }, [content, loading, chapter, jumpToNotePosition])
 
   const persist = useCallback(() => {
     const current = currentRef.current
@@ -2484,6 +2570,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onBookSearch={() => setBookSearchOpen(true)}
       onToggleNotes={() => { setActiveDrawer('toc'); setNotesPanel(true) }}
       notesCount={notes.length}
+      onToggleBookmark={() => void toggleBookmark()}
     /> : <ReaderHeader
       bookName={bookName}
       chapterIndex={chapterIndex}
@@ -2501,6 +2588,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onToggleFullscreen={toggleFullscreen}
       onToggleTts={toggleTts}
       onResetTtsBar={resetTtsBarPosition}
+      onToggleBookmark={() => void toggleBookmark()}
     />}
 
     {/* 扩展槽位：第三方/用户可在此注入自定义组件（如统计卡片、快捷工具等）。
@@ -2544,6 +2632,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       onToggleShelf={() => void toggleShelf()}
       notes={notes}
       onJumpNote={jumpToNote}
+      onBookmarkHere={() => void toggleBookmark()}
       bookMeta={{
         bookName: currentBook.details.name,
         author: currentBook.details.author,

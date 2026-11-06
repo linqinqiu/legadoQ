@@ -42,6 +42,8 @@ export interface ReaderCatalogProps {
   // —— 笔记面板 ——
   notes: BookNote[]
   onJumpNote: (note: BookNote) => void
+  /** 在当前位置加 / 取消书签；窄屏顶栏放不下，这个入口挂在笔记面板上。 */
+  onBookmarkHere?: () => void
   bookMeta: NoteExportMeta
   chapterTitles: Record<number, string>
 
@@ -67,6 +69,7 @@ export function ReaderCatalog({
   onToggleShelf,
   notes,
   onJumpNote,
+  onBookmarkHere,
   bookMeta,
   chapterTitles,
   autoScrollKey,
@@ -117,6 +120,7 @@ export function ReaderCatalog({
           onJump={onJumpNote}
           meta={bookMeta}
           chapterTitles={chapterTitles}
+          onBookmarkHere={onBookmarkHere}
         />
       ) : (
         <>

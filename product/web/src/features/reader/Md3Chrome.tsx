@@ -26,6 +26,7 @@ type ActionProps = {
   onToggleFullscreen: () => void
   onToggleTts: () => void
   onResetTtsBar: () => void
+  onToggleBookmark: () => void
 }
 
 /** 顶栏右侧那排可配置动作（与旧工具栏同源 `settings.menuItems`）。 */
@@ -80,6 +81,13 @@ export function Md3TopBar({ bookName, chapterTitle, menuItems, onBack, onToggleT
         title="在已缓存的章节正文里搜索关键词"
         onClick={onBookSearch}
       ><Icon name="search" /></button>
+      <button
+        type="button"
+        className="md3-icon-btn md3-topbar-bookmark"
+        aria-label="书签"
+        title="记下当前读到的那一段；再点一次取消"
+        onClick={action.onToggleBookmark}
+      ><Icon name="bookmark" /></button>
       <button
         type="button"
         className="md3-icon-btn md3-topbar-notes"

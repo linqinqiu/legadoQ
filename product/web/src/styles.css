@@ -5996,6 +5996,20 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 /* 笔记面板顶部那条：导出按钮 + 条数。以前划线只能一条条看，拿不走。 */
 .reader-notes-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: 8px 10px 0; flex: 0 0 auto; }
 .reader-notes-count { color: var(--muted); font-size: var(--t-sm); }
+/* 笔记面板的三档筛选（全部 / 划线 / 书签）。书签与划线同表不同事，混在一列里找不到。 */
+.reader-notes-tabs { display: flex; gap: 6px; padding: 8px 10px 0; flex: 0 0 auto; }
+.reader-notes-tab {
+  display: inline-flex; align-items: baseline; gap: 5px; padding: 4px 10px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  color: var(--muted); font-size: var(--t-sm); cursor: pointer;
+}
+.reader-notes-tab small { font-size: 11px; font-variant-numeric: tabular-nums; }
+.reader-notes-tab.is-active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+/* 书签项：位置标记，不是正文摘录 —— 徽标在前，摘要照旧一行。 */
+.reader-note-badge {
+  align-self: flex-start; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-ink); font-size: 11px;
+}
 .reader-notes-empty { padding: 16px 8px; color: var(--muted); font-size: var(--t-md); line-height: 1.7; }
 .reader-note-item { margin: 0; }
 .reader-note-item-main { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
@@ -6143,6 +6157,7 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 @media (max-width: 959px) {
   .md3-topbar-toc,
   .md3-topbar-search,
+  .md3-topbar-bookmark,
   .md3-topbar-notes,
   .md3-action-settings,
   .md3-action-tts { display: none; }

@@ -10,7 +10,7 @@ import { TtsPlayState } from './tts/ttsEngine'
  * 章节导航（上一章 / 下一章）只留在这一套回退外壳里：默认 MD3 界面已按用户 2026-11-02
  * 的要求删掉顶栏那两颗，改由点按区 / 键盘 ←→ / 目录承担。
  */
-export function ReaderHeader({ bookName, chapterIndex, totalChapters, menuItems, isFullscreen, mediaDisabled, ttsActive, ttsPlayState, onBack, onToggleToc, onPrevChapter, onNextChapter, onToggleSettings, onToggleFullscreen, onToggleTts, onResetTtsBar }: {
+export function ReaderHeader({ bookName, chapterIndex, totalChapters, menuItems, isFullscreen, mediaDisabled, ttsActive, ttsPlayState, onBack, onToggleToc, onPrevChapter, onNextChapter, onToggleSettings, onToggleFullscreen, onToggleTts, onResetTtsBar, onToggleBookmark }: {
   bookName: string
   chapterIndex: number
   totalChapters: number
@@ -28,6 +28,8 @@ export function ReaderHeader({ bookName, chapterIndex, totalChapters, menuItems,
   onToggleFullscreen: () => void
   onToggleTts: () => void
   onResetTtsBar: () => void
+  /** 在当前位置加 / 取消书签。 */
+  onToggleBookmark: () => void
 }) {
   // 首章禁用上一章、末章禁用下一章。
   const atStart = chapterIndex <= 0
@@ -62,6 +64,7 @@ export function ReaderHeader({ bookName, chapterIndex, totalChapters, menuItems,
       </div>
       <strong className="reader-header-title" title={bookName}>{bookName}</strong>
       <div className="reader-header-actions">
+        <IconButton label="书签" icon="bookmark" onClick={onToggleBookmark} hint="记下当前读到的那一段；再点一次取消" />
         {menuItems.map(id => menuButton(id))}
       </div>
     </header>
