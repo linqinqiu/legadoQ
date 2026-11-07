@@ -685,3 +685,83 @@ private fun toComprehendResponse(o: Agent.ComprehendOutcome) = ComprehendRespons
     sentencesCount = o.sentencesCount,
     error = o.error,
 )
+
+// ===== 按任务选模型 task-models =====
+// 一张「任务 → (连接, 模型)」的小表，落在 `agent-task-models.json`。
+// 读：列出所有可配的任务（对话 / 摘要与理解 / 每条技能），带上当前生效的连接与模型。
+// 写：一次只改一项；`connectionId` 与 `model` 都留空 = 取消这一项的路由，退回默认连接。
+
+@Serializable
+private data class TaskModelView(
+    val task: String,
+    val label: String,
+    /** 这一项**当前实际生效**的连接与模型（没配路由时就是默认连接）。 */
+    val connectionId: String? = null,
+    val model: String? = null,
+    /** true = 这一项配了自己的路由；false = 跟随默认。 */
+    val routed: Boolean = false,
+)
+
+@Serializable
+private data class TaskModelsResponse(val tasks: List<TaskModelView>)
+
+@Serializable
+private data class TaskModelSaveRequest(
+    val task: String,
+    val connectionId: String? = null,
+    val model: String? = null,
+)
+
+/** 任务清单 + 每一项的生效连接：界面据此画「跟随默认 / 指定连接 + 模型」两列。 */
+private fun taskModelViews(profileStoreHome: Path, profiles: List<AgentProfileStore.Profile>): List<TaskModelView> {
+    val routes = AgentTaskModelStore.load(profileStoreHome)
+    fun view(task: String, label: String): TaskModelView {
+        val routed = routes.containsKey(task)
+        val effective = AgentTaskModelStore.resolve(profileStoreHome, task, profiles)
+            ?: FirstProfileSelector().select(profiles)
+        return TaskModelView(task, label, effective?.id, effective?.model, routed)
+    }
+    return buildList {
+        add(view(AgentTaskModelStore.TASK_CHAT, "对话"))
+        add(view(AgentTaskModelStore.TASK_COMPREHEND, "摘要与理解"))
+        // 每条技能都是独立任务：书源排错可以配强模型，阅读助手配便宜的。
+        for (skill in AgentSkillStore.list(profileStoreHome)) {
+            add(view(AgentTaskModelStore.SKILL_PREFIX + skill.id, "技能：${skill.name}"))
+        }
+    }
+}
+
+suspend fun ApplicationCall.agentListTaskModels(profileStoreHome: Path, profileStore: AgentProfileStore?) {
+    val store = profileStore ?: AgentProfileStore
+    respond(TaskModelsResponse(taskModelViews(profileStoreHome, store.list(profileStoreHome))))
+}
+
+suspend fun ApplicationCall.agentSaveTaskModel(profileStoreHome: Path, profileStore: AgentProfileStore?) {
+    val store = profileStore ?: AgentProfileStore
+    val req = runCatching { receive<TaskModelSaveRequest>() }.getOrElse {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 {task, connectionId?, model?}")); return
+    }
+    val task = req.task.trim()
+    if (task.isBlank()) {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "task 不能为空")); return
+    }
+    if (task.length > AgentTaskModelStore.MAX_TASK_ID) {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "task 太长（上限 ${AgentTaskModelStore.MAX_TASK_ID} 字符）")); return
+    }
+    val profiles = store.list(profileStoreHome)
+    val connectionId = req.connectionId?.trim()?.takeIf { it.isNotBlank() }
+    // 指定了连接就必须真的存在：写进一张指向空气的表，等于把"配好了"演给用户看。
+    if (connectionId != null && profiles.none { it.id == connectionId }) {
+        respond(HttpStatusCode.BadRequest, ApiError("unknown_connection", "连接 $connectionId 不存在")); return
+    }
+    runCatching {
+        AgentTaskModelStore.save(
+            profileStoreHome,
+            task,
+            AgentTaskModelStore.Route(connectionId = connectionId, model = req.model),
+        )
+    }.onFailure { ex ->
+        respond(HttpStatusCode.BadRequest, ApiError("save_failed", ex.message ?: "保存任务路由失败")); return
+    }
+    respond(TaskModelsResponse(taskModelViews(profileStoreHome, store.list(profileStoreHome))))
+}

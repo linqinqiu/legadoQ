@@ -5431,6 +5431,15 @@ input[type="checkbox"] {
 .ai-conn-actions { display: flex; align-items: center; gap: 10px; flex: none; }
 .ai-conn-badge { margin-left: 8px; }
 .ai-conn-opts { color: var(--muted); }
+/* 按任务选模型：一行一个任务，右边是「连接 + 模型 + 保存」三件套。
+   窄屏换行，不把输入框压成一条缝。 */
+.ai-task-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--line); overflow: hidden; }
+.ai-task-item { display: grid; gap: 6px; padding: 9px 11px; background: var(--surface); }
+.ai-task-head { display: flex; align-items: center; gap: 8px; }
+.ai-task-head strong { font-size: 13px; font-weight: 600; }
+.ai-task-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ai-task-fields select, .ai-task-fields input { min-width: 0; flex: 1 1 140px; }
+.ai-task-fields .link-button { flex: none; }
 /* 登记/编辑连接的高级项：默认收起，展开后按普通字段排 */
 .ai-register-advanced { display: grid; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .ai-register-advanced > summary { cursor: pointer; color: var(--muted); font-size: 12px; }

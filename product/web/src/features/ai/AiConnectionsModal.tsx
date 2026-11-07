@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { api, type AgentConnection } from '../../lib/api'
+import { api, type AgentConnection, type AgentTaskModel } from '../../lib/api'
 import { Icon } from '../../icons'
 import { AiPanel } from './AiPanel'
 
@@ -163,7 +163,118 @@ export function ConnectionsPanel() {
           onRegistered={() => { setEditing(null); refresh() }}
         />
       </section>
+      <TaskModelSection connections={connections} />
     </div>
+  )
+}
+
+/**
+ * 「按任务选模型」。
+ *
+ * 连接解决的是"连哪一家"，这里解决"哪个任务用哪个模型"：摘要可以走便宜的，
+ * 书源排错走强的，互不影响。任务由服务端定：`chat` / `comprehend` / `skill:<技能id>`，
+ * 技能那几项就是技能库里每一条（命中关键词时按它路由）。
+ *
+ * 两列都可以留空：只选连接 = 用那条连接自己的模型；只填模型 = 仍走默认连接、只换模型名；
+ * 两个都留空 = 跟随默认（服务端把那一条路由整条删掉，不留空壳）。
+ */
+function TaskModelSection({ connections }: { connections: AgentConnection[] }) {
+  const [rows, setRows] = useState<AgentTaskModel[]>([])
+  const [drafts, setDrafts] = useState<Record<string, { connectionId: string; model: string }>>({})
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState('')
+
+  const adopt = (list: AgentTaskModel[]) => {
+    setRows(list)
+    setDrafts(Object.fromEntries(list.map(row => [row.task, {
+      connectionId: row.routed ? row.connectionId ?? '' : '',
+      model: row.routed ? row.model ?? '' : '',
+    }])))
+  }
+  // 连接增删之后要重新取：某条路由可能指向刚被删掉的连接。
+  useEffect(() => {
+    api.listAgentTaskModels()
+      .then(res => adopt(res.tasks))
+      .catch(err => setError(err instanceof Error ? err.message : '读取任务路由失败'))
+  }, [connections.length])
+
+  const submit = async (task: string, connectionId: string, model: string) => {
+    setBusy(task)
+    setError('')
+    try {
+      const res = await api.saveAgentTaskModel({
+        task,
+        connectionId: connectionId || null,
+        model: model.trim() || null,
+      })
+      adopt(res.tasks)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <section className="ai-section">
+      <h3>按任务选模型</h3>
+      <p className="ai-section-hint">
+        不同任务可以用不同的模型：摘要走便宜的、书源排错走强的。没配的任务跟随默认连接。
+      </p>
+      {error && <p className="customize-error" role="alert">{error}</p>}
+      {rows.length === 0 ? (
+        <p className="ai-muted">还没有可配的任务。</p>
+      ) : (
+        <ul className="ai-task-list">
+          {rows.map(row => {
+            const draft = drafts[row.task] ?? { connectionId: '', model: '' }
+            const modelHint = connections.find(c => c.id === draft.connectionId)?.model
+            const dirty = draft.connectionId !== (row.routed ? row.connectionId ?? '' : '')
+              || draft.model !== (row.routed ? row.model ?? '' : '')
+            return (
+              <li key={row.task} className="ai-task-item">
+                <div className="ai-task-head">
+                  <strong>{row.label}</strong>
+                  {row.routed
+                    ? <span className="ai-tag ai-tag-ok">已单独指定</span>
+                    : <span className="ai-tag">跟随默认</span>}
+                </div>
+                <div className="ai-task-fields">
+                  <select
+                    aria-label={`${row.label} 用哪条连接`}
+                    value={draft.connectionId}
+                    onChange={event => setDrafts(current => ({ ...current, [row.task]: { ...draft, connectionId: event.target.value } }))}
+                  >
+                    <option value="">默认连接</option>
+                    {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <input
+                    aria-label={`${row.label} 用哪个模型`}
+                    value={draft.model}
+                    placeholder={modelHint || '该连接自己的模型'}
+                    onChange={event => setDrafts(current => ({ ...current, [row.task]: { ...draft, model: event.target.value } }))}
+                  />
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={!dirty || busy === row.task}
+                    onClick={() => void submit(row.task, draft.connectionId, draft.model)}
+                  >{busy === row.task ? '保存中…' : '保存'}</button>
+                  {row.routed && (
+                    <button
+                      type="button"
+                      className="link-button"
+                      disabled={busy === row.task}
+                      onClick={() => void submit(row.task, '', '')}
+                    >跟随默认</button>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 

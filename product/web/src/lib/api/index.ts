@@ -49,6 +49,7 @@ import { chat } from './domains/agent'
 import { chatStream } from './domains/agent'
 import { skills } from './domains/agent'
 import { prompts } from './domains/agent'
+import { taskModels } from './domains/agent'
 
 import { brand } from './domains/brand'
 import { system } from './domains/system'
@@ -92,6 +93,7 @@ export {
   chatStream,
   skills,
   prompts,
+  taskModels,
   brand,
   system,
 }

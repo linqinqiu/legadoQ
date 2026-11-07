@@ -21,9 +21,11 @@ import io.legado.ai.agentListConnections
 import io.legado.ai.agentListModels
 import io.legado.ai.agentListPrompts
 import io.legado.ai.agentListSkills
+import io.legado.ai.agentListTaskModels
 import io.legado.ai.agentManifest
 import io.legado.ai.agentSavePrompt
 import io.legado.ai.agentSaveSkill
+import io.legado.ai.agentSaveTaskModel
 import io.legado.ai.agentValidateSource
 import io.legado.data.Database
 import java.nio.file.Path
@@ -121,6 +123,15 @@ fun Route.agentApiRoutes(
                 if (!call.requireSameOriginWrite()) return@delete
                 val id = call.parameters["id"] ?: ""
                 call.agentDeletePrompt(id, agentConnection)
+            }
+            get("task-models") {
+                // 只读：按任务选模型的路由表（对话 / 摘要 / 每条技能）。不写库，无需同源写门。
+                call.agentListTaskModels(homeDirectory, profileStore)
+            }
+            post("task-models") {
+                // 写：改一项任务路由（落盘 agent-task-models.json），需同源写门防 CSRF。
+                if (!call.requireSameOriginWrite()) return@post
+                call.agentSaveTaskModel(homeDirectory, profileStore)
             }
         }
 }

@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.27 · 端点数：155 · 生成时间：2026-11-06
+> 版本：0.2.28 · 端点数：157 · 生成时间：2026-11-07
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -33,8 +33,8 @@
 | 图片与媒体 | 6 |
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
-| AI 自定义接入 | 16 |
-| **合计** | **155** |
+| AI 自定义接入 | 18 |
+| **合计** | **157** |
 
 ## 目录（1）
 
@@ -265,7 +265,7 @@
 | POST | `/api/tts/speak` | 是 | 一次性把一段文本合成完整音频（整章文本走会话那条更好）；请求体：text=要念的文本，不许空，voice=音色，rate=语速，pitch=音高，engine=引擎，customUrl=自建引擎才填，customHeader=可选，customMethod=可选 |
 | GET | `/api/tts/speak` | 否 | 同样的一次性合成，参数走查询串（给 audio 标签这种没法发 POST 的地方用）；query：text=文本（必填），voice=音色，rate=语速，pitch=音高 |
 
-## AI 自定义接入（16）
+## AI 自定义接入（18）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
@@ -285,4 +285,6 @@
 | GET | `/api/agent/prompts` | 否 | 列出提示词预设（按 order 升序）。预设管「怎么说话」：语气、字数、格式，启用的每条都注入 system，对所有对话生效 —— 与按关键词命中的技能分工不同。 |
 | POST | `/api/agent/prompts` | 是 | 新建或覆盖一条提示词预设（落盘 agent-prompts.json，需同源写入）；同 id 覆盖，order 缺省时新建排到末尾、改已有保持原位。；请求体：id=可选，缺省由 name 生成，name=预设名称（必填，最长 60 字），instruction=要注入 system 的说明（必填，最长 2000 字；更长的方法论请写成技能），enabled=默认 true；false 只占位不注入，order=可选整数，越小越先注入 |
 | DELETE | `/api/agent/prompts/{id}` | 是 | 删除一条提示词预设。删除前整份 agent-prompts.json 先备份到 {home}/.trash/，误删可以找回。 |
+| GET | `/api/agent/task-models` | 否 | 按任务选模型的路由表：对话、摘要与理解、以及每条技能各是一个任务，各自可以指定用哪条连接、哪个模型（例如摘要用便宜模型、书源排错用强模型）。没配的任务跟随默认连接。 |
+| POST | `/api/agent/task-models` | 是 | 改一项任务路由（落盘 agent-task-models.json，需同源写入）。connectionId 与 model 都留空 = 取消这一项的路由，退回默认连接；connectionId 指定了不存在的连接会被拒。；请求体：task=任务 id：chat / comprehend / skill:<技能id>（必填），connectionId=可选，指定走哪条已登记连接；留空表示默认连接，model=可选，模型名；留空表示用该连接自己的模型 |
 

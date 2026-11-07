@@ -42,6 +42,7 @@ import {
   chatStream as newChatStream,
   skills as newSkills,
   prompts as newPrompts,
+  taskModels as newTaskModels,
   system as newSystem,
   subscriptions as newSubscriptions,
   brand as newBrand,
@@ -204,6 +205,8 @@ export const api = {
   listAgentPrompts: newPrompts.list,
   saveAgentPrompt: newPrompts.save,
   deleteAgentPrompt: newPrompts.delete,
+  listAgentTaskModels: newTaskModels.list,
+  saveAgentTaskModel: newTaskModels.save,
   // system
   logs: newSystem.logs,
   clearLogs: newSystem.clearLogs,

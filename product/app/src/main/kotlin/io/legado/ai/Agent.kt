@@ -187,7 +187,7 @@ class Agent(
         summarySentences: Int = 3,
         topKeywords: Int = 8,
     ): ComprehendOutcome {
-        val ext = selectedProfile()
+        val ext = profileFor(AgentTaskModelStore.TASK_COMPREHEND)
             ?: return ComprehendOutcome(
                 engine = "unavailable",
                 summary = "",
@@ -255,7 +255,12 @@ class Agent(
         if (norm.isEmpty()) {
             return ChatOutcome(engine = "error", content = "", error = "empty_messages")
         }
-        val ext = selectedProfile()
+        // 先挑技能再挑连接：技能命中决定这是"哪个任务"，而任务可以指定自己的模型
+        // （「书源排错用强模型、日常对话用便宜的」）。技能清单随后原样交给 injectContext，
+        // 不会因为提前算一次就多注入或少注入。
+        val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
+        val skillHits = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
+        val ext = profileFor(AgentTaskModelStore.taskForSkills(skillHits))
             ?: return ChatOutcome(engine = "unavailable", content = "", error = "no_connection")
 
         val provider = providerRegistry.forProfile(ext) ?: return ChatOutcome(
@@ -264,13 +269,12 @@ class Agent(
             errorDetail = "没有能处理「${ext.kind.name}」这种连接的 provider",
         )
         // 只下发与这一轮相关的工具组：55 个全量塞进每次请求会白烧 token、也让模型更容易挑错工具。
-        val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
         val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
         val toolRounds = mutableListOf<String>()
         val injected = injectContext(
             norm,
             AgentPromptStore.select(homeDirectory),
-            AgentSkillStore.select(homeDirectory, skillIds, lastUserText),
+            skillHits,
         )
         // 这两个是**实际注入**的那两份：预设可能因为注入预算被挡掉几条，
         // 回报给界面的 ids 必须与模型真正看到的一致。
@@ -489,7 +493,10 @@ class Agent(
             emit(AgentStreamEvent("error", code = "empty_messages", message = "messages 不能为空"))
             return ChatOutcome(engine = "error", content = "", error = "empty_messages")
         }
-        val ext = selectedProfile()
+        // 与 chat 同一条规矩：先挑技能定任务，再按任务挑连接（见 [profileFor]）。
+        val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
+        val skillHits = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
+        val ext = profileFor(AgentTaskModelStore.taskForSkills(skillHits))
             ?: return ChatOutcome(engine = "unavailable", content = "", error = "no_connection").also {
                 emit(AgentStreamEvent("error", code = "no_connection", message = "尚未登记外部模型连接"))
             }
@@ -501,12 +508,11 @@ class Agent(
                 emit(AgentStreamEvent("error", code = "upstream_unreachable", message = "没有能处理「${ext.kind.name}」这种连接的 provider"))
             }
 
-        val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
         val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
         val injected = injectContext(
             norm,
             AgentPromptStore.select(homeDirectory),
-            AgentSkillStore.select(homeDirectory, skillIds, lastUserText),
+            skillHits,
         )
         val prompts = injected.prompts
         val skills = injected.skills
@@ -891,6 +897,18 @@ class Agent(
      */
     private fun selectedProfile(): AgentProfileStore.Profile? =
         selectorRegistry.selected(profileStore.list(homeDirectory))
+
+    /**
+     * 按任务挑连接：先看「按任务选模型」那张表，没配就退回 [selectedProfile] 的默认选择。
+     *
+     * 路由只在**这一个任务**上生效，不改连接档案本身 —— 同一条连接在别的任务里
+     * 用的还是它自己记着的模型名。这是"摘要用便宜模型"能成立的前提。
+     */
+    private fun profileFor(task: String): AgentProfileStore.Profile? {
+        val profiles = profileStore.list(homeDirectory)
+        return AgentTaskModelStore.resolve(homeDirectory, task, profiles)
+            ?: selectorRegistry.selected(profiles)
+    }
 
     // 把摘要/关键词/问答需求拼成一个给外部模型的 prompt（通用模板，不绑定某家）。
     private fun buildComprehensionPrompt(text: String, question: String?, summarySentences: Int, topKeywords: Int): String =

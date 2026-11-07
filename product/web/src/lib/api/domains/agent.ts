@@ -14,6 +14,8 @@ import type {
   AgentSkill,
   AgentSkillInput,
   AgentStreamEvent,
+  AgentTaskModel,
+  AgentTaskModelInput,
 } from '../types'
 
 /** 连接管理。 */
@@ -181,4 +183,17 @@ export const prompts = {
       `/api/agent/prompts/${encodeURIComponent(id)}`,
       { method: 'DELETE' },
     ),
+}
+
+/**
+ * 按任务选模型：对话、摘要与理解、以及每条技能各是一项任务。
+ * 保存时 `connectionId` 与 `model` 都留空 = 取消这一项的路由（退回默认连接）。
+ */
+export const taskModels = {
+  list: () => request<{ tasks: AgentTaskModel[] }>('/api/agent/task-models'),
+  save: (req: AgentTaskModelInput) =>
+    request<{ tasks: AgentTaskModel[] }>('/api/agent/task-models', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
 }

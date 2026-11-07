@@ -838,3 +838,23 @@ export type AgentPromptInput = {
   enabled: boolean
   order?: number
 }
+
+/**
+ * 按任务选模型：一项任务当前生效的连接与模型。
+ *
+ * `task` 取值 `chat` / `comprehend` / `skill:<技能id>`；`routed=false` 表示这一项跟随默认连接。
+ */
+export type AgentTaskModel = {
+  task: string
+  label: string
+  connectionId?: string | null
+  model?: string | null
+  routed: boolean
+}
+
+export type AgentTaskModelInput = {
+  task: string
+  /** 留空表示用默认连接；与 `model` 同时留空 = 取消这一项的路由。 */
+  connectionId?: string | null
+  model?: string | null
+}
