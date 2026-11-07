@@ -265,6 +265,11 @@ class Agent(
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
         val skillHits = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
         val task = AgentTaskModelStore.taskForSkills(skillHits)
+        // 预设按"本轮命中的全部技能"选，不只按第一条：给某条技能配的语气不该被别的技能挡住。
+        val promptTasks = buildSet {
+            add(AgentTaskModelStore.TASK_CHAT)
+            skillHits.forEach { add(AgentTaskModelStore.SKILL_PREFIX + it.id) }
+        }
         val ext = profileFor(task)
             ?: return ChatOutcome(engine = "unavailable", content = "", error = "no_connection")
 
@@ -278,7 +283,7 @@ class Agent(
         val toolRounds = mutableListOf<String>()
         val injected = injectContext(
             norm,
-            AgentPromptStore.select(homeDirectory, task),
+            AgentPromptStore.select(homeDirectory, promptTasks),
             skillHits,
         )
         // 这两个是**实际注入**的那两份：预设可能因为注入预算被挡掉几条，
@@ -502,6 +507,10 @@ class Agent(
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
         val skillHits = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
         val task = AgentTaskModelStore.taskForSkills(skillHits)
+        val promptTasks = buildSet {
+            add(AgentTaskModelStore.TASK_CHAT)
+            skillHits.forEach { add(AgentTaskModelStore.SKILL_PREFIX + it.id) }
+        }
         val ext = profileFor(task)
             ?: return ChatOutcome(engine = "unavailable", content = "", error = "no_connection").also {
                 emit(AgentStreamEvent("error", code = "no_connection", message = "尚未登记外部模型连接"))
@@ -517,7 +526,7 @@ class Agent(
         val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
         val injected = injectContext(
             norm,
-            AgentPromptStore.select(homeDirectory, task),
+            AgentPromptStore.select(homeDirectory, promptTasks),
             skillHits,
         )
         val prompts = injected.prompts

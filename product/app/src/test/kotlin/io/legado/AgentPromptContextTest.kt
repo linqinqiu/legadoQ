@@ -446,4 +446,24 @@ class AgentPromptContextTest {
         val global = AgentPromptStore.save(home, "p", "只给摘要", "原内容", enabled = true, order = null, tasks = emptyList())
         assertEquals("显式清空才变全局", emptyList<String>(), global.tasks)
     }
+
+    @Test
+    fun `同时命中两条技能时，两条技能的专用预设都进来`() {
+        // 模型路由只按第一条技能决定走哪条连接；但"给某条技能配的语气"不该因为
+        // 另一条技能排在它前面就失效 —— 所以预设按本轮命中的**全部**技能选。
+        val home = Files.createTempDirectory("prompt-scope-multi")
+        registerConnection(home)
+        AgentPromptStore.save(
+            home, "for-read", "阅读专用", "回答剧情时不要剧透", enabled = true, order = 1,
+            tasks = listOf("skill:reading-companion"),
+        )
+        val provider = RecordingProvider()
+        val (db, agent) = buildAgent(home, provider)
+        try {
+            // 这句话同时命中「书源排错」与「阅读助手」的关键词。
+            runBlocking { agent.chat(listOf("user" to "这本书的剧情讲了什么，顺便看看书源规则")) }
+            val convo = provider.seen.last()
+            assertTrue("第二条技能挂的预设也要注入", convo.any { it.content.contains("回答剧情时不要剧透") })
+        } finally { runCatching { db.close() } }
+    }
 }

@@ -130,3 +130,14 @@ test('预设可以只挂到某个任务上：范围走任务清单，空 = 全�
   assert.match(modal, /function scopeLabel\(tasks: string\[\], options: AgentTaskModel\[\]\): string/)
   assert.match(modal, /\{preset\.tasks\.length > 0 && <span className="ai-tag ai-skill-badge">/, '列表里要标出范围')
 })
+
+test('技能这一侧也能挂专用提示词：写的是预设自己的 tasks，不另存关系', () => {
+  const skills = read('../src/features/ai/AiSkillsModal.tsx')
+  assert.match(skills, /api\.listAgentPrompts\(\)/, '展开技能要能拿到全部预设')
+  assert.match(skills, /<SkillPrompts skill=\{skill\} prompts=\{prompts\}/, '展开后才挂这块')
+  assert.match(skills, /const taskId = `skill:\$\{skill\.id\}`/, '任务 id 与按任务选模型同一套')
+  assert.match(skills, /tasks: nextTasks,/, '保存的是预设自己的 tasks')
+  assert.match(skills, /disabled=\{global \|\| busy === preset\.id\}/, '全局预设本来就生效，不给勾（勾了会把它变成专用）')
+  assert.match(skills, /不再挂任何任务，会变成全局提示词/, '摘掉最后一个任务要确认：那是语义跳变')
+  assert.match(skills, /api\.saveAgentPrompt\(\{/, '仍走预设的保存接口，不新增端点')
+})

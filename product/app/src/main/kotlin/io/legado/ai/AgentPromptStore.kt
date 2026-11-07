@@ -62,7 +62,17 @@ object AgentPromptStore {
      * 于是"摘要用这套语气、书源排错用那套"两边配的是同一个任务名，不会各叫一个。
      */
     fun select(homeDirectory: Path, task: String = AgentTaskModelStore.TASK_CHAT): List<Preset> =
-        list(homeDirectory).filter { it.enabled && (it.tasks.isEmpty() || task in it.tasks) }
+        select(homeDirectory, listOf(task))
+
+    /**
+     * 一轮里可能同时命中多条技能（最多 3 条），所以这里收的是**任务集合**：
+     * 只要预设挂的任务里有任意一个在本轮，就注入。
+     *
+     * 只看 `taskForSkills()` 那一个是不够的：模型路由用"第一条技能"决定走哪条连接，
+     * 但"给某条技能配的语气"不该因为另一条技能排在它前面就失效。
+     */
+    fun select(homeDirectory: Path, tasks: Collection<String>): List<Preset> =
+        list(homeDirectory).filter { it.enabled && (it.tasks.isEmpty() || it.tasks.any { task -> task in tasks }) }
 
     /**
      * 写锁：整份文件是「读 → 改 → 写」，两个并发写必然互相覆盖。

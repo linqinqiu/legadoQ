@@ -6468,3 +6468,8 @@ html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-
 .ai-task-scope { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ai-task-scope > legend { padding: 0; font-size: var(--t-sm); color: var(--muted); }
 .ai-task-scope-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* 技能展开后的「专用提示词」：与正文分开一段，勾选区一行排开。 */
+.ai-skill-prompts { display: grid; gap: 6px; padding: 8px 11px 11px; border-top: 1px dashed var(--line); }
+.ai-skill-prompts-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.ai-skill-prompts-head strong { font-size: var(--t-sm); font-weight: 600; }
+.ai-skill-prompts-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }

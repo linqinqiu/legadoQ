@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { api, type AgentSkill, type AgentSkillInput } from '../../lib/api'
+import { api, type AgentPrompt, type AgentSkill, type AgentSkillInput } from '../../lib/api'
 import { AiPanel } from './AiPanel'
 
 /**
@@ -7,7 +7,11 @@ import { AiPanel } from './AiPanel'
  *
  * 与提示词的分工（两处各说各的，别混成"两个输入框"）：
  * 技能管**这类任务怎么做**，只在用户的话命中关键词时进来，一次最多 3 条；
- * 提示词管**怎么说话**，对所有对话生效。
+ * 提示词管**怎么说话**，默认对所有对话生效。
+ *
+ * 2026-11-07：技能这一侧可以直接给某条技能挂「专用提示词」—— 展开技能就能勾。
+ * 底层写的是预设自己的 `tasks`（`skill:<id>`），与「AI 提示词」里那个「生效范围」
+ * 是同一份数据，不另存一套关系，所以两边永远不会各说一套。
  *
  * 自带技能可以「另存为我的版本」：改完就是你在用的那一份，改坏了也能恢复。
  * 列表默认一行、正文点开才展开，与书源列表同一套紧凑习惯。
@@ -22,6 +26,8 @@ export function AiSkillsModal({ onClose }: { onClose: () => void }) {
 
 function SkillsPanel() {
   const [skills, setSkills] = useState<AgentSkill[]>([])
+  /** 全部预设：技能这边只读它们的 tasks，改的时候仍然走预设自己的保存接口。 */
+  const [prompts, setPrompts] = useState<AgentPrompt[]>([])
   const [loadError, setLoadError] = useState('')
   const [expanded, setExpanded] = useState('')
   const [editing, setEditing] = useState<AgentSkill | null>(null)
@@ -31,6 +37,9 @@ function SkillsPanel() {
     api.listAgentSkills()
       .then(result => { setSkills(result.skills); setLoadError('') })
       .catch(err => setLoadError(err instanceof Error ? err.message : '读取技能失败'))
+    api.listAgentPrompts()
+      .then(result => setPrompts(result.prompts))
+      .catch(() => setPrompts([]))
   }
   useEffect(() => { refresh() }, [])
 
@@ -87,7 +96,12 @@ function SkillsPanel() {
                   <button type="button" className="link-button ai-conn-del" onClick={() => void remove(skill)}>删除</button>
                 )}
               </div>
-              {expanded === skill.id && <pre className="ai-skill-content">{skill.content}</pre>}
+              {expanded === skill.id && (
+                <>
+                  <pre className="ai-skill-content">{skill.content}</pre>
+                  <SkillPrompts skill={skill} prompts={prompts} onChanged={next => setPrompts(next)} />
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -177,6 +191,93 @@ function SkillForm({ skill, onCancel, onSaved }: { skill: AgentSkill | null; onC
         </button>
         <button type="button" className="ghost-button" onClick={onCancel} disabled={busy}>取消</button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * 某条技能的「专用提示词」。
+ *
+ * 勾选 = 把 `skill:<id>` 加进那条预设的生效范围；取消 = 摘掉。写的是预设自己的
+ * `tasks`，所以「AI 提示词」那边看到的范围会同步变 —— 一份数据，两个入口。
+ *
+ * 全局预设（tasks 为空）本来就对所有任务生效，这里显示成"已生效"且不可勾：
+ * 让它在技能页被"勾上"会把全局改成只给这一条技能，那是另一件事，不该藏在一个勾里。
+ */
+function SkillPrompts({ skill, prompts, onChanged }: {
+  skill: AgentSkill
+  prompts: AgentPrompt[]
+  onChanged: (next: AgentPrompt[]) => void
+}) {
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const taskId = `skill:${skill.id}`
+
+  const toggle = async (preset: AgentPrompt, on: boolean) => {
+    const nextTasks = on
+      ? [...preset.tasks, taskId]
+      : preset.tasks.filter(task => task !== taskId)
+    // 摘掉最后一个任务 = 这条预设变成"全局"，会在所有任务里注入。
+    // 这不是勾选框该悄悄做的事，先问一句。
+    if (!on && nextTasks.length === 0
+      && !window.confirm(`「${preset.name}」不再挂任何任务，会变成全局提示词（所有任务都注入）。继续？`)) return
+    setBusy(preset.id)
+    setError('')
+    try {
+      const saved = await api.saveAgentPrompt({
+        id: preset.id,
+        name: preset.name,
+        instruction: preset.instruction,
+        enabled: preset.enabled,
+        order: preset.order,
+        tasks: nextTasks,
+      })
+      onChanged(prompts.map(item => (item.id === saved.id ? saved : item)))
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '保存失败')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  if (prompts.length === 0) {
+    return (
+      <div className="ai-skill-prompts">
+        <p className="ai-section-hint">还没有提示词预设。到「AI 提示词」里新建一条，再回来勾。</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="ai-skill-prompts">
+      <div className="ai-skill-prompts-head">
+        <strong>专用提示词</strong>
+        <span className="ai-section-hint">只在命中本技能时额外注入；全局预设本来就生效。</span>
+      </div>
+      <div className="ai-skill-prompts-list">
+        {prompts.map(preset => {
+          const global = preset.tasks.length === 0
+          const mine = preset.tasks.includes(taskId)
+          const elsewhere = !global && !mine
+          return (
+            <label key={preset.id} className="ai-check">
+              <input
+                type="checkbox"
+                checked={global || mine}
+                disabled={global || busy === preset.id}
+                onChange={event => void toggle(preset, event.target.checked)}
+              />
+              <span>
+                {preset.name}
+                {global && '（全局）'}
+                {elsewhere && '（其他任务专用）'}
+                {!preset.enabled && '（已停用）'}
+              </span>
+            </label>
+          )
+        })}
+      </div>
+      {!!error && <p className="customize-error" role="alert">{error}</p>}
     </div>
   )
 }
