@@ -215,6 +215,22 @@ export const SourceEditor: React.FC<{
 
   const urlChanged = !creating && !!selected && !!json && declaredSourceId(json) !== selected.id
   const searching = fieldQuery.trim().length > 0
+  /**
+   * 这份 JSON 里到底有没有规则。
+   *
+   * 判据是"五个规则对象里至少有一个非空字段"——不看对象存不存在：
+   * 只剩元数据的条目通常连 `ruleToc` 这个键都没有，也有的是 `{}`。
+   */
+  const hasRules = useMemo(() => {
+    if (!json) return true
+    const keys = ['ruleSearch', 'ruleExplore', 'ruleBookInfo', 'ruleToc', 'ruleContent']
+    return keys.some(key => {
+      const rule = json[key]
+      if (!rule || typeof rule !== 'object' || Array.isArray(rule)) return false
+      return Object.values(rule as Record<string, unknown>)
+        .some(value => typeof value === 'string' && value.trim() !== '')
+    })
+  }, [json])
   const matched = useMemo(() => searching
     ? SOURCE_FIELD_GROUPS
       .map(group => ({ group, fields: matchFields(group.fields, fieldQuery) }))
@@ -408,6 +424,17 @@ export const SourceEditor: React.FC<{
       </header>
 
       {!json && <div className="source-editor-broken">JSON 无法解析，已切到原文编辑：{text.slice(0, 200)}</div>}
+      {/*
+        一条规则都没有的源：兄弟包的备份里确实有这种"只剩元数据"的条目
+        （本机库实测 5,600 条里 556 条）。JSON 栏看着就是"不全"，
+        不说清的话人会以为是编辑器把规则弄丢了。
+      */}
+      {!creating && json && !hasRules && (
+        <div className="source-editor-broken source-editor-no-rules">
+          这条书源没有任何规则字段（ruleSearch / ruleToc / ruleContent 都是空的），只有元数据：
+          搜不到书，也取不到目录与正文。导入的备份里这一条多半只剩了元数据，需要重新导入完整的那一份。
+        </div>
+      )}
       {urlChanged && (
         <div className="source-editor-broken">
           源域名已从 <code>{selected!.id}</code> 改成 <code>{declaredSourceId(json) || '（空）'}</code>。

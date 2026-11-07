@@ -188,6 +188,23 @@ object SourceCodec {
             warnings += "顶层既没有 searchUrl 也没有 exploreUrl：这个源没有可用入口，只能靠逐本书链接打开。"
         }
 
+        /*
+         * 一条规则都没有：兄弟包的备份里确实存在这种"只剩元数据"的条目
+         * （本机库实测 5,600 条里 556 条，其中 555 条带 `weight`）。
+         * 它们导入不报错、列表里也看得见，但搜索 / 详情 / 目录 / 正文一步都跑不出来 ——
+         * 不说出来，用户只会以为是本服务端解析不了。
+         */
+        val ruleKeys = listOf("ruleSearch", "ruleExplore", "ruleBookInfo", "ruleToc", "ruleContent")
+        val hasAnyRule = ruleKeys.any { key ->
+            (obj[key] as? JsonObject)?.let { rule ->
+                rule.keys.any { field -> rule.string(field)?.isNotBlank() == true }
+            } == true
+        }
+        if (!hasAnyRule) {
+            warnings += "这条书源没有任何规则字段（ruleSearch / ruleToc / ruleContent 都是空的）：搜不到书，也取不到目录与正文。" +
+                "常见原因是导入的备份里这一条只剩了元数据，需要重新导入完整的那一份。"
+        }
+
         if (obj.boolean("webView") == true) {
             warnings += "标记了 webView：服务端没有 Android WebView，需要真浏览器过 JS 挑战/风控的站点在这里跑不通（体检会记为 needs_webview，不算坏）。"
         }

@@ -317,6 +317,12 @@ data class SourceLoginStateRecord(
     val json: String,
     val version: Long,
     val updatedAt: Long,
+    /**
+     * 兄弟包的 `weight`：值越大越优先。只影响**搜索发车顺序**，不影响能不能用 ——
+     * 体检结论仍然排在它前面（见 `orderByHealth`）。
+     * 缺省 0 表示"没设过"，与兄弟包里未设权重的源同义。
+     */
+    val weight: Int = 0,
 )
 
 @Serializable data class SourceWriteRequest(val json: String, val version: Long? = null)

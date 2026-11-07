@@ -18,9 +18,34 @@ class SourceValidateWarningsTest {
 
     @Test
     fun `干净源不产生任何告警`() {
-        val r = validate("""{"bookSourceUrl":"https://d","bookSourceName":"n","searchUrl":"https://d/s?kw={{key}}&page={{page}}"}""")
+        // 真实可用的源都带规则；只有地址没有规则的属于"只剩元数据"，会命中下面那条告警。
+        val r = validate(
+            """{"bookSourceUrl":"https://d","bookSourceName":"n","searchUrl":"https://d/s?kw={{key}}&page={{page}}",
+               "ruleSearch":{"bookList":"$.data","name":"$.title","bookUrl":"$.url"},
+               "ruleToc":{"chapterList":"$.chapters","chapterName":"$.t","chapterUrl":"$.u"},
+               "ruleContent":{"content":"$.content"}}"""
+        )
         assertTrue(r.valid)
         assertEquals(emptyList<String>(), r.warnings)
+    }
+
+    @Test
+    fun `只剩元数据、一条规则都没有的源会明确告警`() {
+        // 兄弟包备份里真实存在这种条目：本机库 5,600 条里 556 条，且大多带 weight。
+        // 导入不报错、列表里也看得见，但搜索/目录/正文一步都跑不出来。
+        val r = validate(
+            """{"bookSourceUrl":"http://www.lwxstxt.com","bookSourceName":"乐文小说⑪","bookSourceType":0,
+               "customOrder":1986,"weight":443,"enabled":true,"enabledCookieJar":true}"""
+        )
+        assertTrue(r.valid)
+        assertTrue("要说清是规则缺失，不是解析失败", r.warnings.any { it.contains("没有任何规则字段") })
+    }
+
+    @Test
+    fun `规则对象是空壳也按没有规则算`() {
+        val r = validate("""{"bookSourceUrl":"https://d","ruleSearch":{},"ruleToc":{"chapterList":""}}""")
+        assertTrue(r.valid)
+        assertTrue(r.warnings.any { it.contains("没有任何规则字段") })
     }
 
     @Test

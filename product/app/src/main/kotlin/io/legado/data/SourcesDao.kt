@@ -113,16 +113,27 @@ private fun Database.listExploreSourcesFromDb(): List<SourceSummary> = connect {
     }
 }
 
+/*
+ * 搜索取源时顺带把 `weight` 取出来。
+ *
+ * `weight` 是兄弟包（legado / MD3 系）里就有的字段：值越大越"优先"。
+ * 我们此前完全忽略它，等于把用户（或备份）里的偏好丢在一边。
+ * 这里用 SQLite 的 json_extract 在 SQL 层取，不额外解析 JSON —— 5,600 条源在
+ * 每次搜索前都解析一遍是白烧 CPU；json_extract 在 C 层做，单列几毫秒。
+ */
 fun Database.listSearchSourceRecords(sourceIds: List<String>?): List<SourceRecord> = connect { db ->
     val ids = sourceIds?.distinct()?.takeIf { it.isNotEmpty() }
+    val columns = "select id, payload, version, updated_at, coalesce(json_extract(payload,'\$.weight'),0) from source"
     val sql = if (ids == null) {
-        "select id, payload, version, updated_at from source where enabled = 1 order by name collate nocase"
+        "$columns where enabled = 1 order by name collate nocase"
     } else {
-        "select id, payload, version, updated_at from source where enabled = 1 and id in (${ids.joinToString(",") { "?" }}) order by name collate nocase"
+        "$columns where enabled = 1 and id in (${ids.joinToString(",") { "?" }}) order by name collate nocase"
     }
     db.prepareStatement(sql).use { statement ->
         ids?.forEachIndexed { index, id -> statement.setString(index + 1, id) }
-        statement.executeQuery().use { rs -> buildList { while (rs.next()) add(SourceRecord(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4))) } }
+        statement.executeQuery().use { rs ->
+            buildList { while (rs.next()) add(SourceRecord(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4), rs.getInt(5))) }
+        }
     }
 }
 
@@ -311,18 +322,25 @@ fun Database.importSources(rawSources: List<String>): ImportResponse {
     write { db ->
         db.autoCommit = false
         try {
-            db.prepareStatement("select version from source where id = ?").use { current ->
+            db.prepareStatement("select version, source_group from source where id = ?").use { current ->
                 // `enabled` 故意**不在** on conflict 的赋值列表里：已在库的书源保留本机的启用/停用选择。
                 // 上游手机是单机恢复自己的状态，整体覆盖没问题；这台服务器与手机已经分叉 ——
                 // 库里 4,876 源只启用 2 个是用户的策展，而手机备份里 7,278 个是 enabled=true，
                 // 一旦覆盖就是一次批量启用事故（用户口径：「到时候我自行决定」）。新入库的源仍按包内值。
+                //
+                // `source_group` 反过来：备份里的分类**照常更新**（那是书源作者写的，比本机旧值新）。
+                // 但体检标签是我们自己打在这个字段里的，覆盖一次就没了 —— 所以写之前把本机那几个
+                // 体检标签并回去（见 [mergeHealthTags]）。用户自己写的标签仍以备份为准。
                 db.prepareStatement("""insert into source(id,name,source_url,source_group,enabled,is_js,payload,version,updated_at,has_login)
                     values(?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login""").use { save ->
                     unique.values.forEach { parsed ->
                         current.setString(1, parsed.id)
-                        val version = current.executeQuery().use { result -> if (result.next()) result.getLong(1) else null }
+                        val (version, localGroup) = current.executeQuery().use { result ->
+                            if (result.next()) result.getLong(1) to result.getString(2) else null to null
+                        }
                         if (version == null) imported++ else updated++
-                        save.setString(1, parsed.id); save.setString(2, parsed.name); save.setString(3, parsed.url); save.setString(4, parsed.group)
+                        save.setString(1, parsed.id); save.setString(2, parsed.name); save.setString(3, parsed.url)
+                        save.setString(4, mergeHealthTags(parsed.group, localGroup))
                         save.setInt(5, if (parsed.enabled) 1 else 0); save.setInt(6, if (parsed.isJs) 1 else 0); save.setString(7, parsed.json)
                         save.setLong(8, (version ?: 0) + 1); save.setLong(9, System.currentTimeMillis()); save.setInt(10, if (parsed.hasLogin) 1 else 0); save.addBatch()
                     }
@@ -336,8 +354,33 @@ fun Database.importSources(rawSources: List<String>): ImportResponse {
     return ImportResponse(imported, updated, rawSources.size - unique.size, errors)
 }
 
-fun Database.exportSources(ids: List<String>?): List<String> = connect { db ->
-    val sql = if (ids.isNullOrEmpty()) "select payload from source order by name collate nocase" else "select payload from source where id in (${ids.joinToString(",") { "?" }}) order by name collate nocase"
+/**
+ * 体检标签的词表。**必须与前端 `web/src/lib/sourceGrouping.ts` 的 `HEALTH_TAGS` 逐字一致** ——
+ * 那边负责打标签，这边负责在导入覆盖分组时把它们捞回来。
+ * 判据：`web/test/HealthTagVocabulary.test.ts` 会把两份词表比一遍。
+ */
+internal val HEALTH_GROUP_TAGS = listOf("体检可用", "体检待确认", "未配搜索", "体检异常")
+
+private fun splitGroupTags(raw: String?): List<String> =
+    (raw ?: "").split(Regex("[,，、\\s]+")).map { it.trim() }.filter { it.isNotEmpty() }
+
+/**
+ * 把本机的体检标签并回备份给的分组串。
+ *
+ * 备份里的 `bookSourceGroup` 是书源作者写的分类，导入时照常覆盖（既有判据就是这么定的）；
+ * 但体检标签是我们自己写进同一个字段的，覆盖一次就没了 —— 用户看到的是
+ * 「刚体检完的结论，导一次备份全没了」。所以只把体检那四个词捞回来，
+ * 用户自己写的其它标签仍以备份为准。
+ */
+internal fun mergeHealthTags(incoming: String?, local: String?): String? {
+    val localHealth = splitGroupTags(local).filter { it in HEALTH_GROUP_TAGS }
+    if (localHealth.isEmpty()) return incoming
+    val incomingTags = splitGroupTags(incoming)
+    val merged = incomingTags + localHealth.filterNot { it in incomingTags }
+    return merged.joinToString(" ").ifBlank { null }
+}
+
+fun Database.exportSources(ids: List<String>?): List<String> = connect { db ->    val sql = if (ids.isNullOrEmpty()) "select payload from source order by name collate nocase" else "select payload from source where id in (${ids.joinToString(",") { "?" }}) order by name collate nocase"
     db.prepareStatement(sql).use { statement -> ids?.forEachIndexed { index, id -> statement.setString(index + 1, id) }; statement.executeQuery().use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } } }
 }
 

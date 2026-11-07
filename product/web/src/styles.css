@@ -4930,6 +4930,9 @@ input[type=range] { min-height: 24px; }
   font-size: var(--t-md);
   line-height: 1.7;
 }
+/* 「只剩元数据、没有规则」与 JSON 解析失败共用底样式，但换一层更浅的底：
+   它不是坏了，是缺内容 —— 底一样重会让人以为这条源已经烂了。 */
+.source-editor-no-rules { background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }
 .source-editor-broken code { padding: 1px 5px; border-radius: var(--r-1); background: var(--surface-muted); font-size: var(--t-sm); }
 
 .source-form-tabs {

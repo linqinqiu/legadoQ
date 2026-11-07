@@ -296,11 +296,13 @@ internal data class DeadlineCollection<R>(
 /**
  * 按体检结论给待搜的书源排先后。
  *
- * 三条规则：
+ * 四条规则：
  * 1. **体检通过的排最前**，慢的其后，连不上的最后 —— 截止时间不变，
  *    但同样的时间先撞上的是能用的源。
- * 2. **同档内按延迟升序**：快的先搜，早点把结果送出去。
- * 3. **没体检过的源**排在体检过的之后，且保持原有相对顺序（稳定排序）——
+ * 2. **同一档内按 `weight` 降序**：权重是用户/备份里的明确偏好，值越大越先搜。
+ *    它排在体检结论**之后**：一个自己标了高权重的死源，不该挤掉能用的源、白吃截止时间。
+ * 3. **再按延迟升序**：快的先搜，早点把结果送出去。
+ * 4. **没体检过的源**排在体检过的之后，且保持原有相对顺序（稳定排序）——
  *    "没体检"不是"不能用"，不该被歧视，只是没证据表明它该靠前。
  *
  * 用 index 做 tie-breaker 保证稳定：Kotlin 的 `sortedWith` 是稳定的，
@@ -310,7 +312,7 @@ internal fun orderByHealth(
     sources: List<io.legado.model.SourceRecord>,
     health: Map<String, Pair<Int, Long>>,
 ): List<io.legado.model.SourceRecord> {
-    if (health.isEmpty()) return sources
+    if (health.isEmpty() && sources.none { it.weight != 0 }) return sources
     // 没体检过的源给一个"比最差还差一点"的分档，让它们排在所有体检过的源之后。
     val unknownBucket = (health.values.maxOfOrNull { it.first } ?: 1) + 1
     return sources
@@ -318,6 +320,7 @@ internal fun orderByHealth(
         .sortedWith(
             compareBy(
                 { (_, source) -> health[source.id]?.first ?: unknownBucket },
+                { (_, source) -> -source.weight },
                 { (_, source) -> health[source.id]?.second ?: Long.MAX_VALUE },
                 { (index, _) -> index },
             ),

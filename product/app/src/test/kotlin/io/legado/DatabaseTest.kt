@@ -166,9 +166,53 @@ class DatabaseTest {
         } finally { Files.deleteIfExists(java.nio.file.Path.of(path)) }
     }
 
+    /**
+     * 重新导入（兄弟包备份）时：备份给的分组照常落地，本机的**体检标签**要跟过来。
+     *
+     * 体检结论是写进 `bookSourceGroup` 的，导入整体覆盖会把它抹掉 ——
+     * 用户看到的是「刚体检完，导一次备份全没了」。用户自己写的其它标签仍以备份为准。
+     */
     @Test
-    fun `search source records load enabled sources in one filtered query`() {
+    fun `重新导入时备份分组照常更新，本机体检标签跟过来`() {
         val path = temporaryDatabase()
+        try {
+            val database = Database(path); database.initialize()
+            database.importSources(listOf(
+                """{"bookSourceUrl":"https://s.example","bookSourceName":"源","bookSourceGroup":"体检可用 小说"}""",
+                """{"bookSourceUrl":"https://empty.example","bookSourceName":"空分组"}""",
+            ))
+            // 第二次导入带的是兄弟包里那套分类
+            database.importSources(listOf(
+                """{"bookSourceUrl":"https://s.example","bookSourceName":"源","bookSourceGroup":"其他"}""",
+                """{"bookSourceUrl":"https://empty.example","bookSourceName":"空分组","bookSourceGroup":"包内分类"}""",
+            ))
+
+            val groups = database.listSources(null).associate { it.id to it.group }
+            assertEquals("备份的分类要落地，体检标签要跟过来", "其他 体检可用", groups["https://s.example"])
+            assertEquals("本机没有体检标签时就用包内的", "包内分类", groups["https://empty.example"])
+            database.close()
+        } finally { Files.deleteIfExists(java.nio.file.Path.of(path)) }
+    }
+
+    /** 搜索取源时要把兄弟包的 `weight` 一起取回来，排序才有得用。 */
+    @Test
+    fun `search source records carry weight from payload`() {
+        val path = temporaryDatabase()
+        try {
+            val database = Database(path); database.initialize()
+            database.importSources(listOf(
+                """{"bookSourceUrl":"https://heavy.example","bookSourceName":"重","weight":900}""",
+                """{"bookSourceUrl":"https://plain.example","bookSourceName":"普通"}""",
+            ))
+            val weights = database.listSearchSourceRecords(null).associate { it.id to it.weight }
+            assertEquals(900, weights["https://heavy.example"])
+            assertEquals("没写 weight 就是 0", 0, weights["https://plain.example"])
+            database.close()
+        } finally { Files.deleteIfExists(java.nio.file.Path.of(path)) }
+    }
+
+    @Test
+    fun `search source records load enabled sources in one filtered query`() {        val path = temporaryDatabase()
         try {
             val database = Database(path); database.initialize()
             database.importSources(listOf(

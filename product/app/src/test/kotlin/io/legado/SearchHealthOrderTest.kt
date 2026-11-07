@@ -97,4 +97,40 @@ class SearchHealthOrderTest {
         val ordered = orderByHealth(sources, boundary).map { it.id }
         assertEquals(listOf("ok-fast", "ok-slow"), ordered)
     }
+
+    /*
+     * 以下是 `weight`（兄弟包的字段，值越大越优先）接进来的那几条。
+     *
+     * 为什么排在体检结论**之后**：weight 是偏好，不是可用性证据。
+     * 一个自己标了高权重的死源若排到最前，就会先吃掉截止时间、把能用的源挤到后面。
+     */
+
+    private fun weighted(id: String, weight: Int) = SourceRecord(id = id, json = "{}", version = 1, updatedAt = 0L, weight = weight)
+
+    @Test
+    fun `同一档内 weight 大的先搜`() {
+        val sources = listOf(weighted("low", 10), weighted("high", 900), weighted("mid", 500))
+        val tie = mapOf("low" to (0 to 0L), "high" to (0 to 0L), "mid" to (0 to 0L))
+        assertEquals(listOf("high", "mid", "low"), orderByHealth(sources, tie).map { it.id })
+    }
+
+    @Test
+    fun `weight 不能把死源顶到可用源前面`() {
+        val sources = listOf(weighted("dead-but-heavy", 9999), weighted("ok", 0))
+        val ordered = orderByHealth(sources, mapOf("dead-but-heavy" to (2 to 30000L), "ok" to (0 to 100L))).map { it.id }
+        assertEquals(listOf("ok", "dead-but-heavy"), ordered)
+    }
+
+    @Test
+    fun `weight 相同时仍按延迟排，没体检过的仍排最后`() {
+        val sources = listOf(weighted("unknown", 0), weighted("slow", 100), weighted("fast", 100))
+        val health = mapOf("slow" to (0 to 2000L), "fast" to (0 to 100L))
+        assertEquals(listOf("fast", "slow", "unknown"), orderByHealth(sources, health).map { it.id })
+    }
+
+    @Test
+    fun `没有任何 weight 也没有体检结论时，顺序原样不动`() {
+        val sources = listOf(rec("b"), rec("a"), rec("c"))
+        assertEquals(listOf("b", "a", "c"), orderByHealth(sources, emptyMap()).map { it.id })
+    }
 }
