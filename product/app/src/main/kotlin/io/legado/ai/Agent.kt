@@ -197,7 +197,11 @@ class Agent(
                 error = "no_connection",
             )
         val prompt = buildComprehensionPrompt(text, question, summarySentences, topKeywords)
-        when (val llm = callLlmOutcome(ext, listOf(LlmMessage("user", prompt)))) {
+        // 摘要也是任务：挂在 `comprehend` 上的预设（语气、字数、要不要先给结论）在这里注入。
+        // 从前这条路完全不注入预设，于是"给摘要配一套语气"根本没有生效的地方。
+        val presets = AgentPromptStore.select(homeDirectory, AgentTaskModelStore.TASK_COMPREHEND)
+        val messages = presetMessages(presets) + LlmMessage("user", prompt)
+        when (val llm = callLlmOutcome(ext, messages)) {
             is LlmOutcome.Ok -> return ComprehendOutcome(
                 engine = "external:" + ext.id,
                 summary = llm.text.trim(),
@@ -260,7 +264,8 @@ class Agent(
         // 不会因为提前算一次就多注入或少注入。
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
         val skillHits = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
-        val ext = profileFor(AgentTaskModelStore.taskForSkills(skillHits))
+        val task = AgentTaskModelStore.taskForSkills(skillHits)
+        val ext = profileFor(task)
             ?: return ChatOutcome(engine = "unavailable", content = "", error = "no_connection")
 
         val provider = providerRegistry.forProfile(ext) ?: return ChatOutcome(
@@ -273,7 +278,7 @@ class Agent(
         val toolRounds = mutableListOf<String>()
         val injected = injectContext(
             norm,
-            AgentPromptStore.select(homeDirectory),
+            AgentPromptStore.select(homeDirectory, task),
             skillHits,
         )
         // 这两个是**实际注入**的那两份：预设可能因为注入预算被挡掉几条，
@@ -496,7 +501,8 @@ class Agent(
         // 与 chat 同一条规矩：先挑技能定任务，再按任务挑连接（见 [profileFor]）。
         val lastUserText = messages.lastOrNull { it.first == "user" }?.second.orEmpty()
         val skillHits = AgentSkillStore.select(homeDirectory, skillIds, lastUserText)
-        val ext = profileFor(AgentTaskModelStore.taskForSkills(skillHits))
+        val task = AgentTaskModelStore.taskForSkills(skillHits)
+        val ext = profileFor(task)
             ?: return ChatOutcome(engine = "unavailable", content = "", error = "no_connection").also {
                 emit(AgentStreamEvent("error", code = "no_connection", message = "尚未登记外部模型连接"))
             }
@@ -511,7 +517,7 @@ class Agent(
         val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
         val injected = injectContext(
             norm,
-            AgentPromptStore.select(homeDirectory),
+            AgentPromptStore.select(homeDirectory, task),
             skillHits,
         )
         val prompts = injected.prompts
@@ -763,7 +769,8 @@ class Agent(
         instruction: String,
         enabled: Boolean,
         order: Int?,
-    ): AgentPromptStore.Preset = AgentPromptStore.save(homeDirectory, id, name, instruction, enabled, order)
+        tasks: List<String>? = null,
+    ): AgentPromptStore.Preset = AgentPromptStore.save(homeDirectory, id, name, instruction, enabled, order, tasks)
 
     /** 删除一条提示词预设（删前整份文件备份进 agent-prompts 的 .trash）。 */
     fun deletePrompt(id: String): Boolean = AgentPromptStore.delete(homeDirectory, id)
@@ -797,16 +804,10 @@ class Agent(
     ): Injected {
         if (prompts.isEmpty() && skills.isEmpty()) return Injected(base, emptyList(), emptyList())
         val insertAt = base.indexOfFirst { it.role != "system" }.let { if (it < 0) base.size else it }
-        val injected = mutableListOf<LlmMessage>()
-        val usedPrompts = mutableListOf<AgentPromptStore.Preset>()
-        var promptBudget = MAX_PROMPT_CHARS
-        for (preset in prompts) {
-            val body = preset.instruction.take(AgentPromptStore.MAX_INSTRUCTION_CHARS)
-            if (body.length > promptBudget) break
-            promptBudget -= body.length
-            usedPrompts += preset
-            injected += LlmMessage(role = "system", content = "【提示词：${preset.name}】\n$body")
-        }
+        val presetMessages = presetMessages(prompts)
+        // 预算按字符算，超预算的那条**整条**不进（不截断半句），所以"用了前 n 条"即可如实回报。
+        val usedPrompts = prompts.take(presetMessages.size)
+        val injected = presetMessages.toMutableList()
         for (skill in skills) {
             injected += LlmMessage(
                 role = "system",
@@ -814,6 +815,24 @@ class Agent(
             )
         }
         return Injected(base.take(insertAt) + injected + base.drop(insertAt), usedPrompts, skills)
+    }
+
+    /**
+     * 预设 → system 消息，遵守 [MAX_PROMPT_CHARS] 预算（超预算的整条丢掉，不截断半句）。
+     *
+     * 对话与摘要共用这一处：两条路径注入的格式必须一模一样，否则同一套语气说明
+     * 在"对话"和"摘要"里长得不一样，用户会以为预设没生效。
+     */
+    private fun presetMessages(prompts: List<AgentPromptStore.Preset>): List<LlmMessage> {
+        val out = mutableListOf<LlmMessage>()
+        var budget = MAX_PROMPT_CHARS
+        for (preset in prompts) {
+            val body = preset.instruction.take(AgentPromptStore.MAX_INSTRUCTION_CHARS)
+            if (body.length > budget) break
+            budget -= body.length
+            out += LlmMessage(role = "system", content = "【提示词：${preset.name}】\n$body")
+        }
+        return out
     }
 
     /**

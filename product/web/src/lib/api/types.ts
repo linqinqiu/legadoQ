@@ -821,7 +821,7 @@ export type AgentSkillInput = {
   enabled?: boolean
 }
 
-/** 提示词预设 —— 管"怎么说话"（语气、字数、格式），启用的每条都注入 system，对所有对话生效。 */
+/** 提示词预设 —— 管"怎么说话"（语气、字数、格式），启用的每条都注入 system。 */
 export type AgentPrompt = {
   id: string
   name: string
@@ -829,6 +829,11 @@ export type AgentPrompt = {
   enabled: boolean
   /** 越小越先注入；相等时按名称。 */
   order: number
+  /**
+   * 只对哪些任务生效：chat / comprehend / skill:<技能id>。
+   * **空数组 = 全局**（所有任务都注入），老条目就是这个形态。
+   */
+  tasks: string[]
 }
 
 export type AgentPromptInput = {
@@ -837,6 +842,8 @@ export type AgentPromptInput = {
   instruction: string
   enabled: boolean
   order?: number
+  /** 缺省 = 服务端保持原样；空数组 = 改成全局。 */
+  tasks?: string[]
 }
 
 /**

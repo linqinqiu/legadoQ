@@ -25,6 +25,8 @@ object AgentPromptStore {
     private const val TRASH_DIR = ".trash"
     const val MAX_INSTRUCTION_CHARS = 2000
     const val MAX_PROMPTS = 30
+    /** 一条预设最多挂几个任务：够用就行，多了说明该拆成两条。 */
+    const val MAX_TASKS_PER_PROMPT = 8
 
     @Serializable
     data class Preset(
@@ -34,6 +36,11 @@ object AgentPromptStore {
         val enabled: Boolean = true,
         /** 越小越先注入；相同则按名称。 */
         val order: Int = 0,
+        /**
+         * 只对哪些任务生效：`chat` / `comprehend` / `skill:<技能id>`。
+         * **空 = 对所有任务生效**（老条目与"全局语气"都是这一档），所以老文件不用迁移。
+         */
+        val tasks: List<String> = emptyList(),
     )
 
     @Serializable
@@ -47,8 +54,15 @@ object AgentPromptStore {
 
     fun list(homeDirectory: Path): List<Preset> = read(homeDirectory).sortedWith(compareBy({ it.order }, { it.name }))
 
-    /** 该注入本轮对话的预设：只取启用的，顺序即注入顺序。 */
-    fun select(homeDirectory: Path): List<Preset> = list(homeDirectory).filter { it.enabled }
+    /**
+     * 该注入本轮对话的预设：只取启用的，且**任务匹配**。
+     *
+     * `tasks` 为空表示全局（所有任务都注入）—— 这是老条目的默认，也是"整体语气"该有的用法。
+     * 任务 id 与「按任务选模型」共用同一套：`chat` / `comprehend` / `skill:<技能id>`，
+     * 于是"摘要用这套语气、书源排错用那套"两边配的是同一个任务名，不会各叫一个。
+     */
+    fun select(homeDirectory: Path, task: String = AgentTaskModelStore.TASK_CHAT): List<Preset> =
+        list(homeDirectory).filter { it.enabled && (it.tasks.isEmpty() || task in it.tasks) }
 
     /**
      * 写锁：整份文件是「读 → 改 → 写」，两个并发写必然互相覆盖。
@@ -73,6 +87,8 @@ object AgentPromptStore {
         instruction: String,
         enabled: Boolean,
         order: Int?,
+        /** 只对哪些任务生效；空 = 全局。不传 = 保持原样（改内容不该把作用范围洗掉）。 */
+        tasks: List<String>? = null,
     ): Preset = synchronized(writeLock) {
         require(name.isNotBlank()) { "提示词名称不能为空" }
         require(instruction.isNotBlank()) { "提示词内容不能为空" }
@@ -88,6 +104,11 @@ object AgentPromptStore {
             enabled = enabled,
             // 新条目默认排最后；改已有条目时没传 order 就保持原位。
             order = order ?: existing?.order ?: ((others.maxOfOrNull { it.order } ?: -1) + 1),
+            tasks = (tasks ?: existing?.tasks.orEmpty())
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(MAX_TASKS_PER_PROMPT),
         )
         write(homeDirectory, current.filterNot { it.id == finalId } + preset)
         preset

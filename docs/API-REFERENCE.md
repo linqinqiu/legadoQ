@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.28 · 端点数：157 · 生成时间：2026-11-07
+> 版本：0.2.29 · 端点数：157 · 生成时间：2026-11-07
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -282,8 +282,8 @@
 | GET | `/api/agent/skills` | 否 | 列出技能库（内置 + 用户自建）：技能按关键词命中注入 system，一次最多 3 条。 |
 | POST | `/api/agent/skills` | 是 | 新建或覆盖一个技能（落盘 agent-skills/<id>.md，需同源写入）；同 id 覆盖内置技能会生成用户版本。；请求体：id=可选，缺省由 name 生成，name=技能名称（必填），description=一句话说明，keywords=关键词数组，命中才注入，content=技能正文（必填，注入 system），enabled=默认 true |
 | DELETE | `/api/agent/skills/{id}` | 是 | 删除一个用户技能（移入 agent-skills/.trash，不直接删文件）；内置技能拒绝删除。 |
-| GET | `/api/agent/prompts` | 否 | 列出提示词预设（按 order 升序）。预设管「怎么说话」：语气、字数、格式，启用的每条都注入 system，对所有对话生效 —— 与按关键词命中的技能分工不同。 |
-| POST | `/api/agent/prompts` | 是 | 新建或覆盖一条提示词预设（落盘 agent-prompts.json，需同源写入）；同 id 覆盖，order 缺省时新建排到末尾、改已有保持原位。；请求体：id=可选，缺省由 name 生成，name=预设名称（必填，最长 60 字），instruction=要注入 system 的说明（必填，最长 2000 字；更长的方法论请写成技能），enabled=默认 true；false 只占位不注入，order=可选整数，越小越先注入 |
+| GET | `/api/agent/prompts` | 否 | 列出提示词预设（按 order 升序）。预设管「怎么说话」：语气、字数、格式。tasks 为空表示全局（所有任务都注入）；非空时只在那些任务里注入（chat / comprehend / skill:<技能id>）。 |
+| POST | `/api/agent/prompts` | 是 | 新建或覆盖一条提示词预设（落盘 agent-prompts.json，需同源写入）；同 id 覆盖，order 缺省时新建排到末尾、改已有保持原位。；请求体：id=可选，缺省由 name 生成，name=预设名称（必填，最长 60 字），instruction=要注入 system 的说明（必填，最长 2000 字；更长的方法论请写成技能），enabled=默认 true；false 只占位不注入，order=可选整数，越小越先注入，tasks=可选：只对哪些任务生效（chat / comprehend / skill:<技能id>，最多 8 个）；缺省 = 保持原样，空数组 = 全局 |
 | DELETE | `/api/agent/prompts/{id}` | 是 | 删除一条提示词预设。删除前整份 agent-prompts.json 先备份到 {home}/.trash/，误删可以找回。 |
 | GET | `/api/agent/task-models` | 否 | 按任务选模型的路由表：对话、摘要与理解、以及每条技能各是一个任务，各自可以指定用哪条连接、哪个模型（例如摘要用便宜模型、书源排错用强模型）。没配的任务跟随默认连接。 |
 | POST | `/api/agent/task-models` | 是 | 改一项任务路由（落盘 agent-task-models.json，需同源写入）。connectionId 与 model 都留空 = 取消这一项的路由，退回默认连接；connectionId 指定了不存在的连接会被拒。；请求体：task=任务 id：chat / comprehend / skill:<技能id>（必填），connectionId=可选，指定走哪条已登记连接；留空表示默认连接，model=可选，模型名；留空表示用该连接自己的模型 |

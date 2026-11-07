@@ -77,7 +77,9 @@ test('注入顺序：先定"怎么说话"的预设，再定"怎么做"的技能'
   // `Agent.injectContext` 必须先把预设拼进 system，再拼技能（越具体越靠后）。
   const agent = read('../../app/src/main/kotlin/io/legado/ai/Agent.kt')
   const inject = agent.slice(agent.indexOf('private fun injectContext'))
-  const promptsAt = inject.indexOf('for (preset in prompts)')
+  // 2026-11-07：预设转 system 消息抽进 `presetMessages`（对话与摘要共用同一套格式），
+  // 判据跟着改成"调 presetMessages 必须在拼技能之前"，盯的还是同一个不变量。
+  const promptsAt = inject.indexOf('presetMessages(prompts)')
   const skillsAt = inject.indexOf('for (skill in skills)')
   assert.ok(promptsAt > 0 && skillsAt > 0, '两段注入都要找得到')
   assert.ok(promptsAt < skillsAt, '提示词要先注入，技能在后（与界面那句分工一致）')
@@ -109,4 +111,22 @@ test('裁历史不是静默改用户的输入：只丢整轮，最后一条用�
   const modal = read('../src/features/ai/AiChatModal.tsx')
   assert.match(modal, /trimmed:\s*result\.trimmed > 0 \? result\.trimmed : undefined/,
     '没裁时不写字段，裁了才显示 —— 显示 "0 条" 会让人以为历史被动过')
+})
+
+test('预设可以只挂到某个任务上：范围走任务清单，空 = 全局', () => {
+  const types = read('../src/lib/api/types.ts')
+  assert.match(types, /export type AgentPrompt = \{[\s\S]*?tasks: string\[\]/, '预设要带生效范围')
+  assert.match(types, /export type AgentPromptInput = \{[\s\S]*?tasks\?: string\[\]/, '保存时可选')
+
+  const modal = read('../src/features/ai/AiPromptsModal.tsx')
+  assert.match(modal, /api\.listAgentTaskModels\(\)/, '任务清单与「按任务选模型」共用一份，不另起一套')
+  assert.match(modal, /<fieldset className="ai-task-scope">/, '生效范围要有自己的分组')
+  assert.match(modal, /不勾 = 所有任务都注入/, '空选择 = 全局，这句话要写在界面上')
+  assert.match(modal, /^\s*tasks,$/m, '保存请求要带上 tasks')
+  // 停用 / 上移下移都走 toPromptInput：不带上 tasks 会把"只给某个任务"洗成全局。
+
+  // 停用 / 上移下移都走 toPromptInput：不带上 tasks 会把"只给某个任务"洗成全局。
+  assert.match(modal, /tasks: preset\.tasks,/, 'toPromptInput 必须原样带上生效范围')
+  assert.match(modal, /function scopeLabel\(tasks: string\[\], options: AgentTaskModel\[\]\): string/)
+  assert.match(modal, /\{preset\.tasks\.length > 0 && <span className="ai-tag ai-skill-badge">/, '列表里要标出范围')
 })

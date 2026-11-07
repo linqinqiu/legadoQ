@@ -164,7 +164,8 @@ class AgentConnection internal constructor(private val agent: Agent) {
         instruction: String,
         enabled: Boolean,
         order: Int?,
-    ): AgentPromptStore.Preset = agent.savePrompt(id, name, instruction, enabled, order)
+        tasks: List<String>? = null,
+    ): AgentPromptStore.Preset = agent.savePrompt(id, name, instruction, enabled, order, tasks)
 
     /** 删除一条提示词预设（删前整份文件备份进 .trash）。 */
     fun deletePrompt(id: String): Boolean = agent.deletePrompt(id)

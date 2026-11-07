@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import { api, type AgentPrompt, type AgentPromptInput } from '../../lib/api'
+import { api, type AgentPrompt, type AgentPromptInput, type AgentTaskModel } from '../../lib/api'
 import { AiPanel } from './AiPanel'
 
 /**
- * 「AI 提示词」浮层：管"怎么说话"的全局要求（语气、字数、格式），可开关可排序。
+ * 「AI 提示词」浮层：管"怎么说话"的要求（语气、字数、格式），可开关可排序。
  *
  * 与技能的分工（这一句必须留在界面上，否则两者会被当成两个一样的输入框）：
- * 提示词**每次对话都生效**、按顺序注入；技能只在命中关键词时进来、一次最多 3 条。
+ * 提示词默认**每次对话都生效**、按顺序注入；技能只在命中关键词时进来、一次最多 3 条。
+ *
+ * 2026-11-07：预设可以只挂到某个任务上（对话 / 摘要 / 某条技能），于是"摘要用这套语气、
+ * 书源排错用那套"成立。不勾任务 = 全局，与老条目完全一样，不需要迁移。
  *
  * 一份清单一次最多注入 6000 字：装不下的**整条不注入**，也**不回报成"已注入"** ——
  * 界面说"用了 4 条"而模型只看到 3 条，人会对着那 3 条查半天。
@@ -27,7 +30,15 @@ function toPromptInput(preset: AgentPrompt): AgentPromptInput {
     instruction: preset.instruction,
     enabled: preset.enabled,
     order: preset.order,
+    // 停用 / 上移下移都走这条：不带上 tasks 就会把"只给某个任务"洗成全局。
+    tasks: preset.tasks,
   }
+}
+
+/** 生效范围的显示名：任务 id 换成界面上的中文名，认不出的原样显示。 */
+function scopeLabel(tasks: string[], options: AgentTaskModel[]): string {
+  if (tasks.length === 0) return '全局'
+  return tasks.map(task => options.find(o => o.task === task)?.label ?? task).join(' · ')
 }
 
 function PromptsPanel() {
@@ -36,6 +47,8 @@ function PromptsPanel() {
   const [expanded, setExpanded] = useState('')
   const [editing, setEditing] = useState<AgentPrompt | null>(null)
   const [creating, setCreating] = useState(false)
+  /** 任务清单（对话 / 摘要 / 每条技能）—— 与「按任务选模型」共用同一份定义，不在这儿另起一套。 */
+  const [taskOptions, setTaskOptions] = useState<AgentTaskModel[]>([])
 
   const refresh = () => {
     api.listAgentPrompts()
@@ -43,6 +56,9 @@ function PromptsPanel() {
       .catch(err => setLoadError(err instanceof Error ? err.message : '读取提示词失败'))
   }
   useEffect(() => { refresh() }, [])
+  useEffect(() => {
+    api.listAgentTaskModels().then(result => setTaskOptions(result.tasks)).catch(() => setTaskOptions([]))
+  }, [])
 
   const remove = async (preset: AgentPrompt) => {
     if (!window.confirm(`删除提示词「${preset.name}」？删除前会先备份整份清单，可以找回。`)) return
@@ -95,8 +111,8 @@ function PromptsPanel() {
     <section className="ai-section">
       <h3>AI 提示词</h3>
       <p className="ai-section-hint">
-        提示词管「怎么说话」：语气、字数、格式这类要求，启用的每次对话都带上，越靠前越先生效。
-        技能不一样 —— 技能是「这类任务怎么做」，只在命中关键词时才进来。
+        提示词管「怎么说话」：语气、字数、格式这类要求，启用的默认每次对话都带上，越靠前越先生效。
+        也可以只给某个任务（摘要、某条技能），互不干扰。技能不一样 —— 技能是「这类任务怎么做」，只在命中关键词时才进来。
         单条最长 2000 字，一次对话总共最长 6000 字，装不下的整条不带。
       </p>
       {loadError ? (
@@ -115,6 +131,7 @@ function PromptsPanel() {
                   {preset.name}
                 </button>
                 {!preset.enabled && <span className="ai-tag ai-tag-warn ai-skill-badge">已停用</span>}
+                {preset.tasks.length > 0 && <span className="ai-tag ai-skill-badge">{scopeLabel(preset.tasks, taskOptions)}</span>}
                 <span className="ai-skill-desc">{preset.instruction}</span>
               </div>
               <div className="ai-skill-actions">
@@ -139,6 +156,7 @@ function PromptsPanel() {
         <PromptForm
           key={editing?.id ?? 'new'}
           preset={editing}
+          taskOptions={taskOptions}
           onCancel={() => { setCreating(false); setEditing(null) }}
           onSaved={() => { setCreating(false); setEditing(null); refresh() }}
         />
@@ -151,10 +169,17 @@ function PromptsPanel() {
   )
 }
 
-function PromptForm({ preset, onCancel, onSaved }: { preset: AgentPrompt | null; onCancel: () => void; onSaved: () => void }) {
+function PromptForm({ preset, taskOptions, onCancel, onSaved }: {
+  preset: AgentPrompt | null
+  taskOptions: AgentTaskModel[]
+  onCancel: () => void
+  onSaved: () => void
+}) {
   const [name, setName] = useState(preset?.name ?? '')
   const [instruction, setInstruction] = useState(preset?.instruction ?? '')
   const [enabled, setEnabled] = useState(preset?.enabled ?? true)
+  /** 空数组 = 全局。勾哪个就只对哪个任务生效。 */
+  const [tasks, setTasks] = useState<string[]>(preset?.tasks ?? [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -170,6 +195,7 @@ function PromptForm({ preset, onCancel, onSaved }: { preset: AgentPrompt | null;
       enabled,
       // order 只在改已有条目时回传，新建交给服务端排到末尾。
       ...(preset ? { order: preset.order } : {}),
+      tasks,
     }
     try {
       await api.saveAgentPrompt(req)
@@ -197,6 +223,26 @@ function PromptForm({ preset, onCancel, onSaved }: { preset: AgentPrompt | null;
           placeholder="例：先给结论，再给理由；不超过 100 字；不要用列表。"
         />
       </label>
+      <fieldset className="ai-task-scope">
+        <legend>生效范围</legend>
+        <p className="ai-section-hint">不勾 = 所有任务都注入（全局语气）；勾了就只在选中的任务里注入。</p>
+        <div className="ai-task-scope-list">
+          {taskOptions.map(option => (
+            <label key={option.task} className="ai-check">
+              <input
+                type="checkbox"
+                checked={tasks.includes(option.task)}
+                onChange={() => setTasks(current => (
+                  current.includes(option.task)
+                    ? current.filter(task => task !== option.task)
+                    : [...current, option.task]
+                ))}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <label className="ai-check">
         <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
         <span>启用（停用的留在列表里，但不注入）</span>

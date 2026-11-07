@@ -6464,3 +6464,7 @@ html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-
 .extension-slot {
   display: contents;
 }
+/* 提示词的「生效范围」：一个 fieldset 把任务勾选圈起来，避免和「启用」那行混成一片。 */
+.ai-task-scope { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ai-task-scope > legend { padding: 0; font-size: var(--t-sm); color: var(--muted); }
+.ai-task-scope-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }

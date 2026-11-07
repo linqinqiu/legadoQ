@@ -573,6 +573,8 @@ private data class PromptDto(
     val instruction: String,
     val enabled: Boolean = true,
     val order: Int = 0,
+    /** 只对哪些任务生效；空数组 = 全局（所有任务都注入）。 */
+    val tasks: List<String> = emptyList(),
 )
 
 @Serializable
@@ -586,6 +588,8 @@ private data class PromptSaveRequest(
     val enabled: Boolean = true,
     /** 缺省 = 新建排到末尾、改已有保持原位（见 AgentPromptStore.save）。 */
     val order: Int? = null,
+    /** 只对哪些任务生效（chat / comprehend / skill:<id>）；缺省 = 保持原样，空数组 = 全局。 */
+    val tasks: List<String>? = null,
 )
 
 @Serializable
@@ -597,6 +601,7 @@ private fun AgentPromptStore.Preset.toDto() = PromptDto(
     instruction = instruction,
     enabled = enabled,
     order = order,
+    tasks = tasks,
 )
 
 suspend fun ApplicationCall.agentListPrompts(agentConnection: AgentConnection?) {
@@ -618,7 +623,7 @@ suspend fun ApplicationCall.agentSavePrompt(agentConnection: AgentConnection?) {
         respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 {name, instruction}")); return
     }
     val saved = runCatching {
-        conn.savePrompt(req.id, req.name, req.instruction, req.enabled, req.order)
+        conn.savePrompt(req.id, req.name, req.instruction, req.enabled, req.order, req.tasks)
     }.getOrElse { error ->
         respond(HttpStatusCode.BadRequest, ApiError("invalid_prompt", error.message ?: "提示词保存失败"))
         return

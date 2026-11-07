@@ -1,6 +1,6 @@
 {
   "service": "legadoQ",
-  "version": "0.2.28",
+  "version": "0.2.29",
   "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统）。每条按 group 归类。",
   "howToConnect": {
     "baseUrl": "http://127.0.0.1:1234",
@@ -1736,8 +1736,8 @@
       "path": "/api/agent/prompts",
       "write": false,
       "group": "AI 自定义接入",
-      "purpose": "列出提示词预设（按 order 升序）。预设管「怎么说话」：语气、字数、格式，启用的每条都注入 system，对所有对话生效 —— 与按关键词命中的技能分工不同。",
-      "response": "{prompts:[{id,name,instruction,enabled,order}]}"
+      "purpose": "列出提示词预设（按 order 升序）。预设管「怎么说话」：语气、字数、格式。tasks 为空表示全局（所有任务都注入）；非空时只在那些任务里注入（chat / comprehend / skill:<技能id>）。",
+      "response": "{prompts:[{id,name,instruction,enabled,order,tasks}]}"
     },
     {
       "method": "POST",
@@ -1750,9 +1750,10 @@
         "name": "预设名称（必填，最长 60 字）",
         "instruction": "要注入 system 的说明（必填，最长 2000 字；更长的方法论请写成技能）",
         "enabled": "默认 true；false 只占位不注入",
-        "order": "可选整数，越小越先注入"
+        "order": "可选整数，越小越先注入",
+        "tasks": "可选：只对哪些任务生效（chat / comprehend / skill:<技能id>，最多 8 个）；缺省 = 保持原样，空数组 = 全局"
       },
-      "response": "{id,name,instruction,enabled,order}；name/instruction 空、id 不合法或超出 30 条上限 400 invalid_prompt"
+      "response": "{id,name,instruction,enabled,order,tasks}；name/instruction 空、id 不合法或超出 30 条上限 400 invalid_prompt"
     },
     {
       "method": "DELETE",

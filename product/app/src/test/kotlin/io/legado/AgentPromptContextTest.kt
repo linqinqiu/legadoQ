@@ -386,4 +386,64 @@ class AgentPromptContextTest {
             assertEquals("最后一条用户消息保留", "收个尾", provider.seen[0].last().content)
         } finally { runCatching { db.close() } }
     }
+
+    // ===== 分任务生效范围 =====
+
+    @Test
+    fun `只挂到某个技能上的预设，普通对话里一个字都不出现`() {
+        val home = Files.createTempDirectory("prompt-scope-skill")
+        registerConnection(home)
+        AgentPromptStore.save(home, "global", "全局", "整体语气要克制", enabled = true, order = 1)
+        AgentPromptStore.save(
+            home, "for-debug", "排错专用", "先看失败阶段再改规则", enabled = true, order = 2,
+            tasks = listOf("skill:source-debug"),
+        )
+        val provider = RecordingProvider()
+        val (db, agent) = buildAgent(home, provider)
+        try {
+            runBlocking { agent.chat(listOf("user" to "你好")) }
+            val plain = provider.seen[0]
+            assertTrue("全局预设仍要注入", plain.any { it.content.contains("整体语气要克制") })
+            assertTrue(
+                "没命中技能时，技能专用预设不该出现",
+                plain.none { it.content.contains("先看失败阶段再改规则") },
+            )
+
+            runBlocking { agent.chat(listOf("user" to "这个书源目录为空，帮我看看规则")) }
+            val debug = provider.seen.last()
+            assertTrue("命中书源排错技能后，专用预设要进来", debug.any { it.content.contains("先看失败阶段再改规则") })
+            assertTrue("全局预设不能因为有了专用预设就消失", debug.any { it.content.contains("整体语气要克制") })
+        } finally { runCatching { db.close() } }
+    }
+
+    @Test
+    fun `摘要任务也注入挂在自己身上的预设`() {
+        val home = Files.createTempDirectory("prompt-scope-comprehend")
+        registerConnection(home)
+        AgentPromptStore.save(home, "sum", "摘要语气", "摘要先说结论", enabled = true, order = 1, tasks = listOf("comprehend"))
+        AgentPromptStore.save(home, "chat-only", "对话专用", "这条不该出现在摘要里", enabled = true, order = 2, tasks = listOf("chat"))
+
+        val provider = RecordingProvider()
+        val (db, agent) = buildAgent(home, provider)
+        try {
+            runBlocking { agent.comprehend("这是一段正文。", null, 1, 3) }
+            val convo = provider.seen.last()
+            assertTrue("摘要自己的预设要注入", convo.any { it.content.contains("摘要先说结论") })
+            assertTrue("只挂对话的预设不该混进摘要", convo.none { it.content.contains("这条不该出现在摘要里") })
+            assertEquals("预设在前、正文在后", "user", convo.last().role)
+        } finally { runCatching { db.close() } }
+    }
+
+    @Test
+    fun `改内容时不传 tasks 会保留原来的生效范围`() {
+        val home = Files.createTempDirectory("prompt-scope-keep")
+        val first = AgentPromptStore.save(home, "p", "只给摘要", "原内容", enabled = true, order = null, tasks = listOf("comprehend"))
+        assertEquals(listOf("comprehend"), first.tasks)
+        // 界面上点「停用」走的是同一条 save，不带 tasks —— 不能把范围洗成全局。
+        val toggled = AgentPromptStore.save(home, "p", "只给摘要", "原内容", enabled = false, order = null)
+        assertEquals("停用不该改范围", listOf("comprehend"), toggled.tasks)
+        // 显式传空数组才是"改成全局"。
+        val global = AgentPromptStore.save(home, "p", "只给摘要", "原内容", enabled = true, order = null, tasks = emptyList())
+        assertEquals("显式清空才变全局", emptyList<String>(), global.tasks)
+    }
 }
