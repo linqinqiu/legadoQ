@@ -16,8 +16,18 @@ data class ParsedSource(
     val enabled: Boolean,
     val isJs: Boolean,
     val hasLogin: Boolean = false,
+    /**
+     * 这条源有没有任何可执行的规则（搜索/发现/详情/目录/正文里至少一个非空字段）。
+     *
+     * 兄弟包的备份里真实存在"只剩元数据"的条目（本机库 5,600 条里 582 条）：
+     * 导入不报错、列表里也看得见，但一步都跑不出来。存成列，列表才筛得出来。
+     */
+    val hasRules: Boolean = true,
     val json: String,
 )
+
+/** 判"有没有规则"时认的五个对象。 */
+internal val SOURCE_RULE_KEYS = listOf("ruleSearch", "ruleExplore", "ruleBookInfo", "ruleToc", "ruleContent")
 
 /** [SourceCodec.parseRss] 的结果：摊平出列表页要用的字段，规则原文整体留在 [json] 里交给引擎。 */
 data class ParsedRssSource(
@@ -93,8 +103,31 @@ object SourceCodec {
             enabled = enabled,
             isJs = !objectValue.string("mainJs").isNullOrBlank(),
             hasLogin = hasLogin,
+            hasRules = hasRules(objectValue),
             json = normalizedJson,
         )
+    }
+
+    /**
+     * 这条源有没有任何可执行的规则。
+     *
+     * 判据是"五个规则对象里至少有一个非空字段"，不看对象在不在：
+     * 只剩元数据的条目通常连键都没有，也有的是 `{}` 或全空串。
+     * 前端编辑器里那条提示、列表里的筛选、导入回填都用这一条 —— 不要另写一套。
+     *
+     * 解析不了（JSON 坏了）按"有规则"处理：那是另一种错误，由 JSON 报错条去说，
+     * 别在这里把它也算成"缺规则"。
+     */
+    fun hasRules(text: String): Boolean = try {
+        (json.parseToJsonElement(text) as? JsonObject)?.let(::hasRules) ?: true
+    } catch (_: Exception) {
+        true
+    }
+
+    fun hasRules(obj: JsonObject): Boolean = SOURCE_RULE_KEYS.any { key ->
+        (obj[key] as? JsonObject)?.let { rule ->
+            rule.keys.any { field -> rule.string(field)?.isNotBlank() == true }
+        } == true
     }
 
     /** 对外复用：把书源标识（可带 `#` / `##` 注解）归一化为服务端使用的 sourceId（备份导入时对齐书架 origin）。 */
@@ -190,17 +223,11 @@ object SourceCodec {
 
         /*
          * 一条规则都没有：兄弟包的备份里确实存在这种"只剩元数据"的条目
-         * （本机库实测 5,600 条里 556 条，其中 555 条带 `weight`）。
-         * 它们导入不报错、列表里也看得见，但搜索 / 详情 / 目录 / 正文一步都跑不出来 ——
-         * 不说出来，用户只会以为是本服务端解析不了。
+         * （本机库实测 5,600 条里 582 条）。它们导入不报错、列表里也看得见，
+         * 但搜索 / 详情 / 目录 / 正文一步都跑不出来 —— 不说出来，用户只会以为
+         * 是本服务端解析不了。判据与 [hasRules] 同一份。
          */
-        val ruleKeys = listOf("ruleSearch", "ruleExplore", "ruleBookInfo", "ruleToc", "ruleContent")
-        val hasAnyRule = ruleKeys.any { key ->
-            (obj[key] as? JsonObject)?.let { rule ->
-                rule.keys.any { field -> rule.string(field)?.isNotBlank() == true }
-            } == true
-        }
-        if (!hasAnyRule) {
+        if (!hasRules(obj)) {
             warnings += "这条书源没有任何规则字段（ruleSearch / ruleToc / ruleContent 都是空的）：搜不到书，也取不到目录与正文。" +
                 "常见原因是导入的备份里这一条只剩了元数据，需要重新导入完整的那一份。"
         }

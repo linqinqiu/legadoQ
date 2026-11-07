@@ -20,10 +20,11 @@ fun Database.listSources(query: String?): List<SourceSummary> {
 }
 
 private fun Database.listSourcesFromDb(query: String?): List<SourceSummary> = connect { db ->
+    val columns = "select id, name, source_url, source_group, enabled, is_js, updated_at, version, has_login, sort_order, has_rules from source"
     val sql = if (query.isNullOrBlank()) {
-        "select id, name, source_url, source_group, enabled, is_js, updated_at, version, has_login, sort_order from source order by sort_order is null, sort_order, name collate nocase"
+        "$columns order by sort_order is null, sort_order, name collate nocase"
     } else {
-        "select id, name, source_url, source_group, enabled, is_js, updated_at, version, has_login, sort_order from source where name like ? or source_url like ? order by sort_order is null, sort_order, name collate nocase"
+        "$columns where name like ? or source_url like ? order by sort_order is null, sort_order, name collate nocase"
     }
     db.prepareStatement(sql).use { statement ->
         if (!query.isNullOrBlank()) { statement.setString(1, "%$query%"); statement.setString(2, "%$query%") }
@@ -39,6 +40,8 @@ private fun Database.listSourcesFromDb(query: String?): List<SourceSummary> = co
                             enabled = rs.getInt(5) == 1,
                             isJsSource = rs.getInt(6) == 1,
                             hasLogin = rs.getInt(9) == 1,
+                            // 第 11 列：false = 只剩元数据，列表据此打「无规则」标
+                            hasRules = rs.getInt(11) == 1,
                             updatedAt = rs.getLong(7),
                             version = rs.getLong(8),
                             // 第 10 列：null = 没参与过自定义排序（不是 0，也不是"排在最前"）
@@ -166,9 +169,9 @@ fun Database.saveSource(parsed: ParsedSource, expectedVersion: Long?): SourceRec
         val current = db.prepareStatement("select version from source where id = ?").use { it.setString(1, parsed.id); it.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else null } }
         if (expectedVersion != null && current != expectedVersion) throw VersionConflict()
         val version = (current ?: 0) + 1; val now = System.currentTimeMillis()
-        db.prepareStatement("""insert into source(id,name,source_url,source_group,enabled,is_js,payload,version,updated_at,has_login)
-            values(?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,enabled=excluded.enabled,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login""").use {
-            it.setString(1, parsed.id); it.setString(2, parsed.name); it.setString(3, parsed.url); it.setString(4, parsed.group); it.setInt(5, if (parsed.enabled) 1 else 0); it.setInt(6, if (parsed.isJs) 1 else 0); it.setString(7, parsed.json); it.setLong(8, version); it.setLong(9, now); it.setInt(10, if (parsed.hasLogin) 1 else 0); it.executeUpdate()
+        db.prepareStatement("""insert into source(id,name,source_url,source_group,enabled,is_js,payload,version,updated_at,has_login,has_rules)
+            values(?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,enabled=excluded.enabled,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login,has_rules=excluded.has_rules""").use {
+            it.setString(1, parsed.id); it.setString(2, parsed.name); it.setString(3, parsed.url); it.setString(4, parsed.group); it.setInt(5, if (parsed.enabled) 1 else 0); it.setInt(6, if (parsed.isJs) 1 else 0); it.setString(7, parsed.json); it.setLong(8, version); it.setLong(9, now); it.setInt(10, if (parsed.hasLogin) 1 else 0); it.setInt(11, if (parsed.hasRules) 1 else 0); it.executeUpdate()
         }
         db.commit(); invalidateSourceCaches()
         SourceRecord(parsed.id, parsed.json, version, now)
@@ -331,8 +334,8 @@ fun Database.importSources(rawSources: List<String>): ImportResponse {
                 // `source_group` 反过来：备份里的分类**照常更新**（那是书源作者写的，比本机旧值新）。
                 // 但体检标签是我们自己打在这个字段里的，覆盖一次就没了 —— 所以写之前把本机那几个
                 // 体检标签并回去（见 [mergeHealthTags]）。用户自己写的标签仍以备份为准。
-                db.prepareStatement("""insert into source(id,name,source_url,source_group,enabled,is_js,payload,version,updated_at,has_login)
-                    values(?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login""").use { save ->
+                db.prepareStatement("""insert into source(id,name,source_url,source_group,enabled,is_js,payload,version,updated_at,has_login,has_rules)
+                    values(?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login,has_rules=excluded.has_rules""").use { save ->
                     unique.values.forEach { parsed ->
                         current.setString(1, parsed.id)
                         val (version, localGroup) = current.executeQuery().use { result ->
@@ -342,7 +345,7 @@ fun Database.importSources(rawSources: List<String>): ImportResponse {
                         save.setString(1, parsed.id); save.setString(2, parsed.name); save.setString(3, parsed.url)
                         save.setString(4, mergeHealthTags(parsed.group, localGroup))
                         save.setInt(5, if (parsed.enabled) 1 else 0); save.setInt(6, if (parsed.isJs) 1 else 0); save.setString(7, parsed.json)
-                        save.setLong(8, (version ?: 0) + 1); save.setLong(9, System.currentTimeMillis()); save.setInt(10, if (parsed.hasLogin) 1 else 0); save.addBatch()
+                        save.setLong(8, (version ?: 0) + 1); save.setLong(9, System.currentTimeMillis()); save.setInt(10, if (parsed.hasLogin) 1 else 0); save.setInt(11, if (parsed.hasRules) 1 else 0); save.addBatch()
                     }
                     save.executeBatch()
                 }

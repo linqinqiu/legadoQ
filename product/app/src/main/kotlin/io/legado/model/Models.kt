@@ -29,6 +29,11 @@ data class HealthStatus(
     val enabled: Boolean,
     val isJsSource: Boolean,
     val hasLogin: Boolean = false,
+    /**
+     * 有没有任何可执行的规则。false = 只剩元数据：搜不到书、取不到目录与正文。
+     * 列表据此打「无规则」标并可筛出来清理（兄弟包备份里真实存在这种条目）。
+     */
+    val hasRules: Boolean = true,
     val updatedAt: Long,
     val version: Long,
     /** 自定义排序位（1 起）；null = 没拖过，按名称排在有序段之后。 */

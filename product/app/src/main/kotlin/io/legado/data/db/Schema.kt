@@ -19,7 +19,9 @@ object Schema {
                 create table if not exists source (
                   id text primary key, name text not null, source_url text not null,
                   source_group text, enabled integer not null, is_js integer not null,
-                  payload text not null, version integer not null, updated_at integer not null
+                  payload text not null, version integer not null, updated_at integer not null,
+                  has_login integer not null default 0, sort_order integer,
+                  has_rules integer not null default 1
                 );
                 create index if not exists source_name_idx on source(name);
                 create index if not exists idx_source_name_nocase on source(name collate nocase);

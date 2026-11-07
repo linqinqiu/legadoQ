@@ -257,8 +257,17 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
 
   const allGroups = useMemo(() => groupStats.groups.map(([name]) => name), [groupStats])
 
+  /**
+   * 「只剩元数据」的源有多少条。
+   *
+   * 兄弟包的备份里真实存在这种条目（本机 5,600 条里 582 条）：导入不报错、列表里也看得见，
+   * 但搜索 / 目录 / 正文一步都跑不出来。给一个能筛出来的入口，用户才清得掉。
+   */
+  const noRulesCount = useMemo(() => sources.filter(source => source.hasRules === false).length, [sources])
+
   const filteredSources = useMemo(() => {
     return sources.filter(source => {
+      if (groupFilter === '__norules__') return source.hasRules === false
       if (groupFilter) {
         const tags = splitSourceGroups(source.group)
         if (groupFilter === '__none__') { if (tags.length) return false }
@@ -553,7 +562,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
           </div>
         </div>
 
-        {allGroups.length > 0 && (
+        {(allGroups.length > 0 || noRulesCount > 0) && (
           <div className="source-group-filter-bar">
             <Select
               className="source-group-select"
@@ -564,6 +573,8 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
                 { value: '', label: `全部分组 (${sources.length})` },
                 ...groupStats.groups.map(([name, count]) => ({ value: name, label: `${name} (${count})` })),
                 { value: '__none__', label: `未分组 (${groupStats.ungrouped})` },
+                // 排在最后：它不是分组，是"这条源跑不起来"的体检式入口。
+                ...(noRulesCount > 0 ? [{ value: '__norules__', label: `无规则 (${noRulesCount})` }] : []),
               ]}
             />
           </div>
@@ -673,6 +684,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
                       <span>{source.name}</span>
                       {!source.enabled && <span className="source-disabled-badge">已停用</span>}
                       {source.hasLogin && <span className="source-login-badge" title="支持登录鉴权">登录</span>}
+                      {source.hasRules === false && <span className="source-norules-badge" title="只有元数据、没有任何规则：搜不到书，也取不到目录与正文">无规则</span>}
                     </div>
                     <small>{splitSourceGroups(source.group).join(' · ') || '未分组'}</small>
                   </div>
@@ -705,6 +717,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
                   <span>{source.name}</span>
                   {!source.enabled && <span className="source-disabled-badge">已停用</span>}
                   {source.hasLogin && <span className="source-login-badge" title="支持登录鉴权">登录</span>}
+                  {source.hasRules === false && <span className="source-norules-badge" title="只有元数据、没有任何规则：搜不到书，也取不到目录与正文">无规则</span>}
                 </div>
                 <small>{splitSourceGroups(source.group).join(' · ') || '未分组'}</small>
                 <span

@@ -13,6 +13,8 @@ export type SourceSummary = {
   enabled: boolean
   isJsSource: boolean
   hasLogin: boolean
+  /** false = 只剩元数据，没有任何规则：搜不到书、取不到目录与正文。缺省视为 true。 */
+  hasRules?: boolean
   updatedAt: number
   version: number
   /** 自定义排序位；null = 没拖过，按名称排在有序段之后。 */

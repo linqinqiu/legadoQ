@@ -2042,6 +2042,24 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   white-space: nowrap;
 }
 
+/* 「无规则」徽标：只剩元数据的源。与「已停用」那种中性灰不同 —— 它不是被关掉，
+   而是根本跑不起来，所以用 danger 色，且和登录徽标同一套形状。 */
+.source-norules-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 /* 书源登录档：外壳走 `.dialog-shell`（W2）。这里的类名只剩内容样式与门禁锚点。 */
 
 /* 书源登录 / 朗读设置 / 替换规则 / 运行日志这几张弹窗的页头都改引 `.dialog-head`（W2）。 */

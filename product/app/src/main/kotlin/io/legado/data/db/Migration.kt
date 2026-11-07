@@ -152,6 +152,29 @@ object Migration {
         db.createStatement().use {
             it.executeUpdate("update source set has_login = 1 where (payload like '%\\\"loginUi\\\"%' or payload like '%\\\"loginUrl\\\"%' or payload like '%\\\"loginCheckJs\\\"%') and (has_login is null or has_login = 0)")
         }
+        /*
+         * `has_rules`：这条源有没有任何可执行的规则。
+         *
+         * SQL 表达不了"规则对象里任意一个键非空"，只能逐行判一次 —— 所以只在**加列这一次**回填，
+         * 之后由写入路径（导入 / 保存）自己维护。5,600 行实测约 0.1 秒，一次性成本。
+         */
+        if ("has_rules" !in columns) {
+            db.createStatement().use { it.executeUpdate("alter table source add column has_rules integer not null default 1") }
+            val rows = mutableListOf<Pair<String, Boolean>>()
+            db.createStatement().use { statement ->
+                statement.executeQuery("select id, payload from source").use { rs ->
+                    while (rs.next()) rows += rs.getString(1) to io.legado.source.SourceCodec.hasRules(rs.getString(2))
+                }
+            }
+            db.prepareStatement("update source set has_rules = ? where id = ?").use { update ->
+                rows.forEach { (id, hasRules) ->
+                    update.setInt(1, if (hasRules) 1 else 0)
+                    update.setString(2, id)
+                    update.addBatch()
+                }
+                update.executeBatch()
+            }
+        }
     }
 
     /** 补 `book_note` 缺失列。 */

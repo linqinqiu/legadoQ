@@ -55,7 +55,7 @@
       "query": {
         "q": "可选，按名称或地址子串筛，忽略大小写"
       },
-      "response": "[{id,name,url,group,enabled,isJsSource,hasLogin,updatedAt,version}]；version 就是 PUT 的乐观锁编号",
+      "response": "[{id,name,url,group,enabled,isJsSource,hasLogin,hasRules,updatedAt,version,sortOrder}]；version 就是 PUT 的乐观锁编号；hasRules=false 表示只剩元数据（没有任何规则，搜不到书也取不到目录与正文）",
       "group": "书源"
     },
     {
