@@ -253,6 +253,84 @@ class BookCacheServiceTest {
     }
 
     @Test
+    fun `书源整本取不到时熔断，不再把每一章都试一遍`() = runBlocking {
+        val path = temporaryDatabase()
+        try {
+            val database = Database(path); database.initialize()
+            val book = BookshelfWriteRequest("https://dead.test", "https://book/1", "死源书", tocUrl = "https://book/1/toc")
+            database.saveBookshelf(book, null)
+
+            val sourceJson = """{"bookSourceUrl":"https://dead.test","ruleToc":{"chapterList":"$.data","chapterName":"$.title","chapterUrl":"$.url"},"ruleContent":{"content":"$.content"}}"""
+            database.saveSource(SourceCodec.parse(sourceJson), null)
+
+            val chapterAttempts = AtomicInteger(0)
+            val runner = RuleRunner { url ->
+                if (url == "https://book/1/toc") {
+                    val list = (1..60).joinToString(",") { """{"title":"第${it}章","url":"https://book/1/c$it"}""" }
+                    """{"data":[$list]}"""
+                } else {
+                    chapterAttempts.incrementAndGet()
+                    throw RuntimeException("Connection reset")
+                }
+            }
+
+            val service = BookCacheService(database, runner, CoverCache(Files.createTempDirectory("cover-cache"))) {}
+            service.enqueue(CachedBookRequest("https://dead.test", "https://book/1", "https://book/1/toc"))
+            waitForCondition(10_000) { database.listBookshelf().single().cacheState == "failed" }
+
+            val shelf = database.listBookshelf().single()
+            assertEquals("failed", shelf.cacheState)
+            assertEquals(0, shelf.cachedChapters)
+            assertEquals(60, shelf.totalChapters)
+            assertTrue("错误要说清是中止，不是『60 章未缓存』：${shelf.cacheError}", shelf.cacheError?.contains("已中止") == true)
+            // 并发窗口 4–8，熔断阈值 20：最多再多试一轮，绝不能把 60 章全跑完。
+            assertTrue("熔断后不该继续试：试了 ${chapterAttempts.get()} 章", chapterAttempts.get() <= 20 + 8)
+            service.stop()
+        runCatching { database.close() }
+        Unit
+        } finally { Files.deleteIfExists(java.nio.file.Path.of(path)) }
+    }
+
+    @Test
+    fun `目录变短后已缓存数按当前目录封顶，不出现 916 除以 458 这种读数`() = runBlocking {
+        val path = temporaryDatabase()
+        try {
+            val database = Database(path); database.initialize()
+            val book = BookshelfWriteRequest("https://s1.test", "https://book/1", "旧目录残留", tocUrl = "https://book/1/toc")
+            database.saveBookshelf(book, null)
+
+            val sourceJson = """{"bookSourceUrl":"https://s1.test","ruleToc":{"chapterList":"$.data","chapterName":"$.title","chapterUrl":"$.url"},"ruleContent":{"content":"$.content"}}"""
+            database.saveSource(SourceCodec.parse(sourceJson), null)
+
+            // 当前目录只剩 2 章，但历史缓存里还留着 2 个已经不存在的地址。
+            database.cacheBookContent("https://s1.test", "https://book/1", "https://book/1/c1", ChapterContent("第1章", "正文1"))
+            database.cacheBookContent("https://s1.test", "https://book/1", "https://book/1/c2", ChapterContent("第2章", "正文2"))
+            database.cacheBookContent("https://s1.test", "https://book/1", "https://book/1/gone-1", ChapterContent("旧章1", "旧正文1"))
+            database.cacheBookContent("https://s1.test", "https://book/1", "https://book/1/gone-2", ChapterContent("旧章2", "旧正文2"))
+
+            val runner = RuleRunner { url ->
+                if (url == "https://book/1/toc") {
+                    """{"data":[{"title":"第1章","url":"https://book/1/c1"},{"title":"第2章","url":"https://book/1/c2"}]}"""
+                } else {
+                    error("这一轮不该再取正文：$url")
+                }
+            }
+
+            val service = BookCacheService(database, runner, CoverCache(Files.createTempDirectory("cover-cache"))) {}
+            service.enqueue(CachedBookRequest("https://s1.test", "https://book/1", "https://book/1/toc"))
+            waitForCondition(5000) { database.listBookshelf().single().cacheState == "ready" }
+
+            val shelf = database.listBookshelf().single()
+            assertEquals("ready", shelf.cacheState)
+            assertEquals("目录只有 2 章，进度不能超过 2", 2, shelf.cachedChapters)
+            assertEquals(2, shelf.totalChapters)
+            service.stop()
+        runCatching { database.close() }
+        Unit
+        } finally { Files.deleteIfExists(java.nio.file.Path.of(path)) }
+    }
+
+    @Test
     fun `rejects oversized chapters exceeding 2 MiB limit`() = runBlocking {
         val path = temporaryDatabase()
         try {

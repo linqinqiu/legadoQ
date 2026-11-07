@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import io.legado.AppConfig
@@ -101,15 +102,24 @@ class BookCacheService(private val database: Database, private val runner: RuleR
             val cachedCount = AtomicInteger(alreadyCached.size)
             val lastProgressUpdate = AtomicLong(0L)
             val semaphore = Semaphore(CACHE_CONCURRENCY)
+            /*
+             * 连续失败计数：书源失效（站点改版、被墙、域名没了）时每一章都会失败，
+             * 1891 章的书要白跑几分钟、打几千次请求，最后只换来一句"1891 章未缓存"。
+             * 成功一次就清零，所以中间偶发几章失败不影响；只有"一直没成功过"才熔断。
+             */
+            val consecutiveFailures = AtomicInteger(0)
+            val aborted = AtomicBoolean(false)
 
             val bookName = database.listBookshelf().firstOrNull { it.sourceId == book.sourceId && it.bookUrl == book.bookUrl }?.name
             coroutineScope {
                 val batches = remaining.chunked(CACHE_CONCURRENCY)
                 for ((index, batch) in batches.withIndex()) {
-                    if (!isActive) break
+                    if (!isActive || aborted.get()) break
                     batch.map { chapter ->
                         async {
+                            if (aborted.get()) return@async
                             semaphore.withPermit {
+                                if (aborted.get()) return@withPermit
                                 try {
                                     val content = withContext(Dispatchers.IO) { runner.content(source.json, chapter.url, bookName, book.bookUrl) }
                                     if (content.content.toByteArray().size <= MAX_CHAPTER_BYTES) {
@@ -121,13 +131,14 @@ class BookCacheService(private val database: Database, private val runner: RuleR
                                         // 漫画/图文书：正文是 `![图片](url)` 占位行 —— 把图也抓进磁盘缓存，
                                         // 离线打开才有图（阅读器那边点图也走同一个缓存，不会重复抓）。
                                         cacheChapterImages(content.content, chapter.url)
+                                        consecutiveFailures.set(0)
                                         reportProgress(book, cachedCount.incrementAndGet(), lastProgressUpdate)
                                     } else {
-                                        failures.incrementAndGet()
+                                        countFailure(failures, consecutiveFailures, aborted)
                                     }
                                 } catch (error: Throwable) {
                                     if (error is CancellationException) throw error
-                                    failures.incrementAndGet()
+                                    countFailure(failures, consecutiveFailures, aborted)
                                 }
                             }
                         }
@@ -138,6 +149,12 @@ class BookCacheService(private val database: Database, private val runner: RuleR
                 }
             }
 
+            // 熔断不是"这一本缓存完了"：留下已完成的部分，并把原因写清楚，让界面能直接告诉人。
+            if (aborted.get()) {
+                database.finishBookCache(book.sourceId, book.bookUrl, ABORT_MESSAGE)
+                log("book cache aborted: ${book.bookUrl}, cached=${cachedCount.get()}/${chapters.size}, 连续 $MAX_CONSECUTIVE_FAILURES 章失败")
+                return
+            }
             val totalFailures = failures.get()
             val error = if (totalFailures == 0) null else "$totalFailures 章未缓存"
             database.finishBookCache(book.sourceId, book.bookUrl, error)
@@ -183,6 +200,15 @@ class BookCacheService(private val database: Database, private val runner: RuleR
         }
     }
 
+    /**
+     * 记一次失败：达到连续上限就把整本标记为中止（后续批次不再派发）。
+     * 失败总数照常累计 —— 中止时 [Database.finishBookCache] 拿到的是中止原因，不是"N 章未缓存"。
+     */
+    private fun countFailure(failures: AtomicInteger, consecutive: AtomicInteger, aborted: AtomicBoolean) {
+        failures.incrementAndGet()
+        if (consecutive.incrementAndGet() >= MAX_CONSECUTIVE_FAILURES) aborted.set(true)
+    }
+
     private companion object {
         const val MAX_CHAPTER_BYTES = 2 * 1024 * 1024
         const val MAX_IMAGES_PER_CHAPTER = 80
@@ -190,5 +216,14 @@ class BookCacheService(private val database: Database, private val runner: RuleR
         val CACHE_CONCURRENCY = AppConfig.cacheConcurrency
         const val BATCH_THROTTLE_DELAY_MS = 25L
         const val PROGRESS_UPDATE_INTERVAL_MS = 1_000L
+
+        /**
+         * 连续多少章取不到就熔断整本。
+         *
+         * 取 20 是因为它明显超出"偶发"的量级：并发窗口是 4–8，20 意味着至少三轮批次全灭；
+         * 而正常书源偶发失败通常是零散的几章。熔断后已缓存的章节照常保留，续传从断点接着走。
+         */
+        const val MAX_CONSECUTIVE_FAILURES = 20
+        const val ABORT_MESSAGE = "连续 $MAX_CONSECUTIVE_FAILURES 章取不到正文，已中止（书源或网络异常）"
     }
 }

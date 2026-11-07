@@ -344,9 +344,20 @@ fun Database.cacheBookContent(sourceId: String, bookUrl: String, chapterUrl: Str
     }
 }
 
+/*
+ * 已缓存章数按**这本书当前的目录**封顶。
+ *
+ * `book_content_cache` 里留的是历史上缓存过的所有章节地址：书源改版后目录变短、
+ * 或者同一本书在旧目录下缓存过一轮，行数就会比 `total_chapters` 还多。
+ * 实测出现过「916 / 458」这种读数 —— 进度条算到 200%，用户没法判断到底缓存完没有。
+ * 目录只有 458 章、其中 458 章都已缓存，就该显示 458 / 458。
+ */
+private fun clampedCachedCount(cachedCount: Int, total: Int): Int =
+    if (total > 0) minOf(cachedCount, total) else cachedCount
+
 fun Database.beginBookCache(sourceId: String, bookUrl: String, total: Int) = write { db -> db.prepareStatement("insert into book_cache_status(source_id,book_url,total_chapters,cached_chapters,state,last_error,updated_at) values(?,?,?,?,?,?,?) on conflict(source_id,book_url) do update set total_chapters=excluded.total_chapters,cached_chapters=excluded.cached_chapters,state=excluded.state,last_error=null,updated_at=excluded.updated_at").use {
     val count = db.prepareStatement("select count(*) from book_content_cache where source_id=? and book_url=?").use { query -> query.setString(1, sourceId); query.setString(2, bookUrl); query.executeQuery().use { rs -> rs.next(); rs.getInt(1) } }
-    it.setString(1, sourceId); it.setString(2, bookUrl); it.setInt(3, total); it.setInt(4, count); it.setString(5, "caching"); it.setString(6, null); it.setLong(7, System.currentTimeMillis()); it.executeUpdate()
+    it.setString(1, sourceId); it.setString(2, bookUrl); it.setInt(3, total); it.setInt(4, clampedCachedCount(count, total)); it.setString(5, "caching"); it.setString(6, null); it.setLong(7, System.currentTimeMillis()); it.executeUpdate()
 } }
 
 fun Database.finishBookCache(sourceId: String, bookUrl: String, error: String? = null) = write { db ->
@@ -355,7 +366,7 @@ fun Database.finishBookCache(sourceId: String, bookUrl: String, error: String? =
     val existingTotal = db.prepareStatement("select total_chapters from book_cache_status where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeQuery().use { rs -> if (rs.next()) rs.getInt(1) else 0 } }
     val total = if (existingTotal > 0) existingTotal else cachedCount
     db.prepareStatement("insert into book_cache_status(source_id,book_url,total_chapters,cached_chapters,state,last_error,updated_at) values(?,?,?,?,?,?,?) on conflict(source_id,book_url) do update set total_chapters=excluded.total_chapters,cached_chapters=excluded.cached_chapters,state=excluded.state,last_error=excluded.last_error,updated_at=excluded.updated_at").use {
-        it.setString(1, sourceId); it.setString(2, bookUrl); it.setInt(3, total); it.setInt(4, cachedCount); it.setString(5, state); it.setString(6, error?.take(500)); it.setLong(7, System.currentTimeMillis()); it.executeUpdate()
+        it.setString(1, sourceId); it.setString(2, bookUrl); it.setInt(3, total); it.setInt(4, clampedCachedCount(cachedCount, total)); it.setString(5, state); it.setString(6, error?.take(500)); it.setLong(7, System.currentTimeMillis()); it.executeUpdate()
     }
 }
 
