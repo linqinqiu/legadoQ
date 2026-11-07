@@ -20,6 +20,14 @@ import { useHealthRun } from './sourceHealthRun'
 import { useSearchStore } from '../../lib/searchStore'
 import { splitSourceGroups } from '../../lib/sourceGrouping'
 import { takePendingSourceFocus } from '../../lib/sourceFocus'
+import {
+  SIDEBAR_WIDTH_DEFAULT,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
+  clampSidebarWidth,
+  readStoredSidebarWidth,
+  storeSidebarWidth,
+} from '../../lib/sidebarWidth'
 
 /** 书源侧栏一次渲染的条数上限：整库导入常有数千个源，全量挂载会让首屏和滚动一起变卡。 */
 export const SOURCE_PAGE_SIZE = 120
@@ -69,6 +77,63 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
   const [sourcesState, setSourcesState] = useState<'loading' | 'ready' | 'failed'>(
     hostedSources && hostedSources.length > 0 ? 'ready' : 'loading',
   )
+
+  /**
+   * 左栏宽度（用户 2026-11-07：「书源管理界面，左侧位置太狭窄」）。
+   *
+   * 拖动中只改 state，松手才写 localStorage —— 每帧写一次存储既没必要，也会让
+   * 隐私模式下每次移动都抛一次异常。宽度靠 CSS 变量下发给栅格，DOM 里不留行内 width。
+   */
+  const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth)
+  const sidebarWidthRef = useRef(sidebarWidth)
+  const sidebarRef = useRef<HTMLElement | null>(null)
+
+  const applySidebarWidth = useCallback((value: number) => {
+    const next = clampSidebarWidth(value)
+    sidebarWidthRef.current = next
+    setSidebarWidth(next)
+  }, [])
+
+  const resetSidebarWidth = useCallback(() => {
+    applySidebarWidth(SIDEBAR_WIDTH_DEFAULT)
+    storeSidebarWidth(SIDEBAR_WIDTH_DEFAULT)
+  }, [applySidebarWidth])
+
+  const onResizerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    const sidebar = sidebarRef.current
+    if (!sidebar) return
+    event.preventDefault()
+    // 以左栏自己的左缘为原点：壁纸模式给 .sources-page 加过 14px 内边距，
+    // 拿整页的 left 当原点会让宽度凭空多出那 14px。
+    const originLeft = sidebar.getBoundingClientRect().left
+    const onMove = (moveEvent: PointerEvent) => applySidebarWidth(moveEvent.clientX - originLeft)
+    const onEnd = () => {
+      document.body.classList.remove('is-resizing-source-sidebar')
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onEnd)
+      window.removeEventListener('pointercancel', onEnd)
+      storeSidebarWidth(sidebarWidthRef.current)
+    }
+    document.body.classList.add('is-resizing-source-sidebar')
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onEnd)
+    window.addEventListener('pointercancel', onEnd)
+  }
+
+  const onResizerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 32 : 16
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      applySidebarWidth(sidebarWidthRef.current + (event.key === 'ArrowRight' ? step : -step))
+      storeSidebarWidth(sidebarWidthRef.current)
+      return
+    }
+    if (event.key === 'Home') {
+      event.preventDefault()
+      resetSidebarWidth()
+    }
+  }
 
   /**
    * 窄屏是纵向堆叠（页头 → 列表 → 编辑器）：点一条书源后，编辑器在列表下面几百像素，
@@ -456,8 +521,11 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
   }
 
   return (
-    <main className={`sources-page ${isBatchMode ? 'batch-mode-active' : ''}`}>
-      <aside className="source-sidebar">
+    <main
+      className={`sources-page ${isBatchMode ? 'batch-mode-active' : ''}`}
+      style={{ '--source-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+    >
+      <aside className="source-sidebar" ref={sidebarRef}>
         <div className="source-sidebar-heading">
           <div className="source-sidebar-title-row">
             <span>书源</span>
@@ -646,6 +714,22 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
           )}
         </nav>
       </aside>
+
+      {/* 两栏之间的拖拽把手：拖动改左栏宽度，方向键 ±16（Shift ±32），双击或 Home 回默认。 */}
+      <div
+        className="source-sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整书源列表宽度"
+        aria-valuenow={sidebarWidth}
+        aria-valuemin={SIDEBAR_WIDTH_MIN}
+        aria-valuemax={SIDEBAR_WIDTH_MAX}
+        tabIndex={0}
+        title="拖动调整书源列表宽度，双击恢复默认"
+        onPointerDown={onResizerPointerDown}
+        onKeyDown={onResizerKeyDown}
+        onDoubleClick={resetSidebarWidth}
+      />
 
       <div className="sources-main">
         {/* 书源页只承载**书源本身**：页头 + 编辑器。

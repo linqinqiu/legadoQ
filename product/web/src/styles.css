@@ -450,8 +450,52 @@ svg { width: 18px; height: 18px; flex: none; }
 /* Source workspace */
 .app-workspace { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); background: var(--canvas); }
 .source-sidebar { min-height: 100vh; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); }
-.sources-page { min-height: calc(100vh - 68px); display: grid; grid-template-columns: 280px minmax(0, 1fr); }
+/* 书源页是主从两栏。左栏宽度可拖（见 SourcesPage 的 resizer），默认 320px：
+   280 那档只放得下「四字书名 + 两个徽标」，实测 5,574 个源里长名字一大片，
+   名字被截成「这个反派有点良…」，选源全靠猜。宽度存在 localStorage，拖过就记住。 */
+.sources-page { min-height: calc(100vh - 68px); display: grid; grid-template-columns: var(--source-sidebar-width, 320px) minmax(0, 1fr); }
+/* 三块都写明位置。把手是显式定位的（grid-column: 1），若让 aside 自动排位，
+   它会去抢第二列 —— 实测左栏被撑到 1120px、编辑器只剩 320px。
+   只在两栏并排时生效：窄屏是单列堆叠，那里靠 order 排序，钉死行号会把顺序弄反。 */
+@media (min-width: 721px) {
+  .sources-page > .source-sidebar { grid-column: 1; grid-row: 1; }
+  .sources-page > .sources-main { grid-column: 2; grid-row: 1; }
+}
 .sources-page .source-sidebar { min-height: calc(100vh - 68px); overflow: hidden; }
+/* 拖拽把手：占住第一列右缘、整列高。放在栅格里而不是绝对定位，
+   壁纸模式给 .sources-page 加的内边距不会让它错位。
+   整体落在分界线**外侧**（margin-right 与宽度等值）：列表的滚动条就贴在左栏右缘，
+   把手压在栏内会把滚动条最右边那几像素抢走，拖滚动条变成拖分栏。 */
+.source-sidebar-resizer {
+  grid-row: 1;
+  grid-column: 1;
+  justify-self: end;
+  align-self: stretch;
+  position: relative;
+  width: 9px;
+  margin-right: -9px;
+  z-index: 4;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+.source-sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.source-sidebar-resizer:hover::after,
+.source-sidebar-resizer:focus-visible::after { background: var(--accent); }
+.source-sidebar-resizer:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+body.is-resizing-source-sidebar { user-select: none; cursor: col-resize; }
+body.is-resizing-source-sidebar .source-sidebar-resizer::after { background: var(--accent); }
 .source-sidebar-heading { display: flex; justify-content: space-between; align-items: center; padding: 20px 18px 3px; color: var(--ink); font-family: Georgia, "Noto Serif SC", serif; font-size: 17px; }
 .source-sidebar-heading small { color: var(--muted); font-family: Inter, sans-serif; font-size: 12px; }
 /* W4b：书源页是主从两栏（侧栏 280 + 内容列）。内容列原来又套了一层 `min(1180px)` 居中，
@@ -1483,6 +1527,8 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
     font-size: 14px;
   }
   .sources-page { min-height: calc(100vh - 58px); grid-template-columns: 1fr; }
+  /* 窄屏是纵向堆叠，没有"两栏比例"可调，把手直接不出现。 */
+  .source-sidebar-resizer { display: none; }
   /* 窄屏主从改成纵向：页头 → 书源列表 → 编辑器。
      DOM 里 .sources-main（页头 + 编辑器）排在侧栏之后，直接叠出来是"列表在标题上面"，
      所以把这一层摊开（display: contents），让三块进同一个栅格再排序。 */
