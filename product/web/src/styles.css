@@ -5027,7 +5027,11 @@ input[type=range] { min-height: 24px; }
 .source-field-input:hover, .source-field-textarea:hover, .source-field select:hover { border-color: color-mix(in srgb, var(--muted) 40%, var(--line)); }
 .source-field-inline { grid-template-columns: 1fr; }
 .source-field-switch { display: flex; align-items: center; gap: 8px; font-size: var(--t-lg); font-weight: 600; cursor: pointer; }
-.source-editor-raw { flex: 1 1 auto; min-height: 300px; }
+/* 选择器带上 `textarea`：上面那条 `textarea:not(.source-field-textarea)` 的
+   min-height:270px 比单纯一个类名更"重"，不加元素名会被它压回 270。 */
+.source-editor textarea.source-editor-raw { flex: 1 1 auto; min-height: clamp(320px, 55vh, 640px); }
+/* JSON 栏顶上那行「共几个字段」：它回答的是"全不全"，所以比正文小一号、颜色压下去。 */
+.source-json-facts { flex: 0 0 auto; margin: 0; padding: 10px 22px 0; color: var(--muted); font-size: var(--t-sm); line-height: 1.6; }
 
 /* 新建与导入并排一行。原来是「新建」「导入 JSON」「地址导入」三块各占整行，
    再加上分组与筛选，侧栏上半截全是控件、列表被压到下半截（用户 2026-11-07「这个地方拥挤」）。

@@ -140,6 +140,19 @@ function matchFields(fields: SourceField[], needle: string): SourceField[] {
 }
 const TABS = [...SOURCE_FIELD_GROUPS.map(group => ({ key: group.key, name: group.name })), { key: JSON_TAB, name: 'JSON' }]
 
+/**
+ * 库里存的是**压缩成一行**的 JSON。直接铺进编辑框，两千多字符挤成一片，
+ * 既看不出结构，也看不出到底缺没缺字段 —— 用户看到的就是"JSON 不全"。
+ * 打开就格式化；解析不了（真坏了）就原样给出，让下面的报错条去解释。
+ */
+function prettyJson(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
+}
+
 export const SourceEditor: React.FC<{
   selected: SourceSummary | null
   /** 新建模式：左侧列表不选中任何书源，编辑器填一份空模板，保存时才落库。 */
@@ -194,7 +207,7 @@ export const SourceEditor: React.FC<{
     // 用户一按保存就用 A 的规则覆盖了 B（换源即丢一个可用书源）。
     let cancelled = false
     void api.source(selected.id)
-      .then(value => { if (!cancelled) { setRecord(value); setText(value.json) } })
+      .then(value => { if (!cancelled) { setRecord(value); setText(prettyJson(value.json)) } })
       .catch(error => { if (!cancelled) setStatus(error instanceof Error ? error.message : '无法读取书源') })
     return () => { cancelled = true }
   }, [selected, creating])
@@ -488,7 +501,24 @@ export const SourceEditor: React.FC<{
       </div>
 
       {tab === JSON_TAB || !json ? (
-        <textarea className="source-editor-raw" aria-label="书源 JSON 编辑器" value={text} onChange={e => setText(e.target.value)} spellCheck={false} />
+        <>
+          {/* 「全不全」要能自己回答：给出字段数与行数，不用去数括号。 */}
+          {tab === JSON_TAB && json && (
+            <p className="source-json-facts">
+              库里存的原文，共 {Object.keys(json).length} 个字段 · {text.split('\n').length} 行。改完按右上角「保存」生效。
+            </p>
+          )}
+          {/* rows 跟着行数走：小源正好铺满，大源封顶 52 行后内滚 ——
+              固定高度时 47 行要在一个 495px 的窗口里滚，看着就像"被截了"。 */}
+          <textarea
+            className="source-editor-raw"
+            aria-label="书源 JSON 编辑器"
+            value={text}
+            rows={Math.min(52, Math.max(14, text.split('\n').length + 1))}
+            onChange={e => setText(e.target.value)}
+            spellCheck={false}
+          />
+        </>
       ) : searching ? (
         matched.length === 0 ? (
           <p className="source-field-no-match">
