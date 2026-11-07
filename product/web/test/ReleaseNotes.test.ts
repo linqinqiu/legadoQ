@@ -63,3 +63,20 @@ test('CI 真的在 Windows 上打便携包，并把它挂进发行资产', () =>
 test('滚动构建（latest）没有版本段落时有兜底说明', () => {
   assert.match(workflow, /main 的滚动构建：下面是最近一版的更新记录/, 'latest 要说明"这不是本版专属"')
 })
+
+test('桌面包依赖的图标脚本必须入库，不能被 .gitignore 挡住', () => {
+  // 0.2.31 发版实测：`assets/app.ico` 是生成物不入库，package-desktop.mjs 缺图标时会调
+  // `tools/verify/make-ico.mjs` 现场拼一份 —— 而那个脚本当时躺在 .gitignore 里，CI 上
+  // 报 "Cannot find module .../make-ico.mjs"，整条发版链停在打包那一步。
+  const ignore = fs.readFileSync(path.resolve(repo, 'product/.gitignore'), 'utf8')
+  assert.ok(
+    !/^\/tools\/verify\/make-ico\.mjs$/m.test(ignore),
+    'make-ico.mjs 不能出现在 product/.gitignore 里：CI 的 Windows job 要跑它',
+  )
+  assert.ok(
+    fs.existsSync(path.resolve(repo, 'product/tools/verify/make-ico.mjs')),
+    'make-ico.mjs 要在仓库里',
+  )
+  const packager = fs.readFileSync(path.resolve(repo, 'product/scripts/package-desktop.mjs'), 'utf8')
+  assert.match(packager, /make-ico\.mjs/, '打包脚本要能调到它（这条盯的是调用点还在）')
+})
