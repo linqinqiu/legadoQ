@@ -168,6 +168,8 @@ export const SourceEditor: React.FC<{
   const [saving, setSaving] = useState(false)
   const loadedKey = useRef<string | null>(null)
   const skipNextLoad = useRef(false)
+  /** 点页签触发的平滑滚动期间，别让滚动联动把高亮改回中间那几组。 */
+  const spyLockUntil = useRef(0)
 
   useEffect(() => {
     const key = creating ? '__new__' : selected?.id ?? ''
@@ -250,6 +252,29 @@ export const SourceEditor: React.FC<{
     }
   }
 
+  /*
+    滚到某一组。
+
+    不用 `scrollIntoView`：它会把**所有**可滚祖先都滚一遍，包括 window ——
+    而书源页在宽屏是定高两栏，整页本来不该动。实测点一次页签，window 被滚 62px，
+    顶栏跟着消失。这里只滚右栏那个容器，位置自己算，顶栏纹丝不动。
+    窄屏没有那个容器（整页在滚），退回 scrollIntoView。
+  */
+  const scrollToGroup = (key: string) => {
+    const section = document.getElementById(`source-group-${key}`)
+    if (!section) return
+    const scroller = document.querySelector<HTMLElement>('.sources-page .sources-main')
+    const scrollable = scroller && scroller.scrollHeight > scroller.clientHeight + 1
+    if (!scroller || !scrollable) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+    const sticky = document.querySelector<HTMLElement>('.sources-page .source-form-toolbar')
+    const offset = sticky?.getBoundingClientRect().height ?? 0
+    const top = section.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - offset - 8
+    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }
+
   const validate = async () => {
     try {
       // 送当前编辑内容而不是书源 id：否则校验的是上一次落库的旧版本，改坏了也看不出。
@@ -259,6 +284,51 @@ export const SourceEditor: React.FC<{
       setStatus(error instanceof Error ? error.message : '校验失败')
     }
   }
+
+  /*
+    页签跟着滚动走（用户 2026-11-07：「这些为什么不随下滑进度改变」）。
+
+    这一排是锚点，不是"当前只显示这一栏"——所以滚到哪一组，上面就该亮哪一组。
+    不联动的话，深表里滚了半天，高亮还停在「基础」，人分不清自己在哪一段。
+
+    两种滚动容器都要认：宽屏滚 `.sources-main`，窄屏整页滚。不写死哪个，
+    回调里直接比矩形，谁在滚都对。
+  */
+  useEffect(() => {
+    const pick = () => SOURCE_FIELD_GROUPS
+      .map(group => document.getElementById(`source-group-${group.key}`))
+      .filter((node): node is HTMLElement => Boolean(node))
+    if (!pick().length) return
+
+    const scroller = document.querySelector<HTMLElement>('.sources-page .sources-main')
+    const target: HTMLElement | Window =
+      scroller && scroller.scrollHeight > scroller.clientHeight + 1 ? scroller : window
+    const toolbar = document.querySelector<HTMLElement>('.sources-page .source-form-toolbar')
+
+    let frame = 0
+    const sync = () => {
+      frame = 0
+      if (Date.now() < spyLockUntil.current) return
+      // 判定线放在可视区的 20% 处，而不是紧贴页签下沿：贴着下沿时，
+      // 下一组的标题已经在眼前了，高亮却还停在上一个（实测"看着像没联动"）。
+      const barBottom = toolbar?.getBoundingClientRect().bottom ?? 0
+      const line = barBottom + Math.max(24, (window.innerHeight - barBottom) * 0.2)
+      let current = ''
+      for (const section of pick()) {
+        if (section.getBoundingClientRect().top <= line) current = section.id.replace('source-group-', '')
+      }
+      if (!current) return
+      setTab(previous => (previous === current ? previous : current))
+    }
+    const onScroll = () => { if (!frame) frame = window.requestAnimationFrame(sync) }
+
+    target.addEventListener('scroll', onScroll, { passive: true })
+    sync()
+    return () => {
+      target.removeEventListener('scroll', onScroll)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [json, searching])
 
   if (!selected && !creating) return (
     <section className="source-editor empty-editor">
@@ -362,10 +432,12 @@ export const SourceEditor: React.FC<{
               className={tab === item.key ? 'active' : ''}
               onClick={() => {
                 if (item.key === JSON_TAB) { setTab(JSON_TAB); return }
+                // 平滑滚动要几百毫秒，这期间锁住联动，否则高亮会一路扫过中间那几组。
+                spyLockUntil.current = Date.now() + 800
                 setTab(item.key)
                 setFieldQuery('')
                 setExpanded(current => new Set(current).add(item.key))
-                document.getElementById(`source-group-${item.key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                scrollToGroup(item.key)
               }}
             >
               {item.name}

@@ -551,14 +551,23 @@ body.is-resizing-source-sidebar .source-sidebar-resizer::after { background: var
 .source-enable-switch.is-on .source-enable-switch-knob { left: 16px; }
 
 /* 书源页两栏各自滚动：整库导入时列表有数千条，撑高整页会让右栏编辑器随页面滚走。
-   右栏分两块：上面的 .editor-region（页头 + 书源订阅）不滚，下面的 .sources-content（编辑器本体）随页面滚。 */
+   右栏整列一起滚（页头也滚走）：页头是"这一页叫什么"，看过一次就够了，
+   把它钉在上面等于每条书源都少 130px 的可用高度（用户 2026-11-07 问的就是这个）。
+   编辑器里的页签条改成粘性，滚到表单深处仍然能跳组。 */
 @media (min-width: 721px) {
   .sources-page { height: calc(100vh - 68px); }
   .sources-page .source-sidebar { min-height: 0; height: 100%; }
   .sources-page .source-list { flex: 1 1 auto; min-height: 0; }
-  .sources-main { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .sources-main { height: 100%; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
   .sources-main > .editor-region { flex: 0 0 auto; padding: clamp(24px, 3.5vw, 44px) clamp(20px, 2.5vw, 40px) 0; }
-  .sources-page .sources-content { flex: 1 1 auto; height: 100%; overflow-y: auto; align-content: start; }
+  .sources-page .sources-content { flex: 0 0 auto; height: auto; overflow: visible; align-content: start; }
+  /* 粘在滚动容器顶端。背景必须给：底下是滚动的表单，透明会透出字来。 */
+  .sources-page .source-form-toolbar { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+  /* 主壳给安装横幅留的 92px 底部余量，在这页反而成了"整页能滚 92px"的来源：
+     鼠标停在左栏顶部滚一下，连顶栏一起被滚走（点页签的 scrollIntoView 也踩这个坑）。
+     这页是定高两栏、自己会滚，余量取消；改成给列表留出横幅的高度，末行不被盖住。 */
+  body:has(.pwa-install-banner) .app-shell:has(.sources-page) { padding-bottom: 0; }
+  body:has(.pwa-install-banner) .sources-page .source-list { padding-bottom: 72px; }
 }
 .source-sidebar footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .workspace-themes { display: flex; gap: 6px; }
@@ -572,7 +581,9 @@ body.is-resizing-source-sidebar .source-sidebar-resizer::after { background: var
 .workspace-topbar span { color: var(--muted); font-size: 13px; }
 .workspace-topbar strong { font-family: Georgia, "Noto Serif SC", serif; font-size: 17px; font-weight: 600; }
 .workspace-scroll { width: min(1320px, 100%); display: grid; gap: 26px; padding: clamp(22px, 4vw, 52px); margin: 0 auto; }
-.source-editor, .reading-desk { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+/* `overflow: clip` 而不是 `hidden`：两者都能把内容裁进圆角，但 `hidden` 会把这张卡
+   变成滚动容器，里面的粘性页签条就再也粘不住外层滚动（粘性只认最近的滚动祖先）。 */
+.source-editor, .reading-desk { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; overflow: clip; }
 .subscription-panel { margin-bottom: 22px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 /* W4：订阅页原来是一条 920px 居中窄列（1440 屏两侧死白 43%）。收到与书库同一档几何
    （min(1240px) 居中 + 同一条页边距），既把死白压下来，也和书库、书架一条线。 */
@@ -1536,7 +1547,9 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
     background: color-mix(in srgb, var(--danger) 8%, transparent);
     font-size: 14px;
   }
-  .sources-page { min-height: calc(100vh - 58px); grid-template-columns: 1fr; }
+  /* minmax(0, 1fr) 而不是 1fr：`1fr` 带 min-content 下限，编辑器里那排按钮排不下时
+     会把整张卡撑到 500px（视口才 390），「校验 / 保存」就被卡片裁掉了。 */
+  .sources-page { min-height: calc(100vh - 58px); grid-template-columns: minmax(0, 1fr); }
   /* 窄屏是纵向堆叠，没有"两栏比例"可调，把手直接不出现。 */
   .source-sidebar-resizer { display: none; }
   /* 窄屏主从改成纵向：页头 → 书源列表 → 编辑器。
@@ -1547,6 +1560,12 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
   .sources-page .source-sidebar { min-height: auto; height: auto; order: 2; }
   /* scroll-margin-top：选完书源滚到编辑器时，别让标题钻到 sticky 顶栏下面 */
   .sources-page .sources-content { order: 3; padding: 18px 18px 40px; scroll-margin-top: calc(56px + var(--safe-top)); }
+  /* 编辑器头在窄屏竖排：书名一行、操作行一行。横排时「书源编辑 + 书名 + 地址」与五颗键
+     抢同一行，五颗键排不下就把整行顶出去。 */
+  .source-editor { min-width: 0; }
+  .source-editor > header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .editor-actions { width: 100%; flex-wrap: wrap; }
+  .editor-actions button { flex: 1 1 auto; min-width: 76px; }
   /* 180px 是 .app-workspace 那套单栏留下的，在书源页只装得下两条半，
      点第三条得滚一个自己都看不见的列表。窄屏按屏高给到 220–340。 */
   .sources-page .source-list { max-height: clamp(220px, 34vh, 340px); }
@@ -1646,8 +1665,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 }
 @media (max-width: 420px) {
   .login-panel { padding: 30px 24px; }
-  .editor-actions { width: 100%; }
-  .editor-actions button { flex: 1; }
   .reader-workspace { --reader-pad: clamp(8px, calc(var(--reader-content-padding, 80px) / 4), 20px); }
   .reader-header { grid-template-columns: 40px minmax(0, 1fr) 76px; }
 }
@@ -4957,6 +4974,9 @@ input[type=range] { min-height: 24px; }
   overflow-y: auto;
 }
 .source-field-group {
+  /* 页签条是粘性的，占住滚动容器顶端约 48px：点页签 scrollIntoView 时把目标往下让开，
+     否则这一组的标题正好藏到那条下面（实测 contentTop 停在 0）。 */
+  scroll-margin-top: 56px;
   display: grid; align-content: start;
   grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
   gap: var(--s-5) var(--s-6);
