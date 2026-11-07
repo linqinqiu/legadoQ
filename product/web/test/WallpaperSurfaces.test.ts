@@ -97,12 +97,17 @@ test('壁纸下书源左栏是一张内缩圆角卡，不是贴边方角色带',
 })
 
 test('「新建书源」与分组/筛选/导入对齐，不再是一块贴墙的绿色方条', () => {
+  // 2026-11-07 起新建与导入并排成一行（两块整行按钮把列表挤到下半截），
+  // 所以 16px 边距移到了行容器上，按钮自己不再铺满整栏。
+  const row = /\.source-sidebar-actions \{([\s\S]*?)\}/.exec(css)?.[1] ?? ''
+  assert.ok(row, '找不到 .source-sidebar-actions 规则')
+  assert.match(row, /margin:\s*0 16px/, '这一行缺少与兄弟控件一致的 16px 边距')
+
   const create = /\.source-create-btn \{([\s\S]*?)\}/.exec(css)?.[1] ?? ''
   assert.ok(create, '找不到 .source-create-btn 规则')
   assert.doesNotMatch(create, /width:\s*100%/,
     '按钮又铺满整栏：绿色方块贴着两侧墙，和 16px 内缩的筛选/导入不在一条线上')
-  assert.match(create, /margin:\s*0 16px/,
-    '按钮缺少与兄弟控件一致的 16px 边距')
+  assert.match(create, /flex:\s*1 1 auto/, '按钮要在行内撑满剩余宽度，而不是写死整栏宽')
 })
 
 /**

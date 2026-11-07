@@ -47,6 +47,8 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
   const [groupFilter, setGroupFilter] = useState('')
   const [notice, setNotice] = useState('')
   const [importing, setImporting] = useState(false)
+  /** 「导入」面板是否展开：低频动作，默认收起，别让两块整行控件常年占着列表的位置。 */
+  const [importOpen, setImportOpen] = useState(false)
   /** 「从地址导入」的地址输入；与文件选择是两条并存的入口。 */
   const [importUrl, setImportUrl] = useState('')
   const [isBatchMode, setIsBatchMode] = useState(false)
@@ -587,49 +589,67 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
           </div>
         )}
 
-        <button
-          type="button"
-          className="primary-button source-create-btn"
-          onClick={() => { setCreating(true); onSelect(null); revealEditorOnPhone() }}
-        >
-          <Icon name="plus" />
-          新建书源
-        </button>
-
-        <label className={`import-button ${importing ? 'disabled' : ''}`}>
-          <Icon name="upload" />
-          {importing ? '导入中…' : '导入 JSON'}
-          <input
-            type="file"
-            accept="application/json,.json,text/plain,.txt,*"
-            disabled={importing}
-            onChange={event => {
-              const file = event.target.files?.[0]
-              event.target.value = ''
-              void importSources(file)
-            }}
-          />
-        </label>
-
-        {/* 与「导入 JSON」并存：文件在管理器里选，或直接填一个能返回书源 JSON 的地址 */}
-        <form
-          className="source-filter"
-          aria-label="从地址导入书源"
-          onSubmit={event => { event.preventDefault(); void importSourcesFromUrl() }}
-        >
-          <Icon name="globe" />
-          <input
-            value={importUrl}
-            onChange={event => setImportUrl(event.target.value)}
-            placeholder="书源 JSON 地址"
-            inputMode="url"
-            aria-label="书源 JSON 地址"
-            disabled={importing}
-          />
-          <button type="submit" className="subtle-button" disabled={importing}>
-            {importing ? '导入中…' : '从地址导入'}
+        <div className="source-sidebar-actions">
+          <button
+            type="button"
+            className="primary-button source-create-btn"
+            onClick={() => { setCreating(true); onSelect(null); revealEditorOnPhone() }}
+          >
+            <Icon name="plus" />
+            新建书源
           </button>
-        </form>
+          <button
+            type="button"
+            className={`subtle-button source-import-toggle${importOpen ? ' is-open' : ''}`}
+            aria-expanded={importOpen}
+            aria-controls="source-import-panel"
+            title={importOpen ? '收起导入' : '导入书源：本地 JSON 文件，或一个能返回书源 JSON 的地址'}
+            onClick={() => setImportOpen(value => !value)}
+          >
+            <Icon name="upload" />
+            导入
+          </button>
+        </div>
+
+        {/* 导入是低频动作：收起时只占一行按钮，展开才出现文件选择与地址输入。
+            原来这两块各占一整行，加上分组与筛选，列表被压到侧栏的下半截。 */}
+        {importOpen && (
+          <div className="source-import-panel" id="source-import-panel">
+            <label className={`import-button ${importing ? 'disabled' : ''}`}>
+              <Icon name="upload" />
+              {importing ? '导入中…' : '选择 JSON 文件'}
+              <input
+                type="file"
+                accept="application/json,.json,text/plain,.txt,*"
+                disabled={importing}
+                onChange={event => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ''
+                  void importSources(file)
+                }}
+              />
+            </label>
+
+            <form
+              className="source-filter"
+              aria-label="从地址导入书源"
+              onSubmit={event => { event.preventDefault(); void importSourcesFromUrl() }}
+            >
+              <Icon name="globe" />
+              <input
+                value={importUrl}
+                onChange={event => setImportUrl(event.target.value)}
+                placeholder="书源 JSON 地址"
+                inputMode="url"
+                aria-label="书源 JSON 地址"
+                disabled={importing}
+              />
+              <button type="submit" className="subtle-button" disabled={importing}>
+                {importing ? '导入中…' : '从地址导入'}
+              </button>
+            </form>
+          </div>
+        )}
 
         {notice && <p className="sidebar-notice">{notice}</p>}
 
