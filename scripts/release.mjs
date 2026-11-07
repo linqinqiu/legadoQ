@@ -163,5 +163,6 @@ if (!noPush) {
 console.log("");
 console.log("[release] 后续：");
 console.log("  1. 等 CI 的 version-gate 与 build-jar 在 tag 上跑完，确认 GitHub Release 已生成");
-console.log("  2. 按 RELEASING.md 打包桌面版，并把 legadoq-desktop-<版本>.zip 上传到该 Release");
+console.log("  2. 确认发行资产三个都在：legado.jar / legado-dist.zip / legadoq-desktop-<版本>.zip");
+console.log("     （桌面包由 CI 的 windows job 打，不用再手工上传）");
 console.log("  3. curl http://127.0.0.1:1234/healthz，确认 version 与 build 都和这一条记录一致");

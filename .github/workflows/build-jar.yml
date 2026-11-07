@@ -1,6 +1,6 @@
 name: Build legadoQ JAR
 
-# 出可运行产物：内嵌前端的 fatJar + 标准分发包，PR 只跑测试不发布。
+# 出可运行产物：内嵌前端的 fatJar + 标准分发包 + Windows 便携包，PR 只跑测试不发布。
 #
 # 2026-10-26 重建：重组时这 7 个 workflow 被压成一行（0 换行 + BOM），GitHub 解析不了，
 # CI 自重组起从未真的跑过。除格式外改了四处：
@@ -11,6 +11,12 @@ name: Build legadoQ JAR
 #      这一步是本 workflow 以前最该有却没有的 —— 产物发布出去、里面却是旧界面，
 #      流水线照样全绿；
 #   4. `cache-dependency-path` 指向 package-lock.json（原来指 package.json，缓存键等于没锁依赖）。
+#
+# 2026-11-08 三拆：以前「构建 → 发布」挤在 build 一个 job 里，Windows 便携包只能在本机手工
+# 打、手工上传（release.mjs 末尾那句"按 RELEASING.md 打包桌面版"）。结果是发行页正文写着
+# 「装 Java 17 再 java -jar」，用户问"不是要无依赖就能普通用户使用吗"。现在拆成
+# build（Linux，跑测试出 jar）→ desktop（Windows，jlink + jpackage 出免安装包）→
+# release（Linux，拼正文、传三个资产）。桌面包没出来就不发版，正文也不会说"不用装 Java"。
 on:
   push:
     branches: [main, master]
@@ -116,9 +122,105 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # Windows 便携包：jlink 裁一份运行时 + jpackage 出 `legadoq.exe`，解压双击即用 —— 用户
+  # 不需要装 Java。这一步只能在 Windows 上做（app-image 是平台产物），所以单独一个 job；
+  # fat jar 直接取 build 的产物（纯字节码，Linux 编译的在 Windows 上照样跑）。
+  desktop:
+    name: Package Windows Portable (no Java needed)
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: product/web/package-lock.json
+
+      - name: Setup Java JDK 17 (jlink + jpackage)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download fat JAR from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: legado-binaries
+          path: product/artifacts
+
+      - name: 把 jar 放回打包脚本期望的位置
+        # package-desktop.mjs 只认 `app/build/libs/legado-<版本>-all.jar`，不会自己重建。
+        # 版本号用 node 读（和脚本里同一条正则），免得 sed 在 CRLF 的 checkout 上匹配不到行尾。
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('fs').readFileSync('app/build.gradle','utf8').match(/^version = '([\\d.]+)'/m)[1]")
+          test -n "$VERSION"
+          mkdir -p app/build/libs
+          cp artifacts/legado.jar "app/build/libs/legado-$VERSION-all.jar"
+          ls -lh "app/build/libs/legado-$VERSION-all.jar"
+
+      - name: Build Web Client
+        # 打包脚本要求 web/dist 存在（缺了它会自己 build，但那样就绕过了 npm ci 的锁文件）。
+        run: |
+          npm ci --prefix web
+          npm --prefix web run build
+
+      - name: Package portable desktop (jlink + jpackage)
+        run: node scripts/package-desktop.mjs
+
+      - name: 核对便携包真的自带运行时
+        # 发行页会写"不用装 Java"。这句话的唯一依据是 runtime/bin/java.exe 在包里 ——
+        # 少了它，包在没装 Java 的机器上双击就是一个闪退窗口，而流水线照样绿。
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMG=dist/desktop/legadoq
+          test -f "$IMG/legadoq.exe"
+          test -f "$IMG/runtime/bin/java.exe"
+          test -f "$IMG/使用说明.txt"
+          ls -lh dist/legadoq-desktop-*.zip
+
+      - name: Upload portable desktop
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado-desktop
+          path: product/dist/legadoq-desktop-*.zip
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: Publish Release
+    # 桌面包是发行页的主推产物：它没出来就不发版，否则正文说"不用装 Java"而资产里没有，
+    # 用户只能去下 jar、再去装 Java —— 正是这版要修的问题。
+    needs: [build, desktop]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download JAR artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: legado-binaries
+          path: product/artifacts
+
+      - name: Download portable desktop
+        uses: actions/download-artifact@v4
+        with:
+          name: legado-desktop
+          path: product/artifacts
+
       - name: Determine Release Tag & Name
         id: release_meta
-        if: github.event_name != 'pull_request'
         run: |
           BUILD_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
           echo "build_time=${BUILD_TIME}" >> "$GITHUB_OUTPUT"
@@ -131,7 +233,7 @@ jobs:
           fi
 
       - name: Recreate latest release & tag
-        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -146,8 +248,11 @@ jobs:
       # 发布说明不能只有「本 Release 由 Actions 生成」——用户点进来要知道**这版改了什么**、
       # **怎么跑起来**。更新内容直接从 `product/CHANGELOG.md` 摘，避免第二份手写日志漂移；
       # 滚动构建（latest）没有对应版本，退回文件里最新的一段并注明。
+      #
+      # 顺序是刻意的：先给"下载解压双击"（普通用户），再给"装了 Java 才用 jar"（开发者）。
+      # 以前反过来，等于把零安装的便携包藏在第三个资产里。
       - name: Compose release notes (changelog + quick start)
-        if: github.event_name != 'pull_request'
+        working-directory: .
         run: |
           set -euo pipefail
           TAG="${{ steps.release_meta.outputs.tag_name }}"
@@ -172,53 +277,58 @@ jobs:
             cat /tmp/section.md
             cat <<'MD'
 
+          ## 怎么用（推荐：不用装任何东西）
+
+          1. 下载下面的 `legadoq-desktop-<版本>.zip`，解压到任意目录（**别放 `C:\Program Files`**，那里不可写）
+          2. 双击 `legadoq.exe`（或 `启动.bat`）
+          3. 会自动打开浏览器窗口；**关掉窗口不会退出**，右下角托盘图标右键「退出」才真的停
+          4. 第一次进来：先去「书源 → 导入」放一份书源，再去「书库」搜书
+
+          Windows 10/11 64 位。运行时已经打在包里（解压后约 100 MB），**不需要安装 Java**，也不写注册表、
+          不装服务，退出后整个目录删掉就是卸载。数据默认存在 `legadoq\data`；目录不可写时会自动改用
+          `%LOCALAPPDATA%\legadoQ\data`，托盘菜单「数据目录」能直接打开。
+
           ## 这是什么
 
           legadoQ 是一个跑在本机的阅读器服务：书源规则引擎 + 书架 + AI 助手，浏览器打开就能读。
           数据全部留在本机（默认 `./data`），不联云、不需要账号。
 
-          ## 怎么用
+          ## 其它用法
 
-          1. 装 Java 17 或更新版本
-          2. 下载下面的 `legado.jar`，执行 `java -jar legado.jar`
-          3. 浏览器打开 http://127.0.0.1:1234
-          4. 第一次进来：先去「书源 → 导入」放一份书源，再去「书库」搜书
+          | 文件 | 适合谁 | 怎么跑 |
+          |---|---|---|
+          | `legadoq-desktop-<版本>.zip` | Windows 普通用户（**推荐**） | 解压后双击 `legadoq.exe`，无需 Java |
+          | `legado.jar` | 已经装了 Java 17+ / macOS / Linux | `java -jar legado.jar` |
+          | `legado-dist.zip` | 要把启动脚本与依赖库分开部署 | 解压后跑 `bin/legado` |
 
-          换端口或数据目录：
+          jar 方式起来后浏览器打开 http://127.0.0.1:1234 。换端口或数据目录：
 
           ```bash
           LEGADO_PORT=8080 LEGADO_DATA_DIR=./data java -jar legado.jar
           ```
 
-          ## 产物
-
-          | 文件 | 用途 |
-          |---|---|
-          | `legado.jar` | 单文件版：前端、后端、依赖全在里面，`java -jar` 即用 |
-          | `legado-dist.zip` | 标准分发包：含 `bin/` 启动脚本与依赖库 |
-
           ## 从旧版升级
 
-          直接换掉 jar 再启动即可，数据目录不动就不会丢书、书源和阅读进度。
-          升级前想留个退路：停服后把 `data/` 整个复制一份。
+          便携版：退出后解压覆盖旧目录即可，`data` 目录不动就不会丢书、书源和阅读进度。
+          jar 版：直接换掉 jar 再启动。升级前想留个退路：停服后把 `data/` 整个复制一份。
           MD
 
             printf '\n## 构建信息\n\n- Commit: [`%s`](https://github.com/%s/commit/%s)\n- Ref: `%s`\n- 构建时间: `%s` (UTC+8)\n' \
               "${GITHUB_SHA:0:7}" "$GITHUB_REPOSITORY" "$GITHUB_SHA" "${{ github.ref_name }}" "${{ steps.release_meta.outputs.build_time }}"
-          } > release-body.md
+          } > product/release-body.md
 
           echo "=== release-body.md ==="
-          head -40 release-body.md
+          head -40 product/release-body.md
 
       - name: Auto Publish / Update GitHub Release
-        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_meta.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           name: ${{ steps.release_meta.outputs.release_name }}
           # 正文由上一步从 CHANGELOG + 使用简介拼出来；这里不再内联，免得两处漂移。
-          body_path: release-body.md
+          # 路径相对 GITHUB_WORKSPACE（working-directory 只对 run 生效），所以带 product/。
+          body_path: product/release-body.md
           draft: false
           prerelease: false
           # 只有版本 tag（v*）能当 “Latest”。滚动构建是 main 的连续产物，
@@ -228,5 +338,6 @@ jobs:
           files: |
             product/artifacts/legado.jar
             product/artifacts/legado-dist.zip
+            product/artifacts/legadoq-desktop-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

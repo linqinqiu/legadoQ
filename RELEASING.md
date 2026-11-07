@@ -134,14 +134,26 @@ CI 的 `version-gate` 与 `build-jar` 会在 tag 上运行，并创建 GitHub Re
 
 ## 4. 桌面包与发行资产
 
-CI 跑在 Linux 上，桌面版必须在本机打：
+**CI 自己打，不用手工上传。** `build-jar.yml` 里有一个 `desktop` job（`windows-latest`）：
+取 `build` 产出的 fat jar → `jlink` 裁运行时 → `jpackage` 出 `legadoq.exe` → 校验
+`runtime/bin/java.exe` 在包里 → 上传 `legadoq-desktop-<版本>.zip`。`release` job 等它成功
+才发版，三个资产（jar / dist / 桌面包）一次挂齐。
+
+桌面包是这个项目的**主推产物**：普通用户不需要装 Java。正文里"不用装 Java"的唯一依据就是
+包里那个 `runtime/bin/java.exe`，所以 CI 会显式断言它存在 —— 少了它，包在干净机器上双击
+就是闪退，而流水线照样绿。
+
+本机只在两种情况下才需要手动打一次：
 
 ```bash
 node product/scripts/package-desktop.mjs
 # 产物：product/dist/legadoq-desktop-0.2.11.zip
 ```
 
-上传到该 tag 的 GitHub Release。上传接口只带 `name` 参数：
+1. 想在发版前自己点一遍（验界面、验托盘、验数据目录）；
+2. Windows runner 上 jpackage 出了问题，要对着同一份 jar 复现。
+
+要临时补传，上传接口只带 `name` 参数：
 
 ```bash
 curl -X POST -H "Authorization: token $TOKEN" \
@@ -172,7 +184,8 @@ curl -s http://127.0.0.1:1234/healthz
 - [ ] `release:dry` 输出符合预期
 - [ ] `release` 完成，`RELEASES.md` 有一行，tag 已推
 - [ ] CI 的 GitHub Release 已生成，**正文里有这一版的更新内容与使用简介**
-- [ ] 桌面包已打包并上传
+- [ ] 发行资产三个都在：`legado.jar` / `legado-dist.zip` / `legadoq-desktop-<版本>.zip`
+- [ ] 正文第一段是"解压双击、不用装 Java"，jar 只作为后路
 - [ ] `/healthz` 的 version/build 与记录一致
 
 ## 7. Release 正文从哪来
@@ -181,7 +194,10 @@ GitHub Release 的正文**不是手写的**，由 `build-jar.yml` 的 `Compose r
 
 1. 从 `product/CHANGELOG.md` 摘出 `## [<这一版>]` 到下一个 `## [` 之间的内容 ——
    所以**更新内容就是 CHANGELOG**，改日志等于改发行说明，不要另写一份。
-2. 拼上固定的使用简介（这是什么 / 怎么用 / 产物 / 从旧版升级）。
+2. 拼上固定的使用简介（怎么用 / 这是什么 / 其它用法 / 从旧版升级）。**顺序是刻意的**：
+   第一段给"下载 Windows 免安装包、解压双击"（普通用户），jar 只作为"已经装了 Java 的人"的后路。
+   以前反过来 —— 正文第一句就是"装 Java 17"，零安装的便携包藏在第三个资产里，用户会直接问
+   "不是要无依赖就能普通用户使用吗"。
 3. 末尾补 Commit、Ref、构建时间。
 
 滚动构建（`latest`）没有对应版本段落，会退回文件里最新的一段，并在开头注明「这不是本版专属」。
@@ -191,4 +207,5 @@ GitHub Release 的正文**不是手写的**，由 `build-jar.yml` 的 `Compose r
 - CHANGELOG 那一条要写**用户看得懂的变化**（"能做什么了 / 修了什么"），不要写内部实现；
   它会被原样贴到 Releases 页。
 - 判据 `product/web/test/ReleaseNotes.test.ts` 盯着这条链路：摘取逻辑、`body_path`、
-  以及简介里那四个小节标题。改 workflow 时它会先红。
+  简介里的四个小节标题、**零安装路径排在 jar 之前**，以及"CI 真的在 Windows 上打了便携包"。
+  改 workflow 时它会先红。
