@@ -6473,3 +6473,16 @@ html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-
 .ai-skill-prompts-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .ai-skill-prompts-head strong { font-size: var(--t-sm); font-weight: 600; }
 .ai-skill-prompts-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+/* 运行日志顶上的「运行诊断」：一行摘要常驻，展开才是两张表。
+   摘要本身是按钮（点哪都能展开），所以给它按钮的复位样式。 */
+.logs-diagnostics { border-bottom: 1px solid var(--line); }
+.logs-diagnostics-summary { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 8px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.logs-diagnostics-summary > span:first-child { flex: none; font-size: var(--t-sm); font-weight: 600; }
+.logs-diagnostics-facts { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: var(--t-xs); overflow-wrap: anywhere; }
+.logs-diagnostics-toggle { flex: none; color: var(--accent); font-size: var(--t-xs); }
+.logs-diagnostics-body { display: grid; gap: 10px; padding: 0 14px 12px; }
+.logs-diagnostics-note { margin: 0; color: var(--muted); font-size: var(--t-xs); line-height: 1.5; }
+.logs-diagnostics-table { width: 100%; border-collapse: collapse; font-size: var(--t-xs); }
+.logs-diagnostics-table th, .logs-diagnostics-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.logs-diagnostics-table th { color: var(--muted); font-weight: 600; }
+.logs-diagnostics-table td:not(:first-child), .logs-diagnostics-table th:not(:first-child) { text-align: right; }

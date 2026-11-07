@@ -3,6 +3,7 @@ import { request } from '../client'
 import type {
   AboutInfo,
   ChangelogRelease,
+  DiagnosticsSnapshot,
   LogEntry,
   ServerInfo,
   ServerPortResult,
@@ -56,8 +57,8 @@ export const system = {
     return request<LogEntry[]>(`/api/logs?${q.toString()}`)
   },
   clearLogs: () => request<void>('/api/logs', { method: 'DELETE' }),
-  /** 诊断：哪个源在拖慢搜索。 */
-  diagnostics: () => request<SourceHealthCheckResponse>('/api/diagnostics'),
+  /** 诊断：哪个源慢（按源）+ 慢在哪个阶段（按阶段）。 */
+  diagnostics: () => request<DiagnosticsSnapshot>('/api/diagnostics'),
   /** 关于：名字、版本、发布仓库。 */
   about: () => request<AboutInfo>('/api/about'),
   checkUpdate: () =>

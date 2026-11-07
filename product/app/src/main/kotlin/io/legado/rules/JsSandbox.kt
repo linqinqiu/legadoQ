@@ -205,6 +205,9 @@ internal fun decodeDataUrlText(url: String): String? {
 
 class JsSandbox(private val runner: RuleRunner? = null) {
     private companion object {
+        /** 诊断里的阶段名：脚本求值一格（与 RuleRunner 的 search/details/toc/content 并列）。 */
+        const val STAGE_JS = "js"
+
         /** `cache.putFile/getFile` 在同一个缓存表里用前缀与 `put/get` 分开（上游本来就是两套存储）。 */
         const val FILE_CACHE_PREFIX = "file:"
 
@@ -252,10 +255,20 @@ class JsSandbox(private val runner: RuleRunner? = null) {
         }
     }
 
+    /**
+     * 执行一段书源 JS。外层只做一件事：记阶段耗时（诊断里 js 那一格）——
+     * 书源"慢"有一半是脚本在跑（大列表解析、正则回溯），与站点慢的修法完全不同。
+     */
     fun eval(
         script: String,
         bindings: Map<String, Any?> = emptyMap(),
         execContext: JsExecutionContext? = null,
+    ): String? = io.legado.ops.Metrics.timed(STAGE_JS) { evalImpl(script, bindings, execContext) }
+
+    private fun evalImpl(
+        script: String,
+        bindings: Map<String, Any?>,
+        execContext: JsExecutionContext?,
     ): String? {
         val context = execContext ?: threadContext.get()
         val rawScript = script.trim().removePrefix("@js:").removePrefix("js:").trim()

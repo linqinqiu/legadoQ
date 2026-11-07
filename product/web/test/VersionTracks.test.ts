@@ -153,6 +153,27 @@ const TAG_EXCEPTIONS: Record<string, string> = {
   '0.2.13': 'tag 从未推到远端（那次 release 的 push 失败）；补推会把它顶成 Latest',
 }
 
+/**
+ * tag 保留窗口的下界。
+ *
+ * 2026-11-07 清理过一次：31 个 Release / tag 收到 11 个，只留当前特性线（`v0.2.21` 起）。
+ * 删掉的 20 个版本的代码提交仍在 main 历史里，变更记在 `product/CHANGELOG.md`，只是不再有
+ * tag 这个锚点 —— 所以「每行都要有 tag」这条判据必须让位给窗口。
+ *
+ * 下界从现存 tag 反推（排除 [TAG_EXCEPTIONS] 里本来就不该计入的那些），这样再清理一次只改
+ * 数据、不改判据；窗口内的版本仍然必须有 tag。
+ */
+const cmpVersion = (a: string, b: string) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]
+  return 0
+}
+const tagFloorOf = (tags: Iterable<string>) =>
+  [...tags]
+    .map((tag) => tag.replace(/^v/, ''))
+    .filter((v) => /^\d+\.\d+\.\d+$/.test(v) && !TAG_EXCEPTIONS[v])
+    .sort(cmpVersion)[0]
+
 test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / tag', (t) => {
   const git = (...args: string[]) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8' }).trim()
   const tryGit = (...args: string[]) => {
@@ -167,12 +188,6 @@ test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / 
     t.skip('仓库是浅克隆（fetch-depth: 1），拿不到 RELEASES.md 里的历史提交与 tag')
     return
   }
-  const cmpVersion = (a: string, b: string) => {
-    const x = a.split('.').map(Number), y = b.split('.').map(Number)
-    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]
-    return 0
-  }
-
   const text = read('RELEASES.md')
   const rows = [...text.matchAll(/^\| (\d+\.\d+\.\d+) \| (\d+) \| ([0-9a-f]{7,40}) \|$/gm)]
     .map(m => ({ version: m[1], build: Number(m[2]), commit: m[3] }))
@@ -211,6 +226,7 @@ test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / 
     const [name, object, peeled] = line.trim().split('|')
     if (name) tagCommits.set(name, peeled || object)
   }
+  const tagFloor = tagFloorOf(tagCommits.keys())
 
   let previousBuild = 0
   let previousVersion = '0.0.0'
@@ -225,11 +241,13 @@ test('RELEASES.md 每一行都能被 git 复算：版本 / 构建号 / 提交 / 
     if (version !== row.version) problems.push(`${row.version}：提交 ${row.commit} 上的 version 是 ${version}`)
     if (build !== row.build) problems.push(`${row.version}：提交 ${row.commit} 上的 BUILD_NUMBER 是 ${build}`)
 
-    // tag 必须存在，且记录提交要落在它的历史里（相等或祖先）
+    // tag 必须存在，且记录提交要落在它的历史里（相等或祖先）。
+    // 窗口外的旧版本已被清理掉 tag，只要求记录行本身能复算，不再要求锚点。
     const tag = `v${row.version}`
     const tagCommit = tagCommits.get(tag)
     if (!tagCommit) {
-      if (!TAG_EXCEPTIONS[row.version]) problems.push(`${row.version}：没有 tag ${tag}`)
+      const outsideWindow = tagFloor !== undefined && cmpVersion(row.version, tagFloor) < 0
+      if (!outsideWindow && !TAG_EXCEPTIONS[row.version]) problems.push(`${row.version}：没有 tag ${tag}`)
     }
     // 相等是常态（发布脚本把 tag 打在记录提交上），只有 0.2.10 那种历史例外才需要再查祖先。
     else if (tagCommit !== row.commit && tryGit('merge-base', '--is-ancestor', row.commit, tagCommit) === null) {

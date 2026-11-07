@@ -1,5 +1,7 @@
 package io.legado.rules
 
+import io.legado.ops.Metrics
+
 import cn.wanghaomiao.xpath.model.JXDocument
 import com.jayway.jsonpath.JsonPath
 import kotlinx.serialization.Serializable
@@ -116,7 +118,8 @@ class RuleRunner(
 
     private fun recallRuleData(key: String?): Map<String, String> = key?.let { ruleData[it] } ?: emptyMap()
 
-    fun search(sourceJson: String, keyword: String): List<SearchResult> = searchWithReason(sourceJson, keyword).first
+    fun search(sourceJson: String, keyword: String): List<SearchResult> =
+        Metrics.timed(STAGE_SEARCH) { searchWithReason(sourceJson, keyword).first }
 
     /**
      * [search] 的调试版本：除书籍列表外，再带一句「上游这次到底回了什么」。
@@ -281,7 +284,10 @@ class RuleRunner(
     }
 
     /** 按发现页地址取书籍列表：优先 `ruleExplore`，缺省回落到 `ruleSearch`（与 Legado 一致）。 */
-    fun explore(sourceJson: String, urlTemplate: String, page: Int = 1): List<SearchResult> {
+    fun explore(sourceJson: String, urlTemplate: String, page: Int = 1): List<SearchResult> =
+        Metrics.timed(STAGE_EXPLORE) { exploreImpl(sourceJson, urlTemplate, page) }
+
+    private fun exploreImpl(sourceJson: String, urlTemplate: String, page: Int): List<SearchResult> {
         val source = sourceJson.objectValue()
         val sourceUrl = source.string("bookSourceUrl") ?: throw RuleExecutionException("书源缺少 bookSourceUrl")
         return jsSandbox.withSourceContext(sourceContext(source, sourceUrl)) {
@@ -504,7 +510,10 @@ class RuleRunner(
         return execContext.openUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
     }
 
-    fun details(sourceJson: String, bookUrl: String): BookDetails {
+    fun details(sourceJson: String, bookUrl: String): BookDetails =
+        Metrics.timed(STAGE_DETAILS) { detailsImpl(sourceJson, bookUrl) }
+
+    private fun detailsImpl(sourceJson: String, bookUrl: String): BookDetails {
         val source = sourceJson.objectValue()
         source.string("mainJs")?.takeIf { it.isNotBlank() }?.let { return JsSourceRunner(this, source).details(bookUrl) }
         return jsSandbox.withSourceContext(sourceContext(source, source.string("bookSourceUrl"))) {
@@ -658,7 +667,10 @@ class RuleRunner(
         return declarativeDetails(sourceJson.objectValue(), bookUrl, traces) to traces
     }
 
-    fun chapters(sourceJson: String, tocUrl: String): List<Chapter> {
+    fun chapters(sourceJson: String, tocUrl: String): List<Chapter> =
+        Metrics.timed(STAGE_TOC) { chaptersImpl(sourceJson, tocUrl) }
+
+    private fun chaptersImpl(sourceJson: String, tocUrl: String): List<Chapter> {
         val source = sourceJson.objectValue()
         source.string("mainJs")?.takeIf { it.isNotBlank() }?.let { return JsSourceRunner(this, source).chapters(tocUrl) }
         val sourceUrl = source.string("bookSourceUrl")
@@ -855,7 +867,10 @@ class RuleRunner(
         )
     }
 
-    fun content(sourceJson: String, chapterUrl: String, bookName: String? = null, bookUrl: String? = null): ChapterContent {
+    fun content(sourceJson: String, chapterUrl: String, bookName: String? = null, bookUrl: String? = null): ChapterContent =
+        Metrics.timed(STAGE_CONTENT) { contentImpl(sourceJson, chapterUrl, bookName, bookUrl) }
+
+    private fun contentImpl(sourceJson: String, chapterUrl: String, bookName: String?, bookUrl: String?): ChapterContent {
         val source = sourceJson.objectValue()
         val sourceUrl = source.string("bookSourceUrl")
         val sourceName = source.string("bookSourceName")
@@ -1585,7 +1600,22 @@ class RuleRunner(
         val setCookies: List<String> = emptyList(),
     )
 
+    /**
+     * 出站抓取（建连 + 读完响应体），诊断里记 `http` 那一格。
+     *
+     * 计在这一层而不是 `GuardedHttpClient.send`：后者拿到的是 `ofInputStream`，正文在
+     * `send` 之外才读完，只计建连会把"正文慢"算成"建连快"；而且 AI 的连接也走同一个
+     * client，记进去会把模型调用混进书源诊断。
+     */
     private fun fetchDetailed(
+        url: String,
+        options: UrlOptions?,
+        keyword: String?,
+        sourceId: String? = null,
+        database: PortBundle? = null,
+    ): Fetched = Metrics.timed(STAGE_HTTP) { fetchDetailedImpl(url, options, keyword, sourceId, database) }
+
+    private fun fetchDetailedImpl(
         url: String,
         options: UrlOptions?,
         keyword: String?,
@@ -2249,6 +2279,14 @@ class RuleRunner(
     /** 书源 `bookSourceType`：0 文本 / 1 音频 / 2 图片(漫画) / 3 文件 / 4 视频；缺省或非数字给 0。 */
     private fun JsonObject.sourceType(): Int = (get("bookSourceType") as? JsonPrimitive)?.intOrNull ?: 0
     private companion object {
+        /** 诊断里的阶段名：按这些名字分组，改名等于换一张报表，别随手改。 */
+        const val STAGE_SEARCH = "search"
+        const val STAGE_EXPLORE = "explore"
+        const val STAGE_DETAILS = "details"
+        const val STAGE_TOC = "toc"
+        const val STAGE_CONTENT = "content"
+        const val STAGE_HTTP = "http"
+
         const val MAX_BODY_BYTES = 2 * 1024 * 1024
         private const val MAX_TRACE_CHARS = 240
         /** ruleData（跨调用复用的 @put 变量）的键上限：超了按最近使用淘汰最旧那条（见 [newRuleDataCache]），不再整表清空。 */

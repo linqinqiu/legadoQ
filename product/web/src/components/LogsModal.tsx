@@ -3,6 +3,7 @@ import { zh } from '../i18n/zh'
 import { api, type LogEntry } from '../lib/api'
 import { Icon } from '../icons'
 import { Select } from './Select'
+import { DiagnosticsStrip } from './DiagnosticsStrip'
 import { toast } from './Toast'
 import { useEscapeClose } from '../lib/useEscapeClose'
 
@@ -199,6 +200,8 @@ export function LogsModal({ onClose }: { onClose: () => void }) {
                 : `显示 ${entries.length} 条${merged > entries.length ? `（合并前 ${merged} 条）` : ''}`}
           </span>
         </div>
+
+        <DiagnosticsStrip />
 
         {state === 'failed' && (
           <div className="logs-error">

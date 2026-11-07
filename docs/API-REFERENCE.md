@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.30 · 端点数：157 · 生成时间：2026-11-07
+> 版本：0.2.31 · 端点数：157 · 生成时间：2026-11-07
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -50,7 +50,7 @@
 | PUT | `/api/server/port` | 是 | 改监听端口：写进包目录下的 port.txt，下次启动生效；请求体：port=1–65535 |
 | GET | `/api/logs` | 否 | 读运行日志（界面「运行日志」那一档同源；书源规则失败、图片取不到都记在这里）；query：category=可选，按类别筛，level=可选，按级别筛，limit=默认 200 |
 | DELETE | `/api/logs` | 是 | 清空运行日志（界面「运行日志」那一档上的清空按钮走的也是这条） |
-| GET | `/api/diagnostics` | 否 | 进程内运行指标快照：整批搜索请求数与截断数、按书源聚合的调用/失败/超时/命中与平均耗时（只取调用最高的前 50 源）。纯内存累计，重启清零，给本地诊断'哪个源在拖慢搜索'用 |
+| GET | `/api/diagnostics` | 否 | 进程内运行指标快照。两层：①按书源聚合的调用/失败/超时/命中与平均耗时（前 50 源），回答"哪个源慢"；②按阶段聚合的 calls/failures/avg/max，回答"慢在站点还是慢在脚本"——阶段为 search / explore / details / toc / content / js / http。纯内存累计，重启清零 |
 | GET | `/api/about` | 否 | 「关于」那三样：名字、版本、发布仓库（版本只有一个来源，界面不写死） |
 | POST | `/api/about/update-check` | 是 | 去发布页看有没有新版本（这一步要出网，所以它过同源写门） |
 | GET | `/api/changelog` | 否 | 随包那份更新日志的 Markdown 原文（Content-Type 是 text/markdown，不是 JSON） |

@@ -210,6 +210,7 @@ export const api = {
   // system
   logs: newSystem.logs,
   clearLogs: newSystem.clearLogs,
+  diagnostics: newSystem.diagnostics,
   about: newSystem.about,
   checkUpdate: newSystem.checkUpdate,
   changelog: newSystem.changelog,

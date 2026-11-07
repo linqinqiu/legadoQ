@@ -1,6 +1,6 @@
 {
   "service": "legadoQ",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统）。每条按 group 归类。",
   "howToConnect": {
     "baseUrl": "http://127.0.0.1:1234",
@@ -647,8 +647,8 @@
       "path": "/api/diagnostics",
       "write": false,
       "group": "系统",
-      "purpose": "进程内运行指标快照：整批搜索请求数与截断数、按书源聚合的调用/失败/超时/命中与平均耗时（只取调用最高的前 50 源）。纯内存累计，重启清零，给本地诊断'哪个源在拖慢搜索'用",
-      "response": "{searchRequests,truncatedSearchRequests,trackedSources,topSources:[{sourceId,calls,failures,timeouts,matched,avgLatencyMs,lastLatencyMs,updatedAt}]}"
+      "purpose": "进程内运行指标快照。两层：①按书源聚合的调用/失败/超时/命中与平均耗时（前 50 源），回答\"哪个源慢\"；②按阶段聚合的 calls/failures/avg/max，回答\"慢在站点还是慢在脚本\"——阶段为 search / explore / details / toc / content / js / http。纯内存累计，重启清零",
+      "response": "{searchRequests,truncatedSearchRequests,trackedSources,topSources:[{sourceId,calls,failures,timeouts,matched,avgLatencyMs,lastLatencyMs,updatedAt}],stages:[{stage,calls,failures,avgLatencyMs,lastLatencyMs,maxLatencyMs}]}"
     },
     {
       "method": "GET",

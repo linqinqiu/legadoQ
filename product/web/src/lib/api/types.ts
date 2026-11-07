@@ -865,3 +865,35 @@ export type AgentTaskModelInput = {
   connectionId?: string | null
   model?: string | null
 }
+
+/** 单个阶段的耗时与失败率（GET /api/diagnostics 的 stages）。 */
+export type StageMetric = {
+  stage: string
+  calls: number
+  failures: number
+  avgLatencyMs: number
+  lastLatencyMs: number
+  maxLatencyMs: number
+}
+
+/** 按书源聚合的搜索指标（前 50 源）。 */
+export type SourceMetric = {
+  sourceId: string
+  calls: number
+  failures: number
+  timeouts: number
+  matched: number
+  avgLatencyMs: number
+  lastLatencyMs: number
+  updatedAt: number
+}
+
+/** GET /api/diagnostics：进程内运行指标快照，重启清零。 */
+export type DiagnosticsSnapshot = {
+  searchRequests: number
+  truncatedSearchRequests: number
+  trackedSources: number
+  topSources: SourceMetric[]
+  /** 分阶段耗时：search / explore / details / toc / content / js / http。 */
+  stages: StageMetric[]
+}
