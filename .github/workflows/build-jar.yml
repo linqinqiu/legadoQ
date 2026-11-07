@@ -143,6 +143,73 @@ jobs:
           git tag -f latest "${{ github.sha }}"
           git push --force origin refs/tags/latest:refs/tags/latest
 
+      # 发布说明不能只有「本 Release 由 Actions 生成」——用户点进来要知道**这版改了什么**、
+      # **怎么跑起来**。更新内容直接从 `product/CHANGELOG.md` 摘，避免第二份手写日志漂移；
+      # 滚动构建（latest）没有对应版本，退回文件里最新的一段并注明。
+      - name: Compose release notes (changelog + quick start)
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release_meta.outputs.tag_name }}"
+          VERSION="${TAG#v}"
+
+          # 从 `## [x.y.z]` 摘到下一个 `## [` 之前。
+          awk -v needle="[$VERSION]" '
+            /^## \[/ { if (found) exit; if (index($0, needle) > 0) found = 1 }
+            found { print }
+          ' product/CHANGELOG.md > /tmp/section.md
+
+          if [ -s /tmp/section.md ]; then
+            : > /tmp/section-prefix.md
+          else
+            # 滚动构建：没有版本段落，取最新那一段，并说明它不是本版专属。
+            awk '/^## \[/ { if (n++) exit; p = 1 } p' product/CHANGELOG.md > /tmp/section.md
+            printf '> main 的滚动构建：下面是最近一版的更新记录。\n\n' > /tmp/section-prefix.md
+          fi
+
+          {
+            cat /tmp/section-prefix.md
+            cat /tmp/section.md
+            cat <<'MD'
+
+          ## 这是什么
+
+          legadoQ 是一个跑在本机的阅读器服务：书源规则引擎 + 书架 + AI 助手，浏览器打开就能读。
+          数据全部留在本机（默认 `./data`），不联云、不需要账号。
+
+          ## 怎么用
+
+          1. 装 Java 17 或更新版本
+          2. 下载下面的 `legado.jar`，执行 `java -jar legado.jar`
+          3. 浏览器打开 http://127.0.0.1:1234
+          4. 第一次进来：先去「书源 → 导入」放一份书源，再去「书库」搜书
+
+          换端口或数据目录：
+
+          ```bash
+          LEGADO_PORT=8080 LEGADO_DATA_DIR=./data java -jar legado.jar
+          ```
+
+          ## 产物
+
+          | 文件 | 用途 |
+          |---|---|
+          | `legado.jar` | 单文件版：前端、后端、依赖全在里面，`java -jar` 即用 |
+          | `legado-dist.zip` | 标准分发包：含 `bin/` 启动脚本与依赖库 |
+
+          ## 从旧版升级
+
+          直接换掉 jar 再启动即可，数据目录不动就不会丢书、书源和阅读进度。
+          升级前想留个退路：停服后把 `data/` 整个复制一份。
+          MD
+
+            printf '\n## 构建信息\n\n- Commit: [`%s`](https://github.com/%s/commit/%s)\n- Ref: `%s`\n- 构建时间: `%s` (UTC+8)\n' \
+              "${GITHUB_SHA:0:7}" "$GITHUB_REPOSITORY" "$GITHUB_SHA" "${{ github.ref_name }}" "${{ steps.release_meta.outputs.build_time }}"
+          } > release-body.md
+
+          echo "=== release-body.md ==="
+          head -40 release-body.md
+
       - name: Auto Publish / Update GitHub Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
@@ -150,26 +217,8 @@ jobs:
           tag_name: ${{ steps.release_meta.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           name: ${{ steps.release_meta.outputs.release_name }}
-          body: |
-            ## 自动构建发布
-
-            本 Release 由 GitHub Actions 随 Commit 自动编译打包生成：
-            - **Commit**: [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-            - **Branch / Ref**: `${{ github.ref_name }}`
-            - **Build Time**: `${{ steps.release_meta.outputs.build_time }} (UTC+8)`
-
-            ### 二进制产物下载
-            - **`legado.jar`**：开箱即用独立 Fat JAR（内嵌完整 Web 前端与后端服务，单文件运行）
-            - **`legado-dist.zip`**：标准分发包（含 `bin/` 启动脚本与依赖库）
-
-            ### 快速启动
-            ```bash
-            # 极简启动 (Java 17+)
-            java -jar legado.jar
-
-            # 自定义端口与数据目录
-            LEGADO_PORT=8080 LEGADO_DATA_DIR=./ls_data java -jar legado.jar
-            ```
+          # 正文由上一步从 CHANGELOG + 使用简介拼出来；这里不再内联，免得两处漂移。
+          body_path: release-body.md
           draft: false
           prerelease: false
           # 只有版本 tag（v*）能当 “Latest”。滚动构建是 main 的连续产物，

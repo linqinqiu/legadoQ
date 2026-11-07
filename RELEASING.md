@@ -171,6 +171,24 @@ curl -s http://127.0.0.1:1234/healthz
 - [ ] 工作区干净，功能改动已提交
 - [ ] `release:dry` 输出符合预期
 - [ ] `release` 完成，`RELEASES.md` 有一行，tag 已推
-- [ ] CI 的 GitHub Release 已生成
+- [ ] CI 的 GitHub Release 已生成，**正文里有这一版的更新内容与使用简介**
 - [ ] 桌面包已打包并上传
 - [ ] `/healthz` 的 version/build 与记录一致
+
+## 7. Release 正文从哪来
+
+GitHub Release 的正文**不是手写的**，由 `build-jar.yml` 的 `Compose release notes` 步骤拼出来：
+
+1. 从 `product/CHANGELOG.md` 摘出 `## [<这一版>]` 到下一个 `## [` 之间的内容 ——
+   所以**更新内容就是 CHANGELOG**，改日志等于改发行说明，不要另写一份。
+2. 拼上固定的使用简介（这是什么 / 怎么用 / 产物 / 从旧版升级）。
+3. 末尾补 Commit、Ref、构建时间。
+
+滚动构建（`latest`）没有对应版本段落，会退回文件里最新的一段，并在开头注明「这不是本版专属」。
+
+两个直接后果：
+
+- CHANGELOG 那一条要写**用户看得懂的变化**（"能做什么了 / 修了什么"），不要写内部实现；
+  它会被原样贴到 Releases 页。
+- 判据 `product/web/test/ReleaseNotes.test.ts` 盯着这条链路：摘取逻辑、`body_path`、
+  以及简介里那四个小节标题。改 workflow 时它会先红。
