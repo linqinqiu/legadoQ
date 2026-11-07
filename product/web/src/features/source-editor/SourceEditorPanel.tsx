@@ -152,7 +152,12 @@ export const SourceEditor: React.FC<{
   onOpenDebug?: (source: SourceSummary) => void
   /** 跳到「书库」搜索页、范围切成「指定书源」并用这一条（用户 2026-10-09 的建议）。 */
   onSearchInLibrary?: (source: SourceSummary) => void
-}> = ({ selected, creating, summary, onSaved, onCreateCancel, onCreated, onOpenLogin, onOpenDebug, onSearchInLibrary }) => {
+  /**
+   * 删除当前这条书源。放在编辑器自己的操作行里，而不是页面标题栏 ——
+   * 标题栏那位置离"要删的是哪一条"隔着整块版面，红色按钮又挂在页头，看着像在删这一页。
+   */
+  onDelete?: (source: SourceSummary) => void
+}> = ({ selected, creating, summary, onSaved, onCreateCancel, onCreated, onOpenLogin, onOpenDebug, onSearchInLibrary, onDelete }) => {
   const [record, setRecord] = useState<SourceRecord | null>(null)
   const [text, setText] = useState('')
   const [status, setStatus] = useState('')
@@ -283,6 +288,17 @@ export const SourceEditor: React.FC<{
           <small>{creating ? '保存后才会进入书源列表' : selected!.url}</small>
         </div>
         <div className="editor-actions">
+          {/* 删除是这一条书源的动作，和 登录/调试/校验/保存 摆在同一行；
+              放在最左并用分隔线隔开，避免和主按钮「保存」挨在一起误点。 */}
+          {!creating && onDelete && (
+            <button
+              type="button"
+              className="danger-button editor-delete-btn"
+              onClick={() => onDelete(selected!)}
+            >
+              删除
+            </button>
+          )}
           {creating
             ? <button type="button" className="subtle-button" onClick={onCreateCancel}>取消新建</button>
             : selected!.hasLogin && <button type="button" className="subtle-button source-login-entry-btn" onClick={() => onOpenLogin?.(selected!)}>登录</button>

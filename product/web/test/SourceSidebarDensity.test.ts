@@ -66,3 +66,27 @@ test('分组/体检那一行必须真的占一行高，批量行不许撑破侧�
   assert.match(list, /grid-template-columns: minmax\(0, 1fr\)/,
     '隐式列是 max-content 时，宽度由最宽的一行决定，批量行会把整列撑破')
 })
+
+/**
+ * 「删除书源」原先挂在页面标题栏右上角：一个红色按钮离"要删的是哪一条"隔着整块版面，
+ * 看着像在删这一页（用户 2026-11-07：「有些难看还是位置和感觉的问题」）。
+ * 现在它跟着 登录/调试/校验/保存 进编辑器的操作行。
+ */
+test('「删除」跟着这条书源走，不再挂在页面标题栏', () => {
+  assert.doesNotMatch(page, /page-title-actions/, '页头不该再有动作区')
+  assert.match(page, /onDelete=\{source => void deleteSource\(source\)\}/, '要把删除交给编辑器')
+
+  const editor = fs.readFileSync(
+    path.resolve(here, '../src/features/source-editor/SourceEditorPanel.tsx'),
+    'utf8',
+  )
+  // 取操作行里「保存」之前那一段：删除必须在这里，而且排在主按钮前面。
+  const beforeSave = /<div className="editor-actions">([\s\S]*?)className="primary-button"/.exec(editor)?.[1] ?? ''
+  assert.ok(beforeSave, '找不到编辑器的操作行')
+  assert.match(beforeSave, /editor-delete-btn/, '删除要在操作行里')
+  assert.match(beforeSave, /onDelete\(selected!\)/, '删的是当前这一条')
+
+  // 右键菜单与编辑器共用同一条删除路径，别再各写一份（确认文案曾经也不一样）。
+  assert.match(page, /onSelect: \(\) => void deleteSource\(source\)/, '右键菜单也走同一个 deleteSource')
+  assert.doesNotMatch(page, /removeOne/, '旧的重复实现应当已删除')
+})

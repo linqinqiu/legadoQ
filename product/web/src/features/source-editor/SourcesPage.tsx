@@ -228,10 +228,16 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
       setNotice(error instanceof Error ? error.message : '操作失败')
     }
   }
-  const removeOne = async (source: SourceSummary) => {
+
+  /**
+   * 删除一条书源。右键菜单与编辑器操作行共用这一条 —— 原来两处各写一份
+   * （一处 `api.remove`、一处 `batchSources('delete')`），确认文案也不一样。
+   */
+  const deleteSource = async (source: SourceSummary) => {
     if (!confirm(`删除「${source.name}」？这本书源的规则、登录态会被移除，已缓存的书籍不受影响。`)) return
     try {
-      await api.batchSources('delete', [source.id])
+      await api.remove(source.id)
+      if (selected?.id === source.id) onSelect(null)
       await load()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '删除失败')
@@ -511,17 +517,6 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     }
   }
 
-  const remove = async () => {
-    if (!selected || !confirm(`删除“${selected.name}”？`)) return
-    try {
-      await api.remove(selected.id)
-      onSelect(null)
-      await load()
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : '删除失败')
-    }
-  }
-
   return (
     <main
       className={`sources-page ${isBatchMode ? 'batch-mode-active' : ''}`}
@@ -703,7 +698,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
                     onSelect: () => void flipOne(source),
                   },
                   { label: '分享书源', icon: 'copy', onSelect: () => setShareIds([source.id]) },
-                  { label: '删除此书源', icon: 'trash', danger: true, onSelect: () => void removeOne(source) },
+                  { label: '删除此书源', icon: 'trash', danger: true, onSelect: () => void deleteSource(source) },
                 ])}
               >
                 <div className="source-list-item-title">
@@ -756,17 +751,13 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
             书源订阅（远程书源 JSON 直链）已搬到顶栏「订阅」页 —— 那里才是"订阅"这件事的家，
             书源页不再挂任何订阅面板或「订阅地址」按钮，右栏因此只剩编辑区，不再被挤。 */}
         <div className="editor-region">
+          {/* 页头只留标题与一句说明。「删除书源」原先挂在这栏右上角：
+              一个红色按钮离"要删的是哪一条"隔着整块版面，看着像在删这一页 ——
+              现在跟着 登录/调试/校验/保存 一起进编辑器的操作行。 */}
           <header className="page-title">
             <div>
               <h1>书源管理</h1>
               <p>导入、校验与维护你的阅读来源。</p>
-            </div>
-            <div className="page-title-actions">
-              {selected && (
-                <button type="button" className="danger-button" onClick={() => void remove()}>
-                  删除书源
-                </button>
-              )}
             </div>
           </header>
         </div>
@@ -784,6 +775,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
             onOpenLogin={source => setLoginModalSource(source)}
             onOpenDebug={source => setDebugModalSource(source)}
             onSearchInLibrary={searchInLibrary}
+            onDelete={source => void deleteSource(source)}
           />
         </section>
       </div>

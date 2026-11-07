@@ -594,6 +594,9 @@ body.is-resizing-source-sidebar .source-sidebar-resizer::after { background: var
 .source-editor h2, .reading-desk h2 { font-family: Georgia, "Noto Serif SC", serif; font-size: 21px; font-weight: 600; }
 .source-editor small { display: block; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; max-width: 540px; }
 .editor-actions { display: flex; gap: 8px; }
+/* 「删除」放在这一行最左：它是这条书源的动作，但不该和主按钮「保存」挤在一起
+   （误点代价最大的一颗）。靠间距而不是画一条线把它隔开，少一层装饰。 */
+.editor-delete-btn { margin-right: 8px; }
 /* 这条是「JSON 原文」栏的整块编辑器样式；不排除的话会把表单里的小字段框一起撑成 270px 高、去掉边框 */
 .source-editor textarea:not(.source-field-textarea) { width: 100%; min-height: 270px; resize: vertical; padding: 21px 22px; background: var(--surface); border: 0; outline: 0; color: var(--ink); font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .source-editor footer { padding: 11px 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
