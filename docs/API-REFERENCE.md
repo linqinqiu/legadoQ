@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.32 · 端点数：157 · 生成时间：2026-11-07
+> 版本：0.2.33 · 端点数：161 · 生成时间：2026-11-08
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -33,8 +33,8 @@
 | 图片与媒体 | 6 |
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
-| AI 自定义接入 | 18 |
-| **合计** | **157** |
+| AI 自定义接入 | 22 |
+| **合计** | **161** |
 
 ## 目录（1）
 
@@ -265,7 +265,7 @@
 | POST | `/api/tts/speak` | 是 | 一次性把一段文本合成完整音频（整章文本走会话那条更好）；请求体：text=要念的文本，不许空，voice=音色，rate=语速，pitch=音高，engine=引擎，customUrl=自建引擎才填，customHeader=可选，customMethod=可选 |
 | GET | `/api/tts/speak` | 否 | 同样的一次性合成，参数走查询串（给 audio 标签这种没法发 POST 的地方用）；query：text=文本（必填），voice=音色，rate=语速，pitch=音高 |
 
-## AI 自定义接入（18）
+## AI 自定义接入（22）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
@@ -287,4 +287,8 @@
 | DELETE | `/api/agent/prompts/{id}` | 是 | 删除一条提示词预设。删除前整份 agent-prompts.json 先备份到 {home}/.trash/，误删可以找回。 |
 | GET | `/api/agent/task-models` | 否 | 按任务选模型的路由表：对话、摘要与理解、以及每条技能各是一个任务，各自可以指定用哪条连接、哪个模型（例如摘要用便宜模型、书源排错用强模型）。没配的任务跟随默认连接。 |
 | POST | `/api/agent/task-models` | 是 | 改一项任务路由（落盘 agent-task-models.json，需同源写入）。connectionId 与 model 都留空 = 取消这一项的路由，退回默认连接；connectionId 指定了不存在的连接会被拒。；请求体：task=任务 id：chat / comprehend / skill:<技能id>（必填），connectionId=可选，指定走哪条已登记连接；留空表示默认连接，model=可选，模型名；留空表示用该连接自己的模型 |
+| GET | `/api/agent/mcp` | 否 | 已登记的 MCP（Model Context Protocol）服务 + 上一次同步结果：是否连通、挂上了几个工具、失败原因。请求头的值不回传，只回名字（那里面通常就是 token）。 |
+| POST | `/api/agent/mcp` | 是 | 登记/更新一台 MCP 服务（落盘 agent-mcp.json）并立即握手一次：成功就把它的工具以 mcp.<服务id>.<工具名> 挂进能力清单（组名 mcp，默认不下发），失败把原因带回界面。；请求体：id=可选；不给就用 name 派生（小写字母/数字/下划线/短横线），name=服务名（必填），url=MCP 端点，http(s)://主机:端口/路径（必填），enabled=可选，默认 true，headers=可选，额外的请求头（如 Authorization），timeoutMs=可选，单次工具调用超时，1000~120000 |
+| POST | `/api/agent/mcp/refresh` | 是 | 全部重连：重新握手并拉一遍每台服务的工具清单（会外呼，改的是注册表）。服务重启过、或上次保存时它还没起来时用。 |
+| DELETE | `/api/agent/mcp/{id}` | 是 | 删除一台 MCP 服务，并把它注册过的工具一起摘掉 —— 留着等于给模型一个永远调不通的能力。 |
 

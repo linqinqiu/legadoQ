@@ -770,3 +770,154 @@ suspend fun ApplicationCall.agentSaveTaskModel(profileStoreHome: Path, profileSt
     }
     respond(TaskModelsResponse(taskModelViews(profileStoreHome, store.list(profileStoreHome))))
 }
+
+// ===== 外部 MCP 服务 mcp =====
+
+/**
+ * 一台 MCP 服务在界面上的样子。
+ *
+ * `headers` 只回**名字**不回值：那里面通常就是 token。界面需要知道"我配了鉴权头"，
+ * 不需要、也不应该把 token 再显示一遍 —— 显示一次就多一次被截图/被日志带走的机会。
+ */
+@Serializable
+private data class McpServerView(
+    val id: String,
+    val name: String,
+    val url: String,
+    val enabled: Boolean,
+    val ok: Boolean,
+    val toolCount: Int,
+    val error: String? = null,
+    val syncedAt: Long = 0,
+    val headerNames: List<String> = emptyList(),
+)
+
+@Serializable
+private data class McpServerSaveRequest(
+    val id: String? = null,
+    val name: String? = null,
+    val url: String,
+    val enabled: Boolean? = null,
+    val headers: Map<String, String>? = null,
+    val timeoutMs: Int? = null,
+)
+
+@Serializable
+private data class McpListResponse(
+    /** 工具组名，界面按它找「AI 工具」里的那一档。 */
+    val group: String = McpBridge.GROUP,
+    val servers: List<McpServerView>,
+)
+
+/**
+ * 配置里登记的服务 + 上一次同步的状态。
+ *
+ * 配置是**真源**：某台服务从没同步过（进程刚起来、还没跑完）时也要列出来，
+ * 否则用户刚保存的配置会在列表里消失一秒，看起来像没保存成功。
+ */
+private fun mcpViews(homeDirectory: Path, bridge: McpBridge): List<McpServerView> {
+    val statuses = bridge.statuses().associateBy { it.id }
+    return McpServerStore.list(homeDirectory).map { server ->
+        val status = statuses[server.id]
+        McpServerView(
+            id = server.id,
+            name = server.name,
+            url = server.url,
+            enabled = server.enabled,
+            ok = status?.ok == true,
+            toolCount = status?.toolCount ?: 0,
+            // 有状态就用状态里的原因；没有状态才说"尚未同步" —— 否则连通的卡片上会挂一句
+            // "尚未同步"，用户以为没连上。
+            error = status?.error ?: if (status == null) (if (server.enabled) "尚未同步" else "已停用") else null,
+            syncedAt = status?.syncedAt ?: 0,
+            headerNames = server.headers.keys.sorted(),
+        )
+    }
+}
+
+suspend fun ApplicationCall.agentListMcp(homeDirectory: Path, agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    respond(McpListResponse(servers = mcpViews(homeDirectory, conn.mcp)))
+}
+
+suspend fun ApplicationCall.agentSaveMcp(homeDirectory: Path, agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    val req = runCatching { receive<McpServerSaveRequest>() }.getOrElse {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 {url, name?, id?, headers?}")); return
+    }
+    val name = req.name?.trim().orEmpty()
+    val explicitId = req.id?.trim()?.takeIf { it.isNotBlank() }
+    // id 与名字都给不出时没什么可存的：说清是"名字没填"，而不是"id 不合法"。
+    if (explicitId == null && name.isBlank()) {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "服务名不能为空")); return
+    }
+    val existing = explicitId?.let { McpServerStore.get(homeDirectory, it) }
+    val draft = McpServerStore.Server(
+        // 没给 id 时从名字派生：用户不该被迫先想一个"标识符"，那是实现细节。
+        // 中文名派不出合法 id，[McpServerStore.deriveId] 会退回哈希，而不是把用户拦在门外。
+        id = explicitId ?: McpServerStore.deriveId(name),
+        name = name,
+        url = req.url,
+        enabled = req.enabled ?: true,
+        // 不传 headers = 沿用原值（与连接档案里的 apiKey 同一条口径）。
+        // 界面只回传名字不回传值，所以"只改启停"这类请求必然不带 headers —— 若按空表覆盖，
+        // 用户点一下「停用」就把自己的 Authorization 抹掉了。
+        headers = req.headers ?: existing?.headers.orEmpty(),
+        timeoutMs = req.timeoutMs ?: existing?.timeoutMs ?: 20_000,
+    )
+    val saved = runCatching { McpServerStore.register(homeDirectory, draft) }.getOrElse { error ->
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_mcp_server", error.message ?: "MCP 服务配置不合法"))
+        return
+    }
+    // 保存即尝试连接：用户点完按钮就能看到"通了 / 为什么不通"，不用再去别处找原因。
+    val status = conn.mcp.syncOne(saved.id)
+    respond(
+        McpServerView(
+            id = saved.id,
+            name = saved.name,
+            url = saved.url,
+            enabled = saved.enabled,
+            ok = status?.ok == true,
+            toolCount = status?.toolCount ?: 0,
+            error = status?.error,
+            syncedAt = status?.syncedAt ?: 0,
+            headerNames = saved.headers.keys.sorted(),
+        ),
+    )
+}
+
+suspend fun ApplicationCall.agentDeleteMcp(id: String, homeDirectory: Path, agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    if (id.isBlank()) {
+        respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "缺少服务 id")); return
+    }
+    val removed = McpServerStore.delete(homeDirectory, id)
+    // 配置没了，工具也必须跟着走：留着等于给模型一个永远调不通的能力。
+    conn.mcp.forget(id)
+    if (!removed) {
+        respond(HttpStatusCode.NotFound, ApiError("not_found", "没有登记过 MCP 服务 $id")); return
+    }
+    respond(mapOf("deleted" to id))
+}
+
+suspend fun ApplicationCall.agentRefreshMcp(homeDirectory: Path, agentConnection: AgentConnection?) {
+    val conn = agentConnection
+    if (conn == null) {
+        respond(HttpStatusCode.ServiceUnavailable, ApiError("gateway_missing", "AI 网关未初始化；请重启服务。"))
+        return
+    }
+    conn.mcp.sync(force = true)
+    respond(McpListResponse(servers = mcpViews(homeDirectory, conn.mcp)))
+}

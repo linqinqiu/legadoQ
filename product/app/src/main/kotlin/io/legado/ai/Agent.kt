@@ -64,6 +64,14 @@ class Agent(
     /** 暴露给外部（含 `/api/agent`）的能力清单，与 `/api/catalog` 的"可改范围"对齐。 */
     fun toolManifest(): List<ToolMeta> = registry.manifest()
 
+    /**
+     * 外部 MCP 工具桥：配置落在 `{home}/agent-mcp.json`，同步后把远端工具挂进 [registry]。
+     *
+     * 惰性构造、且**不在构造时外呼** —— 真正握手由启动流程（`Application` 的
+     * `ApplicationStarted`）与界面上的「刷新」触发。测试里构造 Agent 不会凭空发网络请求。
+     */
+    val mcp: McpBridge by lazy { McpBridge(registry, homeDirectory) }
+
     /** 是否注册了外部（openai-compatible）连接；供 manifest 的 `enabled` 字段使用。 */
     fun hasConnection(): Boolean = selectedProfile() != null
 

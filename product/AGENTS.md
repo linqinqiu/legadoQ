@@ -321,7 +321,7 @@ legadoq-dist-v0.8.2/
 （这一条是拿真接口打出来的：目录给 `GET /api/logs` 列了 `stackTrace`，实际回包里那一项没有这个键。）
 
 `scope` 现在是**全量** —— `http/` 目录里注册的每一条都在这份目录里（0.8.2 起路由按面拆在
-`Routes.kt` 装配点与 `<组名>Routes.kt` 组文件里），共 157 条，按面分成：
+`Routes.kt` 装配点与 `<组名>Routes.kt` 组文件里），共 161 条，按面分成：
 目录 / 系统 / 书源 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 /
 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份。判据的要求是「目录条数 == 代码里的条数」，
 所以新加一条端点而忘了写进契约，当天就会红 —— 以前只盯 `/api/sources…` 前缀，别的面漏了没人知道。
@@ -404,7 +404,7 @@ AI 要"帮我修库"时，先让它给出分档统计，再决定动作，不要
 - `SubscriptionService`：订阅更新
 - `CoverCache`：封面缓存
 
-这些对象就是 157 个 HTTP 端点背后那同一批实例。AI 调用它们 == 端点调用它们，
+这些对象就是 161 个 HTTP 端点背后那同一批实例。AI 调用它们 == 端点调用它们，
 **没有第二条实现路径**，也就不会出现「AI 能改、界面改不了」或反过来这种分裂。
 
 **关键约束（来自 `web/test/ApiCatalog.test.ts`）：** 那份判据逐条比对 `http/` 目录的路由文件与
@@ -423,16 +423,19 @@ app/src/main/kotlin/io/legado/ai/
 ├── ToolRegistry.kt   // ★ 工具注册表：运行时增删工具，替代硬编码 listOf
 ├── ToolHooks.kt      // ★ 生命周期钩子：before / after / onError 四个介入点
 ├── AgentConnection.kt// ★ 程序内部"连接 API"句柄：call / manifest（同步，不增路由）
+├── McpServerStore.kt // MCP 服务配置（{home}/agent-mcp.json），逐条容错
+├── McpClient.kt      // MCP 客户端：JSON-RPC over HTTP，握手/会话/翻页/工具调用
+├── McpBridge.kt      // ★ 把远端工具挂进 ToolRegistry（组 mcp，origin=mcp:<id>）
 └── AgentModule.kt    // ★ 把连接挂进进程的接线处：install 默认关闭，仅 -Dai.debug 自检
 ```
 
 > **内容 / 框架边界**：`ai/` 是「可覆盖的默认内容容器」（类比前端 `features/`）。
-> 它**不注册任何 HTTP 路由**（Ktor 路由只从 `http/` 装配），所以 157 端点计数不动。
+> 它**不注册任何 HTTP 路由**（Ktor 路由只从 `http/` 装配），所以 161 端点计数不动。
 > `ai/` 里的 `OpenAiCompatibleProvider` / `BuiltinTools` / `FirstProfileSelector`
 > 只是默认实现，全部可插拔（外部 provider / 工具 / 选择器用新 id 注册、`replace` 覆盖、`unregister`
 > 摘掉）。这条边界由 `FrameworkContractTest`（`@Tag("framework-contract")`，钉进 `verifyFramework`
 > 与 `check`）守住：默认只含 `openai-compatible` 与 `FirstProfileSelector`、重复 id 被拒、
-> 内置工具默认不可删、`agent-api.json` 契约 157/19/16。
+> 内置工具默认不可删、`agent-api.json` 契约 161/19/22。
 
 ## 2. 核心类型（`AgentContext.kt`）
 
@@ -623,7 +626,7 @@ val conn = AgentModule.connect(database, runner, coverCache, subscriptions, regi
    直接调用 `agent.runTool(...)` 的演示逻辑，仅供本地排查，不对外暴露。
 
 要让人/脚本以「AI 客户端」方式驱动这台服务，仍然走 `GET /api/catalog` 拿契约、
-走既有 157 个端点执行——进程内 `Agent` 是给"服务自己内嵌的自动化/智能体"用的同一条路径。
+走既有 161 个端点执行——进程内 `Agent` 是给"服务自己内嵌的自动化/智能体"用的同一条路径。
 
 ## 6.5 连接自己的配置（`options`）
 

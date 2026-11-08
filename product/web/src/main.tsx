@@ -22,6 +22,7 @@ import { SourceHealthEntryModal } from './plugins/source-health/SourceHealthModa
 import { AiModal } from './features/ai/AiModal'
 import { AiConnectionsModal } from './features/ai/AiConnectionsModal'
 import { AiToolsModal } from './features/ai/AiToolsModal'
+import { AiMcpModal } from './features/ai/AiMcpModal'
 import { AiSkillsModal } from './features/ai/AiSkillsModal'
 import { AiPromptsModal } from './features/ai/AiPromptsModal'
 import { AiSourceCheckModal } from './features/ai/AiSourceCheckModal'
@@ -577,6 +578,7 @@ function App() {
       openAiChat: () => openModalDirect('ai'),
       openAiConnections: () => openModalDirect('ai-connections'),
       openAiTools: () => openModalDirect('ai-tools'),
+      openAiMcp: () => openModalDirect('ai-mcp'),
       openAiSkills: () => openModalDirect('ai-skills'),
       openAiPrompts: () => openModalDirect('ai-prompts'),
       openAiSourceCheck: () => openModalDirect('ai-source-check'),
@@ -687,6 +689,7 @@ function App() {
       )}
       {openModal === 'ai-connections' && <AiConnectionsModal onClose={closeModal} />}
       {openModal === 'ai-tools' && <AiToolsModal onClose={closeModal} />}
+      {openModal === 'ai-mcp' && <AiMcpModal onClose={closeModal} />}
       {openModal === 'ai-skills' && <AiSkillsModal onClose={closeModal} />}
       {openModal === 'ai-prompts' && <AiPromptsModal onClose={closeModal} />}
       {openModal === 'ai-source-check' && <AiSourceCheckModal onClose={closeModal} />}

@@ -8,6 +8,8 @@ import type {
   AgentConnectionInput,
   AgentManifest,
   AgentManifestTool,
+  AgentMcpServer,
+  AgentMcpServerInput,
   AgentModelListResult,
   AgentPrompt,
   AgentPromptInput,
@@ -196,4 +198,25 @@ export const taskModels = {
       method: 'POST',
       body: JSON.stringify(req),
     }),
+}
+
+/**
+ * 外部 MCP 服务：接上之后它的工具会挂进能力清单（组名 `mcp`）。
+ *
+ * 保存即尝试握手，所以 `save` 返回的就是"这一刻通没通"；`refresh` 是全部重连一遍，
+ * 用于服务重启过、或上次保存时它还没起来。
+ */
+export const mcp = {
+  list: () => request<{ group: string; servers: AgentMcpServer[] }>('/api/agent/mcp'),
+  save: (req: AgentMcpServerInput) =>
+    request<AgentMcpServer>('/api/agent/mcp', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+  refresh: () =>
+    request<{ group: string; servers: AgentMcpServer[] }>('/api/agent/mcp/refresh', {
+      method: 'POST',
+    }),
+  delete: (id: string) =>
+    request<{ deleted: string }>(`/api/agent/mcp/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

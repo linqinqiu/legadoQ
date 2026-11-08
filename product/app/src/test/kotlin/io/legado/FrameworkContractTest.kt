@@ -127,10 +127,10 @@ class FrameworkContractTest {
         assertEquals(before, registry.size())
     }
 
-    // ===== 4. 端点计数契约（157 / 19 / 18） =====
+    // ===== 4. 端点计数契约（161 / 19 / 22） =====
 
     @Test
-    fun `agent-api 契约：157 端点、19 组、AI 自定义接入 18 条`() {
+    fun `agent-api 契约：161 端点、19 组、AI 自定义接入 22 条`() {
         // RouteCatalog 从 classpath 读 /agent-api.json，serve 会补齐 version、count 与 baseUrl。
         val raw = RouteCatalog.serve("0.0.0-contract", "http://127.0.0.1:1234")
         val root = Json.parseToJsonElement(raw).jsonObject
@@ -141,8 +141,9 @@ class FrameworkContractTest {
         val declaredCount = root["count"]?.jsonPrimitive?.int
         assertEquals("count 必须等于 endpoints 实际条数", endpoints.size, declaredCount)
 
-        // 全量契约：157 条端点（书架自定义排序移除后 155，按任务选模型补 GET/POST /api/agent/task-models）。
-        assertEquals("端点总数必须是 157", 157, endpoints.size)
+        // 全量契约：161 条端点（书架自定义排序移除后 155，按任务选模型补两条到 157，
+        // MCP 客户端补 GET/POST /api/agent/mcp、POST /api/agent/mcp/refresh、DELETE /api/agent/mcp/{id} 四条到 161）。
+        assertEquals("端点总数必须是 161", 161, endpoints.size)
 
         // baseUrl 必须按运行时地址注入，不能沿用文件里写死的端口。
         val injectedBase = root["howToConnect"]?.jsonObject?.get("baseUrl")?.jsonPrimitive?.content
@@ -151,9 +152,9 @@ class FrameworkContractTest {
         val groups = endpoints.map { (it as JsonObject)["group"]!!.jsonPrimitive.content }
         // 19 个互不相同的组。
         assertEquals("组数必须是 19", 19, groups.toSet().size)
-        // AI 自定义接入组恰好 18 条（含模型清单探针、流式对话、技能库三条、提示词预设三条与任务路由两条）。
+        // AI 自定义接入组恰好 22 条（含模型清单探针、流式对话、技能库三条、提示词预设三条、任务路由两条与 MCP 四条）。
         val aiGroupCount = groups.count { it == "AI 自定义接入" }
-        assertEquals("AI 自定义接入 组必须是 18 条", 18, aiGroupCount)
+        assertEquals("AI 自定义接入 组必须是 22 条", 22, aiGroupCount)
     }
 
     // ===== 5. 框架容器不注册任何 HTTP 路由 =====

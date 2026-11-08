@@ -38,6 +38,8 @@ export type AppModal =
   | 'ai-connections'
   /** AI · 工具：勾选模型能调用哪一组能力 */
   | 'ai-tools'
+  /** AI · 外部工具：接上本机跑的 MCP 服务，把它的工具变成 AI 的能力 */
+  | 'ai-mcp'
   /** AI · 技能：按需注入的方法说明 */
   | 'ai-skills'
   /** AI · 提示词：所有对话共用的"怎么说话" */

@@ -39,6 +39,7 @@ function fakeActions(): { actions: SettingsActions; called: string[] } {
     openAiChat: make('openAiChat'),
     openAiConnections: make('openAiConnections'),
     openAiTools: make('openAiTools'),
+    openAiMcp: make('openAiMcp'),
     openAiSkills: make('openAiSkills'),
     openAiPrompts: make('openAiPrompts'),
     openAiSourceCheck: make('openAiSourceCheck'),
@@ -94,7 +95,8 @@ test('服务与接入分组：AI 按能力拆成独立入口，插件架构已�
   const rows = sections.find(section => section.title === '服务与接入')?.rows ?? []
   const titles = rows.map(r => r.title)
   // 2026-11-03：原来一栏「AI 接入」打开是一屏六块，现在按能力各一档、都在这一个分区里。
-  for (const want of ['AI 对话助手', 'AI 模型连接', 'AI 工具', 'AI 技能', 'AI 提示词', '书源校验']) {
+  // 2026-11-08：外部工具（MCP）自成第七档 —— 它管的是"接哪些外部进程"，与模型连接无关。
+  for (const want of ['AI 对话助手', 'AI 模型连接', 'AI 工具', 'AI 外部工具（MCP）', 'AI 技能', 'AI 提示词', '书源校验']) {
     assert.ok(titles.includes(want), `「服务与接入」里应有「${want}」，实际 ${titles}`)
   }
   assert.ok(!titles.includes('插件'), `不该再有「插件」一行，实际 ${titles}`)
@@ -104,7 +106,7 @@ test('服务与接入分组：AI 按能力拆成独立入口，插件架构已�
     row.onClick()
   }
   const opened = called.filter(c => c.startsWith('openAi') || c === 'openAiSourceCheck')
-  assert.equal(new Set(opened).size, 6, `六个 AI 入口要各开各的，实际 ${[...new Set(opened)]}`)
+  assert.equal(new Set(opened).size, 7, `七个 AI 入口要各开各的，实际 ${[...new Set(opened)]}`)
 })
 
 test('页内搜索：命中留整档，不命中收整档，空查询原样返回', () => {

@@ -5550,6 +5550,11 @@ input[type="checkbox"] {
 .ai-task-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ai-task-fields select, .ai-task-fields input { min-width: 0; flex: 1 1 140px; }
 .ai-task-fields .link-button { flex: none; }
+/* MCP 服务卡：地址单独一行（长地址要能折），失败原因用危险色另起一行 */
+.ai-mcp-meta { display: grid; gap: 2px; min-width: 0; }
+.ai-mcp-meta code { font-size: 12px; overflow-wrap: anywhere; }
+.ai-mcp-meta small { color: var(--muted); font-size: 11px; }
+.ai-mcp-error { margin: 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 /* 登记/编辑连接的高级项：默认收起，展开后按普通字段排 */
 .ai-register-advanced { display: grid; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .ai-register-advanced > summary { cursor: pointer; color: var(--muted); font-size: 12px; }

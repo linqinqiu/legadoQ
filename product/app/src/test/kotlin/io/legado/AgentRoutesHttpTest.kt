@@ -375,4 +375,77 @@ class AgentRoutesHttpTest {
         runCatching { Files.deleteIfExists(Path.of("$dbPath-shm")) }
         dirs.forEach { runCatching { it.toFile().deleteRecursively() } }
     }
+
+    /**
+     * MCP 服务这四条端点的 HTTP 行为：保存即连接、只改启停不抹请求头、删除连工具一起走。
+     *
+     * 第二条是**真踩到过的坑**：界面只回传请求头的名字不回传值，所以"停用/启用"这类请求
+     * 必然不带 headers —— 若按空表覆盖，用户点一下「停用」就把自己的 Authorization 抹掉了。
+     */
+    @Test
+    fun `MCP 服务：保存即连接，只改启停不会抹掉已配的请求头`() = testApplication {
+        val dbPath = Files.createTempFile("legado-agent-mcp", ".sqlite").toString()
+        val home = tempDir("home-mcp")
+        val fake = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        fake.createContext("/mcp") { exchange ->
+            val body = exchange.requestBody.use { String(it.readBytes(), Charsets.UTF_8) }
+            val method = Regex("\"method\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1).orEmpty()
+            if (method == "notifications/initialized") {
+                exchange.sendResponseHeaders(202, -1)
+                exchange.close()
+                return@createContext
+            }
+            val payload = when (method) {
+                "initialize" -> """{"jsonrpc":"2.0","id":1,"result":{}}"""
+                "tools/list" ->
+                    """{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"echo","description":"回显","inputSchema":{"type":"object","properties":{"text":{"type":"string"}}}}]}}"""
+                else -> """{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"ok"}]}}"""
+            }
+            val bytes = payload.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        fake.start()
+        try {
+            application { legadoApplication(serverConfig(dbPath, home)) }
+            val c = makeClient()
+            val url = "http://127.0.0.1:${fake.address.port}/mcp"
+
+            val created = c.post("/api/agent/mcp") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"name":"演示服务","url":"$url","headers":{"Authorization":"Bearer secret"}}""")
+            }
+            assertEquals(HttpStatusCode.OK, created.status)
+            val view = readJson(created).jsonObject
+            assertEquals("保存即连接：应已连通", true, view["ok"]?.jsonPrimitive?.boolean)
+            assertEquals(1, view["toolCount"]?.jsonPrimitive?.int)
+            assertEquals(
+                "请求头只回名字（值不回传）",
+                listOf("Authorization"),
+                view["headerNames"]?.jsonArray?.map { it.jsonPrimitive.content },
+            )
+            val id = view["id"]!!.jsonPrimitive.content
+
+            // 只改启停：不带 headers 的请求必须沿用原值。
+            val toggled = c.post("/api/agent/mcp") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"id":"$id","name":"演示服务","url":"$url","enabled":false}""")
+            }
+            assertEquals(HttpStatusCode.OK, toggled.status)
+            val listed = readJson(c.get("/api/agent/mcp")).jsonObject["servers"]!!.jsonArray.single().jsonObject
+            assertEquals(false, listed["enabled"]?.jsonPrimitive?.boolean)
+            assertEquals(
+                "只改启停就把 Authorization 抹掉了",
+                listOf("Authorization"),
+                listed["headerNames"]?.jsonArray?.map { it.jsonPrimitive.content },
+            )
+
+            assertEquals(HttpStatusCode.OK, c.delete("/api/agent/mcp/$id").status)
+            assertEquals(0, readJson(c.get("/api/agent/mcp")).jsonObject["servers"]!!.jsonArray.size)
+        } finally {
+            fake.stop(0)
+            cleanup(dbPath, home)
+        }
+    }
 }

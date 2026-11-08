@@ -54,6 +54,8 @@ export type SettingsActions = {
   openAiConnections: () => void
   /** AI · 工具：勾选模型能调用哪一组能力 */
   openAiTools: () => void
+  /** AI · 外部工具：接本机跑的 MCP 服务，把它的工具变成 AI 的能力 */
+  openAiMcp: () => void
   /** AI · 技能：命中关键词才注入的方法说明 */
   openAiSkills: () => void
   /** AI · 提示词：每次对话都生效的"怎么说话" */
@@ -167,6 +169,12 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
           hint: '勾选模型能调用哪几组能力；关掉的组它连看都看不到。',
           action: '选择工具',
           onClick: actions.openAiTools,
+        },
+        {
+          title: 'AI 外部工具（MCP）',
+          hint: '接上本机跑的 MCP 服务，它的工具就会进「AI 工具」的「外部工具」一档。',
+          action: '管理 MCP',
+          onClick: actions.openAiMcp,
         },
         {
           title: 'AI 技能',

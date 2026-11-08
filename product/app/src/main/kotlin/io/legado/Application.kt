@@ -169,6 +169,9 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
         environment.monitor.subscribe(ApplicationStarted) {
             subscriptions.start()
             bookCache.start()
+            // 外部 MCP 工具：握手 + 拉清单是网络活儿，不能挡在"端口能连"前面。
+            // 失败只让那一组工具为空（原因记进 /api/agent/mcp），不影响对话。
+            runCatching { agentConnection.mcp.sync() }
             // 大库高碎片时全量 VACUUM 会重写整个文件，同步跑明显拖冷启动。
             // 端口已 listen，把碎片回收挪到后台守护线程里（见 Database.scheduleReclaimFragmentation）。
             database.scheduleReclaimFragmentation()

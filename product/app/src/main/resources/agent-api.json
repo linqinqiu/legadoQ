@@ -1,6 +1,6 @@
 {
   "service": "legadoQ",
-  "version": "0.2.32",
+  "version": "0.2.33",
   "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统）。每条按 group 归类。",
   "howToConnect": {
     "baseUrl": "http://127.0.0.1:1234",
@@ -1783,7 +1783,47 @@
         "model": "可选，模型名；留空表示用该连接自己的模型"
       },
       "response": "{tasks:[{task,label,connectionId,model,routed}]}；连接不存在 400 unknown_connection"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/mcp",
+      "write": false,
+      "group": "AI 自定义接入",
+      "purpose": "已登记的 MCP（Model Context Protocol）服务 + 上一次同步结果：是否连通、挂上了几个工具、失败原因。请求头的值不回传，只回名字（那里面通常就是 token）。",
+      "response": "{group, servers:[{id,name,url,enabled,ok,toolCount,error,syncedAt,headerNames}]}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/mcp",
+      "write": true,
+      "group": "AI 自定义接入",
+      "purpose": "登记/更新一台 MCP 服务（落盘 agent-mcp.json）并立即握手一次：成功就把它的工具以 mcp.<服务id>.<工具名> 挂进能力清单（组名 mcp，默认不下发），失败把原因带回界面。",
+      "body": {
+        "id": "可选；不给就用 name 派生（小写字母/数字/下划线/短横线）",
+        "name": "服务名（必填）",
+        "url": "MCP 端点，http(s)://主机:端口/路径（必填）",
+        "enabled": "可选，默认 true",
+        "headers": "可选，额外的请求头（如 Authorization）",
+        "timeoutMs": "可选，单次工具调用超时，1000~120000"
+      },
+      "response": "McpServer 视图；id/地址不合法 400 invalid_mcp_server"
+    },
+    {
+      "method": "POST",
+      "path": "/api/agent/mcp/refresh",
+      "write": true,
+      "group": "AI 自定义接入",
+      "purpose": "全部重连：重新握手并拉一遍每台服务的工具清单（会外呼，改的是注册表）。服务重启过、或上次保存时它还没起来时用。",
+      "response": "{group, servers:[...]}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agent/mcp/{id}",
+      "write": true,
+      "group": "AI 自定义接入",
+      "purpose": "删除一台 MCP 服务，并把它注册过的工具一起摘掉 —— 留着等于给模型一个永远调不通的能力。",
+      "response": "{deleted}；没登记过这台 404 not_found"
     }
   ],
-  "count": 157
+  "count": 161
 }

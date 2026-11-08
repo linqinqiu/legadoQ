@@ -43,6 +43,7 @@ import {
   skills as newSkills,
   prompts as newPrompts,
   taskModels as newTaskModels,
+  mcp as newMcp,
   system as newSystem,
   subscriptions as newSubscriptions,
   brand as newBrand,
@@ -207,6 +208,10 @@ export const api = {
   deleteAgentPrompt: newPrompts.delete,
   listAgentTaskModels: newTaskModels.list,
   saveAgentTaskModel: newTaskModels.save,
+  listAgentMcp: newMcp.list,
+  saveAgentMcp: newMcp.save,
+  refreshAgentMcp: newMcp.refresh,
+  deleteAgentMcp: newMcp.delete,
   // system
   logs: newSystem.logs,
   clearLogs: newSystem.clearLogs,

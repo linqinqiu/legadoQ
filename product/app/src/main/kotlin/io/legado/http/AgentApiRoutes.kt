@@ -15,14 +15,18 @@ import io.legado.ai.agentComprehend
 import io.legado.ai.agentCreateConnection
 import io.legado.ai.agentCreateSource
 import io.legado.ai.agentDeleteConnection
+import io.legado.ai.agentDeleteMcp
 import io.legado.ai.agentDeletePrompt
 import io.legado.ai.agentDeleteSkill
 import io.legado.ai.agentListConnections
+import io.legado.ai.agentListMcp
 import io.legado.ai.agentListModels
 import io.legado.ai.agentListPrompts
 import io.legado.ai.agentListSkills
 import io.legado.ai.agentListTaskModels
 import io.legado.ai.agentManifest
+import io.legado.ai.agentRefreshMcp
+import io.legado.ai.agentSaveMcp
 import io.legado.ai.agentSavePrompt
 import io.legado.ai.agentSaveSkill
 import io.legado.ai.agentSaveTaskModel
@@ -127,6 +131,26 @@ fun Route.agentApiRoutes(
             get("task-models") {
                 // 只读：按任务选模型的路由表（对话 / 摘要 / 每条技能）。不写库，无需同源写门。
                 call.agentListTaskModels(homeDirectory, profileStore)
+            }
+            get("mcp") {
+                // 只读：已登记的 MCP 服务 + 上一次同步结果。不写库，无需同源写门。
+                call.agentListMcp(homeDirectory, agentConnection)
+            }
+            post("mcp") {
+                // 写：登记/更新一台 MCP 服务（落盘 agent-mcp.json 并立即尝试连接），需同源写门防 CSRF。
+                if (!call.requireSameOriginWrite()) return@post
+                call.agentSaveMcp(homeDirectory, agentConnection)
+            }
+            post("mcp/refresh") {
+                // 写：重新握手并拉取全部服务的工具清单（会外呼，改的是注册表），需同源写门。
+                if (!call.requireSameOriginWrite()) return@post
+                call.agentRefreshMcp(homeDirectory, agentConnection)
+            }
+            delete("mcp/{id}") {
+                // 写：删掉一台 MCP 服务并摘掉它注册的工具，需同源写门防 CSRF。
+                if (!call.requireSameOriginWrite()) return@delete
+                val id = call.parameters["id"] ?: ""
+                call.agentDeleteMcp(id, homeDirectory, agentConnection)
             }
             post("task-models") {
                 // 写：改一项任务路由（落盘 agent-task-models.json），需同源写门防 CSRF。

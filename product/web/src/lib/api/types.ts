@@ -823,6 +823,37 @@ export type AgentSkillInput = {
   enabled?: boolean
 }
 
+/**
+ * 一台外部 MCP 服务（Model Context Protocol）。
+ *
+ * 接上之后它的工具会以 `mcp.<服务id>.<工具名>` 挂进能力清单，组名固定 `mcp`
+ * —— 默认不下发，模型要用得先 `tool.search` 找到再 `tool.call`。
+ */
+export type AgentMcpServer = {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  /** 上一次同步是否成功；false 时看 [error]。 */
+  ok: boolean
+  toolCount: number
+  /** 失败原因（人话）；成功时为空。 */
+  error?: string | null
+  /** 上次同步时刻（epoch 毫秒）；0 = 还没同步过。 */
+  syncedAt: number
+  /** 已配置的请求头**名字**（值不回传：那里面通常就是 token）。 */
+  headerNames: string[]
+}
+
+export type AgentMcpServerInput = {
+  id?: string
+  name: string
+  url: string
+  enabled?: boolean
+  headers?: Record<string, string>
+  timeoutMs?: number
+}
+
 /** 提示词预设 —— 管"怎么说话"（语气、字数、格式），启用的每条都注入 system。 */
 export type AgentPrompt = {
   id: string

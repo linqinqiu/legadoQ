@@ -44,6 +44,12 @@ class AgentConnection internal constructor(private val agent: Agent) {
     val registry: ToolRegistry get() = agent.registry
 
     /**
+     * 外部 MCP 服务桥：`/api/agent/mcp` 这四条端点背后就是它。
+     * 同步过的远端工具会出现在 [manifest] 里，`origin` 为 `mcp:<服务id>`。
+     */
+    val mcp: McpBridge get() = agent.mcp
+
+    /**
      * 生命周期钩子 —— 让调用方挂审计 / 限流 / 结果改写，而不必改框架源码。
      *
      * ```kotlin

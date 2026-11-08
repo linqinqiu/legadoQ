@@ -40,6 +40,10 @@ export const AI_TOOL_GROUP_INFO: Record<string, AiToolGroupInfo> = {
   backup: { title: '备份', hint: '列出并读取备份区里的条目。' },
   health: { title: '书源体检', hint: '看书源体检的结论与失败原因。' },
   debug: { title: '规则调试', hint: '逐阶段跑书源规则，看每一步的中间结果。' },
+  mcp: {
+    title: '外部工具（MCP）',
+    hint: '你自己接的 MCP 服务提供的工具。默认不下发：模型要先用工具搜索找到再用。',
+  },
 }
 
 /** 组的显示名；不认识的组回落成 id 本身（新加组时不至于变成空白）。 */

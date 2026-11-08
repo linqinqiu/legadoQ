@@ -50,6 +50,7 @@ import { chatStream } from './domains/agent'
 import { skills } from './domains/agent'
 import { prompts } from './domains/agent'
 import { taskModels } from './domains/agent'
+import { mcp } from './domains/agent'
 
 import { brand } from './domains/brand'
 import { system } from './domains/system'
@@ -94,6 +95,7 @@ export {
   skills,
   prompts,
   taskModels,
+  mcp,
   brand,
   system,
 }
