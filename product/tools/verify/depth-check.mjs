@@ -46,17 +46,14 @@ const MAX_FRONTEND_DIRS = 3;      // web/src/<分区>/<域>/<组>/File.tsx
 // 已知过深文件基线（ROOT 相对、正斜杠）。**只许缩小**：扁平化掉一个就从这里删一条。
 // 分后端/前端两块只是为了报告可读，判定是合并后统一比对的。
 const KNOWN_DEEP = new Set([
-  // ---- 后端 11：data/db（连接池/迁移/Schema/Cookie 存储）、rules/processor（四种规则引擎实现
-  //      + demo/）、http/system（系统路由组）—— 都是按子系统收拢，不是随手嵌深 ----
+  // ---- 后端 7：data/db（连接池/迁移/Schema/Cookie 存储）、rules/processor/demo（示例处理器）、
+  //      http/system（系统路由组）—— 都是按子系统收拢，不是随手嵌深 ----
+  //      2026-11-08：四个「尚未实现」的规则引擎占位实现已删除，基线从 11 条缩到 7 条。
   'app/src/main/kotlin/io/legado/data/db/ConnectionPool.kt',
   'app/src/main/kotlin/io/legado/data/db/CookieUtil.kt',
   'app/src/main/kotlin/io/legado/data/db/Migration.kt',
   'app/src/main/kotlin/io/legado/data/db/Schema.kt',
   'app/src/main/kotlin/io/legado/http/system/SystemRoutes.kt',
-  'app/src/main/kotlin/io/legado/rules/processor/JsonPathProcessor.kt',
-  'app/src/main/kotlin/io/legado/rules/processor/JsoupProcessor.kt',
-  'app/src/main/kotlin/io/legado/rules/processor/RhinoProcessor.kt',
-  'app/src/main/kotlin/io/legado/rules/processor/XPathProcessor.kt',
   'app/src/main/kotlin/io/legado/rules/processor/demo/DemoHelloProcessor.kt',
   'app/src/main/kotlin/io/legado/rules/processor/demo/DemoMarkdownProcessor.kt',
 
