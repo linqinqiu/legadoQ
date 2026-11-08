@@ -34,10 +34,45 @@ internal class NodeValue private constructor(
      * [regexItemValue] —— 分组替换出来的字面量就是值，不再当选择器 / JSONPath 求值。
      */
     private val groups: List<String>? = null,
+    /**
+     * 本次求值所属的运行时（调度器 + 日志出口）。为空 = 没挂扩展点，一切走内建链路。
+     * 子节点（[at] / `NodeValue.html` 等）会把它带下去，所以规则链上任何一层都能被处理器接管。
+     */
+    private val runtime: RuleRuntime? = null,
 ) {
     private val ruleVariables = mutableMapOf<String, String>()
 
     fun value(rule: String?, jsSandbox: JsSandbox? = null, rawBody: String? = null, baseUrl: String? = null): String? {
+        if (rule.isNullOrBlank()) return null
+        // 扩展点：注册过的处理器认领这条规则就由它给结果，**认领即拥有**（不再落回内建链路）。
+        // 放在 `@put/@get` 之前：处理器拿到的就是规则原文，要不要处理变量由它自己决定。
+        val active = runtime
+        // 没注册处理器时连 trim 都不做：这是每条规则 × 每个条目都会走一遍的热路径，
+        // 而绝大多数部署一个自定义处理器都没有。
+        val processor = if (active != null && active.dispatcher.size > 0) active.dispatcher.claim(rule.trim()) else null
+        if (active != null && processor != null) {
+            val result = runCatching {
+                processor.execute(rule, ProcessorInput(jsSandbox, rawBody, baseUrl), active)
+            }.getOrElse { error ->
+                active.log("规则处理器 ${processor.type} 执行失败：${error.message ?: error::class.simpleName}")
+                return null
+            }
+            if (!result.ok) {
+                active.log("规则处理器 ${processor.type} 报告失败：${result.error ?: "未给原因"}")
+                return null
+            }
+            return result.text.takeIf { it.isNotBlank() }
+        }
+        return valueBuiltin(rule, jsSandbox, rawBody, baseUrl)
+    }
+
+    /** 内建求值链路：[value] 去掉扩展点之后的部分，也是 [RuleInput.evaluateBuiltin] 的实现。 */
+    private fun valueBuiltin(
+        rule: String?,
+        jsSandbox: JsSandbox? = null,
+        rawBody: String? = null,
+        baseUrl: String? = null,
+    ): String? {
         if (rule.isNullOrBlank()) return null
         // `:` 起头的列表规则产出的条目：字段规则是 `$1`/`$2` 这种分组引用，另有一条链（见 regexItemValue）
         groups?.let { return regexItemValue(rule.trim(), it, jsSandbox, rawBody, baseUrl) }
@@ -155,7 +190,7 @@ internal class NodeValue private constructor(
             if (preRule.isBlank() && jsCode.isNotBlank()) {
                 val evaluated = evaluateJs(jsSandbox, jsCode, rawBody, baseUrl) ?: return null
                 return if (postRule.isBlank()) evaluated
-                else NodeValue.document(evaluated).value(postRule, jsSandbox, evaluated, baseUrl)
+                else NodeValue.document(evaluated, runtime).value(postRule, jsSandbox, evaluated, baseUrl)
             }
             // 无前缀时 result 就是当前条目本身。JSON 条目必须按**对象**传入（沙箱会把 Map 转成 JS 对象），
             // 若按 toString 传，书源里的 result.book_id 之类属性访问全部取不到值，条目会被整条丢弃。
@@ -168,7 +203,7 @@ internal class NodeValue private constructor(
             if (postRule.isBlank()) return evaluated
             // Legado 规则链：`<js>…</js>` 之后可以再接取值路径（如 `$.data` 或 CSS 选择器），
             // 把 JS 的返回值当作新文档继续取值。聚合源大量使用这种写法。
-            return NodeValue.document(evaluated).value(postRule, jsSandbox, evaluated, baseUrl)
+            return NodeValue.document(evaluated, runtime).value(postRule, jsSandbox, evaluated, baseUrl)
         }
 
         return valuePlain(trimmedRule)
@@ -234,7 +269,7 @@ internal class NodeValue private constructor(
                 mapOf("result" to binding, "src" to (rawBody ?: base), "baseUrl" to (baseUrl ?: "")),
             ) ?: base
             if (postRule.isBlank()) return evaluated
-            return NodeValue.document(evaluated).value(postRule, jsSandbox, evaluated, baseUrl)
+            return NodeValue.document(evaluated, runtime).value(postRule, jsSandbox, evaluated, baseUrl)
         }
         val marker = findInlineJsMarker(rule)
         if (marker != null && marker.first > 0) {
@@ -447,8 +482,28 @@ internal class NodeValue private constructor(
 
     fun at(rule: String?): NodeValue {
         if (json == null || rule.isNullOrBlank() || !rule.trimStart().startsWith("$")) return this
-        return runCatching { NodeValue.json(readJson(rule)) }.getOrDefault(this)
+        return runCatching { NodeValue.json(readJson(rule), runtime) }.getOrDefault(this)
     }
+
+    /**
+     * 交给处理器的输入：节点本身 + 本次求值的沙箱/原文/基地址（[evaluateBuiltin] 要用）。
+     *
+     * 不给处理器看 [NodeValue]：那会把选择器方言、JSONPath 这些内建实现细节变成公开契约，
+     * 以后想换实现就得连着处理器一起改。处理器需要"按老规则取个值"时走 [evaluateBuiltin]。
+     */
+    private inner class ProcessorInput(
+        private val jsSandbox: JsSandbox?,
+        private val rawBody: String?,
+        private val baseUrl: String?,
+    ) : RuleInput {
+        override val raw: String get() = rawBody ?: rootText ?: documentText()
+        override fun documentText(): String = this@NodeValue.documentText()
+        override fun evaluateBuiltin(rule: String): String? = valueBuiltin(rule, jsSandbox, rawBody, baseUrl)
+    }
+
+    /** 给宿主（`RuleRunner` 的列表级扩展点）构造一份处理器输入。 */
+    internal fun inputFor(rawBody: String?, jsSandbox: JsSandbox? = null, baseUrl: String? = null): RuleInput =
+        ProcessorInput(jsSandbox, rawBody, baseUrl)
 
     /**
      * `@put:{k:…}` 存下的变量表：读出来 / 灌进去。
@@ -577,16 +632,16 @@ internal class NodeValue private constructor(
         /** 上游 `AnalyzeRule.regexPattern`：字段规则里的分组引用 `$0`…`$99`。 */
         private val GROUP_REF = Regex("\\$\\d{1,2}")
 
-        fun html(element: Element) = NodeValue(element, null)
-        fun document(body: String) = if (body.trimStart().startsWith("{") || body.trimStart().startsWith("[")) {
-            NodeValue(null, JsonPath.parse(body).json<Any>(), rootText = body)
+        fun html(element: Element, runtime: RuleRuntime? = null) = NodeValue(element, null, runtime = runtime)
+        fun document(body: String, runtime: RuleRuntime? = null) = if (body.trimStart().startsWith("{") || body.trimStart().startsWith("[")) {
+            NodeValue(null, JsonPath.parse(body).json<Any>(), rootText = body, runtime = runtime)
         } else {
-            NodeValue(Jsoup.parse(body), null, rootText = body)
+            NodeValue(Jsoup.parse(body), null, rootText = body, runtime = runtime)
         }
-        fun json(value: Any?) = NodeValue(null, value)
+        fun json(value: Any?, runtime: RuleRuntime? = null) = NodeValue(null, value, runtime = runtime)
 
         /** AllInOne 正则条目：[groups] 是一次匹配的全部分组，下标对应字段规则里的 `$N`。 */
-        fun regexItem(groups: List<String>) = NodeValue(null, null, groups = groups)
+        fun regexItem(groups: List<String>, runtime: RuleRuntime? = null) = NodeValue(null, null, groups = groups, runtime = runtime)
     }
 }
 

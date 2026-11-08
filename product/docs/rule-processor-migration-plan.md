@@ -1,7 +1,32 @@
 # RuleProcessor 接入 RuleRunner：分阶段方案
 
-> 状态：**方案（未实施）**。0.2.15 只交付了契约（`RuleProcessor` / `RuleContext` / `RuleResult` / `RuleDispatcher`）
-> 与占位实现，`RuleRunner` 仍走原有内联链路。本文写清"要接入得先做什么"，避免下一个人直接动手改 2405 行。
+> 状态：**扩展点已接入（0.2.34）；把内建实现搬进处理器的迁移仍未做（可选）**。
+>
+> 0.2.15 只交付了契约（`RuleProcessor` / `RuleContext` / `RuleResult` / `RuleDispatcher`）与四个
+> 「尚未实现」的占位类，`RuleRunner` 收了个 `ruleDispatcher` 参数却从不读 —— 于是新写一种解析方式
+> 能编译、能单测，**求值时永远走不到它**。
+>
+> 0.2.34 换了个更小的做法把扩展点接上（见 §0）：**先问处理器、没人认领再走内联**。
+> 内建四种类型（CSS / XPath / JSONPath / JS）一个字节都没动，等价性因此不需要"重写再对齐"来证明。
+> 本文 §3 的 P4–P7（把内联实现搬进处理器）仍是可选项，动机从"让扩展点生效"变成"把 2405 行拆薄"。
+
+## 0. 0.2.34 已落地：扩展点先接上
+
+| 位置 | 改动 |
+|---|---|
+| `NodeValue.value(rule)` | 求值前先 `dispatcher.claim(rule)`；认领了就由处理器给值，**认领即拥有**（不落回内联） |
+| `RuleRunner.nodes(body, rule)` | 列表规则先问 `claimNodeRule`（只问声明了 `producesNodes` 的处理器） |
+| `RuleRunner.dispatcher` | 公开可注册；`RuleRuntime`（调度器 + 日志出口）随每个节点往下传，不依赖线程变量 |
+| `RuleInput.evaluateBuiltin` | 处理器可以"先按老规则取个值再加工"，走内联、不经过扩展点（不会自递归） |
+| `@css:` | 值侧早就有，列表侧补上（此前 `@css:.list li` 被整串喂给选择器方言，整源 0 条） |
+| `processor/` 包 | 删掉四个「尚未实现」的占位类；`demo/` 两个示例改成新契约并**真的能跑** |
+
+判据：`app/src/test/kotlin/io/legado/RuleProcessorTest.kt`（7 项）—— 值级生效、列表级生效、
+值型处理器不接管列表、认领即拥有、处理器抛异常不拖垮整源、`@css:` 两侧一致、注册/覆盖/摘除。
+
+**为什么不让内建类型也走处理器**：那需要把 Jsoup / Rhino / JSONPath 的解释逻辑整体搬进处理器，
+再由处理器调回同一批底层件 —— 搬错一处的症状是"某个源少一条结果"，而这类退化只有金标准语料看得见。
+扩展点的价值是"能加新类型"，不是"必须把老类型重写一遍"。想拆薄 `RuleRunner` 时按 §3 走。
 
 ## 1. 现状与为什么不能一次替换
 
@@ -32,10 +57,10 @@
 
 | 形态 | 例子 | 归属处理器 |
 |---|---|---|
-| CSS 选择器 + `@text`/`@href` 后缀 | `div.book-list@class` | `JsoupProcessor` |
-| XPath | `//div[@id='list']/a` | `XPathProcessor` |
-| JSONPath | `$.data.list[*].name` | `JsonPathProcessor` |
-| JS 片段 `<js>...</js>` / `@js:` | `<js>result.replace(...)</js>` | `RhinoProcessor` |
+| CSS 选择器 + `@text`/`@href` 后缀 | `div.book-list@class` | 内联（`valuePlain` / `selectLegadoSegments`） |
+| XPath | `//div[@id='list']/a` | 内联（`xpathTexts` / `xpathNodes`） |
+| JSONPath | `$.data.list[*].name` | 内联（`valueJson` / JsonPath） |
+| JS 片段 `<js>...</js>` / `@js:` | `<js>result.replace(...)</js>` | 内联（`JsSandbox`） |
 | `\|\|` 备选、`,` 合并、`##` 排除 | `rule1\|\|rule2` | 交给上层组合（不是处理器） |
 
 盘点结果决定 `canHandle()` 的判定顺序 —— 现在占位实现里的 `canHandle` 是猜的，必须以语料为准。
@@ -76,6 +101,6 @@
 | 想看什么 | 看哪 |
 |---|---|
 | 契约定义 | `app/src/main/kotlin/io/legado/rules/RuleProcessor.kt` |
-| 占位处理器 | `rules/processor/{Jsoup,XPath,JsonPath,Rhino}Processor.kt` |
+| 处理器示例 | `rules/processor/demo/`（两个，可直接注册） |
 | 扩展示例 | `rules/processor/demo/{DemoHello,DemoMarkdown}Processor.kt` |
-| 现状说明 | `docs/STATUS.md` §7「已知缺口」第一行 |
+| 接入判据 | `app/src/test/kotlin/io/legado/RuleProcessorTest.kt` |

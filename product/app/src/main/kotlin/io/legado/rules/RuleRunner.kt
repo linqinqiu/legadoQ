@@ -78,12 +78,25 @@ import io.legado.model.SearchResult
 class RuleRunner(
     private val responseFetcher: ((String) -> String)? = null,
     internal var database: PortBundle? = null,
-    /** 规则处理器调度器；缺省时按原有内置逻辑走（向后兼容）。 */
-    internal val ruleDispatcher: RuleDispatcher? = null,
+    /**
+     * 规则处理器调度器：**真的会被读到**（0.2.34 起）。
+     *
+     * 从前这个参数存在但没人读 —— 注册进去的处理器一条规则都接不到，扩展点是装饰。
+     * 现在每次取值（`NodeValue.value`）与每次取列表（[nodes]）都先问它「有处理器认领吗」，
+     * 没人认领才落回内建链路。默认空调度器 = 行为与从前完全一致。
+     *
+     * 想在运行时加一种规则类型：`runner.dispatcher.register(MyProcessor())`。
+     */
+    val dispatcher: RuleDispatcher = RuleDispatcher(),
 ) {
-    constructor(database: PortBundle) : this(null, database, null)
-    constructor(responseFetcher: (String) -> String) : this(responseFetcher, null, null)
+    constructor(database: PortBundle) : this(null, database, RuleDispatcher())
+    constructor(responseFetcher: (String) -> String) : this(responseFetcher, null, RuleDispatcher())
     constructor(database: PortBundle, ruleDispatcher: RuleDispatcher) : this(null, database, ruleDispatcher)
+
+    /** 把调度器与日志出口绑好，随每个解析出的节点往下传。 */
+    private val runtime = RuleRuntime(dispatcher) { message ->
+        logRuleExecution(message, level = io.legado.port.LogLevel.WARN)
+    }
 
     /**
      * 测试与离线注入的**完整响应**替身：正文之外还要给状态码、响应头、Set-Cookie。
@@ -226,7 +239,7 @@ class RuleRunner(
         val listRule = stripListPrefixMarkers(rawListRule)
         // 与 chapters() 一致：`<js>…</js>` 形式的列表规则要先过沙箱预处理，直接丢给 Jsoup/json-path 会解析失败
         val items = try {
-            if (isJsRule(listRule)) jsListNodes(NodeValue.document(body), listRule, body, sourceUrl) else nodes(body, listRule)
+            if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, sourceUrl) else nodes(body, listRule)
         } catch (error: RuleExecutionException) {
             throw error
         } catch (error: Exception) {
@@ -345,7 +358,7 @@ class RuleRunner(
             val body = fetchUrl(pageUrl, mergedOptions, null, sourceUrl, database)
             val reverse = rawListRule.startsWith("-")
             val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
-            val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body), listRule, body, pageUrl) else nodes(body, listRule)
+            val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, pageUrl) else nodes(body, listRule)
             val items = nodes0.mapNotNull { item ->
                 val title = item.value(source.string("ruleTitle"), jsSandbox, body, pageUrl)?.trim().orEmpty()
                 if (title.isBlank()) return@mapNotNull null
@@ -379,7 +392,7 @@ class RuleRunner(
             val (path, options) = splitUrlOptions(link)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             val body = fetchUrl(path.absolute(sourceUrl), mergedOptions, null, sourceUrl, database)
-            val root = NodeValue.document(body)
+            val root = NodeValue.document(body, runtime)
             val text = root.value(ruleContent, jsSandbox, body, link)?.preserveContentImages(link)?.cleanContent().orEmpty()
             if (text.isBlank()) {
                 val detail = jsSandbox.lastError?.let { "，脚本异常：$it" } ?: ""
@@ -567,12 +580,12 @@ class RuleRunner(
         val baseDoc: NodeValue
         if (dataPayload != null) {
             body = dataPayload
-            baseDoc = NodeValue.json(dataPayload)
+            baseDoc = NodeValue.json(dataPayload, runtime)
         } else {
             val (url, options) = splitUrlOptions(bookUrl)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             body = fetchUrl(url, mergedOptions, null, sourceUrl, database)
-            baseDoc = NodeValue.document(body)
+            baseDoc = NodeValue.document(body, runtime)
         }
 
         // 搜索/发现时 `@put` 下的变量灌回来：`tocUrl` 常写成 `@get:{bid}`（漫画源就是这样）
@@ -586,7 +599,7 @@ class RuleRunner(
             initRule.isNullOrBlank() -> baseDoc
             initRule.contains("<js>") || initRule.trimStart().startsWith("@js:") || initRule.trimStart().startsWith("js:") ->
                 runCatching { baseDoc.value(initRule, jsSandbox, body, bookUrl) }.getOrNull()
-                    ?.takeIf { it.isNotBlank() }?.let { NodeValue.document(it) } ?: baseDoc
+                    ?.takeIf { it.isNotBlank() }?.let { NodeValue.document(it, runtime) } ?: baseDoc
             else -> baseDoc.at(initRule)
         }
         // `at()` / `NodeValue.document()` 会另起一个节点，变量得再灌一次
@@ -749,12 +762,12 @@ class RuleRunner(
         if (dataPayload != null) {
             // 聚合源的目录地址同样是参数载体，由 chapterList 的 JS 自行取回目录
             body = dataPayload
-            chapterNodes = jsListNodes(NodeValue.json(dataPayload), listRule, body, pageUrl)
+            chapterNodes = jsListNodes(NodeValue.json(dataPayload, runtime), listRule, body, pageUrl)
         } else {
             val (url, options) = splitUrlOptions(pageUrl)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             body = fetchUrl(url, mergedOptions, null, sourceUrl, database)
-            val baseDoc = NodeValue.document(body)
+            val baseDoc = NodeValue.document(body, runtime)
             chapterNodes = if (isJsRule(listRule)) jsListNodes(baseDoc, listRule, body, pageUrl) else nodes(body, listRule)
         }
         // 条目节点是现造的，变量得逐个灌（`@get:{bid}` 就写在 chapterUrl 里）
@@ -769,7 +782,7 @@ class RuleRunner(
             if (chapterHref == null && !isVolume) return@mapNotNull null
             Triple(name, chapterHref ?: "", isVolume)
         }
-        val nextRaw = if (!followNext || nextRule.isEmpty()) "" else NodeValue.document(body)
+        val nextRaw = if (!followNext || nextRule.isEmpty()) "" else NodeValue.document(body, runtime)
             .also { it.seedVariables(seedVars) }
             .value(nextRule, jsSandbox, body, pageUrl)
             .orEmpty()
@@ -823,7 +836,7 @@ class RuleRunner(
         val produced = base.value(jsOnly, jsSandbox, body, baseUrl) ?: return emptyList()
         if (postRule.isNotBlank()) return nodes(produced, postRule)
         val parsed = runCatching { Json.parseToJsonElement(produced) }.getOrNull() as? JsonArray ?: return emptyList()
-        return parsed.map { NodeValue.json(it.toPlainJava()) }
+        return parsed.map { NodeValue.json(it.toPlainJava(), runtime) }
     }
 
     /** 把 kotlinx JsonElement 转成普通 Java 结构，使 JsonPath 取值与 JS 属性访问都能正常工作。 */
@@ -995,11 +1008,11 @@ class RuleRunner(
     /** 取正文的一页，返回（可继续取值的根节点，原始响应体）。聚合源的 `data:` 章节地址由规则自己取回正文。 */
     private fun contentPage(source: JsonObject, sourceUrl: String?, pageUrl: String, vars: Map<String, String> = emptyMap()): Pair<NodeValue, String> {
         val dataPayload = dataUrlPayload(pageUrl)
-        if (dataPayload != null) return NodeValue.json(dataPayload).also { it.seedVariables(vars) } to dataPayload
+        if (dataPayload != null) return NodeValue.json(dataPayload, runtime).also { it.seedVariables(vars) } to dataPayload
         val (url, options) = splitUrlOptions(pageUrl)
         val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
         val body = fetchUrl(url, mergedOptions, null, sourceUrl, database)
-        return NodeValue.document(body).also { it.seedVariables(vars) } to body
+        return NodeValue.document(body, runtime).also { it.seedVariables(vars) } to body
     }
 
     /**
@@ -2062,7 +2075,7 @@ class RuleRunner(
     internal fun listItemsByRule(content: String, rule: String, baseUrl: String?): List<String> {
         val listRule = stripListPrefixMarkers(rule)
         if (listRule.isEmpty()) return emptyList()
-        val base = NodeValue.document(content)
+        val base = NodeValue.document(content, runtime)
         val nodes = if (isJsRule(listRule)) jsListNodes(base, listRule, content, baseUrl ?: "") else nodes(content, listRule)
         return nodes.map { it.bridgeText() }
     }
@@ -2075,6 +2088,24 @@ class RuleRunner(
         // 整个源搜索 0 条。前缀在非目录路径没有语义，剥掉再走正常分发即可
         // （chapters() / rssArticles() 自己会先剥好再进来，反转语义不受影响）。
         if (rule.startsWith("-") || rule.startsWith("+")) return nodes(body, stripListPrefixMarkers(rule))
+        // `@css:` 是显式前缀（值规则那一侧早就认它，见 RuleValue.valuePlain）：列表这一侧以前不认，
+        // 于是 `@css:.librarylist li` 被整串喂给选择器方言，报一句看不懂的解析异常、整源 0 条。
+        if (rule.startsWith("@css:", ignoreCase = true)) return nodes(body, rule.substringAfter(':').trim())
+        // 扩展点：列表规则只问声明了 producesNodes 的处理器；没人认领就落回内建链路。
+        runtime.dispatcher.claimNodeRule(rule)?.let { processor ->
+            val document = NodeValue.document(body, runtime)
+            val result = runCatching { processor.execute(rule, document.inputFor(body), runtime) }
+                .getOrElse { error ->
+                    runtime.log("规则处理器 ${processor.type} 执行列表失败：${error.message ?: error::class.simpleName}")
+                    return emptyList()
+                }
+            if (!result.ok) {
+                runtime.log("规则处理器 ${processor.type} 报告列表失败：${result.error ?: "未给原因"}")
+                return emptyList()
+            }
+            // 认领即拥有：条目为空就是「这个源确实没有条目」，不再退回内建链路。
+            return result.nodes.map { NodeValue.json(it, runtime) }
+        }
         // AllInOne 正则列表（上游 `splitSourceRule(ruleStr, allInOne = true)` 的「首字符是 `:`」分支）：
         // 整条规则是正则，一个条目 = 一次匹配的**全部分组**，字段规则用 `$1`/`$2` 取分组。
         // 必须排在 `&&` 分支切分**之前** —— 正则模式里 `&&` 是「多级正则」的分隔符
@@ -2085,7 +2116,7 @@ class RuleRunner(
         // @json: 前缀（对齐原版 ruleStr.startsWith("@Json:")）：去前缀后按 JSONPath 读列表
         if (isJsonPrefixedRule(rule)) {
             val path = stripJsonPrefix(rule)
-            return runCatching { (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it) } ?: emptyList() }.getOrDefault(emptyList())
+            return runCatching { (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList() }.getOrDefault(emptyList())
         }
         val (branchSeparator, branches) = splitLegadoBranches(rule)
         if (branches.size > 1) {
@@ -2099,7 +2130,7 @@ class RuleRunner(
             }
         }
         return when {
-            rule.startsWith("$") -> (JsonPath.read<Any>(body, rule) as? List<*>)?.map { NodeValue.json(it) } ?: emptyList()
+            rule.startsWith("$") -> (JsonPath.read<Any>(body, rule) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList()
             else -> {
                 // JSON 响应上的「裸键」列表规则（`bookList: list`）：字段规则早就会把裸键补成 `$.list`
                 // （见 RuleValue.valueJson），列表这一路却没补 —— 于是 `list` 被当成 CSS 标签名，
@@ -2107,7 +2138,7 @@ class RuleRunner(
                 // 站点本身 200 正常，界面上只有一句"一条都没有"。
                 bareJsonListPath(body, rule)?.let { path ->
                     val viaJson = runCatching {
-                        (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it) } ?: emptyList()
+                        (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList()
                     }.getOrDefault(emptyList())
                     if (viaJson.isNotEmpty()) return viaJson
                 }
@@ -2115,7 +2146,7 @@ class RuleRunner(
                 // 原来这里只把各段用空格拼成一条 CSS，`tag.` / `id.` 段被当成标签名，整条规则一条都选不出来。
                 val document = Jsoup.parse(body)
                 val (base, ops) = splitIndexSuffix(rule)
-                val selected = selectLegadoSegments(document, base).map(NodeValue::html)
+                val selected = selectLegadoSegments(document, base).map({ element -> NodeValue.html(element, runtime) })
                 if (ops.isEmpty()) selected else applyIndexTokens(selected, ops)
             }
         }
@@ -2132,7 +2163,7 @@ class RuleRunner(
     private fun regexNodes(body: String, rule: String): List<NodeValue> {
         val levels = rule.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
         if (levels.isEmpty()) return emptyList()
-        return regexMatches(body, levels, 0).map { NodeValue.regexItem(it) }
+        return regexMatches(body, levels, 0).map { NodeValue.regexItem(it, runtime) }
     }
 
     private fun regexMatches(text: String, levels: List<String>, index: Int): List<List<String>> {

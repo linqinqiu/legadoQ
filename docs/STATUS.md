@@ -34,7 +34,7 @@
 | `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 只是组合根（连接池 / 建表 / 迁移 / Cookie 工具四件事拆在 `data/db/`：`ConnectionPool` `Schema` `Migration` `CookieUtil`） |
 | `reading/` | 阅读域收口 `ReadingRepository`：进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口 |
 | `ai/` | 进程内 AI 网关：三种协议（OpenAI 兼容 / Responses / Anthropic）、流式 SSE、工具循环、连接与预设、技能库、内置工具与参数 schema、MCP 客户端（外部工具接入） |
-| `rules/` | 书源规则引擎（Rhino 沙箱、正文/目录/搜索规则、loginUi V1/V2 渲染与动作）；`RuleProcessor` / `RuleContext` / `RuleDispatcher` 是**扩展点契约**（尚未接入 `RuleRunner`，见文件内说明），`rules/processor/` 下为占位实现与 `demo/` 示例 |
+| `rules/` | 书源规则引擎（Rhino 沙箱、正文/目录/搜索规则、loginUi V1/V2 渲染与动作）；`RuleProcessor` / `RuleContext` / `RuleDispatcher` 是**已接入的扩展点**（0.2.34：求值前先问处理器、没人认领再走内联），`rules/processor/demo/` 是两个可直接注册的示例 |
 | `source/` | 书源模型与登录链路（真浏览器登录、跨域凭据抓取、Cookie 罐） |
 | `cache/` | 正文缓存、封面缓存、缓存任务调度 |
 | `localbook/` | 本地书解析（TXT 分章 / EPUB） |
@@ -161,7 +161,6 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 | 缺口 | 现状 | 影响 |
 |---|---|---|
-| 规则引擎扩展点未接入 | `RuleProcessor` / `RuleContext` / `RuleDispatcher` 只是契约，`RuleRunner`（2413 行）仍走内联解析链路；`rules/processor/*` 为占位实现 | 新增解析方式能独立实现并单测，但**不会生效**；接入需一次带等价性测试的独立重构 |
 | ReaderScreen 未拆完 | 已拆出 TTS（`ReaderTtsManager` + `ReaderTtsContext`）、目录（`ReaderCatalog`）、设置（`ReaderSettingsSheet`），`ReaderScreen.tsx` 2942→2863 行；**正文渲染与分页测量**仍在里面 | 剩下两块是交互核心（段落点击/划词/图片放大/分页锚点），拆它们要先补交互判据，否则改坏了静态测试看不见 |
 | 图标小尺寸清晰度 | 512 插画细分多，16–24px 仍糊；ICO 尺寸声明已修（按档渲染 16/24/32/48/64/128/256） | 任务栏/托盘辨识度（要根治得换扁平标记，待定） |
 | 可观测性 | 解析/规则求值/出站抓取已有分阶段耗时与失败率（`GET /api/diagnostics` 的 `stages`，运行日志页可展开）；**前端分页测量仍无指标** | 后端慢在哪一层能查了，界面卡顿仍只能靠猜 |
@@ -172,4 +171,4 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是「单进程 + 单写 SQLite + 19 组 HTTP 端点」的本地阅读服务，前端是自研排版引擎的 Web 阅读器；0.1.8 把 AI 侧补成「多协议 + 流式 + 技能 + 工具 schema」的完整闭环，0.1.9 再加上可开关排序的提示词预设与按整轮裁剪的上下文预算，阅读侧补上正文刷新、兄弟备份导入与登录界面本地解析。质量靠 1,807 项自动化测试（924 后端 + 883 前端）、7 条命令门禁与 46 个 `tools/verify/*-check.mjs` 脚本守着。当前最大的未完成项仍是**阅读器的跨章定位体验**与**规则引擎扩展点的接入**。
+后端是「单进程 + 单写 SQLite + 19 组 HTTP 端点」的本地阅读服务，前端是自研排版引擎的 Web 阅读器；0.1.8 把 AI 侧补成「多协议 + 流式 + 技能 + 工具 schema」的完整闭环，0.1.9 再加上可开关排序的提示词预设与按整轮裁剪的上下文预算，阅读侧补上正文刷新、兄弟备份导入与登录界面本地解析。质量靠 1,807 项自动化测试（924 后端 + 883 前端）、7 条命令门禁与 46 个 `tools/verify/*-check.mjs` 脚本守着。当前最大的未完成项仍是**阅读器的跨章定位体验**与**把内联解析搬进处理器（把 RuleRunner 拆薄）**。

@@ -1,98 +1,143 @@
 package io.legado.rules
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * 规则解析器处理器接口。
+ * 规则处理器：给规则引擎加一种**新的取值方式**，而不必改 `RuleRunner` / `RuleValue`。
  *
- * 设计原则：
- * - `rule-core`（`io.legado.rules`）只定义接口与调度，不 import 任何具体处理器实现；
- * - 具体解析器（CSS/XPath/JSONPath/Rhino/用户自定义）按同一接口注册进 `RuleDispatcher`；
- * - `RuleContext` 只暴露抽象能力（fetch、getVariable、log），不出现 OkHttp、Jsoup、数据库等具体类型，
- *   因此同一套接口可在不同宿主里复用。
+ * 这是「扩展点」真正生效的那一层。此前这三个类型只是契约（`RuleRunner` 里有个从未被读取的
+ * `ruleDispatcher` 参数，`processor` 包下四个实现全是「尚未实现」），新增一种解析方式可以写出来、
+ * 可以单测，但**规则求值时不会走到它** —— 那等于没有扩展点。
  *
- * 新增一种解析方式时，只需新建一个类实现本接口，在 `RuleDispatcher` 中注册，
- * `RuleRunner` 作为调度器零修改。
+ * 现在的链路：`NodeValue.value(rule)` 与 `RuleRunner.nodes(body, rule)` 在走内建解析**之前**，
+ * 先问一句「有处理器认领这条规则吗」，认领了就由它给结果。没人认领才落回内建链路，
+ * 所以**内建四种类型（CSS / XPath / JSONPath / JS）的行为一个字节都没动**。
+ *
+ * 三条边界，写处理器的人必须知道：
+ * ① [execute] 是**同步**的：取值发生在解析热路径上，一次搜索要对几千条记录求值。需要联网或
+ *    长耗时的能力请放在宿主层，不要塞进取值规则。
+ * ② 认领即拥有：处理器返回空结果就是「这条规则没值」，**不会**再退回内建链路
+ *    （否则自定义类型会被内建当成 CSS 选择器，报一句看不懂的 SelectorParseException）。
+ * ③ [RuleInput.evaluateBuiltin] 走的是内建链路，**不经过**扩展点 —— 处理器可以放心用它做
+ *    「先按老规则取个值、再加工」而不会自己调自己。
  */
 interface RuleProcessor {
 
-    /** 处理器类型标识，如 "css" / "jsonpath" / "xpath" / "rhino" / 用户自定义字符串。 */
+    /** 处理器类型标识，如 `css` / `jsonpath` / `xpath` / `rhino` / 自定义字符串。 */
     val type: String
 
-    /** 是否能处理给定的规则字符串（如以 `@css:` 开头、或书源声明 `ruleType = "xpath"`）。 */
+    /** 是否能处理给定的规则串（只看规则本身，不看文档）。 */
     fun canHandle(rule: String): Boolean
+
+    /**
+     * 是否能产出**列表条目**（书源列表 / 目录）。
+     *
+     * 默认 `false`：只参与单值规则（书名、作者、封面、正文…）。列表规则与单值规则的返回形状
+     * 完全不同，混在一起会让"一个值型处理器认领了列表规则、结果整源 0 条"变成沉默故障。
+     */
+    val producesNodes: Boolean get() = false
 
     /**
      * 执行规则求值。
      *
-     * @param rule 规则原文（可能带 `<js>`、`@js:`、`||` 备选等前缀，由具体实现自行解析）；
-     * @param input 待解析的原始文本（HTML / JSON / 等）；
-     * @param context 规则执行上下文，提供抽象的 fetch / 变量 / 日志能力；
-     * @return 解析结果，具体形状由实现决定（列表节点 / 单值 / 正文文本等）。
+     * @param rule 规则原文（已做过 `@put`/`@get` 变量替换，前缀仍是原样，由实现自行剥）
+     * @param input 输入文档（原始文本 + 内建求值入口）
+     * @param context 只读上下文（当前只有日志）
      */
-    suspend fun execute(
-        rule: String,
-        input: String,
-        context: RuleContext,
-    ): RuleResult
+    fun execute(rule: String, input: RuleInput, context: RuleContext): RuleResult
+}
+
+/** 规则求值时的输入。 */
+interface RuleInput {
+
+    /** 原始响应文本（HTML / JSON / 正文）。 */
+    val raw: String
+
+    /** 文档里的全部文本（HTML 给 innerHtml，JSON 给 JSON 文本）。 */
+    fun documentText(): String
+
+    /**
+     * 用**内建引擎**求值这条规则（不经过扩展点，不会自递归）。
+     * 处理器最常见的用法就是「先取到原值，再按自己的类型加工」。
+     */
+    fun evaluateBuiltin(rule: String): String?
+}
+
+/** 处理器执行上下文：只读。 */
+interface RuleContext {
+    /** 记一条规则执行日志（处理器自己报错/降级时用，不要静默吞掉）。 */
+    fun log(message: String)
 }
 
 /**
- * 规则解析结果。由具体处理器构造，上层调用方（RuleRunner）根据结果类型做后续处理。
+ * 规则求值结果。
+ *
+ * 单值处理器只填 [text]；列表处理器填 [nodes]（每项是一个字段映射，字段规则按 **JSONPath** 取，
+ * 例如 `$.name`）。两边都空且 [ok] 为真表示「这条规则确实没有值」。
  */
 @Serializable
 data class RuleResult(
-    /** 文本结果（正文、单值、标题等）。 */
     val text: String = "",
-    /** 节点列表（书源列表、目录章节等），每项为节点的文本/属性映射。 */
     val nodes: List<Map<String, String?>> = emptyList(),
-    /** 是否解析成功。 */
     val ok: Boolean = true,
-    /** 失败原因（ok = false 时填充，供调试面板与错误回显）。 */
     val error: String? = null,
 )
 
 /**
- * 规则执行上下文：只暴露抽象能力，不依赖具体宿主实现。
+ * 规则处理器调度器：按注册顺序问「谁认领这条规则」。
+ *
+ * 线程安全（`CopyOnWriteArrayList`）：注册通常发生在启动期，求值发生在请求线程上，两边不互斥。
+ * 同 [type] 再注册一次会覆盖旧的 —— 与工具注册表同一条口径。
  */
-interface RuleContext {
+class RuleDispatcher(processors: List<RuleProcessor> = emptyList()) {
 
-    /** 抓取指定 URL 并返回文本；由宿主实现（默认走出站闸门）。 */
-    suspend fun fetch(url: String, headers: Map<String, String> = emptyMap()): String?
+    private val registered = CopyOnWriteArrayList<RuleProcessor>()
 
-    /** 读取书源变量表（`@put` / `@get` 跨调用复用）。 */
-    fun getVariable(key: String): String?
+    init {
+        processors.forEach { register(it) }
+    }
 
-    /** 写入书源变量表。 */
-    fun putVariable(key: String, value: String)
+    /** 注册（或按 [RuleProcessor.type] 覆盖）一个处理器。 */
+    fun register(processor: RuleProcessor) {
+        require(processor.type.isNotBlank()) { "规则处理器必须带 type" }
+        registered.removeIf { it.type == processor.type }
+        registered += processor
+    }
 
-    /** 记录一条规则执行日志。 */
-    fun log(message: String)
+    /** 按类型摘掉；返回是否真的摘掉了。 */
+    fun unregister(type: String): Boolean = registered.removeIf { it.type == type }
 
-    /** 当前书源 id（bookSourceUrl）。 */
-    val sourceUrl: String?
+    fun dispatch(type: String): RuleProcessor? = registered.firstOrNull { it.type == type }
 
-    /** 当前书籍 URL（可为 null）。 */
-    val bookUrl: String?
+    fun types(): List<String> = registered.map { it.type }
+
+    val size: Int get() = registered.size
+
+    /** 找出第一个认领这条规则的处理器；`canHandle` 抛异常视作不认领（一个坏处理器不许拖垮整源）。 */
+    internal fun claim(rule: String): RuleProcessor? =
+        registered.firstOrNull { processor ->
+            runCatching { processor.canHandle(rule) }.getOrDefault(false)
+        }
+
+    /** 列表规则只问声明了 [RuleProcessor.producesNodes] 的处理器。 */
+    internal fun claimNodeRule(rule: String): RuleProcessor? =
+        registered.firstOrNull { processor ->
+            processor.producesNodes && runCatching { processor.canHandle(rule) }.getOrDefault(false)
+        }
 }
 
 /**
- * 规则处理器调度器：按 ruleType 分派给已注册的 RuleProcessor。
+ * 一次求值期间的运行时：把调度器与日志出口绑在一起，随 [NodeValue] 往下传。
  *
- * **当前状态（0.2.14）：契约先行，尚未接入 `RuleRunner`。**
- * `RuleRunner`（2413 行）仍走原有的内联解析链路（Jsoup / Rhino / JS 上下文混在一起），
- * 把它替换成「声明式处理器 + 调度器」是一次独立重构，必须带等价性测试另开一单。
- * 因此本类目前是**扩展点契约**：新增一种解析方式可以独立实现并单测，
- * 但真正生效还需要 `RuleRunner` 改造完成。
- *
- * 具体处理器类在 `io.legado.rules.processor` 包下（现均为占位，`execute` 返回未实现）。
- * 示例见 `io.legado.rules.processor.demo`。
+ * 为什么跟着节点走而不是放在线程变量里：解析会在同一线程里层层嵌套（列表规则里再求字段规则），
+ * 用线程变量就得层层保存/恢复，漏一层就是"某条路径上扩展点静默失效"。节点本来就随规则链传递，
+ * 挂在它上面最不容易漏。
  */
-class RuleDispatcher(private val processors: Map<String, RuleProcessor>) {
+internal class RuleRuntime(
+    val dispatcher: RuleDispatcher,
+    private val logger: (String) -> Unit = {},
+) : RuleContext {
 
-    fun dispatch(ruleType: String): RuleProcessor? = processors[ruleType]
-
-    /** 所有已注册处理器的类型。 */
-    fun types(): List<String> = processors.keys.toList()
+    override fun log(message: String) = logger(message)
 }
