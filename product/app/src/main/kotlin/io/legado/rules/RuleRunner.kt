@@ -2399,7 +2399,9 @@ private class JsSourceRunner(private val runner: RuleRunner, private val source:
 
     private fun call(name: String, args: Array<Any?>): String = callOptional(name, args) ?: throw RuleExecutionException("JS书源缺少函数 $name")
     private fun callOptional(name: String, args: Array<Any?>): String? {
-        val context = BoundedJs.enter()
+        // 必须显式传超时：`enter()` 的缺省是 30s 常量，不读环境变量。
+        // 漏传不会报错，只会让设了 LEGADO_JS_TIMEOUT_MS 的用户静默失效 —— 所以宁可写长。
+        val context = BoundedJs.enter(AppConfig.jsTimeoutMs)
         try {
             context.optimizationLevel = -1; context.setClassShutter(ClassShutter { false })
             val scope = context.initSafeStandardObjects()

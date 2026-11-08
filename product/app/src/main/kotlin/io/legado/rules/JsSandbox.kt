@@ -21,6 +21,7 @@ import java.util.Locale
 import java.util.SimpleTimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import io.legado.AppConfig
 import io.legado.port.PortBundle
 import io.legado.port.SourceUrlProbe
 
@@ -287,7 +288,9 @@ class JsSandbox(private val runner: RuleRunner? = null) {
             rawScript
         }
 
-        val cx = BoundedJs.enter()
+        // 必须显式传超时：`enter()` 的缺省是 30s 常量，不读环境变量。
+        // 漏传不会报错，只会让设了 LEGADO_JS_TIMEOUT_MS 的用户静默失效 —— 所以宁可写长。
+        val cx = BoundedJs.enter(AppConfig.jsTimeoutMs)
         try {
             cx.optimizationLevel = -1
             cx.setClassShutter(ClassShutter { false }) // Sandbox: block all Java reflection

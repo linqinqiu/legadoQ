@@ -2,6 +2,7 @@ package io.legado.rules
 
 import java.io.ByteArrayOutputStream
 import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 /**
  * 限量解压（防「压缩炸弹」）。
@@ -41,8 +42,7 @@ object GzipLimits {
      *
      * @throws IllegalArgumentException 解压输出超过上限
      */
-    fun unzipBounded(input: ByteArray, maxBytes: Int = MAX_UNZIP_BYTES): ByteArray {
-        require(maxBytes > 0) { "maxBytes 必须为正数，实际 $maxBytes" }
+    fun unzipBounded(input: ByteArray, maxBytes: Int = MAX_UNZIP_BYTES): ByteArray {        require(maxBytes > 0) { "maxBytes 必须为正数，实际 $maxBytes" }
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(16 * 1024)
         GZIPInputStream(input.inputStream()).use { stream ->
@@ -58,5 +58,30 @@ object GzipLimits {
             }
         }
         return out.toByteArray()
+    }
+
+    /** 单次压缩的输入上限。与 [MAX_UNZIP_BYTES] 同一个数量级。 */
+    const val MAX_GZIP_INPUT_BYTES: Int = 16 * 1024 * 1024
+
+    /**
+     * 压缩 [input]，输入超过 [maxInputBytes] 时抛错拒绝。
+     *
+     * 原本压缩方向**完全没有上限**，而 `unzipBounded` 只堵了反方向 —— 审计里那对
+     * 「只修了解压」的不对称正是缺口：`ZipUtil.gzip('a'.repeat(100000000))` 会先由
+     * `bytesOf` 复制一份输入、`GZIPOutputStream` 内部再一份、`toByteArray()` 再一份，
+     * 峰值约 3× 输入（1 亿字节 ≈ 300MB），且全在宿主侧，`JsGuard` 看不见。
+     *
+     * 输入侧判一下就够了：压缩不会放大体积，只要输入有界，输出必然有界。
+     */
+    fun gzipBounded(input: ByteArray, maxInputBytes: Int = MAX_GZIP_INPUT_BYTES): ByteArray {
+        require(maxInputBytes > 0) { "maxInputBytes 必须为正数，实际 $maxInputBytes" }
+        if (input.size > maxInputBytes) {
+            throw IllegalArgumentException(
+                "GZIP 压缩输入 ${input.size} 字节超过 ${maxInputBytes / (1024 * 1024)}MB 上限，已拒绝",
+            )
+        }
+        val output = ByteArrayOutputStream()
+        GZIPOutputStream(output).use { it.write(input) }
+        return output.toByteArray()
     }
 }

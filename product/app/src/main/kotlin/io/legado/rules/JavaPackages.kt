@@ -8,7 +8,6 @@ import org.mozilla.javascript.NativeJSON
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
-import java.io.ByteArrayOutputStream
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.Charset
@@ -22,7 +21,6 @@ import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import java.util.IdentityHashMap
 import java.util.UUID
-import java.util.zip.GZIPOutputStream
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.SecretKey
@@ -294,6 +292,11 @@ internal class JavaPackages(
             method("append") { a ->
                 val value = a.getOrNull(0)
                 if (value is Number) sb.append(value.toInt()) else if (value is Boolean) sb.append(value) else sb.append(textOf(value))
+                // 累计长度上限。只卡 setLength 是**假的防护**：`append` 完全绕过它。
+                // 实测 `for (i=0;i<200;i++) sb.append('a'.repeat(1000000))` 只有几千条 Rhino 指令
+                //（远低于 2 万条的检查间隔），宿主侧却已累计 200MB+；叠几次就是 GB 级，
+                // 而且每一步都是宿主 char 数组增长，墙钟守卫零回调。
+                requireStringBuilderWithinLimit(sb.length)
                 box
             }
             method("toString") { sb.toString() }
@@ -302,6 +305,7 @@ internal class JavaPackages(
             method("insert") { a ->
                 val index = (a.getOrNull(0) as? Number)?.toInt() ?: 0
                 sb.insert(index.coerceIn(0, sb.length), textOf(a.getOrNull(1)))
+                requireStringBuilderWithinLimit(sb.length) // 同 append：insert 也是增长路径
                 box
             }
             method("deleteCharAt") { a ->
@@ -400,6 +404,8 @@ internal class JavaPackages(
             "copyOf" to { a ->
                 val source = bytesOfOrNull(a.getOrNull(0)) ?: ByteArray(0)
                 val length = (a.getOrNull(1) as? Number)?.toInt() ?: source.size
+                // 上限：length 由脚本给，`copyOf([1], 2147483000)` 就是一次 2GB 宿主分配。
+                requireAllowedLength(length, "copyOf 目标长度")
                 bytesArray(source.copyOf(length.coerceAtLeast(0)))
             },
             "fill" to { a ->
@@ -582,7 +588,7 @@ internal class JavaPackages(
             "toString" to { a -> textOf(a.firstOrNull()) },
         ))
         "cn.hutool.core.util.ZipUtil" -> jsClass(full, statics = mapOf(
-            "gzip" to { a -> bytesArray(gzip(bytesOf(a.firstOrNull()))) },
+            "gzip" to { a -> bytesArray(GzipLimits.gzipBounded(bytesOf(a.firstOrNull()))) },
             "unGzip" to { a -> bytesArray(runCatching { GzipLimits.unzipBounded(bytesOf(a.firstOrNull())) }.getOrDefault(ByteArray(0))) },
         ))
         "cn.hutool.crypto.digest.DigestUtil" -> jsClass(full, statics = mapOf(
@@ -683,6 +689,13 @@ internal class JavaPackages(
         if (value is Scriptable) {
             val length = runCatching { (ScriptableObject.getProperty(value, "length") as? Number)?.toInt() }.getOrNull() ?: 0
             if (length <= 0) return ByteArray(0)
+            // 上限：`length` 是**脚本可控**的，而它直接决定宿主侧 `ByteArray` 的分配量。
+            // 不设限时 `Packages.java.util.Arrays.equals({length: 2147483000}, [])` 这类三五个
+            // Rhino 指令的调用就能申请约 2GB，抛 `OutOfMemoryError`（`Error`，`runCatching` 兜不住）
+            // 把整条工作线程打掉；而且下面的 for 循环也是**宿主**循环，2e9 次 `getProperty`
+            // 一条 Rhino 指令都不产生，`JsGuard` 的墙钟守卫全程零回调。
+            // 抛 `IllegalArgumentException`（不是 Error），让脚本层能兜住并降级。
+            requireAllowedLength(length, "字节数组长度")
             return ByteArray(length) { index ->
                 ((elementOf(value, index) as? Number)?.toInt() ?: 0).toByte()
             }
@@ -699,11 +712,55 @@ internal class JavaPackages(
         else -> null
     }
 
-    private fun bytesArray(bytes: ByteArray): Any =
-        cx.newArray(top, ScriptCrypto.unsigned(bytes).map { it as Any }.toTypedArray())
+    /**
+     * 把宿主字节数组包成 JS 数组。
+     *
+     * **每个字节都会装箱成一个 `Integer` 再塞进 JS 数组**，内存放大约 10~20 倍
+     *（一个 `Integer` 16 字节 + 数组槽引用 4 字节，而原始字节只占 1 字节）。
+     * 所以 16MB 的字节数组到这里会变成数百 MB —— 只限制「字节数」是不够的，
+     * 必须在这里再判一次元素数，否则 `GzipLimits.MAX_UNZIP_BYTES` 这个上限
+     * 在自己的输出端就被放大了，等于白设。
+     */
+    private fun bytesArray(bytes: ByteArray): Any {
+        requireAllowedLength(bytes.size, "JS 字节数组元素数")
+        return cx.newArray(top, ScriptCrypto.unsigned(bytes).map { it as Any }.toTypedArray())
+    }
 
+    /**
+     * 读脚本对象的 `length`。
+     *
+     * 这个值是**脚本可控**的，而它会被 `Arrays.fill` / `System.arraycopy` 直接当成
+     * **宿主 for 循环**的边界用。宿主循环不产生 Rhino 指令，`observeInstructionCount`
+     * 一次都不会被回调 —— `{length: 2000000000}` 这一个普通对象就能让程序在 Kotlin 里
+     * 空转几十亿次直到 OOM，而 30 秒的墙钟守卫全程看不见。
+     */
     private fun arrayLength(value: Scriptable): Int =
-        (ScriptableObject.getProperty(value, "length") as? Number)?.toInt() ?: 0
+        runCatching { (ScriptableObject.getProperty(value, "length") as? Number)?.toInt() ?: 0 }
+            .getOrDefault(0)
+            .also { requireAllowedLength(it, "数组长度") }
+
+    /**
+     * 校验一个「由脚本给出的长度/元素数」没有超过宿主侧安全线。
+     *
+     * 抛 `IllegalArgumentException` 而不是 `Error`：调用方与脚本层的 `runCatching`
+     * 能把它兜成空结果，而不是整条线程被 `OutOfMemoryError` 打掉。
+     */
+    private fun requireAllowedLength(length: Int, what: String) {
+        if (length > MAX_HOST_ALLOC_BYTES) {
+            throw IllegalArgumentException(
+                "$what ${length} 超过 ${MAX_HOST_ALLOC_BYTES / (1024 * 1024)}M 上限，已拒绝（疑似脚本放大攻击）",
+            )
+        }
+    }
+
+    /** `StringBuilder` 的增长路径（`append`/`insert`）共用 `setLength` 的那个上限。 */
+    private fun requireStringBuilderWithinLimit(length: Int) {
+        if (length > MAX_STRING_BUILDER_LENGTH) {
+            throw IllegalArgumentException(
+                "StringBuilder 长度 ${length} 超过 ${MAX_STRING_BUILDER_LENGTH} 上限，已拒绝（疑似脚本放大攻击）",
+            )
+        }
+    }
 
     private fun nativeString(text: String): Scriptable =
         runCatching { nativeStringCtor?.construct(cx, top, arrayOf<Any?>(text)) as? Scriptable }.getOrNull()
@@ -745,6 +802,11 @@ internal class JavaPackages(
         val targetPos = (args.getOrNull(3) as? Number)?.toInt() ?: 0
         val length = (args.getOrNull(4) as? Number)?.toInt() ?: 0
         if (length <= 0) return
+        // 上限：这个 length 由脚本直接给，而下面两个分支都是**宿主 for 循环**。
+        // 不设限时 `System.arraycopy([1], 0, {}, 0, 2000000000)` 会让程序在 Kotlin 里空转
+        // 20 亿次（每轮还造一个 key 字符串写进目标对象），全程零 Rhino 指令，
+        // 墙钟守卫一次回调都没有 —— 先挂死，再 OOM。
+        requireAllowedLength(length, "arraycopy 长度")
         if (source is ByteArray) {
             for (i in 0 until length) {
                 val value = source.getOrNull(sourcePos + i)?.toInt()?.and(0xFF) ?: 0
@@ -850,7 +912,10 @@ internal class JavaPackages(
 
     private fun digestHex(text: String, algorithm: String): String =
         MessageDigest.getInstance(algorithm).digest(text.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+            // 用查表的 `bytesToHex` 而不是 `"%02x".format(it)`：后者每字节一次 `String.format`
+            //（格式化器创建 + 解析 + 拼接），2MB 正文就是 200 万次，纯宿主 CPU，
+            // 小幅但真实地放大了一次调用的耗时，且墙钟守卫看不见。
+            .let { ScriptCrypto.bytesToHex(it) }
 
     private fun digestBox(algorithm: String): NativeObject {
         val digest = MessageDigest.getInstance(algorithm)
@@ -891,6 +956,8 @@ internal class JavaPackages(
             "nextLong" to fn { random.nextLong() },
             "nextBytes" to fn { a ->
                 val length = (a.firstOrNull() as? Number)?.toInt() ?: 0
+                // 上限：长度由脚本给，`nextBytes(2147483000)` 是一次 2GB 宿主分配。
+                requireAllowedLength(length, "nextBytes 长度")
                 bytesArray(ByteArray(length.coerceAtLeast(0)).also { random.nextBytes(it) })
             },
         )
@@ -966,12 +1033,6 @@ internal class JavaPackages(
             "verify" to fn { a -> signature.verify(bytesOf(a.firstOrNull())) },
             "getAlgorithm" to fn { algorithm },
         )
-    }
-
-    private fun gzip(bytes: ByteArray): ByteArray {
-        val output = ByteArrayOutputStream()
-        GZIPOutputStream(output).use { it.write(bytes) }
-        return output.toByteArray()
     }
 
     private fun jsList(): Scriptable {
@@ -1193,6 +1254,20 @@ internal class JavaPackages(
         private const val MAX_SLEEP_MS = 1_000L
         /** `StringBuilder.setLength` 的上限（字符数，约 2MB 内存），防止脚本直接触发大额分配。 */
         private const val MAX_STRING_BUILDER_LENGTH = 1_000_000
+
+        /**
+         * 宿主侧「脚本给出的长度/元素数」的统一上限。
+         *
+         * 这一类逃逸的共同点是：**长度值由脚本给，开销发生在宿主**，所以 `JsGuard` 的
+         * 指令观察器一次都不会被回调。敞开的写法经实测包括：
+         * - `Packages.java.util.Arrays.equals({length: 2147483000}, [])` → 申请 ~2GB `ByteArray`
+         * - `Packages.java.util.Arrays.fill({length: 2000000000}, 65)` → 宿主空转 20 亿次再 OOM
+         * - `Packages.java.lang.System.arraycopy([1], 0, {}, 0, 2000000000)` → 同上
+         * - `Packages.java.security.SecureRandom().nextBytes(2147483000)` → 大额分配
+         *
+         * 8M 对任何真实的书源规则都绰绰有余（真实页面正文通常几十 KB ~ 几 MB）。
+         */
+        private const val MAX_HOST_ALLOC_BYTES = 8 * 1024 * 1024
 
         private val OBJECT_MEMBERS = setOf(
             "toString", "valueOf", "hasOwnProperty", "constructor", "__proto__", "toJSON", "isPrototypeOf",
