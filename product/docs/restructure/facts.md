@@ -43,12 +43,12 @@
 | 后端行数 | **35,109** | `find … -exec cat {} + \| wc -l` | — |
 | 后端 `@Test` | **1,091** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
 | 后端测试文件 | **137** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
-| 前端 ts/tsx | **193** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | — |
-| 前端行数 | **37,343** | 同上 `-exec cat {} + \| wc -l` | — |
+| 前端 ts/tsx | **194** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | — |
+| 前端行数 | **37,472** | 同上 `-exec cat {} + \| wc -l` | — |
 | 前端测试文件 | **129** | `ls product/web/test/*.test.ts \| wc -l` | — |
 
 **跑起来的通过数（2026-11-09 22:05–22:07 复跑）**：后端 **1,090 / 1,090**（0 失败 0 错误），
-前端 **1,016 / 1,016**。合计 **2,106**。
+前端 **1,017 / 1,017**。合计 **2,107**。
 
 > 静态 1,091 与运行 1,090 的差额来自一条没被任何测试类执行的用例，不是失败。
 
@@ -132,7 +132,7 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 来源 | 说法 | 实测 | 处置 |
 |---|---|---|---|
-| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,016、161、24 | 已按本文重写 |
+| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,017、161、24 | 已按本文重写 |
 | `backend-layering.md` | 123 / 32,153 / 935 | 134 / 35,109 / 1,091 | 写于旧 commit，数字以本文为准 |
 | `frontend-host.md` | 177 / 110 | 188 / 129 | 同上 |
 | `docs/ARCHITECTURE.md` §13 | `HttpClients` 零调用方 | 0.2.36 已删除该文件 | 该行已改为「已撤销」 |
