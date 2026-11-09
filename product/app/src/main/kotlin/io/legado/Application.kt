@@ -254,6 +254,7 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
                     startedAtMs = BuildInfo.startedAt,
                     build = BuildInfo.buildNumber,
                     rev = BuildInfo.revision,
+                    sha = BuildInfo.revisionSha,
                 )
             )
         }

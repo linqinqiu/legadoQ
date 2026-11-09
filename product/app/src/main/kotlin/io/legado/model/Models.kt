@@ -19,8 +19,10 @@ data class HealthStatus(
     val ui: String = "",
     val startedAtMs: Long = 0L,
     val build: String = "0",
-    /** 代码修订（`rev-<短 sha>`）；构建里拿不到 git 时为空串。 */
+    /** 代码修订（`rev-<提交数>`）；构建里拿不到 git 时为空串。 */
     val rev: String = "",
+    /** 与 [rev] 配套的短 sha，用于精确定位提交；取不到时为空串。 */
+    val sha: String = "",
 )
 
 @Serializable data class SourceSummary(

@@ -230,29 +230,32 @@ if (file("${rootProject.projectDir}/web/dist/index.html").exists()) {
 def generatedBuildInfo = layout.buildDirectory.dir('generated/build-info')
 
 /**
- * 代码修订：`git rev-parse --short HEAD`。
+ * 代码修订：`rev-<提交数>` + 短 sha。
  *
  * 没发版、只在本地改的时候版本号是不动的，光看 `0.2.35` 分不清"跑的是推上去那版还是我刚编的这版"。
- * 修订号随包发出去，`/healthz` 报出来、顶栏菜单里显示 —— 一条 curl 就能定性。
+ * 修订号用**提交数**（`git rev-list --count HEAD`）而不是短 sha：数字单调递增、便于口头沟通
+ * （"我这版是 rev-1234"），sha 仍写进同一份资源，用来精确定位提交。
  *
  * 取不到 git（Docker 构建上下文里没有 `.git`、源码包解压后也没有）就写 `unknown`：
  * 宁可显示"不知道"，也不要编一个看起来合理的值。
  */
-def gitRevision = {
+def gitOutput = { List<String> args ->
     try {
         def output = new java.io.ByteArrayOutputStream()
         def result = exec {
-            commandLine 'git', 'rev-parse', '--short', 'HEAD'
+            commandLine(['git'] + args)
             standardOutput = output
             errorOutput = new java.io.ByteArrayOutputStream()
             ignoreExitValue = true
         }
-        def sha = output.toString().trim()
-        return (result.exitValue == 0 && sha) ? sha : 'unknown'
+        def text = output.toString().trim()
+        return (result.exitValue == 0 && text) ? text : 'unknown'
     } catch (Throwable ignored) {
         return 'unknown'
     }
-}()
+}
+def gitRevision = gitOutput(['rev-parse', '--short', 'HEAD'])
+def gitRevCount = gitOutput(['rev-list', '--count', 'HEAD']).with { it ==~ /\d+/ ? it : 'unknown' }
 
 tasks.register('generateBuildInfo') {
     group = 'build'
@@ -265,12 +268,12 @@ tasks.register('generateBuildInfo') {
     }
     inputs.property('buildNumber', buildNumber)
     inputs.property('externalVersion', project.version.toString())
-    inputs.property('revision', gitRevision)
+    inputs.property('revision', "${gitRevCount}-${gitRevision}")
     outputs.file(generatedBuildInfo.map { it.file('meta/build-info.properties') })
     doLast {
         def target = generatedBuildInfo.get().file('meta/build-info.properties').asFile
         target.parentFile.mkdirs()
-        target.text = "version=${project.version}\nbuild=${buildNumber}\nrev=${gitRevision}\n"
+        target.text = "version=${project.version}\nbuild=${buildNumber}\nrev=${gitRevCount}\nsha=${gitRevision}\n"
     }
 }
 sourceSets.main.resources.srcDir(generatedBuildInfo)

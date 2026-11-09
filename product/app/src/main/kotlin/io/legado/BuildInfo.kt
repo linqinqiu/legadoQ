@@ -44,14 +44,19 @@ object BuildInfo {
     }
 
     /**
-     * 代码修订（`rev-<短 sha>`），由 Gradle 在打包时从 `git rev-parse --short HEAD` 写进同一份资源。
+     * 代码修订（`rev-<提交数>`），由 Gradle 在打包时从 `git rev-list --count HEAD` 写进同一份资源。
      *
-     * 为什么要有：没发版、只在本地改的时候版本号是不动的 —— 光看 `0.2.35` 分不清跑着的是
-     * 推上去那一版还是刚编的这一版。构建里拿不到 git（Docker 上下文没有 `.git`）时写 `unknown`，
-     * 这里返回空串，不假装知道。
+     * 为什么用提交数：没发版、只在本地改的时候版本号是不动的 —— 光看 `0.2.35` 分不清跑着的是
+     * 推上去那一版还是刚编的这一版。数字单调递增、便于口头沟通；精确到哪个提交看 [revisionSha]。
+     * 构建里拿不到 git（Docker 上下文没有 `.git`）时写 `unknown`，这里返回空串，不假装知道。
      */
     val revision: String by lazy {
-        buildMeta["rev"]?.takeIf { it.isNotBlank() && it != "unknown" }?.let { "rev-$it" }.orEmpty()
+        buildMeta["rev"]?.takeIf { it.matches(Regex("\\d+")) }?.let { "rev-$it" }.orEmpty()
+    }
+
+    /** 与 [revision] 配套的短 sha；只用于定位具体提交，取不到时为空串。 */
+    val revisionSha: String by lazy {
+        buildMeta["sha"]?.takeIf { it.isNotBlank() && it != "unknown" }.orEmpty()
     }
 
     val title: String = "legadoQ"
