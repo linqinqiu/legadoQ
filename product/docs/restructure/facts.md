@@ -4,7 +4,7 @@
 > 其他文档（`docs/STATUS.md`、`backend-layering.md`、`frontend-host.md`）里的规模数字写于各自 commit，
 > 属于历史事实；与本文冲突时以本文为准，并重新跑一遍命令。
 >
-> 最近采集：**2026-11-05 22:33–22:42（本地）**。工作树当时**不干净**，见 §5。
+> 最近采集：**2026-11-09 21:00–21:10（本地）**。工作树**干净**，HEAD 就是 tag `v0.2.37`。
 
 ---
 
@@ -12,9 +12,9 @@
 
 1. **区分 HEAD 与工作树**：有未提交改动时，文件数/行数会变。每条都标注口径。
 2. **`@Test` 计数 ≠ 测试通过数**：`grep -rho "@Test"` 只是静态计数，没有运行。
-3. **计数用 `grep -o`，不用 `grep -c`**：后者是“包含该 token 的行数”，不是出现次数。
+3. **计数用 `grep -o`，不用 `grep -c`**：后者是"包含该 token 的行数"，不是出现次数。
 4. **运行态 ≠ 源码**：服务跑的是某个 jar；源码改过但没重建时，两者不一致。
-5. **瞬时状态单列**（§5），不要当成“项目一直如此”。
+5. **瞬时状态单列**（§5），不要当成"项目一直如此"。
 
 ---
 
@@ -23,39 +23,47 @@
 | 项 | 值 | 取证 |
 |---|---|---|
 | 仓库 | `E:\legado` | — |
-| HEAD | `76ffe0d`（2026-11-05 18:33:56 +0800） | `git log -1 --format="%h %ad" --date=iso` |
-| 版本 tag | `v0.2.17` | `git tag --points-at HEAD` |
-| 版本 | 0.2.17 / build 13（22:33 快照；当前 build 见下方注记） | `cat VERSION BUILD_NUMBER`；`/healthz` |
-| 版本真源 | `product/app/build.gradle:117` | 其余为派生 |
+| HEAD | `5344c39`（2026-11-09 20:46:19 +0800） | `git log -1 --format="%h %ad" --date=iso` |
+| 版本 tag | `v0.2.37` | `git tag --points-at HEAD` |
+| 版本 / 构建号 | **0.2.37 / 50** | `cat VERSION BUILD_NUMBER`；`/healthz` |
+| 版本真源 | `product/app/build.gradle` 的 `version` | 其余 6 处为抄本，`npm run version:check` 钉住 |
+| 代码修订 | `rev-981807a` | `/healthz` 的 `rev` 字段（0.2.36 起） |
 
-> 2026-11-06 00:03：`BUILD_NUMBER` 由 13 bump 到 **16**（内部计数；对外版本仍 0.2.17）。
-> 2026-11-06 10:32：`BUILD_NUMBER` 由 16 bump 到 **17**（`login` 金标准 fixture；对外版本仍 0.2.17）。
-> 2026-11-06 10:44：`BUILD_NUMBER` 由 17 bump 到 **18**（阅读器全崩修复 + 冒烟判据；对外版本仍 0.2.17）。
-> 2026-11-06 11:27：`BUILD_NUMBER` 由 18 bump 到 **19**（reader 拆组、数据目录退回、便携包说明；对外版本仍 0.2.17）。
+> `rev` 是打包时 `git rev-parse --short HEAD` 写进 `meta/build-info.properties` 的值。
+> **没发版、只在本地改时，版本号不动，只有 rev 会变** —— 判断"跑的是哪一版代码"看它。
 
 ---
 
-## 2. 源码规模（工作树，2026-11-05 22:33）
+## 2. 源码规模（工作树，2026-11-09 21:00）
 
 | 项 | 值 | 命令 | 口径 |
 |---|---:|---|---|
-| 后端 `.kt` | **128** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含 2 个未跟踪文件 |
-| 后端行数 | **32,511** | `find ... -exec cat {} + \| wc -l` | 同上 |
-| 后端 `@Test` | **947** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数，未运行 |
-| 后端测试文件 | **120** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
-| 前端 ts/tsx | **178** | `find product/web/src -name '*.ts' -o -name '*.tsx' \| wc -l` | — |
-| 前端测试文件 | **111** | `ls product/web/test/*.test.ts \| wc -l` | — |
+| 后端 `.kt` | **133** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含全部包 |
+| 后端行数 | **35,066** | `find … -exec cat {} + \| wc -l` | — |
+| 后端 `@Test` | **1,091** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
+| 后端测试文件 | **137** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
+| 前端 ts/tsx | **188** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | — |
+| 前端行数 | **37,024** | 同上 `-exec cat {} + \| wc -l` | — |
+| 前端测试文件 | **129** | `ls product/web/test/*.test.ts \| wc -l` | — |
 
-**HEAD 干净树（21:35 实测）**：126 个 `.kt` / 32,408 行。差额来自未跟踪的
-`rules/GzipLimits.kt` 与 `rules/SearchFlow.kt`。
+**跑起来的通过数（2026-11-09 21:32–21:38 复跑）**：后端 **1,090 / 1,090**（0 失败 0 错误），
+前端 **1,009 / 1,009**。合计 **2,099**。
 
-> 23:52 复核：**952** 个 `@Test` / **121** 个测试文件（`GoldenRuleTest` 新增 4 项）。
-> 2026-11-06 10:32 复核：**954** 个 `@Test` / **121** 个测试文件（`GoldenRuleTest` 新增 login v1/v2 两项；
-> `rule-golden` 共 15 个 fixture 文件）。后端仍 128 个 `.kt`。
-> 2026-11-06 10:44 复核前端：**112** 个测试文件 / **911** 项通过（新增 `ReaderScreenSmoke.test.ts`）。
-> 2026-11-06 11:27 复核结构：后端 **129** 个 `.kt`（新增 `DesktopDataDir.kt`）；前端仍 177 个 ts/tsx，
-> 但 `features/reader` 由「50 个文件平铺」改为「根 8 + 8 组」：
-> `tts/8` `interaction/8` `content/13` `notes/3` `dialogs/3` `settingsPanel/11` `typeset/3` `dict/1`。
+> 静态 1,091 与运行 1,090 的差额来自一条没被任何测试类执行的用例，不是失败。
+
+**覆盖率（jacoco / c8，2026-11-09 21:44 同一次 `npm run coverage`）**：后端行 **70.05%**
+（13,204 / 18,850），前端行 **63.38%**（14,982 / 23,636），前后端合计 **66.3%**。
+
+按包看后端，最薄的四块：
+
+| 包 | 行数 | 行覆盖 |
+|---|---:|---:|
+| `io.legado`（根，含启动与配置） | 909 | 44.4% |
+| `io.legado.tts` | 601 | 56.6% |
+| `io.legado.http` | 2,388 | 49.3% |
+| `io.legado.source` | 963 | 60.5% |
+
+最厚的两块：`rules` 4,399 行 78.8%、`ai` 3,987 行 65.8%。
 
 ---
 
@@ -63,56 +71,59 @@
 
 | 项 | 值 | 备注 |
 |---|---|---|
-| fat jar | `legado-0.2.17-all.jar`，34,771,619 B，2026-11-06 11:27 | 已含 build 19；UI 与 dist 一致 |
-| web/dist | 22 个文件，3.3 MB | 与 jar 内嵌 `static/` 逐字节一致（sha256 核对） |
-| 桌面 zip | `dist/legadoq-desktop-0.2.17.zip`，**180 条**，sha256 `BF14964D…` | build 19；新增 `使用说明.txt` / `启动.bat` |
-| 运行 UI 指纹 | `index-DghFeY15.js`（sha256 前缀 `2ac37b18…`） | dist / jar / `/healthz` 三处一致（11:27）；拆组不改最终 bundle |
+| fat jar | `legado-0.2.37-all.jar`，**35,008,270 B** | 2026-11-09 20:46 |
+| web/dist | **19 个文件，3.3 MB** | 与 jar 内嵌 `static/` 逐字节一致 |
+| 运行 UI 指纹 | `index-CbOLdce1.js` | dist / jar / `/healthz` 三处一致 |
+| 桌面 zip | `legadoq-desktop-0.2.37.zip`，56.4 MB | CI 的 `desktop` job 打，本地不留 |
+| Release 资产 | `legado.jar` 33.4 MB / `legado-dist.zip` 32.1 MB / desktop 56.4 MB | GitHub Release `v0.2.37`，2026-11-09 12:52Z |
+
+> `build/libs` 里只该有当前版本的 jar。历史 `-all.jar` 留着会让 `tools/verify/version-check.mjs`
+> 的门禁红（"留着只会让下一步挑错包"），也会让启动器挑错包。
 
 ---
 
-## 4. 数据库（`product/data/legado.sqlite`，22:33 运行态快照）
+## 4. 数据库（`product/data/legado.sqlite`，21:00 运行态快照）
 
 | 指标 | 值 |
 |---|---:|
-| 库文件 | 222 MB（WAL 5.1 MB，SHM 32 KB） |
-| 页大小 × 页数 | 4096 × 56,595 ≈ 231.8 MB |
-| 空闲页 | 385（≈1.5 MB，碎片率极低） |
-| journal / auto_vacuum | `wal` / `0`（关闭） |
+| 库文件 | 66 MB（WAL 69 MB，SHM 32 KB） |
+| 代码建的表 | **24** |
 | 书源总数 / 启用 | 5,600 / 5,600 |
-| RSS 源 / 订阅 | 178 / 1 |
-| 书架书 / 分组 | 8 / 4 |
-| 阅读进度 / 阅读记录 | 10 / 78 |
-| 笔记 / 书签 | 0 / 1 |
-| 正文缓存 | 6,053 行 / 52,432,811 B（约 50.0 MB） |
-| 目录缓存 | 523 |
-| Cookie / 书源体检 / 替换规则 / 脚本缓存 | 586 / 41 / 288 / 137 |
-| 日志 | 5,000（**疑似**保留上限，未经代码确认） |
-| 磁盘 | 4 份库快照共 872 MB（最新 21:30）；`server.log` 13.6 MB |
+| RSS 源 | 178 |
+| 书架书 / 分组 | 0 / 4 |
+| 正文缓存 | 715 行 |
+| 目录缓存 | 514 |
+| Cookie 桶 | 588 |
 
 查询方式（只读，不碰 WAL）：
 
 ```bash
-sqlite3 "file:product/data/legado.sqlite?mode=ro" \
-  "SELECT count(*) FROM source;"
-sqlite3 "file:product/data/legado.sqlite?mode=ro" \
-  "PRAGMA page_size; PRAGMA page_count; PRAGMA freelist_count;"
+sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from source;"
+sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_master where type='table';"
 ```
+
+> **WAL 比主库还大**（69 MB vs 66 MB）说明 checkpoint 落后于写入；正常关闭会合并，
+> 强杀进程时才会留下这么大的 WAL。数表数量要用 `sqlite_master` 实测，别数建表语句 ——
+> 老库里可能留着已删功能的遗留表。
 
 ---
 
-## 5. 现场状态（瞬时，2026-11-05 22:42）
+## 5. 现场状态（瞬时，2026-11-09 21:00）
 
 | 项 | 状态 |
 |---|---|
-| 工作树 | 脏：`M rules/JavaPackages.kt`、`M rules/JsGuard.kt`、`?? rules/GzipLimits.kt`、`?? rules/SearchFlow.kt` |
-| `:app:compileKotlin` | **失败**：`JsGuard.kt:30:37 Unresolved reference 'DEFAULT_TIMEOUT_MS'`（22:33、22:42 两次复测同一错误） |
-| `ArchitectureBoundaryTest` | 无法运行（编译前置失败） |
-| `depth-check` | 通过（22:36）：后端 128 个 `.kt`，过深 11 个，无新增 |
-| 服务 | 运行中，PID 20028，21:30:34 启动 |
-| `/healthz` | `0.2.17 / build 13 / ok / index-WpCwxxOG.js` |
-| live vs 源码 | **不一致**：jar 18:44，源码 21:42+ 有未提交改动 |
+| 工作树 | **干净**，`main` 与 `origin/main` 同点 |
+| 服务 | 运行中，`127.0.0.1:1234`，`0.2.37 / build 50 / rev-981807a` |
+| `/healthz` | `{"version":"0.2.37","status":"ok","ui":"index-CbOLdce1.js","build":"50","rev":"rev-981807a"}` |
+| 端点 | **161 条 / 19 组**（`GET /api/catalog` 实测） |
+| 门禁 | `version:check` 7 处一致；`docs:api-check` 161/19 一致；`changelog:check` 无待记录 |
+| CI | main：契约 / 真浏览器 / 覆盖率 / Test&Build 全 success；tag：三资产已发布 |
 
-上述任一项都会随下一次 commit / 重启变化，**不要**把它们写进“项目常驻描述”。
+端点分组（实测，按条数降序）：AI 自定义接入 22、内置浏览器 17、登录与凭据 15、书架 14、
+书源 12、净化规则 10、进度与笔记 9、朗读 9、系统 8、RSS 7、分章规则 7、阅读 6、
+图片与媒体 6、书源订阅 5、备份 5、发现页 3、离线缓存 3、搜索 2、目录 1。
+
+上述任一项都会随下一次 commit / 重启变化，**不要**把它们写进"项目常驻描述"。
 
 ---
 
@@ -120,12 +131,11 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" \
 
 | 来源 | 说法 | 实测 | 处置 |
 |---|---|---|---|
-| 记忆 | 0.2.13 / build 10（2026-11-02） | 0.2.17 / build 13 | 已更新记忆，来源 `/healthz` |
-| `docs/STATUS.md` | 0.2.14 / 927 / 120 / 175 / 900 | 0.2.17 / 947 / 120 / 178 / 111 | 整份过期，标记指向本文 |
-| `backend-layering.md` | 123 / 32,153 / 935 | 128 / 32,511 / 947 | 写于 `bebd824`，数字以本文为准 |
-| `frontend-host.md` | 177 / 110 | 178 / 111 | 同上 |
-| `rule-processor-migration-plan.md` | `RuleRunner` 2413 行 | 2405 | 直接修正 |
-| `RuleProcessor.kt:83` 注释 | “当前状态（0.2.14）……2413 行” | 0.2.17 / 2405 | 注释过期，“尚未接入”仍成立 |
+| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,009、161、24 | 已按本文重写 |
+| `backend-layering.md` | 123 / 32,153 / 935 | 133 / 35,066 / 1,091 | 写于旧 commit，数字以本文为准 |
+| `frontend-host.md` | 177 / 110 | 188 / 129 | 同上 |
+| `docs/ARCHITECTURE.md` §13 | `HttpClients` 零调用方 | 0.2.36 已删除该文件 | 该行已改为「已撤销」 |
+| 旧记忆 | 0.2.17 / build 13 | 0.2.37 / build 50 | 已更新 |
 
 **纪律**：不要把旧文档里的数字逐项改成新数字——那会让它们变成永远追不上 HEAD 的第二事实源。
-正确做法是在文档头加一行“写于 `<commit>`，规模数字已过期，以 `facts.md` 为准”。
+正确做法是在文档头加一行"写于 `<commit>`，规模数字已过期，以 `facts.md` 为准"。
