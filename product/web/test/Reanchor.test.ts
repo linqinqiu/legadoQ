@@ -78,8 +78,8 @@ test('没有任何笔记需要改时返回同一个数组，避免无谓重渲�
 })
 
 test('接线：正文加载后重定位，面板把「原文已变」说出来', () => {
-  const screen = read('../src/features/reader/ReaderScreen.tsx')
-  assert.match(screen, /reanchorNotes\(list, chapter\.index, content, positionChecksum\)/, '正文与校验值变了就重算这一章')
-  assert.match(screen, /只改内存，不写库/, '不把一次猜测固化进库')
+  const notesHook = read('../src/features/reader/useReaderNotes.ts')
+  assert.match(notesHook, /reanchorNotes\(list, chapter\.index, content, positionChecksum\)/, '正文与校验值变了就重算这一章')
+  assert.match(notesHook, /只改内存，不写库/, '不把一次猜测固化进库')
   assert.match(read('../src/features/reader/notes/NotesPanel.tsx'), /原文已变，位置可能不准/, '认不出来要说出来')
 })

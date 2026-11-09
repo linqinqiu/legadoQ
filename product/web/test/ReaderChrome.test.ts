@@ -86,7 +86,7 @@ test('笔记入口只留一份：目录头不再重复，图标与书架键区�
   const shell = read('features', 'reader', 'ReaderChrome.tsx')
   assert.equal((shell.match(/onToggleNotes=/g) ?? []).length, 2, '笔记入口只该有顶栏与底栏两处')
   assert.match(shell, /onBackToToc=\{actions\.onBackToToc\}/, '「回到目录」要真的把面板切回目录')
-  assert.match(screen, /onBackToToc: \(\) => setNotesPanel\(false\)/, '阅读器要把切回目录的动作接上')
+  assert.match(screen, /onBackToToc: \(\) => notesApi\.setNotesPanel\(false\)/, '阅读器要把切回目录的动作接上')
   // 顶栏与底栏的笔记键改用 edit：同一个 bookmark 不再分别表示「书架」和「笔记」。
   assert.match(chrome, /md3-topbar-notes[\s\S]{0,300}?<Icon name="edit" \/>/, '顶栏笔记键用 edit 图标')
   assert.match(chrome, /aria-label=\{`笔记（\$\{notesCount\}）`\}[\s\S]{0,120}?<Icon name="edit" \/>/, '窄屏底栏笔记 pill 也用 edit')

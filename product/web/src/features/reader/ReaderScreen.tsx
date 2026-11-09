@@ -11,9 +11,7 @@ import { contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundar
 import { readerImageSrc } from './content/readerImage'
 import { TapAction, zoneAt } from './interaction/tapZones'
 import { isMediaType } from '../../lib/bookType'
-import { NoteDraft } from './notes/NoteToolbar'
 import { bookmarkPayload, findBookmarkAt } from './notes/bookmark'
-import { reanchorNotes } from './notes/reanchor'
 import { splitByTerm } from './searchTerm'
 import { setAiChatOpen } from '../../lib/aiChatStore'
 import { performanceMonitor } from '../../lib/performance'
@@ -37,6 +35,7 @@ import { useReaderChapterContent } from './useReaderChapterContent'
 import { useReaderPageTurn } from './useReaderPageTurn'
 import { usePaginationMeasurement } from './usePaginationMeasurement'
 import { useReadingLog } from './useReadingLog'
+import { useReaderNotes } from './useReaderNotes'
 import { TtsContext } from './tts/ReaderTtsContext'
 import { useReaderTts } from './tts/useReaderTts'
 import { ITtsEngine, WebSpeechEngine, HttpAudioTtsEngine, TtsSpeakMode, isPlayInterruptedError } from './tts/ttsEngine'
@@ -544,21 +543,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
   }, [isMangaMode, mangaStart, mangaSpread, mangaImages, chapter?.url, imageGeneration, currentBook.details.sourceId])
 
-  /**
-   * 笔记 / 划线（PROPOSAL-019 E）。
-   *
-   * 偏移是**章节内字符偏移**（段落在章里的起点 + 段内偏移），不用像素 / 列号 ——
-   * 字号、字体、分栏一改位置就跳，这是阅读器那条老教训。
-   * `excerpt` 另外留一份选中原文：高亮按它在这段文字里定位，简繁转换换了字形也找得到。
-   */
-  const [notes, setNotes] = useState<BookNote[]>([])
-  useEffect(() => {
-    let alive = true
-    api.notes(currentBook.details.sourceId, currentBook.bookUrl)
-      .then(list => { if (alive) setNotes(list) })
-      .catch(() => { if (alive) setNotes([]) })
-    return () => { alive = false }
-  }, [currentBook.details.sourceId, currentBook.bookUrl])
+  // 笔记 / 划线的状态与增删改在 useReaderNotes 里；本组件只保留与渲染/导航相关的划线高亮与跳转。
+  // （加载、重锚 effect 与 buildSelectionDraft / save / remove / openNote 等已搬进 hook）
   /** 每一段在**本章原文**里的起始字符偏移（段与段之间按一个换行算）。 */
   const paragraphStarts = useMemo(() => {
     if (!content) return [] as number[]
@@ -579,6 +565,10 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   // persist / 首屏恢复都是长期闭包：经 ref 读当前章的段起点与校验值，避免把 persist 的依赖搅乱。
   const logicalMetaRef = useRef({ starts: paragraphStarts, checksum: positionChecksum })
   logicalMetaRef.current = { starts: paragraphStarts, checksum: positionChecksum }
+
+  // 笔记状态与增删改收进 hook；toggleBookmark 与 renderNoteHighlights/jumpToNote 仍在本组件
+  // （前者依赖 readLogicalPosition，后者依赖正文渲染路径与导航原语），通过 notesApi 复用状态。
+  const notesApi = useReaderNotes({ currentBook, bookName, chapter, content, paragraphStarts, positionChecksum, chapterIndex })
 
   // 分页测量：DOM 排成几栏、每章占哪几页、页码落在哪，全在 hook 里；这里只消费结果。
   const {
@@ -631,24 +621,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     setMangaIndex(0)
   }, [chapter?.url, chapter?.index, isMangaMode, mangaImages.length, mangaPageList, paragraphStarts, currentBook.progress])
-  /**
-   * 正文换了（源站改版 / 重取章节 / AI 覆盖）之后，把这一章的批注位置重新对一遍：
-   * 偏移漂了就把高亮与跳转拉回原文，实在认不出才标 stale。只改内存，不写库 ——
-   * 正文还会再变，把一次猜测固化进库更难撤回。
-   */
-  useEffect(() => {
-    if (!content || !chapter || !positionChecksum) return
-    setNotes(list => reanchorNotes(list, chapter.index, content, positionChecksum))
-  }, [content, chapter, positionChecksum])
-  /**
-   * 待保存 / 正在编辑的那一条。`id === null` = 刚从选区新建；否则是点已有高亮打开的。
-   * `x`/`y` 是浮层要摆的位置（视口坐标，横向以选中处为中心）。
-   */
-  const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null)
-  /** 目录抽屉里的「笔记」面板开关（按书查看）。 */
-  const [notesPanel, setNotesPanel] = useState(false)
-  /** 标记快捷条 vs 笔记编辑器：选中后先显示快捷条，点「笔记」才展开 NoteToolbar。 */
-  const [noteEditorOpen, setNoteEditorOpen] = useState(false)
   /** 本书正文检索弹窗（搜索本书 feature，只在已缓存章节正文里找）。 */
   const [bookSearchOpen, setBookSearchOpen] = useState(false)
   /** 刚跳过来的搜索命中：在正文里临时高亮几秒，过期自动清掉（见下面的 effect）。 */
@@ -656,108 +628,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   /** 阅读设置弹层里的顶层标签页：阅读（排版/颜色/行为）或其它（简繁/点击区域/工具栏/本地书目录/净化）。
    *  用户要求「两颗齿轮合并成一颗，点开用标签页切换界面/其它」。 */
   const [settingsTab, setSettingsTab] = useState<'reader' | 'other'>('reader')
-
-  /** 段落里某个节点位置 → 段内字符偏移（选区跨多个文本节点时，前面那些也要加上）。 */
-  const offsetWithin = (root: HTMLElement, node: Node, offset: number): number => {
-    let total = 0
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-    while (walker.nextNode()) {
-      const current = walker.currentNode
-      if (current === node) return total + offset
-      total += (current.textContent ?? '').length
-    }
-    return total
-  }
-
-  /** 把当前选区算成一条 noteDraft + 同步给 AI 的 selection；选中了正文就返回，否则 null。
-   * 左键松手（onReaderMouseUp）和右键菜单（onBodyContextMenu）共用这一份算法。 */
-  const buildSelectionDraft = (): { draft: NoteDraft; selection: Parameters<typeof setSelectionFromDraft>[0] } | null => {
-    const selection = window.getSelection()
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null
-    const range = selection.getRangeAt(0)
-    const startEl = (range.startContainer.nodeType === Node.TEXT_NODE ? range.startContainer.parentElement : range.startContainer as HTMLElement)
-    const endEl = (range.endContainer.nodeType === Node.TEXT_NODE ? range.endContainer.parentElement : range.endContainer as HTMLElement)
-    const startP = startEl?.closest<HTMLElement>('.reader-paragraph')
-    const endP = endEl?.closest<HTMLElement>('.reader-paragraph')
-    if (!startP || !endP) return null
-    const startIndex = Number(startP.dataset.paragraphIndex ?? -1)
-    const endIndex = Number(endP.dataset.paragraphIndex ?? -1)
-    if (startIndex < 0 || endIndex < startIndex) return null
-    const excerpt = selection.toString().trim()
-    if (!excerpt) return null
-    const startOffset = (paragraphStarts[startIndex] ?? 0) + offsetWithin(startP, range.startContainer, range.startOffset)
-    const endOffset = (paragraphStarts[endIndex] ?? 0) + offsetWithin(endP, range.endContainer, range.endOffset)
-    // 选中的那一段属于**哪一章**：续接上来的下一章也在同一个容器里，不能一律按锚点章记
-    const ownerIndex = Number(startP.closest<HTMLElement>('[data-chapter-index]')?.dataset.chapterIndex ?? chapterIndex)
-    const rect = range.getBoundingClientRect()
-    const chapterUrl = currentBook.chapters[ownerIndex]?.url ?? ''
-    const draft: NoteDraft = {
-      id: null, chapterIndex: ownerIndex, chapterUrl,
-      startOffset, endOffset: Math.max(endOffset, startOffset + excerpt.length), excerpt, text: '',
-      x: rect.left + rect.width / 2, y: rect.top,
-    }
-    const sel = {
-      excerpt,
-      chapterIndex: ownerIndex,
-      chapterUrl,
-      startOffset,
-      endOffset: Math.max(endOffset, startOffset + excerpt.length),
-      sourceId: currentBook.details.sourceId,
-      bookUrl: currentBook.bookUrl,
-      bookName,
-      chapterTitle: currentBook.chapters[ownerIndex]?.title,
-      x: rect.left + rect.width / 2,
-      y: rect.top,
-    }
-    return { draft, selection: sel }
-  }
-
-  /** 松手时看有没有选中正文；选中了就摆出浮层（划线 / 写备注都在那一层里）。 */
-  const onReaderMouseUp = () => {
-    const built = buildSelectionDraft()
-    if (!built) return
-    setNoteDraft(built.draft)
-    setNoteEditorOpen(false)
-    // 同一份选区同步到共享 store：AI 悬浮球挂在根节点上，拿不到这里的局部 state，
-    // 于是模型只知道"你在第几章"、不知道"你正盯着哪一段"（用户说的「不能在对应地点研究」）。
-    setSelectionFromDraft(built.selection)
-  }
-
-  /** 保存（新建或改备注）。备注留空就是纯划线。 */
-  const saveNote = async () => {
-    const draft = noteDraft
-    if (!draft) return
-    if (draft.id === null) {
-      const created = await api.addNote({
-        sourceId: currentBook.details.sourceId, bookUrl: currentBook.bookUrl, bookName,
-        chapterUrl: draft.chapterUrl, chapterIndex: draft.chapterIndex,
-        startOffset: draft.startOffset, endOffset: draft.endOffset, excerpt: draft.excerpt, note: draft.text,
-      }).catch(() => null)
-      if (created) {
-        setNotes(list => [...list, created])
-        toast.success(draft.text?.trim() ? '已保存笔记' : '已划线')
-      }
-    } else {
-      const ok = await api.updateNote(draft.id, draft.text).then(() => true).catch(() => false)
-      if (ok) {
-        setNotes(list => list.map(item => (item.id === draft.id ? { ...item, note: draft.text } : item)))
-        toast.success('已更新笔记')
-      }
-    }
-    setNoteDraft(null)
-    setNoteEditorOpen(false)
-    setSelection(null)
-    window.getSelection()?.removeAllRanges()
-  }
-
-  const removeNote = async () => {
-    const draft = noteDraft
-    if (!draft || draft.id === null) return
-    const ok = await api.deleteNote(draft.id).then(() => true).catch(() => false)
-    if (ok) setNotes(list => list.filter(item => item.id !== draft.id))
-    setNoteDraft(null)
-    setSelection(null)
-  }
 
   /**
    * 书签：把当前读到的那一段记下来，再点一次取消。
@@ -770,11 +640,11 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (!chapter) return
     const position = readLogicalPosition(chapter)
     if (!position) { toast.warning('这一章还没排版好，稍等一下再试'); return }
-    const existing = findBookmarkAt(notes, chapter.index, position.paragraphAnchor, position.charOffset)
+    const existing = findBookmarkAt(notesApi.notes, chapter.index, position.paragraphAnchor, position.charOffset)
     if (existing) {
       const ok = await api.deleteNote(existing.id).then(() => true).catch(() => false)
       if (!ok) { toast.warning('书签没能取消'); return }
-      setNotes(list => list.filter(item => item.id !== existing.id))
+      notesApi.setNotes(list => list.filter(item => item.id !== existing.id))
       toast.success('已取消书签')
       return
     }
@@ -792,38 +662,12 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (!payload) { toast.warning('这一章还没有正文，等它加载完再试'); return }
     const created = await api.addNote(payload).catch(() => null)
     if (!created) { toast.warning('书签没能保存'); return }
-    setNotes(list => [...list, created])
+    notesApi.setNotes(list => [...list, created])
     toast.success('已加书签')
   }
 
-  /** 标记快捷条：划线（仅高亮，不写备注）。 */
-  const highlightFromMenu = () => { void saveNote() }
-  /** 标记快捷条：展开笔记编辑器。 */
-  const openNoteEditor = () => setNoteEditorOpen(true)
-  /** 标记快捷条：复制选中原文。 */
-  const copySelection = () => {
-    const text = noteDraft?.excerpt
-    if (text) void navigator.clipboard?.writeText(text).then(() => toast.success('已复制'), () => toast.warning('浏览器没让复制'))
-    setNoteDraft(null)
-    setNoteEditorOpen(false)
-  }
-  /** 标记快捷条：把选区交给 AI 悬浮球（选区已写入 selectionStore）。 */
-  const sendSelectionToAi = () => {
-    setAiChatOpen(true)
-    setNoteDraft(null)
-    setNoteEditorOpen(false)
-  }
-  /** 标记快捷条：关闭（Esc 也走这条）。 */
-  const dismissMarkingMenu = () => {
-    setNoteDraft(null)
-    setNoteEditorOpen(false)
-  }
-
-  /** 点已有高亮：打开编辑（改备注 / 删）。 */
-  const openNote = (note: BookNote, x: number, y: number) => {
-    setNoteDraft({ id: note.id, chapterIndex: note.chapterIndex, chapterUrl: note.chapterUrl, startOffset: note.startOffset, endOffset: note.endOffset, excerpt: note.excerpt, text: note.note, x, y })
-    setNoteEditorOpen(true)
-  }
+  // 标记快捷条动作（划线 / 笔记 / 复制 / 发 AI / 关闭）与 openNote 已搬进 useReaderNotes；
+  // 下方 ReaderOverlays / ReaderChrome 接线改用 notesApi.*。
 
   /**
    * 从「笔记」面板跳到那一条所在的章，并滚到它的位置。
@@ -839,7 +683,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       positionChecksum: note.positionChecksum ?? '',
     }
     const index = currentBook.chapters.findIndex(item => item.url === note.chapterUrl)
-    setNotesPanel(false)
+    notesApi.setNotesPanel(false)
     setActiveDrawer(null)
     if (index >= 0 && index !== chapterIndex) {
       pendingNoteJumpRef.current = target
@@ -874,7 +718,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    */
   const renderNoteHighlights = (text: string, ownerIndex: number) => {
     // 书签不画高亮：它只标位置，正文上留一条彩色底纹反而像"这段被划了重点"。
-    const chapterNotes = notes.filter(note => !note.bookmark && note.chapterIndex === ownerIndex && note.excerpt && text.includes(note.excerpt))
+    const chapterNotes = notesApi.notes.filter(note => !note.bookmark && note.chapterIndex === ownerIndex && note.excerpt && text.includes(note.excerpt))
     if (!chapterNotes.length) return null
     const marks: Array<{ start: number; end: number; note: BookNote }> = []
     for (const note of chapterNotes) {
@@ -896,7 +740,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           className={`reader-note-highlight${mark.note.note ? ' has-note' : ''}`}
           data-note-id={mark.note.id}
           title={mark.note.note || '划线'}
-          onClick={event => { event.stopPropagation(); openNote(mark.note, event.clientX, event.clientY) }}
+          onClick={event => { event.stopPropagation(); notesApi.openNote(mark.note, event.clientX, event.clientY) }}
         >{text.slice(mark.start, mark.end)}</mark>,
       )
       cursor = mark.end
@@ -2349,7 +2193,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     const selectedText = (window.getSelection()?.toString() ?? '').trim()
     const items: ContextMenuItem[] = []
     if (selectedText) {
-      const built = buildSelectionDraft()
+      const built = notesApi.buildSelectionDraft()
       const cite = `${selectedText}\n—— 《${bookName}》${chapter?.title ? ` · ${convert(chapter.title)}` : ''}`
       items.push({
         label: '复制',
@@ -2382,7 +2226,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
               chapterUrl: draft.chapterUrl, chapterIndex: draft.chapterIndex,
               startOffset: draft.startOffset, endOffset: draft.endOffset, excerpt: draft.excerpt, note: '',
             }).then(
-              created => { if (created) { setNotes(list => [...list, created]); toast.success('已划线') } },
+              created => { if (created) { notesApi.setNotes(list => [...list, created]); toast.success('已划线') } },
               () => toast.warning('划线失败'),
             )
           },
@@ -2390,7 +2234,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         items.push({
           label: '笔记',
           icon: 'file',
-          onSelect: () => { setNoteDraft(draft); setNoteEditorOpen(true) },
+          onSelect: () => { notesApi.setNoteDraft(draft); notesApi.setNoteEditorOpen(true) },
         })
         items.push({
           label: '发给 AI',
@@ -2448,8 +2292,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       mediaDisabled={!!mediaSrc}
       ttsActive={ttsActive}
       ttsPlayState={ttsPlayState}
-      notesCount={notes.length}
-      notesPanel={notesPanel}
+      notesCount={notesApi.notes.length}
+      notesPanel={notesApi.notesPanel}
       inShelf={inShelf}
       tapZoneEditing={tapZoneEditing}
       readingLeft={readingLeft}
@@ -2458,7 +2302,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       cachedChapterUrls={cachedChapterUrls}
       chapterWordCounts={chapterWordCounts}
       convert={convert}
-      notes={notes}
+      notes={notesApi.notes}
       chapterTitles={Object.fromEntries(currentBook.chapters.map((item, index) => [index, item.title]))}
       localBook={currentBook.details.sourceId === 'loc_book' ? { name: bookName, tocRule: shelfTocRule } : null}
       tocRuleOptions={tocRuleOptions}
@@ -2469,13 +2313,13 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onToggleFullscreen: toggleFullscreen,
         onToggleTts: toggleTts,
         onBookSearch: () => setBookSearchOpen(true),
-        onToggleNotes: () => { setActiveDrawer('toc'); setNotesPanel(true) },
+        onToggleNotes: () => { setActiveDrawer('toc'); notesApi.setNotesPanel(true) },
         onToggleBookmark: () => void toggleBookmark(),
         onPrevChapter: goPrevChapter,
         onNextChapter: goNextChapter,
         onSelectChapter: index => { changeChapter(index); setActiveDrawer(null) },
         onCloseDrawer: () => setActiveDrawer(null),
-        onBackToToc: () => setNotesPanel(false),
+        onBackToToc: () => notesApi.setNotesPanel(false),
         onOpenSourceSwitch: () => { setActiveDrawer(null); setShowSourceSwitch(true) },
         onOpenRefresh: currentBook.details.sourceId === 'loc_book' ? undefined : () => setShowRefreshChapters(true),
         onToggleShelf: () => void toggleShelf(),
@@ -2502,7 +2346,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       uiV2={uiV2}
       flowKey={flowKey}
       refs={{ main: readerMainRef, viewport: viewportRef, body: bodyRef, anchor: anchorSectionRef, sentinel: chunkSentinelRef }}
-      events={{ onMouseUp: onReaderMouseUp, onPointerDown, onPointerUp, onWheel: onWheelPaginate, onContextMenu: onBodyContextMenu }}
+      events={{ onMouseUp: notesApi.onReaderMouseUp, onPointerDown, onPointerUp, onWheel: onWheelPaginate, onContextMenu: onBodyContextMenu }}
       pagination={{
         pageIndex, pageCount, stride, columnWidth, columnGap, isDoubleColumn,
         pageAnim, fading, slideAnimOn, coverTurn, coverEntered, onCoverTransitionEnd,
@@ -2554,8 +2398,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         offlineTtsConfirm: offlineTtsConfirmOpen,
         lightboxSrc,
         bookSearch: bookSearchOpen,
-        noteDraft,
-        noteEditor: noteEditorOpen,
+        noteDraft: notesApi.noteDraft,
+        noteEditor: notesApi.noteEditorOpen,
       }}
       book={{ name: bookName, details: currentBook.details, bookUrl: currentBook.bookUrl, chapter, chapterIndex, chapters: currentBook.chapters }}
       reader={{ settings, sleepTimer, remainingSeconds, cachedChapterUrls }}
@@ -2575,15 +2419,15 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onCloseLightbox: () => setLightboxSrc(null),
         onJumpSearchHit: jumpToSearchHit,
         onCloseBookSearch: () => setBookSearchOpen(false),
-        onHighlight: highlightFromMenu,
-        onNote: openNoteEditor,
-        onCopy: copySelection,
-        onAi: sendSelectionToAi,
-        onDismissMarking: dismissMarkingMenu,
-        onChangeNoteText: text => setNoteDraft(current => (current ? { ...current, text } : current)),
-        onSaveNote: () => void saveNote(),
-        onRemoveNote: () => void removeNote(),
-        onDismissNote: clearSelection => { setNoteEditorOpen(false); setNoteDraft(null); setSelection(null); if (clearSelection) window.getSelection()?.removeAllRanges() },
+        onHighlight: notesApi.highlightFromMenu,
+        onNote: notesApi.openNoteEditor,
+        onCopy: notesApi.copySelection,
+        onAi: notesApi.sendSelectionToAi,
+        onDismissMarking: notesApi.dismissMarkingMenu,
+        onChangeNoteText: text => notesApi.setNoteDraft(current => (current ? { ...current, text } : current)),
+        onSaveNote: () => void notesApi.saveNote(),
+        onRemoveNote: () => void notesApi.removeNote(),
+        onDismissNote: clearSelection => { notesApi.setNoteEditorOpen(false); notesApi.setNoteDraft(null); setSelection(null); if (clearSelection) window.getSelection()?.removeAllRanges() },
       }}
     />
   </main>
