@@ -1693,8 +1693,8 @@ class RuleRunner(
                     )
                     throw RuleExecutionException("上游返回 HTTP $status")
                 }
-                val bytes = response.body().use { readLimited(it) }
-                if (bytes.size > MAX_BODY_BYTES) {
+                val bytes = response.body().use { ResponseBody.readLimited(it) }
+                if (bytes.size > ResponseBody.MAX_BODY_BYTES) {
                     logNetwork("响应体过大", networkContext(url, sourceId) + mapOf("size" to bytes.size.toString()))
                     throw RuleExecutionException("上游响应超过 2 MiB 限制")
                 }
@@ -1703,7 +1703,7 @@ class RuleRunner(
                     // 落地地址：重定向是这一层自己一跳一跳跟的（`client` 不跟随），
                     // 所以 `request.uri()` 就是最终那一跳的 URL —— 脚本正是靠它取真实接口地址。
                     url = request.uri().toString(),
-                    body = decodeBody(
+                    body = ResponseBody.decodeBody(
                         bytes,
                         response.headers().firstValue("content-encoding").orElse(""),
                         charset,
@@ -1874,89 +1874,11 @@ class RuleRunner(
     }
 
     /**
-     * 响应字节的文本解码：**字符集按上游 `BookSource.getCharset` 的思路现推**，不是一律 UTF-8。
-     *
-     * 顺序见 [resolveBodyCharset]。选定之后先按它**严格**解；解不动（源声明错了、页面 meta 写错了、
-     * 响应头是服务器默认值）再走 `decodeTextAuto` 的自动识别 —— 这一层兜底很重要：
-     * 站点把 GBK 内容标成 `charset=iso-8859-1` 时，ISO-8859-1 解码**永不报错**、只会整页变乱码，
-     * 而严格判定失败后交给自动识别就能按 GB18030 正常读出来。
+     * 响应字节的文本解码（gzip/deflate 解压 + 字符集判定 + 有上限读取）已搬进 [ResponseBody]。
+     * 这里保留 `internal` 委托，`ResponseCharsetTest` 照旧直接调 `runner.resolveBodyCharset(...)`。
      */
-    private fun decodeBody(
-        bytes: ByteArray,
-        contentEncoding: String,
-        declared: Charset?,
-        contentType: String?,
-    ): String {
-        val encoding = contentEncoding.lowercase()
-        val decoded = when {
-            encoding.contains("gzip") -> GZIPInputStream(bytes.inputStream()).use(::readAll)
-            encoding.contains("deflate") -> InflaterInputStream(bytes.inputStream()).use(::readAll)
-            else -> bytes
-        }
-        val charset = resolveBodyCharset(decoded, declared, contentType)
-        return runCatching { decodeStrict(decoded, charset) }
-            .getOrElse { decodeTextAuto(decoded, charset) }
-    }
-
-    /**
-     * 字符集判定（拆出来是为了能逐条钉用例；口径对齐上游 `BookSource.getCharset`）：
-     *
-     * 1. 源在这次请求里声明的 `charset` —— 书源作者最清楚这家站是什么编码；
-     * 2. 页面自己写的 `<meta charset>` / `<meta http-equiv="Content-Type" content="…;charset=">`；
-     * 3. 响应头 `Content-Type: …; charset=`；
-     * 4. UTF-8。
-     *
-     * **响应头排在页面自报之后**：中文老站的服务器默认值（`charset=iso-8859-1`、干脆不给 charset）
-     * 比页面里的 meta 更常出错，而 meta 是这份内容自己声明的。上游更极端 ——
-     * `getCharset` 里响应头那一支实际只在值是 `"utf-8,utf-8"` 这种垃圾串时才命中，
-     * 等于靠 meta 判定，我们保留读头的权利，但让它给 meta 让路。
-     */
-    internal fun resolveBodyCharset(bytes: ByteArray, declared: Charset?, contentType: String?): Charset {
-        declared?.let { return it }
-        metaCharset(bytes)?.let { return it }
-        charsetOf(contentType)?.let { return it }
-        return Charsets.UTF_8
-    }
-
-    /**
-     * 从页面头部嗅 `<meta>` 声明的字符集（只看前 4 KB，声明都在 `<head>` 前面）。
-     * 先按 ISO-8859-1 读：那一层是单字节保真的，ASCII 标签怎么都读得出来，
-     * 真正的编码要等这里拿到声明之后才用得上。
-     */
-    private fun metaCharset(bytes: ByteArray): Charset? {
-        if (bytes.isEmpty()) return null
-        // 只对**标记文档**做嗅探：JSON 接口里常带 HTML 片段（`"html": "<meta charset=gbk>…"`），
-        // 那是一段数据而不是这份响应的编码声明 —— 误判会把整份接口按错的字符集解，
-        // 且解得动（不报错），只在界面上留下满屏乱码。
-        val first = bytes.firstOrNull { it.toInt() > 0x20 } ?: return null
-        if (first != '<'.code.toByte()) return null
-        val head = String(bytes, 0, minOf(bytes.size, 4096), Charsets.ISO_8859_1)
-        val name = META_CHARSET.find(head)?.groupValues?.getOrNull(1) ?: return null
-        return runCatching { Charset.forName(name.trim().trim('"', '\'')) }.getOrNull()
-    }
-
-    private fun readAll(input: InputStream): ByteArray {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(8192)
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) return output.toByteArray()
-            output.write(buffer, 0, count)
-            // 2 MiB 上限原本只卡在压缩字节上：一个 gzip 炸弹就能在解压时无限膨胀直接把进程顶爆。
-            if (output.size() > MAX_BODY_BYTES) throw RuleExecutionException("响应解压后超过 2 MiB 限制")
-        }
-    }
-
-    private fun readLimited(input: InputStream): ByteArray {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(8192)
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) return output.toByteArray()
-            require(output.size() + count <= MAX_BODY_BYTES) { "上游响应超过 2 MiB 限制" }
-            output.write(buffer, 0, count)
-        }
-    }
+    internal fun resolveBodyCharset(bytes: ByteArray, declared: Charset?, contentType: String?): Charset =
+        ResponseBody.resolveBodyCharset(bytes, declared, contentType)
 
     private fun validateTarget(uri: URI) {
         try {
@@ -2240,8 +2162,7 @@ class RuleRunner(
         const val STAGE_CONTENT = "content"
         const val STAGE_HTTP = "http"
 
-        const val MAX_BODY_BYTES = 2 * 1024 * 1024
-        private const val MAX_TRACE_CHARS = 240
+        const val MAX_TRACE_CHARS = 240
         /** ruleData（跨调用复用的 @put 变量）的键上限：超了按最近使用淘汰最旧那条（见 [newRuleDataCache]），不再整表清空。 */
         const val MAX_RULE_DATA_KEYS = 4096
         /** Java HttpClient 的受限请求头（设了会抛 IllegalArgumentException，见 request()）。 */
@@ -2251,13 +2172,6 @@ class RuleRunner(
         val URL_VARIABLE_PATTERN = Regex("\\{\\{(.+?)}}")
         /** 与上游 `AppPattern.JS_PATTERN` 一字不差：`<js>…</js>`，或 `@js:` 到串尾。 */
         val URL_JS_PATTERN = Regex("<js>([\\w\\W]*?)</js>|@js:([\\w\\W]*)", RegexOption.IGNORE_CASE)
-        /**
-         * 页面自报的字符集：`<meta charset="gbk">` 与
-         * `<meta http-equiv="Content-Type" content="text/html; charset=gb2312">` 都算
-         * （上游 `BookSource.getCharset` 用的就是这一类正则）。
-         * 限定在 `<meta` 开头的那个标签里，名字必须以字母起手，避免正文里的裸 "charset" 字样误判。
-         */
-        val META_CHARSET = Regex("""(?i)<meta[^>]{0,300}?charset\s*=\s*["']?([a-z][\w-]{1,20})""")
         /** `<…>` 翻页段（非贪婪，一段一段来）：见 `selectPageSegments`。 */
         val PAGE_SEGMENT_PATTERN = Regex("<(.*?)>")
         /** 登录动作是不是一次 `login(...)` 调用：`login`、`login()`、`login(true)`、`login(true, false)` 都算。 */
