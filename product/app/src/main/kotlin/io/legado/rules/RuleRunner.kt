@@ -99,6 +99,14 @@ class RuleRunner(
     }
 
     /**
+     * 列表规则 → 节点列表。整段逻辑已搬到 `RuleNodeSelection`（`nodes` / 正则 / `%%` 交错），
+     * 这里只保留一个出口；JS 列表求值仍由本类的 [jsListNodes] 提供（它要用 [jsSandbox]）。
+     */
+    private val nodeSelection = RuleNodeSelection(runtime) { base, rule, body, url ->
+        jsListNodes(base, rule, body, url)
+    }
+
+    /**
      * 测试与离线注入的**完整响应**替身：正文之外还要给状态码、响应头、Set-Cookie。
      * `responseFetcher` 只能给一个正文字符串，脚本要读 `.cookie('hm')` / `.statusCode()`
      * 这类形状时就没抓手，所以留这个口子（优先于 `responseFetcher`）。
@@ -239,7 +247,7 @@ class RuleRunner(
         val listRule = stripListPrefixMarkers(rawListRule)
         // 与 chapters() 一致：`<js>…</js>` 形式的列表规则要先过沙箱预处理，直接丢给 Jsoup/json-path 会解析失败
         val items = try {
-            if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, sourceUrl) else nodes(body, listRule)
+            if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, sourceUrl) else nodeSelection.nodes(body, listRule)
         } catch (error: RuleExecutionException) {
             throw error
         } catch (error: Exception) {
@@ -358,7 +366,7 @@ class RuleRunner(
             val body = fetchUrl(pageUrl, mergedOptions, null, sourceUrl, database)
             val reverse = rawListRule.startsWith("-")
             val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
-            val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, pageUrl) else nodes(body, listRule)
+            val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
             val items = nodes0.mapNotNull { item ->
                 val title = item.value(source.string("ruleTitle"), jsSandbox, body, pageUrl)?.trim().orEmpty()
                 if (title.isBlank()) return@mapNotNull null
@@ -768,7 +776,7 @@ class RuleRunner(
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             body = fetchUrl(url, mergedOptions, null, sourceUrl, database)
             val baseDoc = NodeValue.document(body, runtime)
-            chapterNodes = if (isJsRule(listRule)) jsListNodes(baseDoc, listRule, body, pageUrl) else nodes(body, listRule)
+            chapterNodes = if (isJsRule(listRule)) jsListNodes(baseDoc, listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
         }
         // 条目节点是现造的，变量得逐个灌（`@get:{bid}` 就写在 chapterUrl 里）
         if (seedVars.isNotEmpty()) chapterNodes.forEach { it.seedVariables(seedVars) }
@@ -808,24 +816,6 @@ class RuleRunner(
         return candidates.map { it.trim() }.filter { it.isNotEmpty() }.map { it.absolute(pageUrl) }.distinct()
     }
 
-    private fun isJsRule(rule: String): Boolean {
-        val trimmed = rule.trimStart()
-        return trimmed.startsWith("@js:") || trimmed.startsWith("js:") || (rule.contains("<js>") && rule.contains("</js>"))
-    }
-
-    /**
-     * 剥掉列表规则开头的 `-` / `+` 排序标记。
-     *
-     * 这两个标记只有目录（chapters）与订阅（rssArticles）认，而且**都是先自己读走 `-` 的
-     * 反转语义再调到这里**。留着它们有两个坏处：`isJsRule` 认不出 `+@js:…` 是 JS 列表规则，
-     * `@css:` 这类模式标记也被挤到第二位而失效（selectLegadoSegments 只认开头的标记）。
-     */
-    private fun stripListPrefixMarkers(rule: String): String {
-        var text = rule.trim()
-        while (text.startsWith("-") || text.startsWith("+")) text = text.substring(1).trim()
-        return text
-    }
-
     /** `<js>` 形式的列表规则：求值得到 JSON 数组后逐项包装成可继续取值的节点。 */
     private fun jsListNodes(base: NodeValue, listRule: String, body: String, baseUrl: String): List<NodeValue> {
         val trimmed = listRule.trim()
@@ -834,7 +824,7 @@ class RuleRunner(
         // 若连尾随规则一起交给 value()，通配路径的结果会被序列化成 Java toString，再也解析不出条目。
         val jsOnly = if (postRule.isBlank()) trimmed else trimmed.substringBefore("</js>").trim() + "</js>"
         val produced = base.value(jsOnly, jsSandbox, body, baseUrl) ?: return emptyList()
-        if (postRule.isNotBlank()) return nodes(produced, postRule)
+        if (postRule.isNotBlank()) return nodeSelection.nodes(produced, postRule)
         val parsed = runCatching { Json.parseToJsonElement(produced) }.getOrNull() as? JsonArray ?: return emptyList()
         return parsed.map { NodeValue.json(it.toPlainJava(), runtime) }
     }
@@ -2088,22 +2078,6 @@ class RuleRunner(
         if (JS_NUMBER_FRACTION.matches(text)) text.substringBefore('.') else text
 
     /**
-     * `%%` 组合（上游 `AnalyzeByJSoup.getElements` 的 `elementsType == "%%"` 分支）：
-     * 以**第一支**的条数为准，逐条把各支同一位置取出来拼在一起。
-     * 目录规则里典型写法是两卷目录交替排回阅读顺序，少一支就整卷错位。
-     */
-    private fun interleaveNodes(branches: List<List<NodeValue>>): List<NodeValue> {
-        if (branches.isEmpty()) return emptyList()
-        if (branches.size == 1) return branches[0]
-        val rows = branches[0].size
-        val out = ArrayList<NodeValue>(rows * branches.size)
-        for (index in 0 until rows) {
-            for (nodes in branches) nodes.getOrNull(index)?.let { out += it }
-        }
-        return out
-    }
-
-    /**
      * 给 JS 桥用的「再入」入口：对**任意内容**跑一次列表规则，把每条变成文本。
      *
      * 为什么必须有：上游把脚本里的 `java` 绑成 `AnalyzeRule` 实例本身
@@ -2116,112 +2090,8 @@ class RuleRunner(
      *
      * 条目文本的口径见 [NodeValue.bridgeText]：HTML 给 outerHtml、JSON 给 JSON 文本。
      */
-    internal fun listItemsByRule(content: String, rule: String, baseUrl: String?): List<String> {
-        val listRule = stripListPrefixMarkers(rule)
-        if (listRule.isEmpty()) return emptyList()
-        val base = NodeValue.document(content, runtime)
-        val nodes = if (isJsRule(listRule)) jsListNodes(base, listRule, content, baseUrl ?: "") else nodes(content, listRule)
-        return nodes.map { it.bridgeText() }
-    }
-
-    private fun nodes(body: String, rule: String): List<NodeValue> {
-        // `-` / `+` 是目录规则的「倒序 / 顺序」标记，可真实书源把它也写进了搜索规则
-        // （🌸快眼看书™ `bookList: "+@css:.librarylist li"`）：这个前缀既不是 CSS 也不是方言，
-        // 还会把开头的 `@css:` 挡在第二位（selectLegadoSegments 只认开头的标记），
-        // 于是整条规则喂给 Jsoup 报回一句看不懂的「SelectorParseException：String must not be empty」，
-        // 整个源搜索 0 条。前缀在非目录路径没有语义，剥掉再走正常分发即可
-        // （chapters() / rssArticles() 自己会先剥好再进来，反转语义不受影响）。
-        if (rule.startsWith("-") || rule.startsWith("+")) return nodes(body, stripListPrefixMarkers(rule))
-        // `@css:` 是显式前缀（值规则那一侧早就认它，见 RuleValue.valuePlain）：列表这一侧以前不认，
-        // 于是 `@css:.librarylist li` 被整串喂给选择器方言，报一句看不懂的解析异常、整源 0 条。
-        if (rule.startsWith("@css:", ignoreCase = true)) return nodes(body, rule.substringAfter(':').trim())
-        // 扩展点：列表规则只问声明了 producesNodes 的处理器；没人认领就落回内建链路。
-        runtime.dispatcher.claimNodeRule(rule)?.let { processor ->
-            val document = NodeValue.document(body, runtime)
-            val result = runCatching { processor.execute(rule, document.inputFor(body), runtime) }
-                .getOrElse { error ->
-                    runtime.log("规则处理器 ${processor.type} 执行列表失败：${error.message ?: error::class.simpleName}")
-                    return emptyList()
-                }
-            if (!result.ok) {
-                runtime.log("规则处理器 ${processor.type} 报告列表失败：${result.error ?: "未给原因"}")
-                return emptyList()
-            }
-            // 认领即拥有：条目为空就是「这个源确实没有条目」，不再退回内建链路。
-            return result.nodes.map { NodeValue.json(it, runtime) }
-        }
-        // AllInOne 正则列表（上游 `splitSourceRule(ruleStr, allInOne = true)` 的「首字符是 `:`」分支）：
-        // 整条规则是正则，一个条目 = 一次匹配的**全部分组**，字段规则用 `$1`/`$2` 取分组。
-        // 必须排在 `&&` 分支切分**之前** —— 正则模式里 `&&` 是「多级正则」的分隔符
-        // （快眼小说 `:正文卷[\s\S]*?/dl&&href ="([^"]+)">([^<]+)`），当成并集切整个语义就错了。
-        if (rule.startsWith(":")) return regexNodes(body, rule.substring(1))
-        // @xpath 方言优先：xpath 里的 `|` 并集不能被当成 Legado 的 `||` 备选来切分
-        if (isXpathRule(rule)) return xpathNodes(Jsoup.parse(body), stripXpathPrefix(rule))
-        // @json: 前缀（对齐原版 ruleStr.startsWith("@Json:")）：去前缀后按 JSONPath 读列表
-        if (isJsonPrefixedRule(rule)) {
-            val path = stripJsonPrefix(rule)
-            return runCatching { (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList() }.getOrDefault(emptyList())
-        }
-        val (branchSeparator, branches) = splitLegadoBranches(rule)
-        if (branches.size > 1) {
-            // 上游 AnalyzeByJSoup.getElements 的三种组合：`||` 取首个非空、`&&` 并集、`%%` 逐位交错。
-            // 以前只认 `||`，`class.a&&class.b@tag.li` 整串被当 CSS 选择器 → SelectorParseException，
-            // 该源搜索/目录 0 条（本机 79 条非 JS 列表规则这么写，极速漫画是实测样本）。
-            return when (branchSeparator) {
-                "&&" -> branches.flatMap { nodes(body, it) }.distinct()
-                "%%" -> interleaveNodes(branches.map { nodes(body, it) })
-                else -> branches.firstNotNullOfOrNull { branch -> nodes(body, branch).ifEmpty { null } } ?: emptyList()
-            }
-        }
-        return when {
-            rule.startsWith("$") -> (JsonPath.read<Any>(body, rule) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList()
-            else -> {
-                // JSON 响应上的「裸键」列表规则（`bookList: list`）：字段规则早就会把裸键补成 `$.list`
-                // （见 RuleValue.valueJson），列表这一路却没补 —— 于是 `list` 被当成 CSS 标签名，
-                // 整源搜索 0 条。实测样本是音频源 5sing：接口回 `{"list":[…]}`、规则写 `list`，
-                // 站点本身 200 正常，界面上只有一句"一条都没有"。
-                bareJsonListPath(body, rule)?.let { path ->
-                    val viaJson = runCatching {
-                        (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList()
-                    }.getOrDefault(emptyList())
-                    if (viaJson.isNotEmpty()) return viaJson
-                }
-                // 列表规则与字段规则走同一套选择器方言（`class.a@tag.li` / `id.list@tag.dd` / `@children`）：
-                // 原来这里只把各段用空格拼成一条 CSS，`tag.` / `id.` 段被当成标签名，整条规则一条都选不出来。
-                val document = Jsoup.parse(body)
-                val (base, ops) = splitIndexSuffix(rule)
-                val selected = selectLegadoSegments(document, base).map({ element -> NodeValue.html(element, runtime) })
-                if (ops.isEmpty()) selected else applyIndexTokens(selected, ops)
-            }
-        }
-    }
-
-    /**
-     * AllInOne 正则列表（上游 `AnalyzeByRegex.getElements`）：`&&` 分隔的多级正则，
-     * 前一级把**所有匹配的整段文本串起来**交给下一级，只有最后一级产出条目
-     * （每条 = 分组 `0..groupCount`，未参与的可选分组按空串）。
-     *
-     * 写坏的正则如实抛出去（与选择器同一口径）：静默返回空列表的话，
-     * 「规则写坏了」和「站点真没内容」在体检与调试面板里就再也分不开。
-     */
-    private fun regexNodes(body: String, rule: String): List<NodeValue> {
-        val levels = rule.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
-        if (levels.isEmpty()) return emptyList()
-        return regexMatches(body, levels, 0).map { NodeValue.regexItem(it, runtime) }
-    }
-
-    private fun regexMatches(text: String, levels: List<String>, index: Int): List<List<String>> {
-        val pattern = levels[index]
-        val regex = runCatching { Regex(pattern) }.getOrElse { error ->
-            throw RuleExecutionException(
-                "正则列表规则无法编译：${pattern.take(160)}（${(error.message ?: error.javaClass.simpleName).take(160)}）"
-            )
-        }
-        val found = regex.findAll(text).toList()
-        if (found.isEmpty()) return emptyList()
-        if (index + 1 == levels.size) return found.map { it.groupValues }
-        return regexMatches(found.joinToString("") { it.value }, levels, index + 1)
-    }
+    internal fun listItemsByRule(content: String, rule: String, baseUrl: String?): List<String> =
+        nodeSelection.listItemsByRule(content, rule, baseUrl)
 
     /**
      * `cleanContent()` 会把所有标签抹掉，正文配图因此整张消失（上游是用 ImageGetter 渲染的）。
