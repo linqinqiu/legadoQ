@@ -1,5 +1,7 @@
 /** 统一 fetch 基础客户端：所有域 API 客户端复用此 request。 */
 
+import { fetchWithMetrics } from '../performance'
+
 /** 不设身份：写操作由服务端的同源闸门把关，浏览器自己带 Origin，这里不注入任何令牌。 */
 export async function request<T>(
   path: string,
@@ -10,7 +12,8 @@ export async function request<T>(
   if (init.body && !(typeof FormData !== 'undefined' && init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
-  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
+  // 走性能监控版 fetch：慢请求（>300ms）会进 collector，`__legadoPerf.report()` 能查。
+  const response = await fetchWithMetrics(path, { ...init, headers, credentials: 'same-origin' })
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string }
     throw new Error(body.message ?? '请求失败')

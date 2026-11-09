@@ -72,7 +72,10 @@ test('阅读设置抽屉里那一档只对着手上这本', () => {
   assert.match(panel, /ariaLabel="换一条规则重切这本"/, '那颗选择器的名字就说清了它只管这本')
   assert.match(panel, /按这条规则重新识别目录/, '有"重切"这个动作，不是选了不生效')
   assert.match(reader, /api\.reparseLocalBook/, '重切真的打到服务端')
-  assert.match(reader, /setShelfTocRule\(item\?\.tocRule/, '重切之后把服务端说的那条回填进面板，界面不沿用旧值')
+  assert.match(reader, /setShelfTocRule\(result\.tocRuleUsed/, '重切之后把服务端说的那条回填进面板，界面不沿用旧值')
+  // 缓存状态同步那一支搬进了 hook（0.2.37 之后的第一刀），回填书架记录里的规则仍要在。
+  const cacheHook = read('../src/features/reader/useReaderCacheStatus.ts')
+  assert.match(cacheHook, /setShelfTocRule\(item\?\.tocRule/, '书架记录里的目录规则要回填进面板')
   assert.doesNotMatch(panel, /ariaLabel="TXT 目录规则"/, '"下一本用哪条"不在抽屉里改：抽屉与弹窗各留一条路，避免重复入口')
   assert.doesNotMatch(panel, /update\(\{ txtTocRule/, '抽屉里的暂选绝不写全局默认（那是"改这本"时最不该发生的事）')
   assert.match(panel, /onReparseLocal\(repickRule\)/, '重切用的是那颗选择器的暂选')

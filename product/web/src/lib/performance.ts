@@ -61,7 +61,13 @@ class PerformanceCollector {
     this.trackResources();
     
     // 3. 定时报告（可选发送到后端）
-    this.reportTimer = setInterval(() => this.report(), this.reportInterval);
+    this.reportTimer = setInterval(() => {
+      const report = this.report()
+      // 只报瓶颈：每分钟无条件打一份全量指标会把控制台淹掉，真出问题时反而找不到。
+      if (report.bottlenecks.length > 0) {
+        console.warn('[Performance] 瓶颈', report.bottlenecks)
+      }
+    }, this.reportInterval);
     // Node 下要 unref：这个定时器只为「定期汇报」存在，不该成为
     // 「进程退不出去」的理由 —— 前端测试跑完必须能正常退出，
     // 否则会出现「用例全绿、`npm test` 却挂住」这种最难查的现象。
@@ -244,6 +250,23 @@ class PerformanceCollector {
   }
   
   /**
+   * 记录一条调用方自己计时的指标（分页测量这类热路径用它）。
+   *
+   * 不在这里包 `performance.now()`：调用方往往要在一次 DOM 读取前后各取一次时间，
+   * 中间夹着 `await` 的话包在这里反而会把等待时间算进去。
+   */
+  record(name: string, category: PerformanceMetric['category'], duration: number): void {
+    this.metrics.set(`custom:${name}`, {
+      name,
+      startTime: performance.now() - duration,
+      endTime: performance.now(),
+      duration,
+      value: duration,
+      category,
+    })
+  }
+
+  /**
    * 生成性能报告
    */
   report(): PerformanceReport {
@@ -294,3 +317,9 @@ export const performanceMonitor = new PerformanceCollector();
 // 原来就是这种解构写法，只是因为没人单独调过它才一直没暴露。
 export const fetchWithMetrics = performanceMonitor.fetchWithMetrics.bind(performanceMonitor);
 export const dbTransaction = performanceMonitor.dbTransaction.bind(performanceMonitor);
+
+// 手动查看入口：控制台里 `__legadoPerf.report()` 就能拿到当前快照。
+// 只在浏览器里挂，Node 下（测试）不污染 globalThis。
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __legadoPerf?: PerformanceCollector }).__legadoPerf = performanceMonitor
+}

@@ -1,5 +1,8 @@
 import test, { after } from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { performanceMonitor, fetchWithMetrics, dbTransaction } from '../src/lib/performance'
 
 // 导入这个模块就会构造单例并 `init()`（起定时器 + 两个 PerformanceObserver）。
@@ -74,6 +77,34 @@ test('dbTransaction 把回调结果透传，并按 store 名记账', async () =>
   const ops = performanceMonitor.report().indexedDbOps
   assert.equal(ops.length, 1)
   assert.ok(ops[0].name.includes('book_shelf'), `指标名要带上 store，实际 ${ops[0].name}`)
+})
+
+test('record 记录调用方自计的指标，慢的会进 bottlenecks', () => {
+  performanceMonitor.reset()
+  performanceMonitor.record('pagination_measure', 'render', 42)
+  let report = performanceMonitor.report()
+  assert.equal(report.bottlenecks.length, 0, '42ms 不该算瓶颈')
+  assert.equal(report.apiRequests.length, 0, 'render 指标不该混进 apiRequests')
+
+  performanceMonitor.record('pagination_measure', 'render', 600)
+  report = performanceMonitor.report()
+  assert.equal(report.bottlenecks.length, 1, '超过 500ms 要能被 report 点出来')
+  assert.ok(report.bottlenecks[0].includes('pagination_measure'))
+})
+
+/**
+ * 接线判据：采集器存在不等于它在工作。
+ *
+ * 上一轮就是「`performance.ts` 写了 296 行、测试全绿，但 API 客户端仍裸 fetch」，
+ * 所以这里直接盯住两个真实调用点，防止再退回「配了但没人用」。
+ */
+test('API 客户端与分页测量都走性能采集器', () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+  const client = fs.readFileSync(path.join(root, 'src/lib/api/client.ts'), 'utf8')
+  assert.match(client, /fetchWithMetrics\(/, '统一 API 客户端必须走 fetchWithMetrics')
+
+  const screen = fs.readFileSync(path.join(root, 'src/features/reader/ReaderScreen.tsx'), 'utf8')
+  assert.match(screen, /performanceMonitor\.record\('pagination_measure'/, '分页测量必须记指标')
 })
 
 test('慢请求的两个阈值不是同一个数：300ms 报 warn，500ms 才进 bottlenecks', async () => {

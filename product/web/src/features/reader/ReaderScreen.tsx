@@ -20,6 +20,7 @@ import { reanchorNotes } from './notes/reanchor'
 import { splitByTerm } from './searchTerm'
 import { MarkingMenu } from './interaction/MarkingMenu'
 import { setAiChatOpen } from '../../lib/aiChatStore'
+import { performanceMonitor } from '../../lib/performance'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
 import { BookSearchDialog } from './dialogs/BookSearchDialog'
 import { RefreshChaptersModal } from './dialogs/RefreshChaptersModal'
@@ -42,6 +43,7 @@ import { cleanAuthor, cleanTitle } from '../../lib/searchFilters'
 import { toast } from '../../components/Toast'
 import { ReplaceRulesModal } from '../../components/ReplaceRulesModal'
 import { ReaderCatalog } from './ReaderCatalog'
+import { useReaderCacheStatus } from './useReaderCacheStatus'
 import { ReaderSettingsSheet } from './settingsPanel/ReaderSettingsSheet'
 import { ReaderTtsManager } from './tts/ReaderTtsManager'
 import { TtsContext } from './tts/ReaderTtsContext'
@@ -58,7 +60,6 @@ import { mangaFraction, mangaIndexAtOffset, mangaNextStart, mangaPageLabel, mang
 import type { OpenBook } from '../../lib/openBook'
 import {
   downloadChaptersToOffline,
-  getOfflineChaptersSet,
 } from '../../lib/offlineStorage'
 
 type ReaderScreenProps = {
@@ -97,8 +98,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
 
   /** 可选的目录规则清单（只在读本地书时取一次）；取不到就不摆这一档控件。 */
   const [tocRuleOptions, setTocRuleOptions] = useState<TocRuleOption[]>([])
-  /** 这本本地书**实际**用的规则，来自书架记录（设置里那条只是下一本的默认值）。 */
-  const [shelfTocRule, setShelfTocRule] = useState<string | null>(null)
   /**
    * 滚动模式的续接窗口（用户 2026-10-02：「章节间的连接还是不对，怎么能跳转呢，不是一体的吗」）。
    * 锚点章之后已经取到正文的章节，渲染在同一个滚动容器里 —— 读完一章是"顶上来"，不是"跳过去"。
@@ -166,7 +165,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     } catch { return true }
   })
   const [boundaryMessage, setBoundaryMessage] = useState('')
-  const [inShelf, setInShelf] = useState(true)
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
   const [showSourceSwitch, setShowSourceSwitch] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -180,17 +178,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     else void document.documentElement.requestFullscreen().catch(() => undefined)
   }
   const [showReplaceRules, setShowReplaceRules] = useState(false)
-  const [cachedChapterUrls, setCachedChapterUrls] = useState<Set<string>>(new Set())
-  /**
-   * 已取到正文的章节字数（`chapterUrl` → 字符数）。用户要的「当获取到内容的时候，把章节字数
-   * 显示在右边」就是这张表：只有正文真的落库的章节才进得来，没内容就没有字数可说。
-   *
-   * 两个来源汇成一张表：
-   * - 服务端 `GET /api/bookshelf/cached-chapters` 的 `cachedWordCounts`（与 `cachedChapterUrls` 同序）；
-   * - 本章刚取回正文时本地直接量 `content.length` —— 服务端那一刻也把它写进了缓存，
-   *   但界面不该等下一轮同步才显示出"眼前这一章的字数"。
-   */
-  const [chapterWordCounts, setChapterWordCounts] = useState<ReadonlyMap<string, number>>(new Map())
   const [offlineStatsModal, setOfflineStatsModal] = useState(false)
   const [showRefreshChapters, setShowRefreshChapters] = useState(false)
   const [localSyncing, setLocalSyncing] = useState(false)
@@ -207,12 +194,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [customRangeEnd, setCustomRangeEnd] = useState(50)
   // 这两层都只认点击、不认 Esc —— 统一补上 Esc 关闭（PROPOSAL-018 W6 的"遮罩与关闭键必须走统一那一套"）
   useEscapeClose(() => setLightboxSrc(null))
-
-  const [cacheStatus, setCacheStatus] = useState<{ state: string; cached: number; total: number; error?: string }>({
-    state: 'idle',
-    cached: 0,
-    total: openBook.chapters.length,
-  })
 
   // Pagination states
   const [pageIndex, setPageIndex] = useState(0)
@@ -317,6 +298,26 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const chapterBaseContentRef = useRef('')
   const bookName = currentBook.details.name || '书籍正文'
 
+  // 离线缓存状态（书架记录 + 本地 IndexedDB）整段收进 hook，阅读器只消费它的返回值。
+  const {
+    cacheStatus,
+    setCacheStatus,
+    cachedChapterUrls,
+    setCachedChapterUrls,
+    chapterWordCounts,
+    setChapterWordCounts,
+    inShelf,
+    setInShelf,
+    shelfTocRule,
+    setShelfTocRule,
+    syncCacheStatus,
+  } = useReaderCacheStatus({
+    bookName,
+    sourceId: currentBook.details.sourceId,
+    bookUrl: currentBook.bookUrl,
+    chapterCount: currentBook.chapters.length,
+  })
+
   /**
    * 阅读记录（PROPOSAL-019 D）：在阅读页停留计时，每攒够 30 秒上报一段。
    *
@@ -382,94 +383,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       return error instanceof Error ? error.message : '重切目录失败'
     }
   }
-
-  /**
-   * 阅读器是否还挂着。`syncCacheStatus` 是 async，且被 1.2s 轮询反复调用：
-   * 用户关掉阅读器时在途那一趟回来，原本照样 setCachedChapterUrls / setShelfTocRule /
-   * setCacheStatus，还会把「离线缓存完成」的 toast 弹到已经关掉的界面上（那次请求可能
-   * 挂了十几秒——正是大书缓存到尾声的时刻）。同文件里 :498 / :1093 / :1146 用局部
-   * `alive` 变量的写法对付同一类问题，这里因为要跨两个 effect 共享，改用 ref。
-   */
-  const syncCacheAliveRef = useRef(false)
-  useEffect(() => {
-    syncCacheAliveRef.current = true
-    return () => { syncCacheAliveRef.current = false }
-  }, [])
-  /** cacheStatus.state 的镜像：给 syncCacheStatus 判"上一轮是不是 caching"用，不参与依赖。 */
-  const cacheStateRef = useRef(cacheStatus.state)
-  cacheStateRef.current = cacheStatus.state
-
-  // Sync cache status with bookshelf and local IndexedDB
-  const syncCacheStatus = useCallback(async () => {
-    try {
-      const [shelf, cachedUrlsRes, localOfflineSet] = await Promise.all([
-        api.bookshelf().catch(() => []),
-        api.getCachedChapters(currentBook.details.sourceId, currentBook.bookUrl).catch(() => null),
-        getOfflineChaptersSet(currentBook.details.sourceId, currentBook.bookUrl).catch(() => new Set<string>()),
-      ])
-
-      // 三个 await 都回来了才知道阅读器还在不在：期间可能已经关掉或换了书。
-      if (!syncCacheAliveRef.current) return
-
-      const mergedSet = new Set<string>(localOfflineSet)
-      const mergedWords = new Map<string, number>()
-      if (cachedUrlsRes?.cachedChapterUrls) {
-        cachedUrlsRes.cachedChapterUrls.forEach((u, i) => {
-          mergedSet.add(u)
-          // 服务端把「地址 → 字数」按同序两个数组回传（见 CachedChaptersResponse.cachedWordCounts）。
-          // 对不上号（旧版服务端的响应没这个字段）就干脆不填，让界面那一格留空 ——
-          // 报 0 字是谎话，报旧书的字数也是谎话。
-          const words = cachedUrlsRes.cachedWordCounts?.[i]
-          if (typeof words === 'number') mergedWords.set(u, words)
-        })
-      }
-      setCachedChapterUrls(mergedSet)
-      setChapterWordCounts(mergedWords)
-
-      const item = shelf.find(s => s.sourceId === currentBook.details.sourceId && s.bookUrl === currentBook.bookUrl)
-      // 这本本地书"实际用的是哪条目录规则"只有书架记录知道（设置里那条只是下一本的默认值）
-      setShelfTocRule(item?.tocRule ?? null)
-      if (item) {
-        setInShelf(true)
-        // 「缓存完成 / 中断」只在**从 caching 变成终态**那一趟报一次。
-        // 以前这条 toast 写在 setCacheStatus 的 updater 里 —— updater 必须纯，
-        // React 可能重复调用它（并发渲染下重复弹 toast），而且它挡不住"界面已关"。
-        // 判据读 ref 而不是 cacheStatus.state：把 state 写进 useCallback 依赖会让这个
-        // 回调每次状态变化就换一个身份，从而把下面两个 effect 反复重置（轮询永远重头计时）。
-        //
-        // 判完立刻把 ref 推到新状态：这个函数可能重叠执行（3s 一拍，而一次要拉整份书架，
-        // 慢的时候上一拍还没回来），两拍都读到 caching 就会各弹一次。
-        if (cacheStateRef.current === 'caching' && item.cacheState === 'ready') {
-          toast.success(`《${bookName}》离线缓存完成（共 ${item.cachedChapters} 章）`)
-        } else if (cacheStateRef.current === 'caching' && item.cacheState === 'failed') {
-          toast.warning(`《${bookName}》缓存中断：${item.cacheError || '部分章节未下载'}`)
-        }
-        cacheStateRef.current = item.cacheState
-        setCacheStatus({
-          state: item.cacheState,
-          cached: Math.max(item.cachedChapters, mergedSet.size),
-          total: item.totalChapters || currentBook.chapters.length,
-          error: item.cacheError,
-        })
-      } else {
-        setInShelf(false)
-      }
-    } catch {
-      // ignore
-    }
-  }, [bookName, currentBook.bookUrl, currentBook.chapters.length, currentBook.details.sourceId])
-
-  useEffect(() => {
-    void syncCacheStatus()
-  }, [syncCacheStatus])
-
-  useEffect(() => {
-    if (cacheStatus.state !== 'caching') return
-    // 1200ms → 3000ms：每一拍都要 api.bookshelf() 拉整份书架（几千本时是 MB 级），
-    // 缓存进度条不需要 1.2s 的精度。卸载时 clearInterval（本 effect 的 cleanup 已覆盖）。
-    const timer = window.setInterval(syncCacheStatus, 3000)
-    return () => window.clearInterval(timer)
-  }, [cacheStatus.state, syncCacheStatus])
 
   /**
    * 手动刷新正文之后，屏幕上挂着的三处正文都要跟着换：当前章、下方续接段、向前接的段。
@@ -1890,6 +1803,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (w <= 0) return
     if (loading || !content) return
 
+    const measureStartedAt = performance.now()
     const totalScrollWidth = body.scrollWidth
     const layout = calculatePaginationLayout({
       viewportWidth: w,
@@ -1946,6 +1860,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       pageAlignedRef.current = measuredStarts.every(col => col % columnsPerPage === 0)
       measuredStartsRef.current = measuredStarts
       columnsPerPageRef.current = columnsPerPage
+      // 分页测量是阅读器最贵的一次 DOM 读：记下来，`__legadoPerf.report()` 能看到。
+      performanceMonitor.record('pagination_measure', 'render', performance.now() - measureStartedAt)
       setPageFillers(current => (current.length === nextFillers.length
         && current.every((value, index) => value === nextFillers[index]) ? current : nextFillers))
       // 最后一章末尾那一栏垫白不该被算成一页：`layout.pageCount` 是按 DOM 总宽量的，
