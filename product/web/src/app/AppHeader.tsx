@@ -23,6 +23,8 @@ export interface AppHeaderProps {
   onOpenSkins?: () => void
   /** 服务端 /healthz 报回来的版本号；空串表示还没问到（离线或启动中）。 */
   version?: string
+  /** 发版计数（`BUILD_NUMBER`）：只在发版时递增，日常改动看 `revision`。 */
+  build?: string
   /**
    * 服务端 /healthz 报回来的代码修订（`rev-<提交数>`）。
    *
@@ -48,6 +50,7 @@ export function AppHeader({
   onOpenReadingLog,
   onOpenSkins,
   version = '',
+  build = '',
   revision = '',
   revisionSha = '',
 }: AppHeaderProps) {
@@ -233,6 +236,12 @@ export function AppHeader({
                   <span>版本</span>
                   <code>{version || '未取到'}</code>
                 </div>
+                {build && (
+                  <div className="menu-version">
+                    <span>构建</span>
+                    <code title="构建号只在发版时递增；日常改动看下面的修订号">{build}</code>
+                  </div>
+                )}
                 {revision && (
                   <div className="menu-version">
                     <span>修订</span>
