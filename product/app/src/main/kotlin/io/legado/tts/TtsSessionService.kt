@@ -333,7 +333,13 @@ private data class AudioStreamStats(
     val durationMs: Long,
 )
 
-private class Mp3DurationEstimator {
+/**
+ * 从 MP3 字节流里估时长（给「读到第几秒」用，不追求精确）。
+ *
+ * `internal` 而不是 `private`：这是个纯字节解析器，帧头、ID3 头、跨分片拼接这些边界
+ * 只有直接喂字节才测得动 —— 走 `TtsSession` 测它就得先起一条真语音流。
+ */
+internal class Mp3DurationEstimator {
     private var pending = ByteArray(0)
     private var durationMs = 0L
 
