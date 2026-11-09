@@ -104,7 +104,9 @@ test('API 客户端与分页测量都走性能采集器', () => {
   assert.match(client, /fetchWithMetrics\(/, '统一 API 客户端必须走 fetchWithMetrics')
 
   const screen = fs.readFileSync(path.join(root, 'src/features/reader/ReaderScreen.tsx'), 'utf8')
-  assert.match(screen, /performanceMonitor\.record\('pagination_measure'/, '分页测量必须记指标')
+  const measureHook = fs.readFileSync(path.join(root, 'src/features/reader/usePaginationMeasurement.ts'), 'utf8')
+  assert.match(measureHook, /performanceMonitor\.record\('pagination_measure'/, '分页测量必须记指标')
+  assert.match(screen, /usePaginationMeasurement\(/, '阅读器要真的用上分页测量 hook')
 })
 
 test('慢请求的两个阈值不是同一个数：300ms 报 warn，500ms 才进 bottlenecks', async () => {

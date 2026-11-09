@@ -9,7 +9,7 @@ import { getBrand } from '../../lib/brandStore'
 import { ContextMenuItem, showContextMenu } from '../../components/ContextMenu'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
-import { calculatePaginationLayout, contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundary, isAtTopBoundary, isInteractiveReaderTarget, isSameSiteAsset, isTapGesture, paginateWheelStep, swipeDirection, ViewportBounds } from './interaction/readerInteractions'
+import { contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundary, isAtTopBoundary, isInteractiveReaderTarget, isSameSiteAsset, isTapGesture, paginateWheelStep, swipeDirection, ViewportBounds } from './interaction/readerInteractions'
 import { readerImageSrc } from './content/readerImage'
 import { TapAction, zoneAt } from './interaction/tapZones'
 import { isMediaType } from '../../lib/bookType'
@@ -35,7 +35,7 @@ import { stepFontSize } from './content/fontSizeControl'
 import { ReaderMenuAction } from './interaction/readerMenu'
 import { IDENTITY_CONVERTER, loadScriptConverter, type ScriptConverter } from './content/scriptConvert'
 import { coverDirection, planNextPage, planPrevPage } from './interaction/pageTurn'
-import { flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, prependLandingPage, resolveMeasuredPage, sectionAtPage, sectionProgress } from './content/readerFlow'
+import { flowAdvance, holdScroll, pageProgress, pageWindowShift, prependLandingPage, sectionAtPage, sectionProgress } from './content/readerFlow'
 import { findFirstIntersectingParagraphIndex } from './interaction/readerInteractions'
 import { caretOffsetWithin, checksumText, offsetToParagraph, paragraphAnchor, textOffsetRect, type LogicalPosition } from './content/logicalPosition'
 import { SourceSwitchModal } from '../../components/SourceSwitchModal'
@@ -46,6 +46,7 @@ import { ReaderCatalog } from './ReaderCatalog'
 import { useReaderCacheStatus } from './useReaderCacheStatus'
 import { useReaderChapterContent } from './useReaderChapterContent'
 import { useReaderPageTurn } from './useReaderPageTurn'
+import { usePaginationMeasurement } from './usePaginationMeasurement'
 import { useReadingLog } from './useReadingLog'
 import { ReaderSettingsSheet } from './settingsPanel/ReaderSettingsSheet'
 import { ReaderTtsManager } from './tts/ReaderTtsManager'
@@ -134,15 +135,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   flowHeadRef.current = flowHead
   /** 刚把某一章接到窗口前面：先记着是哪一章，量完 DOM 才知道它占几页、页码要后移多少。 */
   const pendingPrependRef = useRef<string | null>(null)
-  /** 分页模式下每一章占的页区间（量自排版后的 DOM），以及顶窗口之后该落到第几页。 */
-  const pageSpansRef = useRef<{ start: number; end: number }[]>([])
-  /** 量得的每章起始**栏**号（DOM 真值）。后退接章的页码补偿按它落页 —— 算术推的 spans 在
-   *  垫栏/强制分栏有一处出入时就差半页（paginate-flow-check ④：接之前第 2 段落 vs 之后第 5 段落）。 */
-  const measuredStartsRef = useRef<number[]>([])
-  const columnsPerPageRef = useRef(1)
-  /** 屏幕上真的对齐了吗（按 DOM 量出来的，不是按算术推的）—— 挪窗口的闸门看这个。 */
-  const pageAlignedRef = useRef(true)
-  const pendingPageRef = useRef<number | null>(null)
   const [chapterIndex, setChapterIndex] = useState(startIndex)
   /** 同一个手法：判断"只能往前顶"要读当前的那一个，不能闭包里那个早就过期的数字。 */
   const chapterIndexRef = useRef(chapterIndex)
@@ -193,12 +185,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
 
   // Pagination states
   const [pageIndex, setPageIndex] = useState(0)
-  const [pageCount, setPageCount] = useState(1)
-  /** 每一章**前面**垫几栏空白（双栏时把章节边界对齐到页开头）；量出来的，见 measurePagination。 */
-  const [pageFillers, setPageFillers] = useState<number[]>([])
-  const [columnWidth, setColumnWidth] = useState(600)
-  const [stride, setStride] = useState(640)
-  const [isDoubleColumn, setIsDoubleColumn] = useState(false)
   const columnGap = 40
 
   // 翻页动画（slide / fade / cover）整段收进 hook；这里只拿渲染要用的值。
@@ -586,6 +572,33 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   // persist / 首屏恢复都是长期闭包：经 ref 读当前章的段起点与校验值，避免把 persist 的依赖搅乱。
   const logicalMetaRef = useRef({ starts: paragraphStarts, checksum: positionChecksum })
   logicalMetaRef.current = { starts: paragraphStarts, checksum: positionChecksum }
+
+  // 分页测量：DOM 排成几栏、每章占哪几页、页码落在哪，全在 hook 里；这里只消费结果。
+  const {
+    pageCount,
+    pageFillers,
+    columnWidth,
+    stride,
+    isDoubleColumn,
+    measurePagination,
+    pageSpansRef,
+    measuredStartsRef,
+    columnsPerPageRef,
+    pageAlignedRef,
+    pendingPageRef,
+  } = usePaginationMeasurement({
+    viewportRef,
+    bodyRef,
+    loading,
+    content,
+    columnMode: settings.columnMode,
+    columnGap,
+    setPageIndex,
+    targetInitialPageRef,
+    initialPagePositionRef,
+    initialLogicalPositionRef,
+    logicalMetaRef,
+  })
   /**
    * 漫画换章后的落点：往回翻跨章要落在**上一章末屏**（原来一律回到第一张，等于白翻）；
    * 正常进入这一章则按存档的字符偏移换回页号，读到哪里就从哪里继续。
@@ -1681,135 +1694,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (flowHeadRef.current.length > 0) setFlowHead([])
   }, [pageIndex, settings.pageMode, currentBook.chapters])
 
-  // Pagination measurement
-  const measurePagination = useCallback(() => {
-    const viewport = viewportRef.current
-    const body = bodyRef.current
-    if (!viewport || !body) return
-    const w = viewport.clientWidth
-    if (w <= 0) return
-    if (loading || !content) return
-
-    const measureStartedAt = performance.now()
-    const totalScrollWidth = body.scrollWidth
-    const layout = calculatePaginationLayout({
-      viewportWidth: w,
-      totalScrollWidth,
-      columnGap,
-      columnMode: settings.columnMode,
-    })
-
-    setColumnWidth(layout.columnWidth)
-    setStride(layout.stride)
-    setIsDoubleColumn(layout.isDoubleColumn)
-
-    // 每一章在窗口里占哪几页。
-    // 关键：**先算每一章占几栏（精确整数），再累加出起始栏号**，最后才除以"一屏几栏"。
-    // 原来直接 (矩形左边缘 - body 左边缘) / stride 取整，等于把章节起始列的奇偶丢掉 ——
-    // 下一章落在奇数列时，它的第一栏是上一页的右半格（用户已经看过），窗口一挪页码归零，
-    // 那一栏又挪回左半格。用户 2026-10-03 的两句"不要这样的跳转"就是这么来的。
-    let effectivePageCount = layout.pageCount
-    const sections = [...body.querySelectorAll<HTMLElement>('.reader-page-chapter')]
-    if (sections.length > 0) {
-      const columnsPerPage = layout.isDoubleColumn ? 2 : 1
-      // 每一章占几栏 —— **不能量 section 的 getBoundingClientRect().width**：
-      // 分栏里一个跨七栏的 <section>，它的矩形只报到约两栏宽（实测算出 [1,2,2] 而真实是 [1,7,7]），
-      // 于是"补齐到整页"永远算出 0，界面照旧重复一栏。用 Range 量才拿得到每一栏的那块碎片。
-      // 也正因为如此，垫的那一栏必须落在 section **外面**：算在里面的话章数会被自己数多一栏，
-      // 下一轮又算成不用垫 —— 来回振荡。
-      //
-      // 数"多少栏"还不能直接对碎片左缘去重：段落有**首行缩进**时，每一栏里都多出一个
-      // "缩进后的第一行"左缘 —— 一个真栏被数成两个（探针书实测：一章 8 栏数成 13、
-      // 前言 1 栏数成 2）。偶数的假栏数 → 该垫的垫成 0 → 下一章落在奇数栏，接章补偿
-      // 与翻页窗口全都差半页。修法：左缘先按 stride 分桶量化，缩进的左缘落进所在栏的桶，
-      // 桶数才是真栏数（paginate-flow-check ④ 的几何转储逮到的就是这个）。
-      const bodyLeft = body.getBoundingClientRect().left
-      const measuredStride = layout.columnWidth + columnGap
-      const columnCounts = sections.map(node => {
-        const range = document.createRange()
-        range.selectNodeContents(node)
-        const lefts = new Set([...range.getClientRects()]
-          .filter(rect => rect.width > 1)
-          .map(rect => Math.round((rect.left - bodyLeft) / measuredStride)))
-        return Math.max(1, lefts.size)
-      })
-      const nextFillers = pageAlignmentPads(columnCounts, columnsPerPage)
-      const starts = pageAlignmentStarts(columnCounts, columnsPerPage)
-      // 对齐闸门按**量出来的**起始栏判，不按算术：算术说垫了、DOM 里还没渲染出来，
-      // 这一刻挪窗口照样会重复一栏。
-      const measuredStarts = sections.map(node => {
-        const range = document.createRange()
-        range.selectNodeContents(node)
-        const rects = [...range.getClientRects()].filter(rect => rect.width > 1)
-        const left = rects.length > 0 ? Math.min(...rects.map(rect => rect.left)) : bodyLeft
-        return Math.round((left - bodyLeft) / measuredStride)
-      })
-      pageAlignedRef.current = measuredStarts.every(col => col % columnsPerPage === 0)
-      measuredStartsRef.current = measuredStarts
-      columnsPerPageRef.current = columnsPerPage
-      // 分页测量是阅读器最贵的一次 DOM 读：记下来，`__legadoPerf.report()` 能看到。
-      performanceMonitor.record('pagination_measure', 'render', performance.now() - measureStartedAt)
-      setPageFillers(current => (current.length === nextFillers.length
-        && current.every((value, index) => value === nextFillers[index]) ? current : nextFillers))
-      // 最后一章末尾那一栏垫白不该被算成一页：`layout.pageCount` 是按 DOM 总宽量的，
-      // 若它比"最后一节正文落在的页"还多，多出来的页里只有垫栏 —— 翻过去就是一整页空白。
-      // 只收紧、不放宽：正常对齐时两者相等，这一条是兜底（章末不再出现空白页）。
-      const contentEndColumn = starts[starts.length - 1] + columnCounts[columnCounts.length - 1]
-      effectivePageCount = Math.max(1, Math.min(layout.pageCount, Math.ceil(contentEndColumn / columnsPerPage)))
-      setPageCount(effectivePageCount)
-      pageSpansRef.current = starts.map((start, index) => ({
-        start: Math.round(start / columnsPerPage),
-        end: index + 1 < starts.length
-          ? Math.round(starts[index + 1] / columnsPerPage)
-          : effectivePageCount,
-      }))
-      // 刚往前接了一章：页码由下面那个专门的 layout effect 补（它同步量、同步补，不靠这里的时机）
-      // 刚把窗口往前挪过：页码要落到"摘掉前面那几章之后"的那一页上，否则画面跳回窗口开头
-      if (pendingPageRef.current !== null) {
-        const next = Math.min(effectivePageCount - 1, Math.max(0, pendingPageRef.current))
-        pendingPageRef.current = null
-        setPageIndex(next)
-        return
-      }
-      // 首屏恢复优先用语义位置：fraction 的分母是整个多章窗口，窗口里一挂上前后章就会偏。
-      // 校验不过（正文变过、简繁模式变过）才让下面的 resolveMeasuredPage 按 fraction 兜底。
-      const pendingLogical = initialLogicalPositionRef.current
-      initialLogicalPositionRef.current = null
-      if (pendingLogical && pendingLogical.positionChecksum === logicalMetaRef.current.checksum) {
-        const section = sections.find(node => Number(node.dataset.chapterIndex ?? -1) === pendingLogical.chapterIndex)
-        const els = section ? Array.from(section.querySelectorAll<HTMLElement>('[data-paragraph-index]')) : []
-        if (els.length) {
-          const { index, within } = offsetToParagraph(logicalMetaRef.current.starts, pendingLogical.charOffset)
-          let target = els.find(el => Number(el.dataset.paragraphIndex ?? 0) === index)
-          if (!target) {
-            const before = els.filter(el => Number(el.dataset.paragraphIndex ?? 0) <= index)
-            target = before[before.length - 1] ?? els[0]
-          }
-          const rect = textOffsetRect(target, within) ?? target.getBoundingClientRect()
-          const column = Math.max(0, Math.round((rect.left - bodyLeft) / measuredStride))
-          const page = Math.min(effectivePageCount - 1, Math.max(0, Math.floor(column / columnsPerPage)))
-          initialPagePositionRef.current = null
-          setPageIndex(page)
-          return
-        }
-      }
-    } else {
-      pageSpansRef.current = []
-      measuredStartsRef.current = []
-      setPageCount(effectivePageCount)
-    }
-
-    const pageTarget = targetInitialPageRef.current
-    const restoredPosition = initialPagePositionRef.current
-    targetInitialPageRef.current = null
-    initialPagePositionRef.current = null
-    if (pageTarget === null && restoredPosition === null) {
-      // 同一个锚点内重量一次（改字号、拖窗口、续接挂章）：原地不动，只做夹取
-      setPageIndex(curr => resolveMeasuredPage(null, null, curr, effectivePageCount))
-      return
-    }
-    setPageIndex(resolveMeasuredPage(pageTarget, restoredPosition, 0, effectivePageCount))
-  }, [columnGap, content, loading, settings.columnMode])
 
   useLayoutEffect(() => {
     if (settings.pageMode !== 'paginate') return
