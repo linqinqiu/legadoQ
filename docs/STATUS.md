@@ -157,10 +157,10 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - 离线缓存状态搬进 `useReaderCacheStatus`；章节正文加载与预取搬进 `useReaderChapterContent`；
   阅读停留计时搬进 `useReadingLog`；翻页动画状态搬进 `useReaderPageTurn`；分页测量搬进
   `usePaginationMeasurement`；分页轨道与滚动续接的正文画布搬进 `ReaderBody`；换源 / TTS / 规则 /
-  缓存 / 笔记等弹层搬进 `ReaderOverlays`（`ReaderScreen.tsx` 3,200 → 2,592 行）；
+  缓存等弹层搬进 `ReaderOverlays`，笔记状态与增删改搬进 `useReaderNotes`（`ReaderScreen.tsx` 3,200 → 2,436 行）；
   `RuleRunner` 的列表取值段搬进 `RuleNodeSelection`。
-- 顶栏「我的」菜单新增「构建」一行（`BUILD_NUMBER`，只在发版时递增），与「修订」并排，
-  避免把"构建号不变"误当成"代码没更新"。
+- 顶栏「我的」菜单不再显示「构建」号（`BUILD_NUMBER`）：它只在发版时递增，日常区分版本看「修订」（`rev`）；
+  后端 `AboutInfo.build` 与 `/healthz`、`/api/about` 仍照常上报，只是界面不显。
 
 ---
 
@@ -168,7 +168,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 | 缺口 | 现状 | 影响 |
 |---|---|---|
-| ReaderScreen 未拆完 | 已拆出 TTS、目录（`ReaderCatalog`）、设置（`settingsPanel/`）、缓存状态与章节加载；`ReaderScreen.tsx` 仍有 **2,592 行**，**正文渲染与分页测量**还在里面 | 剩下两块是交互核心（段落点击/划词/图片放大/分页锚点），拆它们要先补交互判据，否则改坏了静态测试看不见 |
+| ReaderScreen 未拆完 | 已拆出 TTS、目录（`ReaderCatalog`）、设置（`settingsPanel/`）、缓存状态与章节加载、笔记状态（`useReaderNotes`）；`ReaderScreen.tsx` 仍有 **2,436 行**，**正文渲染与分页测量**还在里面 | 剩下两块是交互核心（段落点击/划词/图片放大/分页锚点），拆它们要先补交互判据，否则改坏了静态测试看不见 |
 | 后端覆盖率偏低的大包 | 整体行覆盖 **70.04%**；最薄的是 `http`（2,388 行 49.3%）、`ai`（3,987 行 65.8%）、`tts`（601 行 56.6%） | `tts` 与 `data.db` 的纯逻辑部分已补到 56.6% / 89.8%；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
 | 图标小尺寸清晰度 | 512 插画细分多，16–24px 仍糊；ICO 尺寸声明已修（按档渲染 16/24/32/48/64/128/256） | 任务栏/托盘辨识度（要根治得换扁平标记，待定） |
 | 可观测性 | 解析/规则求值/出站抓取已有分阶段耗时与失败率（`GET /api/diagnostics` 的 `stages`，运行日志页可展开）；**前端分页测量仍无指标** | 后端慢在哪一层能查了，界面卡顿仍只能靠猜 |

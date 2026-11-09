@@ -126,17 +126,17 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 上述任一项都会随下一次 commit / 重启变化，**不要**把它们写进"项目常驻描述"。
 
-### 5.1 续（2026-11-09 深夜，本地，`HEAD=7afd4ea`，领先 origin 18 提交）
+### 5.1 续（2026-11-09 深夜，本地，`HEAD=7ae52d0`，领先 origin 20 提交）
 
 > 自 §5 之后又做了阅读器拆分（4.1/4.2/4.3 第一步）。规模数字见 `研究-阅读器拆分续-下一步.md` §5。
 
 | 项 | 状态 |
 |---|---|
-| 工作树 | 仅剩 `docs/STATUS.md` 与本文两处文档改动未提交；WIP（阅读器外壳抽成 `ReaderChrome`、界面撤掉发版构建号）已提交本地 `7afd4ea` |
-| 阅读器拆分 | `ReaderScreen.tsx` 3,200 → **2,592**；拆出 `ReaderBody`(227) / `ReaderOverlays`(226) / `ReaderChrome`(218) 与 `useReaderChapterContent`(124) / `useReaderCacheStatus`(139) / `usePaginationMeasurement`(190) / `useReaderPageTurn`(77) / `useReadingLog`(46) |
-| 前端判据 | **1,019 通过 / 0 失败**（`npm --prefix product/web test`） |
-| `useReaderNotes` | **未抽**：与笔记/搜索共用的 `jumpToNotePosition`/`pendingNoteJumpRef` 导航原语、以及正文渲染深层的 `renderNoteHighlights` 耦合，硬抽风险高；推荐先抽共用导航 hook 再抽笔记状态（见研究续篇 §3–§4） |
-| 门禁 | version/docs:api/changelog 未重跑（本轮只动了前端展示与状态，未改版本/接口/修复提交） |
+| 工作树 | 代码已提交（`7afd4ea` 外壳抽成 ReaderChrome + 撤掉界面构建号；`7ae52d0` 笔记状态搬进 useReaderNotes）；本轮收尾只剩文档改动 |
+| 阅读器拆分 | `ReaderScreen.tsx` 3,200 → **2,436**；拆出 `ReaderBody`(227) / `ReaderOverlays`(226) / `ReaderChrome`(218) / `useReaderNotes`(200) 与 `useReaderChapterContent`(124) / `useReaderCacheStatus`(139) / `usePaginationMeasurement`(190) / `useReaderPageTurn`(77) / `useReadingLog`(46) |
+| 前端判据 | **1,020 通过 / 0 失败**（`npm --prefix product/web test`） |
+| 笔记拆分边界 | `useReaderNotes` 收了状态与增删改；`toggleBookmark`（依赖 `readLogicalPosition`，与 persist 共用逻辑位置）与 `renderNoteHighlights`/`jumpToNote`/`jumpToSearchHit`（依赖正文渲染路径与导航原语）仍留 `ReaderScreen`，经 `notesApi.*` 复用状态 |
+| 门禁 | `check`(tsc -b) 通过；version/docs:api/changelog 未重跑（未改版本/接口/修复提交）。注：`check:test` 在 `test/PerformanceMonitor.test.ts` 有既有类型报错（上次动于 `c660963`），非本轮引入 |
 
 ---
 
