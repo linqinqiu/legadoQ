@@ -43,12 +43,12 @@
 | 后端行数 | **35,109** | `find … -exec cat {} + \| wc -l` | — |
 | 后端 `@Test` | **1,091** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
 | 后端测试文件 | **137** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
-| 前端 ts/tsx | **195** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | — |
-| 前端行数 | **37,581** | 同上 `-exec cat {} + \| wc -l` | — |
+| 前端 ts/tsx | **196** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | — |
+| 前端行数 | **37,695** | 同上 `-exec cat {} + \| wc -l` | — |
 | 前端测试文件 | **129** | `ls product/web/test/*.test.ts \| wc -l` | — |
 
 **跑起来的通过数（2026-11-09 22:05–22:07 复跑）**：后端 **1,090 / 1,090**（0 失败 0 错误），
-前端 **1,018 / 1,018**。合计 **2,108**。
+前端 **1,019 / 1,019**。合计 **2,109**。
 
 > 静态 1,091 与运行 1,090 的差额来自一条没被任何测试类执行的用例，不是失败。
 
@@ -126,13 +126,25 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 上述任一项都会随下一次 commit / 重启变化，**不要**把它们写进"项目常驻描述"。
 
+### 5.1 续（2026-11-09 深夜，本地，`HEAD=7afd4ea`，领先 origin 18 提交）
+
+> 自 §5 之后又做了阅读器拆分（4.1/4.2/4.3 第一步）。规模数字见 `研究-阅读器拆分续-下一步.md` §5。
+
+| 项 | 状态 |
+|---|---|
+| 工作树 | 仅剩 `docs/STATUS.md` 与本文两处文档改动未提交；WIP（阅读器外壳抽成 `ReaderChrome`、界面撤掉发版构建号）已提交本地 `7afd4ea` |
+| 阅读器拆分 | `ReaderScreen.tsx` 3,200 → **2,592**；拆出 `ReaderBody`(227) / `ReaderOverlays`(226) / `ReaderChrome`(218) 与 `useReaderChapterContent`(124) / `useReaderCacheStatus`(139) / `usePaginationMeasurement`(190) / `useReaderPageTurn`(77) / `useReadingLog`(46) |
+| 前端判据 | **1,019 通过 / 0 失败**（`npm --prefix product/web test`） |
+| `useReaderNotes` | **未抽**：与笔记/搜索共用的 `jumpToNotePosition`/`pendingNoteJumpRef` 导航原语、以及正文渲染深层的 `renderNoteHighlights` 耦合，硬抽风险高；推荐先抽共用导航 hook 再抽笔记状态（见研究续篇 §3–§4） |
+| 门禁 | version/docs:api/changelog 未重跑（本轮只动了前端展示与状态，未改版本/接口/修复提交） |
+
 ---
 
 ## 6. 文档/记忆与实测的偏差
 
 | 来源 | 说法 | 实测 | 处置 |
 |---|---|---|---|
-| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,018、161、24 | 已按本文重写 |
+| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,019、161、24 | 已按本文重写 |
 | `backend-layering.md` | 123 / 32,153 / 935 | 134 / 35,109 / 1,091 | 写于旧 commit，数字以本文为准 |
 | `frontend-host.md` | 177 / 110 | 188 / 129 | 同上 |
 | `docs/ARCHITECTURE.md` §13 | `HttpClients` 零调用方 | 0.2.36 已删除该文件 | 该行已改为「已撤销」 |
