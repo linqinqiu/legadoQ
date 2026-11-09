@@ -3,32 +3,28 @@
 // `renderToStaticMarkup` 静态渲染才需要默认 React 在作用域里 —— 那件组件已拆进
 // `VirtualChapterList.tsx`，那条理由与它的默认导入一起搬过去了。）
 import React, { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { zh } from '../../i18n/zh'
 import { api, BookDetails, BookNote, BookSearchHit, Chapter, SearchResult, TocRuleOption } from '../../lib/api'
 import { getBrand } from '../../lib/brandStore'
 import { ContextMenuItem, showContextMenu } from '../../components/ContextMenu'
 import { Icon } from '../../icons'
-import { useEscapeClose } from '../../lib/useEscapeClose'
 import { contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundary, isAtTopBoundary, isInteractiveReaderTarget, isSameSiteAsset, isTapGesture, paginateWheelStep, swipeDirection, ViewportBounds } from './interaction/readerInteractions'
 import { readerImageSrc } from './content/readerImage'
 import { TapAction, zoneAt } from './interaction/tapZones'
 import { isMediaType } from '../../lib/bookType'
 import { TapZoneEditor } from './interaction/TapZoneEditor'
-import { NoteToolbar, type NoteDraft } from './notes/NoteToolbar'
+import { NoteDraft } from './notes/NoteToolbar'
 import { bookmarkPayload, findBookmarkAt } from './notes/bookmark'
 import { reanchorNotes } from './notes/reanchor'
 import { splitByTerm } from './searchTerm'
-import { MarkingMenu } from './interaction/MarkingMenu'
 import { setAiChatOpen } from '../../lib/aiChatStore'
 import { performanceMonitor } from '../../lib/performance'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
-import { BookSearchDialog } from './dialogs/BookSearchDialog'
-import { RefreshChaptersModal } from './dialogs/RefreshChaptersModal'
 import { ReaderHeader } from './ReaderHeader'
 import { ExtensionSlot } from '../../plugins/ExtensionSlot'
 import { Md3BottomBar, Md3TopBar } from './Md3Chrome'
 import { reportProgress } from './content/readerProgress'
 import { ReaderBody } from './ReaderBody'
+import { ReaderOverlays } from './ReaderOverlays'
 import { clampScrollPosition, effectiveReaderFontFamily, isBuiltinSkinHidden, readerBackgroundVars, ReaderSettings, resolveTheme, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './settingsPanel/readerSettings'
 import { stepFontSize } from './content/fontSizeControl'
 import { ReaderMenuAction } from './interaction/readerMenu'
@@ -37,10 +33,8 @@ import { coverDirection, planNextPage, planPrevPage } from './interaction/pageTu
 import { flowAdvance, holdScroll, pageProgress, pageWindowShift, prependLandingPage, sectionAtPage, sectionProgress } from './content/readerFlow'
 import { findFirstIntersectingParagraphIndex } from './interaction/readerInteractions'
 import { caretOffsetWithin, checksumText, offsetToParagraph, paragraphAnchor, textOffsetRect, type LogicalPosition } from './content/logicalPosition'
-import { SourceSwitchModal } from '../../components/SourceSwitchModal'
 import { cleanAuthor, cleanTitle } from '../../lib/searchFilters'
 import { toast } from '../../components/Toast'
-import { ReplaceRulesModal } from '../../components/ReplaceRulesModal'
 import { ReaderCatalog } from './ReaderCatalog'
 import { useReaderCacheStatus } from './useReaderCacheStatus'
 import { useReaderChapterContent } from './useReaderChapterContent'
@@ -48,14 +42,11 @@ import { useReaderPageTurn } from './useReaderPageTurn'
 import { usePaginationMeasurement } from './usePaginationMeasurement'
 import { useReadingLog } from './useReadingLog'
 import { ReaderSettingsSheet } from './settingsPanel/ReaderSettingsSheet'
-import { ReaderTtsManager } from './tts/ReaderTtsManager'
 import { TtsContext } from './tts/ReaderTtsContext'
 import { useReaderTts } from './tts/useReaderTts'
-import { TtsSettingsModal } from './tts/TtsSettingsModal'
 import { resetTtsBarPosition } from './tts/ttsBarPosition'
 import { ITtsEngine, WebSpeechEngine, HttpAudioTtsEngine, TtsPlayState, TtsSpeakMode, isPlayInterruptedError } from './tts/ttsEngine'
 import { isTypingTarget, normalizeKey, READER_SHORTCUTS, shortcutFor } from './interaction/shortcuts'
-import { OfflineCacheModal } from '../../components/OfflineCacheModal'
 import { warmContentImages } from './content/contentImages'
 import { splitParagraphs } from './content/paragraphs'
 import { CHUNK_SIZE, ensureLimit, growLimit, shouldChunk } from './content/chunkedRender'
@@ -179,8 +170,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [drawerFooterOpen, setDrawerFooterOpen] = useState(false)
   const [customRangeStart, setCustomRangeStart] = useState(1)
   const [customRangeEnd, setCustomRangeEnd] = useState(50)
-  // 这两层都只认点击、不认 Esc —— 统一补上 Esc 关闭（PROPOSAL-018 W6 的"遮罩与关闭键必须走统一那一套"）
-  useEscapeClose(() => setLightboxSrc(null))
 
   // Pagination states
   const [pageIndex, setPageIndex] = useState(0)
@@ -410,6 +399,31 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     }
     void syncCacheStatus()
   }, [currentBook.bookUrl, currentBook.details.sourceId, syncCacheStatus])
+
+  /**
+   * 净化规则改完后重取当前章：用户可能已经翻到别的章节，这里无条件写入会用旧章正文覆盖新章，
+   * 结果 `loadedChapterUrl` 与当前章不符 → 章节标题下永远空白。所以每次回写都先对一次 URL。
+   */
+  const handleReplaceRulesChanged = useCallback(() => {
+    if (!chapter) return
+    const requestedUrl = chapter.url
+    setLoadedChapterUrl('')
+    setContent('')
+    setLoading(true)
+    api.content(currentBook.details.sourceId, chapter.url, currentBook.bookUrl)
+      .then(res => {
+        if (currentChapterUrlRef.current !== requestedUrl) return
+        setContent(res.content)
+        setLoadedChapterUrl(requestedUrl)
+      })
+      .catch(err => {
+        if (currentChapterUrlRef.current !== requestedUrl) return
+        setMessage(err.message || '加载章节内容失败')
+      })
+      .finally(() => {
+        if (currentChapterUrlRef.current === requestedUrl) setLoading(false)
+      })
+  }, [chapter, currentBook.bookUrl, currentBook.details.sourceId, setContent, setLoadedChapterUrl, setLoading, setMessage])
 
   useEffect(() => {
     // 名字读单一来源而不是写死「legadoQ」：用户改了应用名之后，
@@ -1127,6 +1141,14 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     getInitialTtsChunkIndex, toggleTts, handlePrevChunk, handleNextChunk,
     handlePrevChapterTts, handleNextChapterTts, autoPlayNextChapterRef,
   } = ttsCtx
+
+  /** 离线确认框里的「改用系统语音」：关框、切引擎、立刻从当前分片读起。 */
+  const handleUseWebSpeech = useCallback(() => {
+    setOfflineTtsConfirmOpen(false)
+    onSettingsChange({ ...settings, ttsEngine: 'webSpeech' })
+    setTtsActive(true)
+    playTtsChunk(getInitialTtsChunkIndex())
+  }, [getInitialTtsChunkIndex, onSettingsChange, playTtsChunk, setOfflineTtsConfirmOpen, setTtsActive, settings])
 
   // 「朗读引擎在使用中切换会重音，都启动」（用户 2026-09-30）。
   // 换引擎/音色/语速时旧引擎不会自己停：WebSpeech 的 utterance.onEnd 与 HttpAudio 的分片 onEnd
@@ -2601,188 +2623,49 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       )}
     </nav>}
 
-    {/* In-reader Source Switch Modal */}
-    {showSourceSwitch && (
-      <SourceSwitchModal
-        bookName={bookName}
-        author={currentBook.details.author}
-        currentSourceId={currentBook.details.sourceId}
-        currentBookUrl={currentBook.bookUrl}
-        currentChapterTitle={chapter?.title}
-        currentChapterIndex={chapterIndex}
-        knownAlternateSources={currentBook.details.alternateSources}
-        onSwitch={handleSwitchSource}
-        onClose={() => setShowSourceSwitch(false)}
-      />
-    )}
-
-    {/* TTS Floating Player Bar */}
-    {ttsActive && (
-      <ReaderTtsManager
-        chapter={chapter}
-        bookName={bookName}
-        bookAuthor={currentBook.details.author}
-        coverUrl={currentBook.details.coverUrl}
-        settings={settings}
-        onSettingsChange={onSettingsChange}
-      />
-    )}
-
-    {/* TTS Settings Modal */}
-    {showTtsSettings && (
-      <TtsSettingsModal
-        settings={settings}
-        onChange={onSettingsChange}
-        sleepTimer={sleepTimer}
-        onSleepTimerChange={setSleepTimer}
-        remainingSeconds={remainingSeconds}
-        onClose={() => setShowTtsSettings(false)}
-      />
-    )}
-
-    {/* Replace Rules Modal */}
-    {showReplaceRules && (
-      <ReplaceRulesModal
-        isOpen={showReplaceRules}
-        onClose={() => setShowReplaceRules(false)}
-        currentBookName={bookName}
-        currentSourceUrl={currentBook.details.sourceId}
-        onRulesChanged={() => {
-          if (chapter) {
-            const requestedUrl = chapter.url
-            setLoadedChapterUrl('')
-            setContent('')
-            setLoading(true)
-            api.content(currentBook.details.sourceId, chapter.url, currentBook.bookUrl)
-              .then(res => {
-                // 用户可能已经翻到别的章节；这里无条件写入会用旧章正文覆盖新章，
-                // 结果 loadedChapterUrl 与当前章不符 → 章节标题下永远空白。
-                if (currentChapterUrlRef.current !== requestedUrl) return
-                setContent(res.content)
-                setLoadedChapterUrl(requestedUrl)
-              })
-              .catch(err => {
-                if (currentChapterUrlRef.current !== requestedUrl) return
-                setMessage(err.message || '加载章节内容失败')
-              })
-              .finally(() => {
-                if (currentChapterUrlRef.current === requestedUrl) setLoading(false)
-              })
-          }
-        }}
-      />
-    )}
-
-    {/* Offline Cache Stats Modal */}
-    {offlineStatsModal && (
-      <OfflineCacheModal
-        onClose={() => {
-          setOfflineStatsModal(false)
-          void syncCacheStatus()
-        }}
-      />
-    )}
-
-    {/* 手动刷新正文：单章或一批，绕过缓存回源重取 */}
-    {showRefreshChapters && (
-      <RefreshChaptersModal
-        sourceId={currentBook.details.sourceId}
-        bookUrl={currentBook.bookUrl}
-        chapters={currentBook.chapters}
-        currentIndex={chapterIndex}
-        cachedUrls={cachedChapterUrls}
-        onClose={() => setShowRefreshChapters(false)}
-        onRefreshed={handleChaptersRefreshed}
-      />
-    )}
-
-    {/* Offline TTS Fallback Confirmation Dialog */}
-    {offlineTtsConfirmOpen && (
-      <div className="overlay-backdrop" onClick={() => setOfflineTtsConfirmOpen(false)}>
-        <div
-          className="dialog-shell size-s"
-          onClick={e => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-label="离线语音提示"
-        >
-          <header className="dialog-head">
-            <div className="source-login-title">
-              <span><Icon name="volume2" /></span>
-              <div>
-                <h2>离线朗读提示</h2>
-                <small>当前设备处于离线状态</small>
-              </div>
-            </div>
-            <button type="button" className="overlay-close" onClick={() => setOfflineTtsConfirmOpen(false)} aria-label={zh.common.close}>
-              <Icon name="close" />
-            </button>
-          </header>
-          <div className="source-login-body">
-            <p style={{ margin: '8px 0', fontSize: '14px', lineHeight: '1.6', color: 'var(--ink)' }}>
-              当前未连接到互联网，云端 Edge-TTS 朗读不可用。是否切换使用设备本地自带的<strong>系统语音 (Web Speech)</strong> 进行脱机朗读？
-            </p>
-          </div>
-          <footer className="source-login-footer">
-            <button type="button" className="subtle-button" onClick={() => setOfflineTtsConfirmOpen(false)}>
-              取消
-            </button>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => {
-                setOfflineTtsConfirmOpen(false)
-                onSettingsChange({ ...settings, ttsEngine: 'webSpeech' })
-                setTtsActive(true)
-                const startIdx = getInitialTtsChunkIndex()
-                playTtsChunk(startIdx)
-              }}
-            >
-              使用系统离线语音
-            </button>
-          </footer>
-        </div>
-      </div>
-    )}
-    {lightboxSrc && (
-      <div className="overlay-backdrop is-viewer" onClick={() => setLightboxSrc(null)} role="dialog" aria-label="图片预览">
-        <button type="button" className="reader-image-lightbox-close" aria-label="关闭预览" onClick={() => setLightboxSrc(null)}><Icon name="close" /></button>
-        <img src={lightboxSrc} alt="" onClick={event => event.stopPropagation()} />
-      </div>
-    )}
-    {bookSearchOpen && (
-      <BookSearchDialog
-        sourceId={currentBook.details.sourceId}
-        bookUrl={currentBook.bookUrl}
-        onJump={jumpToSearchHit}
-        onClose={() => setBookSearchOpen(false)}
-      />
-    )}
-    {/*
-      选中正文后的浮层（PROPOSAL-019 E 笔记编辑器 + 标记快捷条）：
-      先摆「标记快捷条」（划线 / 笔记 / 复制 / AI），点「笔记」才展开 NoteToolbar 编辑器。
-      两者都挂在 `<section class="reader-main">` **之外**，自己的点击不该再触发 onReaderMouseUp。
-    */}
-    {noteDraft && !noteEditorOpen && (
-      <MarkingMenu
-        x={noteDraft.x}
-        y={noteDraft.y}
-        onHighlight={highlightFromMenu}
-        onNote={openNoteEditor}
-        onCopy={copySelection}
-        onAi={sendSelectionToAi}
-        onDismiss={dismissMarkingMenu}
-      />
-    )}
-    {noteDraft && noteEditorOpen && (
-      <NoteToolbar
-        draft={noteDraft}
-        onChangeText={text => setNoteDraft(current => (current ? { ...current, text } : current))}
-        onSave={() => void saveNote()}
-        onRemove={() => void removeNote()}
-        onDismiss={clearSelection => { setNoteEditorOpen(false); setNoteDraft(null); setSelection(null); if (clearSelection) window.getSelection()?.removeAllRanges() }}
-      />
-    )}
+    <ReaderOverlays
+      dialogs={{
+        sourceSwitch: showSourceSwitch,
+        ttsActive,
+        ttsSettings: showTtsSettings,
+        replaceRules: showReplaceRules,
+        offlineStats: offlineStatsModal,
+        refreshChapters: showRefreshChapters,
+        offlineTtsConfirm: offlineTtsConfirmOpen,
+        lightboxSrc,
+        bookSearch: bookSearchOpen,
+        noteDraft,
+        noteEditor: noteEditorOpen,
+      }}
+      book={{ name: bookName, details: currentBook.details, bookUrl: currentBook.bookUrl, chapter, chapterIndex, chapters: currentBook.chapters }}
+      reader={{ settings, sleepTimer, remainingSeconds, cachedChapterUrls }}
+      actions={{
+        onCloseSourceSwitch: () => setShowSourceSwitch(false),
+        onSwitchSource: handleSwitchSource,
+        onSettingsChange,
+        onSleepTimerChange: setSleepTimer,
+        onCloseTtsSettings: () => setShowTtsSettings(false),
+        onRulesChanged: handleReplaceRulesChanged,
+        onCloseReplaceRules: () => setShowReplaceRules(false),
+        onCloseOfflineStats: () => { setOfflineStatsModal(false); void syncCacheStatus() },
+        onCloseRefreshChapters: () => setShowRefreshChapters(false),
+        onRefreshed: handleChaptersRefreshed,
+        onCloseOfflineTtsConfirm: () => setOfflineTtsConfirmOpen(false),
+        onUseWebSpeech: handleUseWebSpeech,
+        onCloseLightbox: () => setLightboxSrc(null),
+        onJumpSearchHit: jumpToSearchHit,
+        onCloseBookSearch: () => setBookSearchOpen(false),
+        onHighlight: highlightFromMenu,
+        onNote: openNoteEditor,
+        onCopy: copySelection,
+        onAi: sendSelectionToAi,
+        onDismissMarking: dismissMarkingMenu,
+        onChangeNoteText: text => setNoteDraft(current => (current ? { ...current, text } : current)),
+        onSaveNote: () => void saveNote(),
+        onRemoveNote: () => void removeNote(),
+        onDismissNote: clearSelection => { setNoteEditorOpen(false); setNoteDraft(null); setSelection(null); if (clearSelection) window.getSelection()?.removeAllRanges() },
+      }}
+    />
   </main>
     </TtsContext.Provider>
   )

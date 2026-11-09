@@ -24,8 +24,10 @@ test('正文刷新入口在目录顶栏，本地书不出这颗键', () => {
   const screen = read('features', 'reader', 'ReaderScreen.tsx')
   assert.match(screen, /onOpenRefresh=\{currentBook\.details\.sourceId === 'loc_book' \? undefined : \(\) => setShowRefreshChapters\(true\)\}/,
     '本地书没有书源可回，不给刷新入口')
-  assert.match(screen, /<RefreshChaptersModal/, '刷新浮层要挂上')
-  assert.match(screen, /cachedUrls=\{cachedChapterUrls\}/, '「已缓存章节」这个范围要拿到真实缓存集合')
+  // 弹层挂载点搬进了 ReaderOverlays。
+  const overlays = read('features', 'reader', 'ReaderOverlays.tsx')
+  assert.match(overlays, /<RefreshChaptersModal/, '刷新浮层要挂上')
+  assert.match(overlays, /cachedUrls=\{cachedChapterUrls\}/, '「已缓存章节」这个范围要拿到真实缓存集合')
 })
 
 test('单章也走批量接口（一批一章），content 接口保留 force 语义', () => {
