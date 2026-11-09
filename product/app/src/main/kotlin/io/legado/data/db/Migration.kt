@@ -150,7 +150,10 @@ object Migration {
             db.createStatement().use { it.executeUpdate("alter table source add column sort_order integer") }
         }
         db.createStatement().use {
-            it.executeUpdate("update source set has_login = 1 where (payload like '%\\\"loginUi\\\"%' or payload like '%\\\"loginUrl\\\"%' or payload like '%\\\"loginCheckJs\\\"%') and (has_login is null or has_login = 0)")
+            // 模式里**不能**带反斜杠：SQLite 的 LIKE 不把 `\` 当转义符，`%\"loginUrl\"%` 找的是
+            // 字面量 `\"loginUrl\"`，而 payload 存的是原始 JSON（`{"loginUrl":…}`，没有反斜杠）。
+            // 老写法一个都匹配不上，等于这条回填从来没生效过 —— `MigrationTest` 里那条用例盯着它。
+            it.executeUpdate("update source set has_login = 1 where (payload like '%\"loginUi\"%' or payload like '%\"loginUrl\"%' or payload like '%\"loginCheckJs\"%') and (has_login is null or has_login = 0)")
         }
         /*
          * `has_rules`：这条源有没有任何可执行的规则。
