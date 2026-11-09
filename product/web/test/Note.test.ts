@@ -21,7 +21,10 @@ test('api 客户端有笔记的四条路（读 / 增 / 改 / 删）', () => {
 
 test('阅读器：选中正文 → 浮层 → 保存，且偏移按章节内字符算', () => {
   const reader = read('../src/features/reader/ReaderScreen.tsx')
-  assert.match(reader, /onMouseUp=\{onReaderMouseUp\}/, '阅读区要接 mouseup')
+  // 画布本身搬进了 ReaderBody；mouseup 接线在组件里，段落索引仍在阅读器。
+  const body = read('../src/features/reader/ReaderBody.tsx')
+  assert.match(body, /onMouseUp=\{events\.onMouseUp\}/, '阅读区要接 mouseup')
+  assert.match(reader, /onMouseUp:\s*onReaderMouseUp/, '阅读器要把 mouseup 传给画布')
   assert.match(reader, /data-paragraph-index/, '段落要有索引（偏移换算的起点）')
   assert.match(reader, /paragraphStarts/, '段落起点表要在（章节内字符偏移）')
   assert.match(reader, /api\.addNote\(/, '保存要真的落库')

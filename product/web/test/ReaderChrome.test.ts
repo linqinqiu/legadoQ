@@ -19,6 +19,8 @@ const read = (...parts: string[]) => fs.readFileSync(path.join(SRC, ...parts), '
 const chrome = read('features', 'reader', 'Md3Chrome.tsx')
 const legacy = read('features', 'reader', 'ReaderHeader.tsx')
 const screen = read('features', 'reader', 'ReaderScreen.tsx')
+// 正文画布（分页轨道 / 滚动续接 / 页脚）已拆进 ReaderBody。
+const body = read('features', 'reader', 'ReaderBody.tsx')
 const styles = read('styles.css')
 
 test('底栏那行进度条彻底删除：DOM 与样式都不许再出现', () => {
@@ -95,7 +97,7 @@ test('笔记入口只留一份：目录头不再重复，图标与书架键区�
  * 也和键盘/点按区 + 目录抽屉重复。这条判据盯的是"别再长回来"。
  */
 test('分页页脚只报状态，不再挂翻页键', () => {
-  const footer = /<footer className="reader-paginated-footer">([\s\S]*?)<\/footer>/.exec(screen)?.[1] ?? ''
+  const footer = /<footer className="reader-paginated-footer">([\s\S]*?)<\/footer>/.exec(body)?.[1] ?? ''
   assert.ok(footer, '找不到分页页脚（正则会退化成对空串断言）')
   assert.doesNotMatch(footer, /<button/, '页脚又出现按钮了：翻页/跳章已有三条入口，这里是第四份')
   assert.match(footer, /reader-paginated-pagecount/, '页码是状态，要保留')
@@ -103,7 +105,7 @@ test('分页页脚只报状态，不再挂翻页键', () => {
 })
 
 test('滚动模式的章节页脚与旧移动导航只在 legacy 外壳渲染', () => {
-  assert.match(screen, /\{!uiV2 && content && <footer className="reader-navigation">/,
+  assert.match(body, /\{!uiV2 && hasContent && <footer className="reader-navigation">/,
     'MD3 下滚动模式不该再有文末「上一章 / 进度 / 下一章」——键盘/点按区与目录已经覆盖')
   assert.match(screen, /\{!uiV2 && <nav className="mobile-reader-nav">/,
     'MD3 下旧移动导航会和新底栏叠在一起（390px 实测三层相压），只能留给 legacy')

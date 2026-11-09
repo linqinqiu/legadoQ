@@ -2,7 +2,7 @@
 // 这些类型引用挂在它身上。（AGENTS §5 那个 classic JSX 的同形坑：`VirtualChapterList` 被
 // `renderToStaticMarkup` 静态渲染才需要默认 React 在作用域里 —— 那件组件已拆进
 // `VirtualChapterList.tsx`，那条理由与它的默认导入一起搬过去了。）
-import React, { CSSProperties, Fragment, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { zh } from '../../i18n/zh'
 import { api, BookDetails, BookNote, BookSearchHit, Chapter, SearchResult, TocRuleOption } from '../../lib/api'
 import { getBrand } from '../../lib/brandStore'
@@ -28,8 +28,7 @@ import { ReaderHeader } from './ReaderHeader'
 import { ExtensionSlot } from '../../plugins/ExtensionSlot'
 import { Md3BottomBar, Md3TopBar } from './Md3Chrome'
 import { reportProgress } from './content/readerProgress'
-import { MediaBlock } from './content/MediaBlock'
-import { ReaderContentSkeleton } from './ReaderContentSkeleton'
+import { ReaderBody } from './ReaderBody'
 import { clampScrollPosition, effectiveReaderFontFamily, isBuiltinSkinHidden, readerBackgroundVars, ReaderSettings, resolveTheme, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './settingsPanel/readerSettings'
 import { stepFontSize } from './content/fontSizeControl'
 import { ReaderMenuAction } from './interaction/readerMenu'
@@ -2417,44 +2416,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    * 工具栏按钮由 `settings.menuItems` 决定（显示与顺序都在设置抽屉的「工具栏」里配）。
    * 清单的唯一来源是 `readerMenu.ts`，别在这儿另起一套。
    */
-  /**
-   * 分页模式那条分栏流里的全部章节（窗口前面接进来的 + 锚点 + 后面续接的）。
-   *
-   * 抽成函数是为了让**覆盖动画那一层**能挂同一份内容（新页从一侧盖上来）——
-   * 两处共用一份 JSX，避免"主轨道改了、覆盖层忘改"。
-   * 垫栏的下标是"这一章在窗口里的绝对位置"：head 占 0..K-1、锚点 K、尾巴 K+1..。
-   */
-  const renderPaginatedSections = () => (
-    <>
-      {flowHead.map((item, headIndex) => (
-        <Fragment key={item.chapter.url}>
-          {headIndex > 0 && (pageFillers[headIndex - 1] ?? 0) > 0 && <div className="reader-column-filler" aria-hidden="true" />}
-          <section className="reader-page-chapter" data-chapter-index={item.chapter.index}>
-            <h1>{convert(item.chapter.title)}</h1>
-            {splitBody(item.content).map((line, index) => renderContentBlock(line, index, item.chapter))}
-          </section>
-        </Fragment>
-      ))}
-      {flowHead.length > 0 && (pageFillers[flowHead.length - 1] ?? 0) > 0 && <div className="reader-column-filler" aria-hidden="true" />}
-      <section className="reader-page-chapter" data-chapter-index={chapter?.index ?? 0}>
-        <h1>{convert(shownChapterTitle ?? '')}</h1>
-        {isStaleContent && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingChapterTitle)}</p>}
-        {loading && !content && <ReaderContentSkeleton />}
-        {message && <p className="reader-error">{message}</p>}
-        {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : isMangaMode ? renderMangaContent() : paragraphs.map((line, index) => renderContentBlock(line, index))}
-      </section>
-      {flowTail.map((item, tailIndex) => (
-        <Fragment key={item.chapter.url}>
-          {(pageFillers[flowHead.length + tailIndex] ?? 0) > 0 && <div className="reader-column-filler" aria-hidden="true" />}
-          <section className="reader-page-chapter" data-chapter-index={item.chapter.index}>
-            <h1>{convert(item.chapter.title)}</h1>
-            {splitBody(item.content).map((line, index) => renderContentBlock(line, index, item.chapter))}
-          </section>
-        </Fragment>
-      ))}
-    </>
-  )
-
   return (
     <TtsContext.Provider value={ttsCtx}>
   <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
@@ -2594,97 +2555,38 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     )}
 
     {/* Central Reading Canvas */}
-    <section ref={readerMainRef} className="reader-main" onMouseUp={onReaderMouseUp}>
-      {settings.pageMode === 'paginate' ? (
-        <div className="reader-paginated-wrap" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onWheel={onWheelPaginate} onContextMenu={onBodyContextMenu}>
-          <div ref={viewportRef} className={`reader-paginated-viewport ${isDoubleColumn ? 'is-double-column' : ''}${pageAnim === 'fade' && fading ? ' is-fading' : ''}`}>
-            <div className={`reader-paginated-track${slideAnimOn ? ' is-anim-slide' : ''}`} style={{ transform: `translateX(-${pageIndex * stride}px)` }}>
-              {/*
-                分页模式也是一篇连续文档：一章一个 <section> 排在同一条分栏流里，
-                翻页翻过章边界只是"下一页"，不是重挂一棵子树再回到章首。
-                容器的 key 只在主动跳章/换书时换（续接推进不换），否则每跨一章白闪一次。
-              */}
-              <article ref={bodyRef} key={flowKey} className={`reader-paginated-column-body chapter-enter${isStaleContent ? ' is-stale' : ''}`} style={{ columnWidth: `${columnWidth}px`, columnGap: `${columnGap}px` }}>
-                {renderPaginatedSections()}
-              </article>
-            </div>
-            {/*
-              覆盖动画（pageAnim === 'cover'）的进场层：新页从一侧盖上来，**旧页原地不动**。
-              做法是再挂一份同样的分栏正文，把它平移到目标页、整体从视口外滑进来 ——
-              与 `slide`（整条栏流滑过去、旧页跟着走）是两回事。动画结束就卸掉，
-              平时不占 DOM；`reader-paginated-column-body` 与主轨道同款，测量只认主轨道的 `bodyRef`。
-            */}
-            {coverTurn && (
-              <div
-                className={`reader-page-cover is-from-${coverTurn.direction === 1 ? 'next' : 'prev'}${coverEntered ? ' is-entered' : ''}`}
-                aria-hidden="true"
-                onTransitionEnd={onCoverTransitionEnd}
-              >
-                <div className="reader-paginated-track" style={{ transform: `translateX(-${coverTurn.to * stride}px)` }}>
-                  <div className="reader-paginated-column-body" style={{ columnWidth: `${columnWidth}px`, columnGap: `${columnGap}px` }}>
-                    {renderPaginatedSections()}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          {/* 页脚只留状态，不再放「上一页 / 下一页」两颗键：左右点按区、键盘左右键、
-              滚轮与滑动都已经能翻页，页脚再摆一排按钮是同一件事的第三份入口（用户 2026-11-02
-              「多余的按钮比如翻页，有些功能重复」）。页码本身保留，右移时给 AI 悬浮球留出位置。 */}
-          <footer className="reader-paginated-footer">
-            <span className="reader-paginated-chapter">{convert(paginatedFooterTitle || '')}</span>
-            <span className="reader-paginated-pagecount">{pageIndex + 1} / {pageCount}</span>
-          </footer>
-        </div>
-      ) : (
-        <article className={`reading-content chapter-enter${isStaleContent ? ' is-stale' : ''}`} key={flowKey} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onContextMenu={onBodyContextMenu}>
-          {/*
-            滚动模式是一篇连续文档（用户 2026-10-02：「怎么能跳转呢，不是一体的吗」）：
-            锚点章之后把后续章节续接在同一棵容器里，读完一章是"顶上来"，不是"跳过去"。
-            每章一个 <section>，标题与正文成组；章与章之间是一条分隔线，不是"翻页"。
-          */}
-          <section ref={anchorSectionRef} className="reader-flow-chapter" data-chapter-index={chapter?.index ?? 0}>
-            <h1>{convert(shownChapterTitle ?? '')}</h1>
-            {isStaleContent && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingChapterTitle)}</p>}
-            {loading && !content && <ReaderContentSkeleton />}
-            {message && <p className="reader-error">{message}</p>}
-            {mediaSrc ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={() => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) }} /> : isMangaMode ? renderMangaContent() : shownParagraphs.map((line, index) => renderContentBlock(line, index))}
-            {chunked && renderLimit < paragraphs.length && (
-              <div className="reader-chunk-more" ref={chunkSentinelRef}>
-                <button
-                  type="button"
-                  className="subtle-button"
-                  onClick={() => setRenderLimit(limit => growLimit(limit, paragraphs.length))}
-                >
-                  继续加载（已显示 {Math.min(renderLimit, paragraphs.length)} / {paragraphs.length} 段）
-                </button>
-              </div>
-            )}
-          </section>
-          {flowTail.map(item => (
-            <section key={item.chapter.url} className="reader-flow-chapter reader-flow-tail" data-chapter-index={item.chapter.index}>
-              <h1>{convert(item.chapter.title)}</h1>
-              {splitBody(item.content).map((line, index) => renderContentBlock(line, index, item.chapter))}
-            </section>
-          ))}
-          {!!content && !loading && loadedChapterUrl === chapter?.url && !!nextChapterTitle && flowTail.length === 0 && (
-            <div className="reader-next-hint">
-              <button type="button" onClick={() => changeChapter(chapterIndex + 1, 'first')}>
-                <span>下一章 · {convert(nextChapterTitle)}</span>
-                <Icon name="chevronDown" />
-              </button>
-              <small>这是最后一章之前唯一没有续接上的位置：滚到底再向下滑即进入</small>
-            </div>
-          )}
-          {/* 滚动模式底部那条「上一章 / 进度滑杆 / 下一章」只留给旧界面（uiV2=false）。
-              MD3 外壳的章节导航已经在顶栏，目录抽屉还能直接跳任意章；这条页脚却排在
-              连续续接的整段正文末尾，滚到那里窗口又会往后接——实际很难滚到，留着只是
-              同一组动作的又一份入口（用户 2026-11-02）。 */}
-          {!uiV2 && content && <footer className="reader-navigation"><button disabled={chapterIndex === 0 || loading} onClick={() => changeChapter(chapterIndex - 1)}><Icon name="arrowLeft" />上一章</button><div className="chapter-progress"><i style={{ width: `${chapterProgress}%` }} /><input className="chapter-scrub" type="range" min={0} max={Math.max(0, currentBook.chapters.length - 1)} step={1} value={shownChapterIndex} disabled={loading || currentBook.chapters.length < 2} aria-label={`章节进度：第 ${shownChapterIndex + 1} 章，共 ${currentBook.chapters.length} 章`} onChange={event => setScrubIndex(Number(event.target.value))} onPointerUp={() => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) }} onKeyUp={() => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) }} /><span>{shownChapterIndex + 1} / {currentBook.chapters.length}</span></div><button disabled={chapterIndex === currentBook.chapters.length - 1 || loading} onClick={() => changeChapter(chapterIndex + 1)}>下一章<Icon name="arrowRight" /></button></footer>}
-        </article>
-      )}
+    <ReaderBody
+      pageMode={settings.pageMode}
+      uiV2={uiV2}
+      flowKey={flowKey}
+      refs={{ main: readerMainRef, viewport: viewportRef, body: bodyRef, anchor: anchorSectionRef, sentinel: chunkSentinelRef }}
+      events={{ onMouseUp: onReaderMouseUp, onPointerDown, onPointerUp, onWheel: onWheelPaginate, onContextMenu: onBodyContextMenu }}
+      pagination={{
+        pageIndex, pageCount, stride, columnWidth, columnGap, isDoubleColumn,
+        pageAnim, fading, slideAnimOn, coverTurn, coverEntered, onCoverTransitionEnd,
+        footerTitle: paginatedFooterTitle,
+      }}
+      content={{
+        chapter, chapterIndex, totalChapters: currentBook.chapters.length,
+        head: flowHead, tail: flowTail, pageFillers,
+        shownTitle: shownChapterTitle ?? '', incomingTitle: incomingChapterTitle,
+        stale: isStaleContent, loading, hasContent: !!content,
+        chapterLoaded: loadedChapterUrl === chapter?.url,
+        message, mediaSrc, sourceType, isMangaMode,
+        paragraphs, shownParagraphs, chunked, renderLimit, nextChapterTitle,
+        chapterProgress, shownChapterIndex, scrubIndex,
+      }}
+      actions={{
+        convert, splitBody, renderLine: renderContentBlock, renderManga: renderMangaContent,
+        onMediaEnded: () => { if (chapterIndex < currentBook.chapters.length - 1) changeChapter(chapterIndex + 1) },
+        onNextChapter: changeChapter,
+        onMore: () => setRenderLimit(limit => growLimit(limit, paragraphs.length)),
+        onScrub: setScrubIndex,
+        onScrubCommit: () => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) },
+      }}
+    >
       {boundaryMessage && <p className="reader-boundary-message" role="status">{boundaryMessage}</p>}
-    </section>
+    </ReaderBody>
 
     {/* 旧界面的移动底栏：MD3 外壳自己有 `.md3-bottombar`（目录 / 搜书 / 笔记 / 朗读 / 设置）。
         两条同时渲染时，旧的这条固定在 `bottom:0` 会压住新的那条与分页页脚（390px 实测

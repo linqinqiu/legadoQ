@@ -34,13 +34,14 @@ test('跳到很后面：按块对齐补，不把中间几百段一起挂上', ()
 
 test('接线：滚动区只渲染前 N 段并带补挂入口，分页区仍是整章', () => {
   const screen = read('../src/features/reader/ReaderScreen.tsx')
+  const body = read('../src/features/reader/ReaderBody.tsx')
   assert.match(screen, /const chunked = shouldChunk\(settings\.pageMode, paragraphs\.length\)/)
   assert.match(screen, /shownParagraphs = chunked \? paragraphs\.slice\(0, renderLimit\) : paragraphs/)
-  assert.match(screen, /className="reader-chunk-more"/, '要有补挂入口（observer 不可用时靠它）')
+  assert.match(body, /className="reader-chunk-more"/, '要有补挂入口（observer 不可用时靠它）')
   assert.match(screen, /rootMargin: '800px 0px'/, '滚到这一块末尾前就补，别等真见底')
   // 分页那一处必须仍然是 paragraphs（整章），否则量出来的页数会少。
-  assert.match(screen, /isMangaMode \? renderMangaContent\(\) : paragraphs\.map\(/, '分页区保持整章渲染')
-  assert.match(screen, /isMangaMode \? renderMangaContent\(\) : shownParagraphs\.map\(/, '滚动区按块渲染')
+  assert.match(body, /paragraphs\.map\(\(line, index\) => renderLine\(line, index\)\)/, '分页区保持整章渲染')
+  assert.match(body, /shownParagraphs\.map\(\(line, index\) => renderLine\(line, index\)\)/, '滚动区按块渲染')
   assert.match(screen, /revealParagraph\(index\)/, '跳笔记 / 搜索命中要先补块再滚')
   assert.match(screen, /revealParagraph\(activeParagraphIndex\)/, '朗读跟读也要先补块')
 })

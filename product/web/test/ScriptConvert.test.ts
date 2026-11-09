@@ -164,8 +164,10 @@ test('设置面板那三档与转换器是同一份清单', () => {
 
 test('正文与章名都过转换器，不是只转正文', () => {
   const readerScreen = read('../src/features/reader/ReaderScreen.tsx')
+  // 章名渲染搬进了 ReaderBody；正文段落仍在阅读器里过 splitBody。
+  const readerBody = read('../src/features/reader/ReaderBody.tsx')
   assert.match(readerScreen, /splitParagraphs\([^)]*\)\.map\(convert\)|splitBody\(/, '正文段落要过转换器')
-  assert.match(readerScreen, /<h1>\{convert\(/, '章名也要转，否则正文繁体、标题简体')
+  assert.match(readerBody, /<h1>\{convert\(/, '章名也要转，否则正文繁体、标题简体')
 })
 
 test('转换器是函数：useState 初始化器必须包一层（否则被当惰性初始化器调用 → convert 变 undefined）', () => {
