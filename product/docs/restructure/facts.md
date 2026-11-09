@@ -133,8 +133,8 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 项 | 状态 |
 |---|---|
 | 工作树 | 代码已提交（`7afd4ea` 外壳抽成 ReaderChrome + 撤掉界面构建号；`7ae52d0` 笔记状态搬进 useReaderNotes）；本轮收尾只剩文档改动 |
-| 阅读器拆分 | `ReaderScreen.tsx` 3,200 → **2,436**；拆出 `ReaderBody`(227) / `ReaderOverlays`(226) / `ReaderChrome`(218) / `useReaderNotes`(200) 与 `useReaderChapterContent`(124) / `useReaderCacheStatus`(139) / `usePaginationMeasurement`(190) / `useReaderPageTurn`(77) / `useReadingLog`(46) |
-| 前端判据 | **1,020 通过 / 0 失败**（`npm --prefix product/web test`） |
+| 阅读器拆分 | `ReaderScreen.tsx` 3,200 → **2,402**；拆出 `ReaderBody`(227) / `ReaderOverlays`(226) / `ReaderChrome`(218) / `useReaderNotes`(200) / `NoteHighlights`(47) 与 `useReaderChapterContent`(124) / `useReaderCacheStatus`(139) / `usePaginationMeasurement`(190) / `useReaderPageTurn`(77) / `useReadingLog`(46) |
+| 前端判据 | **1,022 通过 / 0 失败**（`npm --prefix product/web test`） |
 | 笔记拆分边界 | `useReaderNotes` 收了状态与增删改；`toggleBookmark`（依赖 `readLogicalPosition`，与 persist 共用逻辑位置）与 `renderNoteHighlights`/`jumpToNote`/`jumpToSearchHit`（依赖正文渲染路径与导航原语）仍留 `ReaderScreen`，经 `notesApi.*` 复用状态 |
 | 门禁 | `check`(tsc -b) 通过；version/docs:api/changelog 未重跑（未改版本/接口/修复提交）。注：`check:test` 在 `test/PerformanceMonitor.test.ts` 有既有类型报错（上次动于 `c660963`），非本轮引入 |
 
