@@ -57,7 +57,10 @@ test('构建号写进 jar 资源，并从 /healthz 与 /api/about 报出来', ()
 
   const buildInfo = read('product/app/src/main/kotlin/io/legado/BuildInfo.kt')
   assert.match(buildInfo, /meta\/build-info\.properties/)
-  assert.match(buildInfo, /getOrDefault\("0"\)/, '读不到注入文件时回落 0，而不是编一个号')
+  // 回落值必须是字面量 "0"（"不知道自己是第几次构建"），不能编一个看起来合理的数字。
+  // 0.2.35 起 BuildInfo 把构建号与修订号合并成一次读取（buildMeta），断言跟着从
+  // `getOrDefault("0")` 改成「读不到就取 "0"」这一条语义。
+  assert.match(buildInfo, /\?\:\s*"0"/, '读不到注入文件时回落 0，而不是编一个号')
   assert.match(read('product/app/src/main/kotlin/io/legado/Application.kt'), /build = BuildInfo\.buildNumber/)
   // 0.2.14：系统域端点搬到 http/system/SystemRoutes.kt（Routes.kt 只留挂载调用）
   assert.match(read('product/app/src/main/kotlin/io/legado/http/system/SystemRoutes.kt'), /AboutInfo\([^)]*BuildInfo\.buildNumber\)/)

@@ -8,8 +8,6 @@ import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import io.legado.data.Database
-import io.legado.data.batchUpdateSources
-import io.legado.data.clearSourceOrder
 import io.legado.data.cookieBucket
 import io.legado.data.cookieBucketMentions
 import io.legado.data.cookieBucketState
@@ -21,13 +19,12 @@ import io.legado.data.getSourceLoginState
 import io.legado.data.importSources
 import io.legado.data.listCookieBucketStates
 import io.legado.data.listCookieBuckets
-import io.legado.data.listSourceRecords
 import io.legado.data.listSources
 import io.legado.data.parseCookieString
 import io.legado.data.removeCookieBucket
 import io.legado.data.removeSourceLoginHeader
 import io.legado.data.removeSourceLoginInfo
-import io.legado.data.reorderSources
+import io.legado.data.SourceRepository
 import io.legado.data.saveSource
 import io.legado.data.saveSourceLoginHeader
 import io.legado.data.saveSourceLoginInfo
@@ -35,7 +32,6 @@ import io.legado.data.setCookieForUrl
 import io.legado.data.VersionConflict
 import io.legado.model.ApiError
 import io.legado.model.BatchSourceRequest
-import io.legado.model.BatchSourceResponse
 import io.legado.model.ExternalLoginStatus
 import io.legado.model.GlobalCookieEntry
 import io.legado.model.GlobalCookieListResponse
@@ -48,10 +44,7 @@ import io.legado.model.SourceBrowserSessionRequest
 import io.legado.model.SourceBrowserSessionResponse
 import io.legado.model.SourceCookieRemoveResponse
 import io.legado.model.SourceCredentialStatus
-import io.legado.model.SourceHealthCheckItem
 import io.legado.model.SourceHealthCheckRequest
-import io.legado.data.saveHealthResults
-import io.legado.model.SourceHealthCheckResponse
 import io.legado.model.SourceLoginActionRequest
 import io.legado.model.SourceLoginCookieResponse
 import io.legado.model.SourceLoginCookieUpdateRequest
@@ -69,19 +62,15 @@ import io.legado.source.ExternalBrowserLogin
 import io.legado.source.ProxiedPayload
 import io.legado.source.SourceCodec
 import io.legado.source.SourceDebugger
-import io.legado.source.SourceHealth
 import io.legado.source.WebViewException
 import io.legado.source.WebViewProxy
 import java.net.URI
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -136,8 +125,15 @@ fun Route.sourcesRoutes(
     externalLogin: ExternalBrowserLogin,
     debugger: SourceDebugger,
 ) {
+    /**
+     * 组合层只认一个 `(String) -> Unit` 的日志函数，不认 Ktor 的 `Application`
+     * —— `SourceRepository` 住在 `data/`，不该知道 HTTP 存在。
+     */
+    fun repositoryFor(call: ApplicationCall) =
+        SourceRepository(database, runner) { message -> call.application.log.info(message) }
+
         get("/sources") {
-            call.respond(database.listSources(call.request.queryParameters["q"]))
+            call.respond(repositoryFor(call).list(call.request.queryParameters["q"]))
         }
         // 全局登录凭据表：删书源不再连带清桶（凭据按注册域共享），所以必须有个地方
         // 能看见全部、能逐个撤掉 —— 否则就成了"看不见又删不掉"。
@@ -238,18 +234,9 @@ fun Route.sourcesRoutes(
                 return@post
             }
             try {
-                val count = database.batchUpdateSources(req.ids, req.action, req.group)
-                val msg = when (req.action) {
-                    "enable" -> "已成功启用 $count 个书源"
-                    "disable" -> "已成功停用 $count 个书源"
-                    "delete" -> "已成功删除 $count 个书源"
-                    "set_group" -> if (req.group.isNullOrBlank()) "已清空 $count 个书源的分组" else "已将 $count 个书源移至分组“${req.group}”"
-                    "tag_group" -> "已为 $count 个书源加上标签“${req.group}”"
-                    "untag_group" -> "已摘掉 $count 个书源的标签“${req.group}”"
-                    else -> "已处理 $count 个书源"
-                }
-                call.application.log.info("source batch operation: action={}, count={}", req.action, count)
-                call.respond(BatchSourceResponse(ok = true, affected = count, action = req.action, message = msg))
+                // 动作白名单、事务边界与「动作 → 回执文案」都在组合层，
+                // 这里只把「参数错」与「真失败」翻译成 HTTP 语义。
+                call.respond(repositoryFor(call).batchUpdate(req.ids, req.action, req.group))
             } catch (error: IllegalArgumentException) {
                 call.respond(HttpStatusCode.BadRequest, ApiError("invalid_action", error.message ?: "无效的批量操作"))
             } catch (error: Throwable) {
@@ -264,81 +251,18 @@ fun Route.sourcesRoutes(
             val req = runCatching { call.receive<SourceHealthCheckRequest>() }.getOrElse {
                 call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 JSON")); return@post
             }
-            val timeoutMs = req.timeoutMs.coerceIn(1000L, 10000L)
-            val allSources = database.listSources(null)
-            // 没点名 ids 时只体检**启用中**的源。整库里被用户停用的那批他根本不读，
-            // 探它们既慢（并发 16、单个 5 秒超时，一轮就是几十分钟）又会在结果里堆一大片
-            // 「连不上」，把真正要看的那几十个淹掉 —— 这正是「体检过慢、管理功能异常」的实测成因。
-            // 停用的那批仍可显式点名（ids）或在界面上勾「连停用的一起体检」来覆盖。
-            val targetSources = if (!req.ids.isNullOrEmpty()) {
-                val idSet = req.ids.toSet()
-                allSources.filter { it.id in idSet }
-            } else {
-                allSources.filter { it.enabled }
-            }
-
-            // 目标书源的完整记录一次性取回（键 = id）：原来是在并发闸门里逐个 database.getSource 查库，
-            // 属于 N+1 —— 几百个源挤在那 16 个并发槽里排队查库，跟真正的外呼抢时间。批量后查库退到闸门之外。
-            val recordsById = withContext(Dispatchers.IO) { database.listSourceRecords(req.ids) }
-
-            val startTotalNs = System.nanoTime()
-            val health = SourceHealth(runner)
-            val semaphore = Semaphore(16)
-
-            val results = coroutineScope {
-                targetSources.map { summary ->
-                    async(Dispatchers.IO) {
-                        semaphore.withPermit {
-                            val record = recordsById[summary.id]
-                            if (record == null) {
-                                SourceHealthCheckItem(
-                                    id = summary.id,
-                                    name = summary.name,
-                                    ok = false,
-                                    latencyMs = 0L,
-                                    statusCode = 0,
-                                    statusCategory = "invalid",
-                                    error = "书源记录不存在",
-                                )
-                            } else {
-                                health.probe(summary.id, summary.name, record.json, req.keyword ?: "都市", timeoutMs)
-                            }
-                        }
-                    }
-                }.awaitAll()
-            }
-            val totalDurationMs = (System.nanoTime() - startTotalNs) / 1_000_000
-            val successCount = results.count { it.statusCategory == "valid" }
-            val slowCount = results.count { it.statusCategory == "slow" }
-            val failedCount = results.count { !it.ok }
-
-            // 落库：体检结论以前只活在浏览器 localStorage 里，服务端看不到，
-            // 于是「搜索优先搜能用的源」无从做起。现在存进 source_health 表，
-            // 搜索按它排序 —— 一场跑几十分钟的体检，终于能被最需要它的地方用上。
-            // 失败不挡住响应：结论已经算出来了，存不进去是另一件事，如实记一行日志。
-            runCatching { withContext(Dispatchers.IO) { database.saveHealthResults(results) } }
-                .onFailure { call.application.log.warn("体检结论落库失败：${it.message}") }
-
-            call.respond(
-                SourceHealthCheckResponse(
-                    total = results.size,
-                    successCount = successCount,
-                    slowCount = slowCount,
-                    failedCount = failedCount,
-                    durationMs = totalDurationMs,
-                    results = results,
-                )
-            )
+            // 取数、并发编排、结论落库都在组合层：这条路由只负责把请求体翻成调用参数。
+            call.respond(repositoryFor(call).healthCheck(req))
         }
         get("/sources/export") {
             call.respondText(
-                text = Json.encodeToString(database.exportSources(call.request.queryParameters.getAll("id"))),
+                text = Json.encodeToString(repositoryFor(call).exportSources(call.request.queryParameters.getAll("id"))),
                 contentType = ContentType.Application.Json.withCharset(Charsets.UTF_8),
             )
         }
         post("/sources/import") {
             if (!call.requireSameOriginWrite()) return@post
-            val response = database.importSources(call.receive<ImportRequest>().sources)
+            val response = repositoryFor(call).importSources(call.receive<ImportRequest>().sources)
             call.application.log.info("source import completed: imported={}, updated={}, skipped={}", response.imported, response.updated, response.skipped)
             call.respond(response)
         }
@@ -352,11 +276,11 @@ fun Route.sourcesRoutes(
             if (request.ids.isEmpty()) {
                 call.respond(HttpStatusCode.BadRequest, ApiError("empty_order", "没有要排序的书源")); return@put
             }
-            call.respond(OrderResult(database.reorderSources(request.ids)))
+            call.respond(OrderResult(repositoryFor(call).reorder(request.ids)))
         }
         delete("/sources/order") {
             if (!call.requireSameOriginWrite()) return@delete
-            call.respond(OrderResult(database.clearSourceOrder()))
+            call.respond(OrderResult(repositoryFor(call).clearOrder()))
         }
         route("/sources/{id}") {
             get {
