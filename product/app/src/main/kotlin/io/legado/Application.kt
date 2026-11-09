@@ -253,6 +253,7 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
                     ui = BuildInfo.uiFingerprint,
                     startedAtMs = BuildInfo.startedAt,
                     build = BuildInfo.buildNumber,
+                    rev = BuildInfo.revision,
                 )
             )
         }

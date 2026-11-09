@@ -155,6 +155,8 @@ function App() {
   const [sources, setSources] = useState<SourceSummary[]>([])
   /** 服务端 /healthz 报回来的版本号，显示在顶栏功能菜单里；构建清单是唯一来源。 */
   const [serverVersion, setServerVersion] = useState('')
+  /** 同一份应答里的代码修订（`rev-<短 sha>`）：没发版时靠它分清"跑的是哪一版代码"。 */
+  const [serverRevision, setServerRevision] = useState('')
   const [selected, setSelected] = useState<SourceSummary | null>(null)
   const [reader, setReader] = useState<{ book: OpenBook; index: number } | null>(() => {
     try {
@@ -280,6 +282,9 @@ function App() {
         if (cancelled) return
         if (health?.version) {
           setServerVersion(String(health.version))
+        }
+        if (health?.rev) {
+          setServerRevision(String(health.rev))
         }
         setBootHint('')
         setReady(true)
@@ -618,6 +623,7 @@ function App() {
         onOpenReadingLog={() => openModalDirect('reading-log')}
         onOpenSkins={() => openModalDirect('skin')}
         version={serverVersion}
+        revision={serverRevision}
       />
       {renderPage(page, pageContext)}
       {explorePick && page === 'explore' && (

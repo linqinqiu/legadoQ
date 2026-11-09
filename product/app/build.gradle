@@ -228,9 +228,35 @@ if (file("${rootProject.projectDir}/web/dist/index.html").exists()) {
  * 不产生"构建弄脏工作区"的副作用。inputs/outputs 都显式登记，改号后不会因为 UP-TO-DATE 留在旧值。
  */
 def generatedBuildInfo = layout.buildDirectory.dir('generated/build-info')
+
+/**
+ * 代码修订：`git rev-parse --short HEAD`。
+ *
+ * 没发版、只在本地改的时候版本号是不动的，光看 `0.2.35` 分不清"跑的是推上去那版还是我刚编的这版"。
+ * 修订号随包发出去，`/healthz` 报出来、顶栏菜单里显示 —— 一条 curl 就能定性。
+ *
+ * 取不到 git（Docker 构建上下文里没有 `.git`、源码包解压后也没有）就写 `unknown`：
+ * 宁可显示"不知道"，也不要编一个看起来合理的值。
+ */
+def gitRevision = {
+    try {
+        def output = new java.io.ByteArrayOutputStream()
+        def result = exec {
+            commandLine 'git', 'rev-parse', '--short', 'HEAD'
+            standardOutput = output
+            errorOutput = new java.io.ByteArrayOutputStream()
+            ignoreExitValue = true
+        }
+        def sha = output.toString().trim()
+        return (result.exitValue == 0 && sha) ? sha : 'unknown'
+    } catch (Throwable ignored) {
+        return 'unknown'
+    }
+}()
+
 tasks.register('generateBuildInfo') {
     group = 'build'
-    description = '把 BUILD_NUMBER 写进 meta/build-info.properties'
+    description = '把 BUILD_NUMBER 与代码修订写进 meta/build-info.properties'
     // 文件不存在时**不能**登记成输入：Gradle 会先报 "input file doesn't exist"，
     // 连 doLast 都进不去（`.optional()` 在这条路径上拦不住）。Docker 上下文里没有仓库根的
     // BUILD_NUMBER，0.2.10 的镜像构建就是这样红的。
@@ -239,11 +265,12 @@ tasks.register('generateBuildInfo') {
     }
     inputs.property('buildNumber', buildNumber)
     inputs.property('externalVersion', project.version.toString())
+    inputs.property('revision', gitRevision)
     outputs.file(generatedBuildInfo.map { it.file('meta/build-info.properties') })
     doLast {
         def target = generatedBuildInfo.get().file('meta/build-info.properties').asFile
         target.parentFile.mkdirs()
-        target.text = "version=${project.version}\nbuild=${buildNumber}\n"
+        target.text = "version=${project.version}\nbuild=${buildNumber}\nrev=${gitRevision}\n"
     }
 }
 sourceSets.main.resources.srcDir(generatedBuildInfo)

@@ -23,6 +23,13 @@ export interface AppHeaderProps {
   onOpenSkins?: () => void
   /** 服务端 /healthz 报回来的版本号；空串表示还没问到（离线或启动中）。 */
   version?: string
+  /**
+   * 服务端 /healthz 报回来的代码修订（`rev-<短 sha>`）。
+   *
+   * 未发版、只在本地改的时候，版本号是不动的 —— 光看 `0.2.35` 分不清"跑的是推上去那版
+   * 还是我刚编的这版"。修订号由构建脚本从 `git rev-parse --short HEAD` 写进包，界面直接显示。
+   */
+  revision?: string
 }
 
 /** 皮肤名单一来源在 readerSettings（顶栏菜单与「皮肤」浮层共用，各自定义一份迟早漂移）。 */
@@ -39,6 +46,7 @@ export function AppHeader({
   onOpenReadingLog,
   onOpenSkins,
   version = '',
+  revision = '',
 }: AppHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [canInstall, setCanInstall] = useState(false)
@@ -152,8 +160,8 @@ export function AppHeader({
             type="button"
             className="brand-version"
             onClick={() => onOpenChangelog?.()}
-            title={`当前版本 ${version} · 看这一版改了什么`}
-            aria-label={`当前版本 ${version}，打开更新日志`}
+            title={`当前版本 ${version}${revision ? `（${revision}）` : ''} · 看这一版改了什么`}
+            aria-label={`当前版本 ${version}${revision ? `，修订 ${revision}` : ''}，打开更新日志`}
           >
             {version}
           </button>
@@ -222,6 +230,12 @@ export function AppHeader({
                   <span>版本</span>
                   <code>{version || '未取到'}</code>
                 </div>
+                {revision && (
+                  <div className="menu-version">
+                    <span>修订</span>
+                    <code>{revision}</code>
+                  </div>
+                )}
               </div>
 
               <div className="menu-section">
