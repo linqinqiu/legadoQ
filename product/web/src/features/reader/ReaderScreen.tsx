@@ -44,6 +44,7 @@ import { toast } from '../../components/Toast'
 import { ReplaceRulesModal } from '../../components/ReplaceRulesModal'
 import { ReaderCatalog } from './ReaderCatalog'
 import { useReaderCacheStatus } from './useReaderCacheStatus'
+import { useReaderChapterContent } from './useReaderChapterContent'
 import { ReaderSettingsSheet } from './settingsPanel/ReaderSettingsSheet'
 import { ReaderTtsManager } from './tts/ReaderTtsManager'
 import { TtsContext } from './tts/ReaderTtsContext'
@@ -144,13 +145,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   /** 同一个手法：判断"只能往前顶"要读当前的那一个，不能闭包里那个早就过期的数字。 */
   const chapterIndexRef = useRef(chapterIndex)
   chapterIndexRef.current = chapterIndex
-  const [content, setContent] = useState('')
-  // 非文本章节（音频/EPUB 直链）：服务端把媒体地址放在 `mediaUrl`。离线缓存里没有这个字段，
-  // 但音频源的 `content` 本身就是那串地址，所以渲染时用 `mediaUrl`，没有就用像 URL 的 `content`。
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null)
-  const [loadedChapterUrl, setLoadedChapterUrl] = useState('')
-  const [message, setMessage] = useState('')
-  const [loading, setLoading] = useState(true)
   const [activeDrawer, setActiveDrawer] = useState<'toc' | 'settings' | 'other' | null>(null)
   /** 「在正文上编辑点击区域」那层开着没有（见 TapZoneEditor）。 */
   const [tapZoneEditing, setTapZoneEditing] = useState(false)
@@ -268,8 +262,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const timerRef = useRef<number | null>(null)
   const restoredRef = useRef(false)
   const wakeLockRef = useRef<WakeLockSentinel | null>(null)
-  const preloadedContentRef = useRef(new Map<string, string>())
-  const preloadingRef = useRef(new Set<string>())
   const lastScrollYRef = useRef(0)
   const pointerStartRef = useRef<{ x: number; y: number; target: EventTarget | null } | null>(null)
   const boundaryTimerRef = useRef<number | null>(null)
@@ -316,6 +308,77 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     sourceId: currentBook.details.sourceId,
     bookUrl: currentBook.bookUrl,
     chapterCount: currentBook.chapters.length,
+  })
+
+  /**
+   * 正文落地后的簿记：字数、缓存标记、图片预热、首屏定位。
+   *
+   * 状态与请求本身在 `useReaderChapterContent` 里；这里只保留"阅读器才知道"的那几件事
+   * （续接推进标记、首屏恢复锚点、当前章 ref）。回调放在 hook 的 ref 里，所以它每次渲染
+   * 换身份不会让加载 effect 重跑。
+   */
+  const handleChapterLoaded = useCallback((nextContent: string, _nextMediaUrl: string | null, loadedChapter: Chapter) => {
+    chapterBaseContentRef.current = nextContent
+    // 「当获取到内容的时候」就把这一章的字数记进表里：服务端这一刻同时把正文写进了缓存
+    // （ReadingRoutes 的 cacheBookContent），但界面不该等下一轮同步才显示出眼前这一章的字数。
+    if (nextContent.length > 0) {
+      setChapterWordCounts(prev => {
+        if (prev.get(loadedChapter.url) === nextContent.length) return prev
+        const nextMap = new Map(prev)
+        nextMap.set(loadedChapter.url, nextContent.length)
+        return nextMap
+      })
+      // 同一刻这一章在服务端已经落库，云朵该立刻熄掉。缓存标记的轮询只在 `state==='caching'`
+      // 时才跑，平时读到的新章不会有人再来拉 —— "读着读着云还挂着"就是这条断链。
+      setCachedChapterUrls(prev => (prev.has(loadedChapter.url) ? prev : new Set(prev).add(loadedChapter.url)))
+    }
+    // 漫画/图文章节：趁用户看首屏，把正文里的图片提前喂给服务端代理取回落盘缓存。
+    warmContentImages(nextContent, loadedChapter.url, currentBook.details.sourceId)
+    // 续接推进时 position 给 null：下面那个定位 effect 见到 null 就直接返回，
+    // 于是"跨章"不再伴随任何 scrollTo —— 这正是"不是一体的吗"要的答案。
+    const advancing = flowAdvanceRef.current
+    flowAdvanceRef.current = false
+    const position = advancing ? null
+      : (!restoredRef.current && loadedChapter.index === startIndex ? currentBook.progress?.scrollPosition ?? 0 : 0)
+    const saved = currentBook.progress
+    initialLogicalPositionRef.current = !advancing && !restoredRef.current && loadedChapter.index === startIndex
+      && saved?.charOffset != null && !!saved.positionChecksum
+      ? {
+          chapterIndex: loadedChapter.index,
+          charOffset: saved.charOffset,
+          paragraphAnchor: saved.paragraphAnchor ?? '',
+          positionChecksum: saved.positionChecksum,
+        }
+      : null
+    restoredRef.current = true
+    currentRef.current = { chapter: loadedChapter, position: position ?? 0 }
+    initialPagePositionRef.current = position
+  }, [currentBook.details.sourceId, currentBook.progress, setCachedChapterUrls, setChapterWordCounts, startIndex])
+
+  const {
+    content,
+    setContent,
+    mediaUrl,
+    setMediaUrl,
+    loadedChapterUrl,
+    setLoadedChapterUrl,
+    message,
+    setMessage,
+    loading,
+    setLoading,
+    preloadedContentRef,
+    preloadingRef,
+    preloadNextChapter,
+    preloadPrevChapter,
+    clearPreload,
+  } = useReaderChapterContent({
+    chapter,
+    chapters: currentBook.chapters,
+    sourceId: currentBook.details.sourceId,
+    bookUrl: currentBook.bookUrl,
+    startIndex,
+    progress: currentBook.progress,
+    onLoaded: handleChapterLoaded,
   })
 
   /**
@@ -1085,45 +1148,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     ).catch(() => undefined)
   }, [currentBook.bookUrl, currentBook.details.sourceId, readLogicalPosition])
 
-  const preloadNextChapter = useCallback((index: number) => {
-    let j = index + 1
-    while (j < currentBook.chapters.length && (currentBook.chapters[j].isVolume || !currentBook.chapters[j].url)) j++
-    const next = currentBook.chapters[j]
-    if (!next || !next.url || preloadedContentRef.current.has(next.url) || preloadingRef.current.has(next.url)) return
-    preloadingRef.current.add(next.url)
-    void api.content(currentBook.details.sourceId, next.url, currentBook.bookUrl)
-      .then(result => {
-        const map = preloadedContentRef.current
-        map.set(next.url, result.content)
-        // 只增不清的 Map 会跟着阅读无界增长（长书读一章缓存一章），留最近的十几章足够
-        if (map.size > 12) {
-          const oldest = map.keys().next().value
-          if (oldest !== undefined) map.delete(oldest)
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => preloadingRef.current.delete(next.url))
-  }, [currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId])
-
-  const preloadPrevChapter = useCallback((index: number) => {
-    let j = index - 1
-    while (j >= 0 && (currentBook.chapters[j].isVolume || !currentBook.chapters[j].url)) j--
-    const prev = currentBook.chapters[j]
-    if (!prev || !prev.url || preloadedContentRef.current.has(prev.url) || preloadingRef.current.has(prev.url)) return
-    preloadingRef.current.add(prev.url)
-    void api.content(currentBook.details.sourceId, prev.url, currentBook.bookUrl)
-      .then(result => {
-        const map = preloadedContentRef.current
-        map.set(prev.url, result.content)
-        if (map.size > 12) {
-          const oldest = map.keys().next().value
-          if (oldest !== undefined) map.delete(oldest)
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => preloadingRef.current.delete(prev.url))
-  }, [currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId])
-
   // 切章的 ref：ReaderTtsManager 里的 playTtsChunk 要跨章续播，而 changeChapter 又要 stopTts —— 环用 ref 打破
   const changeChapterRef = useRef<(rawIndex: number) => void>(() => undefined)
   /**
@@ -1596,74 +1620,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     sessionStorage.setItem('legado-open-book-v1', JSON.stringify({ book: newOpenBook, index: chosen.targetChapterIndex }))
   }
 
-  // Load chapter content.
-  // 用 useLayoutEffect 而不是 useEffect：预载命中时（下一章往往已经在 preloadedContentRef 里）
-  // 正文在浏览器绘制之前就换好了，不会先画一帧骨架屏再画正文；真在飞的场合骨架屏照旧出现。
-  useLayoutEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setMessage('')
-    const applyContent = (nextContent: string, nextMediaUrl: string | null = null) => {
-      if (cancelled) return
-      setContent(nextContent)
-      chapterBaseContentRef.current = nextContent
-      setMediaUrl(nextMediaUrl)
-      setLoadedChapterUrl(chapter.url)
-      // 「当获取到内容的时候」就把这一章的字数记进表里：服务端这一刻同时把正文写进了缓存
-      // （ReadingRoutes 的 cacheBookContent），但界面不该等下一轮同步才显示出眼前这一章的字数。
-      if (nextContent.length > 0) {
-        setChapterWordCounts(prev => {
-          if (prev.get(chapter.url) === nextContent.length) return prev
-          const nextMap = new Map(prev)
-          nextMap.set(chapter.url, nextContent.length)
-          return nextMap
-        })
-        // 同一刻这一章在服务端已经落库（cacheBookContent 就在刚才那次请求里写了行），
-        // 云朵该立刻熄掉。缓存标记的轮询只在 `state==='caching'` 时才跑（见下面的 effect），
-        // 平时读到的新章不会有人再来拉 —— "读着读着云还挂着"就是这条断链。
-        setCachedChapterUrls(prev => (prev.has(chapter.url) ? prev : new Set(prev).add(chapter.url)))
-      }
-      // 漫画/图文章节：趁用户看首屏，把正文里的图片提前喂给服务端代理取回落盘缓存，
-      // 后面滚动/翻页不必每张都等服务端联网（referer 用本章地址，图站防盗链才放得过去）。
-      warmContentImages(nextContent, chapter.url, currentBook.details.sourceId)
-      // 续接推进时 position 给 null：下面那个定位 effect 见到 null 就直接返回，
-      // 于是"跨章"不再伴随任何 scrollTo —— 这正是"不是一体的吗"要的答案。
-      const advancing = flowAdvanceRef.current
-      flowAdvanceRef.current = false
-      const position = advancing ? null
-        : (!restoredRef.current && chapter.index === startIndex ? currentBook.progress?.scrollPosition ?? 0 : 0)
-      const saved = currentBook.progress
-      initialLogicalPositionRef.current = !advancing && !restoredRef.current && chapter.index === startIndex
-        && saved?.charOffset != null && !!saved.positionChecksum
-        ? {
-            chapterIndex: chapter.index,
-            charOffset: saved.charOffset,
-            paragraphAnchor: saved.paragraphAnchor ?? '',
-            positionChecksum: saved.positionChecksum,
-          }
-        : null
-      restoredRef.current = true
-      currentRef.current = { chapter, position: position ?? 0 }
-      initialPagePositionRef.current = position
-      setLoading(false)
-    }
-    const preloaded = preloadedContentRef.current.get(chapter.url)
-    if (preloaded) {
-      applyContent(preloaded)
-    } else {
-      void api.content(currentBook.details.sourceId, chapter.url, currentBook.bookUrl)
-        .then(result => applyContent(result.content, result.mediaUrl ?? null))
-        .catch(error => {
-          if (!cancelled) setMessage(error instanceof Error ? error.message : '无法读取正文')
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-    }
-    return () => {
-      cancelled = true
-    }
-  }, [chapter, currentBook.bookUrl, currentBook.details.sourceId, currentBook.progress?.scrollPosition, currentBook.progress?.charOffset, currentBook.progress?.paragraphAnchor, currentBook.progress?.positionChecksum, startIndex])
 
   /**
    * 续接窗口：把锚点章之后的 1~2 章挂到下面（滚动与分页两种模式都要）。

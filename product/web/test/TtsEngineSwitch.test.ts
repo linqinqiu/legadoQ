@@ -23,6 +23,8 @@ import { TtsSettingsModal } from '../src/features/reader/tts/TtsSettingsModal'
  */
 
 const readerSource = readFileSync(fileURLToPath(new URL('../src/features/reader/ReaderScreen.tsx', import.meta.url)), 'utf8')
+// 正文加载 effect 已搬进 hook（0.2.37 之后的第二刀）；判据盯实现，不盯它住在哪个文件。
+const chapterHookSource = readFileSync(fileURLToPath(new URL('../src/features/reader/useReaderChapterContent.ts', import.meta.url)), 'utf8')
 // 0.8.2 结构重排：朗读集群（状态 + 9 个回调 + 2 个 effect）抽进了 useReaderTts.ts。
 // 判"阅读器这一面"时读两份拼起来的整体 —— 不是放水：只读一处会漏掉另一处，
 // 而拼起来之后任何一侧长回旧写法都会被下面的 match/doesNotMatch 逮住。
@@ -171,7 +173,7 @@ test('章节过渡 - 切章不许再把已经到手的正文清成骨架屏', ()
 
 test('章节过渡 - 预载命中要在绘制前换好正文，朗读管线只认到位的那一章', () => {
   assert.match(
-    readerSource,
+    chapterHookSource,
     /useLayoutEffect\(\(\) => \{\s*\n\s*let cancelled = false\s*\n\s*setLoading\(true\)/,
     '正文加载 effect 必须是 useLayoutEffect：passive effect 会让浏览器先画一帧骨架屏',
   )
