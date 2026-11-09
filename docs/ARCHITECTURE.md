@@ -648,14 +648,24 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 ## 13. 已知架构缺口
 
-1. **收口只做了阅读域**：书源/订阅/缓存等域仍是 Route → DAO 直连，`ReadingRepository` 也只是薄转发（LIKE 转义、片段截取仍在 DAO）。
-2. **`/api/catalog` 与运行时注册不绑定**：目录是静态 JSON + 源码扫描，模块漏挂载不会红（已有单点判据，但非通用防线）。
-3. **无统一出站客户端层**：SSRF 校验靠各调用点自觉调，新写的 client 默认不过闸（`UpdateCheck` 固定主机、`EdgeTts` 有意放行，都不构成漏洞，但缺少结构性防线）。
-4. **可观测性薄**：分页/解析/规则求值无耗时与失败率指标，缓存命中率无日志。
-5. ~~**`0.0.0.0` 未在代码层禁止**~~ —— **已解决**：启动期 `requireLoopbackBind()`（`http/Guard.kt`）拒绝非回环绑定，容器部署必须显式 `LEGADO_ALLOW_EXTERNAL_BIND=1`（Dockerfile 已设）并会在日志里留一条警告。`Guardrails.refuseExternalBind` 仍是 AI 侧的同类护栏，未接线。
-6. **发布链路**：`build-jar.yml` 触发面过宽、未签名、无 Secrets 注入。
-7. **前端阅读器单文件过大**：`ReaderScreen.tsx` 约 2800 行，改动风险高，是后续拆分对象。
-8. **用户侧仍依赖 Node**：`npm start` → `start.mjs` 负责端口/数据目录/开浏览器；原生启动器（jpackage + jlink）尚未做。
+> 状态按**代码现状**写，不按计划写。版本号一律不写在这里 —— 版本只有一个真源
+>（`product/app/build.gradle`），对外以 `/api/catalog` 为准；写在散文里的数字必然滞后。
+
+| # | 缺口 | 状态 |
+|---|---|---|
+| 1 | 收口只做了书架域 | **部分完成**：`BookshelfRepository` 已承接书架清单/增删改/分组/批量/换源/本地书导入；书源、订阅、缓存仍是 Route → DAO 直连 |
+| 2 | `/api/catalog` 与运行时注册不绑定 | **未解**：静态 JSON + 源码扫描，模块漏挂载不会红 |
+| 3 | 无统一出站客户端层 | **未生效**：`http/HttpClients.kt` 已写好（薄封装 `NetworkSecurity`，固定 10s 连接超时 + 不跟随重定向），但**零调用方**。真正在用的仍是各调用点直接 `NetworkSecurity.newHttpClient(...)`。要算解决，得先迁移调用方，并加一条「业务代码不许出现裸 newHttpClient」的枚举式判据 |
+| 4 | 可观测性薄 | **进行中**：Metrics 已暴露到 `/api/diagnostics`，持续增强 |
+| 5 | `0.0.0.0` 未在代码层禁止 | **已解**：启动期 `requireLoopbackBind()` 拒绝非回环绑定 |
+| 6 | 发布链路 | **未解**：`build-jar.yml` 触发面过宽、未签名、无 Secrets 注入 |
+| 7 | 前端阅读器单文件过大 | **未解**：`ReaderScreen.tsx` 约 3200 行，待拆分 |
+| 8 | 用户侧仍依赖 Node | **部分完成**：`npm start` → `start.mjs` 负责端口/数据目录/开浏览器；原生启动器（jpackage + jlink）尚未做 |
+
+> 关于 #3 和 #7 的说明：这两项曾被记为「已完成」，但对照代码不成立 ——
+> `HttpClients` 没有调用方；`ReaderScreen` 的拆分版本引用了不存在的 `ReaderSettings`/`Chapter`
+> 字段（54 处类型错误），已回退到可编译的实现。**「写了文件」不等于「做完了」**，
+> 这两项的判据分别是「调用方迁移完成」和「`tsc` 通过且行为不变」。
 
 ---
 

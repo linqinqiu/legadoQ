@@ -5,8 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import io.legado.cache.CoverCache
-import io.legado.http.tryCacheCover
-import io.legado.http.tryFindCachedCover
+import io.legado.cache.tryCacheCover
+import io.legado.cache.tryFindCachedCover
 import io.legado.model.SearchResult
 
 class CoverCacheTest {

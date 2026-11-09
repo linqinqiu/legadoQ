@@ -324,7 +324,9 @@ fun Database.forgetCover(key: String) = write { db ->
     db.prepareStatement("delete from cover_cache where cache_key = ?").use { it.setString(1, key); it.executeUpdate() }
 }
 
-private fun java.sql.ResultSet.toShelf(): BookshelfItem {
+// `internal` 而不是 `private`：`BookshelfRepository` 复用同一套列映射，否则只能复制一遍
+// `SHELF_SELECT` 的 15 个下标 —— 那正是这类映射最容易漂移的地方（加一列就两边对不上）。
+internal fun java.sql.ResultSet.toShelf(): BookshelfItem {
     val altJson = getString(15)
     val altSources = if (!altJson.isNullOrBlank()) {
         runCatching { Json.decodeFromString<List<SearchResult>>(altJson) }.getOrDefault(emptyList())

@@ -748,6 +748,77 @@ data class CachedBookRequest(
 @Serializable data class BatchDeleteRequest(val books: List<BookIdentifier>)
 @Serializable data class BatchMoveGroupRequest(val books: List<BookIdentifier>, val groupId: Long?)
 @Serializable data class BatchMarkReadRequest(val books: List<BookIdentifier>, val isRead: Boolean)
+
+@Serializable data class BatchDeleteResult(
+    // 字段名就是 API 的 JSON 键，前端 `reader.ts` 与 `ShelfPage.tsx` 直接读 `result.deleted`
+    //（`已删除 ${result.deleted} 本书`）。改名等于把界面显示成「已删除 undefined 本书」，
+    // 所以这里以既有契约为准，不按内部命名习惯改成 `deletedCount`。
+    val deleted: Int,
+    val total: Int,
+    val failed: Int = 0,
+    val error: String? = null,
+    val failedBooks: List<BookIdentifier> = emptyList(),
+)
+
+@Serializable data class BatchMoveResult(
+    val moved: Int,
+    val total: Int,
+    val failed: Int = 0,
+    val error: String? = null,
+    val failedBooks: List<BookIdentifier> = emptyList(),
+)
+
+@Serializable data class BatchMarkResult(
+    val marked: Int,
+    val total: Int,
+    val failed: Int = 0,
+    val error: String? = null,
+    val failedBooks: List<BookIdentifier> = emptyList(),
+)
+
+@Serializable data class LocalBookImportItem(
+    val filename: String,
+    val success: Boolean,
+    val bookUrl: String? = null,
+    val name: String? = null,
+    val author: String? = null,
+    val totalChapters: Int = 0,
+    val error: String? = null
+)
+
+/**
+ * 本地书导入的**传输无关**入参：只带文件名与字节。
+ *
+ * 刻意不用 `io.ktor.http.content.PartData` —— 那是传输层类型（multipart 的一个 part），
+ * 让它进 `BookshelfRepository` 等于把 HTTP 细节漏进数据层，并且把 Repository 钉死在 Ktor 上：
+ * 换个传输方式、或想单测导入逻辑，都得先造一个假的 multipart part。
+ *
+ * 由路由层负责把 multipart 拆成这个类型，字节的读取与释放仍在路由层完成。
+ */
+class LocalBookUpload(val filename: String, val bytes: ByteArray)
+
+@Serializable
+data class SwitchSourceResult(
+    val book: BookshelfItem,
+    val alternateSources: List<SearchResult>,
+    val coverKey: String? = null
+)
+
+@Serializable
+data class CachedChaptersInfo(
+    val sourceId: String,
+    val bookUrl: String,
+    val cachedChapterUrls: List<String>,
+    val cachedCount: Int,
+    val totalChapters: Int,
+    val cachedWordCounts: List<Int>
+)
+
+@Serializable
+data class CacheQueueStatus(
+    val status: String = "queued"
+)
+
 @Serializable data class BookIdentifier(val sourceId: String, val bookUrl: String)
 /** 自定义排序落库的结果：写进去 / 清掉了几行。 */
 @Serializable data class OrderResult(val updated: Int)
@@ -1024,18 +1095,6 @@ data class BackupShelfEntry(
 /** 书架与阅读进度导入统计。 */
 data class LibraryImportResult(val imported: Int, val updated: Int, val progress: Int)
 
-
-/** 本地图书导入返回条目 */
-@Serializable
-data class LocalBookImportItem(
-    val filename: String,
-    val success: Boolean,
-    val bookUrl: String? = null,
-    val name: String? = null,
-    val author: String? = null,
-    val totalChapters: Int = 0,
-    val error: String? = null,
-)
 
 /** 本地图书导入批量响应 */
 @Serializable

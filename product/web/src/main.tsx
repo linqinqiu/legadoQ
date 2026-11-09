@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { api, BookDetails, BookshelfItem, SearchResult, SourceSummary } from './lib/api'
+import { performanceMonitor } from './lib/performance' // 性能监控初始化
 import { reportBrand } from './lib/brandStore'
 import { ContextMenuLayer } from './components/ContextMenu'
 import { ReaderScreen } from './features/reader/ReaderScreen'
@@ -708,6 +709,9 @@ function App() {
 // 字体数据在本地库，不注册回来刷新后 CSS 的 font-family 就命中不到。
 // 失败（隐私模式 / 无 IndexedDB / 单条字体损坏）不阻塞应用启动。
 void loadAllFonts().catch(() => undefined)
+
+// 初始化性能监控系统
+performanceMonitor.init()
 
 // 根上这一层是最后兜底：连页面外壳自己抛错时，也不能剩一片白屏让人以为程序没了
 createRoot(document.getElementById('root')!).render(
