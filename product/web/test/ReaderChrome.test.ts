@@ -58,16 +58,18 @@ test('legacy 回退档保留上一章/下一章（没有别的常驻入口）', 
 })
 
 test('ReaderScreen 只把章节导航交给 legacy 顶栏，并沿用旧的先落进度再切章', () => {
-  const md3Call = /<Md3TopBar([\s\S]*?)\/>/.exec(screen)?.[1] ?? ''
+  // 外壳 JSX 搬进了 ReaderChrome；goPrev/goNext 的实现仍在阅读器。
+  const shell = read('features', 'reader', 'ReaderChrome.tsx')
+  const md3Call = /<Md3TopBar([\s\S]*?)\/>/.exec(shell)?.[1] ?? ''
   assert.ok(md3Call, '找不到 Md3TopBar 调用（正则会退化成对空串断言）')
   assert.doesNotMatch(md3Call, /chapterIndex|totalChapters|onPrevChapter|onNextChapter/, 'MD3 顶栏不该再接章节导航')
   // 回退档那一份还在；计数写死一次，避免复制粘贴出第二个入口。
-  assert.equal((screen.match(/onPrevChapter=\{goPrevChapter\}/g) ?? []).length, 1, '上一章只该接给 legacy 顶栏')
-  assert.equal((screen.match(/onNextChapter=\{goNextChapter\}/g) ?? []).length, 1, '下一章只该接给 legacy 顶栏')
+  assert.equal((shell.match(/onPrevChapter=\{actions\.onPrevChapter\}/g) ?? []).length, 1, '上一章只该接给 legacy 顶栏')
+  assert.equal((shell.match(/onNextChapter=\{actions\.onNextChapter\}/g) ?? []).length, 1, '下一章只该接给 legacy 顶栏')
   assert.match(screen, /const goPrevChapter = useCallback\(\(\) => \{\s*if \(chapterIndex <= 0\) return\s*persist\(\)/, '上一章：首章直接返回，否则先落进度')
   assert.match(screen, /const goNextChapter = useCallback\(\(\) => \{\s*if \(chapterIndex >= currentBook\.chapters\.length - 1\) return\s*persist\(\)/, '下一章：末章直接返回，否则先落进度')
   // 底栏不再传被删掉的 props
-  assert.doesNotMatch(screen, /onSeekChapter=/, 'ReaderScreen 不该再给底栏传滑杆回调')
+  assert.doesNotMatch(shell, /onSeekChapter=/, '外壳不该再给底栏传滑杆回调')
 })
 
 /**
@@ -81,8 +83,10 @@ test('笔记入口只留一份：目录头不再重复，图标与书架键区�
   assert.doesNotMatch(tocHeader, /笔记（/, '目录头没有第二个笔记入口')
   assert.match(tocHeader, /label="回到目录"[\s\S]{0,60}?icon="arrowLeft"/, '「回到目录」要能返回，且别和倒序键共用 list 图标')
   assert.match(tocHeader, /label=\{inShelf \? '移出书架' : '加入书架'\}[\s\S]{0,80}?icon="bookmark"/, '书架键仍是 bookmark')
-  assert.equal((screen.match(/onToggleNotes=/g) ?? []).length, 2, '笔记入口只该有顶栏与底栏两处')
-  assert.match(screen, /onBackToToc=\{\(\) => setNotesPanel\(false\)\}/, '「回到目录」要真的把面板切回目录')
+  const shell = read('features', 'reader', 'ReaderChrome.tsx')
+  assert.equal((shell.match(/onToggleNotes=/g) ?? []).length, 2, '笔记入口只该有顶栏与底栏两处')
+  assert.match(shell, /onBackToToc=\{actions\.onBackToToc\}/, '「回到目录」要真的把面板切回目录')
+  assert.match(screen, /onBackToToc: \(\) => setNotesPanel\(false\)/, '阅读器要把切回目录的动作接上')
   // 顶栏与底栏的笔记键改用 edit：同一个 bookmark 不再分别表示「书架」和「笔记」。
   assert.match(chrome, /md3-topbar-notes[\s\S]{0,300}?<Icon name="edit" \/>/, '顶栏笔记键用 edit 图标')
   assert.match(chrome, /aria-label=\{`笔记（\$\{notesCount\}）`\}[\s\S]{0,120}?<Icon name="edit" \/>/, '窄屏底栏笔记 pill 也用 edit')

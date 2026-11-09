@@ -155,8 +155,6 @@ function App() {
   const [sources, setSources] = useState<SourceSummary[]>([])
   /** 服务端 /healthz 报回来的版本号，显示在顶栏功能菜单里；构建清单是唯一来源。 */
   const [serverVersion, setServerVersion] = useState('')
-  /** 发版计数（`BUILD_NUMBER`）：只在发版时递增，日常改动看 rev。 */
-  const [serverBuild, setServerBuild] = useState('')
   /** 同一份应答里的代码修订（`rev-<提交数>`）：没发版时靠它分清"跑的是哪一版代码"。 */
   const [serverRevision, setServerRevision] = useState('')
   /** 修订号对应的短 sha，用于定位具体提交（只进 tooltip，不占界面）。 */
@@ -286,9 +284,6 @@ function App() {
         if (cancelled) return
         if (health?.version) {
           setServerVersion(String(health.version))
-        }
-        if (health?.build) {
-          setServerBuild(String(health.build))
         }
         if (health?.rev) {
           setServerRevision(String(health.rev))
@@ -633,7 +628,6 @@ function App() {
         onOpenReadingLog={() => openModalDirect('reading-log')}
         onOpenSkins={() => openModalDirect('skin')}
         version={serverVersion}
-        build={serverBuild}
         revision={serverRevision}
         revisionSha={serverSha}
       />

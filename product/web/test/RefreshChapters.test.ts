@@ -22,7 +22,7 @@ test('正文刷新入口在目录顶栏，本地书不出这颗键', () => {
   assert.match(header, /icon="refresh"/, '用刷新图标')
 
   const screen = read('features', 'reader', 'ReaderScreen.tsx')
-  assert.match(screen, /onOpenRefresh=\{currentBook\.details\.sourceId === 'loc_book' \? undefined : \(\) => setShowRefreshChapters\(true\)\}/,
+  assert.match(screen, /onOpenRefresh:\s*currentBook\.details\.sourceId === 'loc_book' \? undefined : \(\) => setShowRefreshChapters\(true\)/,
     '本地书没有书源可回，不给刷新入口')
   // 弹层挂载点搬进了 ReaderOverlays。
   const overlays = read('features', 'reader', 'ReaderOverlays.tsx')

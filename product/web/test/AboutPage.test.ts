@@ -46,14 +46,11 @@ test('版本与仓库都来自服务端，界面不写死', () => {
   assert.match(read('../src/lib/api/domains/system.ts'), /about: \(\) => request<AboutInfo>\('\/api\/about'\)/)
 })
 
-test('构建号与对外版本分两格显示，取不到时不编数字', () => {
-  // 同一个对外版本可以打很多次包；只说「0.2.10」分不出跑的是哪一次构建。
-  assert.match(page, /<dt>构建<\/dt>/)
-  assert.match(page, /info\.build/)
-  assert.match(page, /info\.build !== '0'/, '构建号为 0 表示没注入，不能当成一次真实构建显示')
-  assert.match(page, /未注入/)
-  const types = read('../src/lib/api/types.ts')
-  assert.match(types, /AboutInfo = \{[^}]*build\?: string/, '旧服务端可能没有 build 字段，类型要允许缺省')
+test('关于页只报版本，不再显示构建号', () => {
+  // 修订号只在顶栏/healthz 里用于区分"跑的是哪一版代码"；构建号不再作为用户可见概念。
+  assert.match(page, /<dt>版本<\/dt>/)
+  assert.doesNotMatch(page, /<dt>构建<\/dt>/, '构建号已从界面移除')
+  assert.doesNotMatch(page, /info\.build/, '关于页不再读 build 字段')
 })
 
 test('检查更新是点了才打，且地址不接受用户输入', () => {

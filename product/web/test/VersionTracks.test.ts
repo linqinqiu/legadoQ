@@ -68,13 +68,11 @@ test('构建号写进 jar 资源，并从 /healthz 与 /api/about 报出来', ()
   assert.match(read('product/app/src/main/kotlin/io/legado/model/Models.kt'), /data class AboutInfo[\s\S]*?val build: String/)
 })
 
-test('关于页把构建号显示出来，且不写死版本或构建号', () => {
+test('关于页只显示版本，不再显示构建号', () => {
   const page = read('product/web/src/plugins/about/AboutPage.tsx')
-  assert.match(page, /<dt>构建<\/dt>/)
-  assert.match(page, /info\.build/)
-  assert.match(page, /info\.build !== '0'/)
-  assert.match(page, /未注入/)
-  assert.match(read('product/web/src/lib/api/types.ts'), /AboutInfo = \{[^}]*build\?: string/)
+  assert.match(page, /<dt>版本<\/dt>/)
+  assert.doesNotMatch(page, /<dt>构建<\/dt>/, '构建号已从界面移除')
+  assert.doesNotMatch(page, /info\.build/, '关于页不再读 build 字段')
 })
 
 test('npm 入口把日常 bump 与发布分开', () => {

@@ -37,12 +37,11 @@ test('阅读器：选中正文 → 浮层 → 保存，且偏移按章节内字�
 })
 
 test('阅读器：抽屉里有「笔记」面板，按书查看', () => {
-  const reader = read('../src/features/reader/ReaderScreen.tsx')
-  // 0.2.15：目录抽屉整块拆进 ReaderCatalog.tsx（状态与渲染一起搬走），
-  // 判据因此改成「父组件传 notesPanel / onJumpNote」+「抽屉那一份挂了 NotesPanel」。
+  // 外壳搬进 ReaderChrome；目录抽屉整块在 ReaderCatalog 里。
+  const chrome = read('../src/features/reader/ReaderChrome.tsx')
   const catalog = read('../src/features/reader/ReaderCatalog.tsx')
-  assert.match(reader, /notesPanel/, '面板开关要在')
-  assert.match(reader, /onJumpNote=\{jumpToNote\}/, '点一条要能跳章')
+  assert.match(chrome, /notesPanel=\{notesPanel\}/, '面板开关要在')
+  assert.match(chrome, /onJumpNote=\{actions\.onJumpNote\}/, '点一条要能跳章')
   assert.match(catalog, /<NotesPanel/, '面板要挂在抽屉里')
   assert.match(read('../src/features/reader/notes/NotesPanel.tsx'), /reader-notes-list/, '面板要列得出来')
 })

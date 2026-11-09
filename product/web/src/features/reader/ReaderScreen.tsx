@@ -11,7 +11,6 @@ import { contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundar
 import { readerImageSrc } from './content/readerImage'
 import { TapAction, zoneAt } from './interaction/tapZones'
 import { isMediaType } from '../../lib/bookType'
-import { TapZoneEditor } from './interaction/TapZoneEditor'
 import { NoteDraft } from './notes/NoteToolbar'
 import { bookmarkPayload, findBookmarkAt } from './notes/bookmark'
 import { reanchorNotes } from './notes/reanchor'
@@ -19,11 +18,9 @@ import { splitByTerm } from './searchTerm'
 import { setAiChatOpen } from '../../lib/aiChatStore'
 import { performanceMonitor } from '../../lib/performance'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
-import { ReaderHeader } from './ReaderHeader'
-import { ExtensionSlot } from '../../plugins/ExtensionSlot'
-import { Md3BottomBar, Md3TopBar } from './Md3Chrome'
-import { reportProgress } from './content/readerProgress'
 import { ReaderBody } from './ReaderBody'
+import { reportProgress } from './content/readerProgress'
+import { ReaderChrome } from './ReaderChrome'
 import { ReaderOverlays } from './ReaderOverlays'
 import { clampScrollPosition, effectiveReaderFontFamily, isBuiltinSkinHidden, readerBackgroundVars, ReaderSettings, resolveTheme, scrollPosition, themeClassNames, ttsSessionKey, TtsEngineType, BUILTIN_SKINS } from './settingsPanel/readerSettings'
 import { stepFontSize } from './content/fontSizeControl'
@@ -35,17 +32,14 @@ import { findFirstIntersectingParagraphIndex } from './interaction/readerInterac
 import { caretOffsetWithin, checksumText, offsetToParagraph, paragraphAnchor, textOffsetRect, type LogicalPosition } from './content/logicalPosition'
 import { cleanAuthor, cleanTitle } from '../../lib/searchFilters'
 import { toast } from '../../components/Toast'
-import { ReaderCatalog } from './ReaderCatalog'
 import { useReaderCacheStatus } from './useReaderCacheStatus'
 import { useReaderChapterContent } from './useReaderChapterContent'
 import { useReaderPageTurn } from './useReaderPageTurn'
 import { usePaginationMeasurement } from './usePaginationMeasurement'
 import { useReadingLog } from './useReadingLog'
-import { ReaderSettingsSheet } from './settingsPanel/ReaderSettingsSheet'
 import { TtsContext } from './tts/ReaderTtsContext'
 import { useReaderTts } from './tts/useReaderTts'
-import { resetTtsBarPosition } from './tts/ttsBarPosition'
-import { ITtsEngine, WebSpeechEngine, HttpAudioTtsEngine, TtsPlayState, TtsSpeakMode, isPlayInterruptedError } from './tts/ttsEngine'
+import { ITtsEngine, WebSpeechEngine, HttpAudioTtsEngine, TtsSpeakMode, isPlayInterruptedError } from './tts/ttsEngine'
 import { isTypingTarget, normalizeKey, READER_SHORTCUTS, shortcutFor } from './interaction/shortcuts'
 import { warmContentImages } from './content/contentImages'
 import { splitParagraphs } from './content/paragraphs'
@@ -2441,140 +2435,66 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   return (
     <TtsContext.Provider value={ttsCtx}>
   <main className={`reader-workspace ${themeClassNames(settings).join(' ')} ${toolbarsVisible ? 'toolbars-open' : 'toolbars-hidden'} ${activeDrawer ? 'drawer-open' : ''}`} style={readerStyle}>
-    {/* 顶栏：MD3 外壳（PROPOSAL-020）或旧浮动工具栏，由 uiV2 开关切换 */}
-    {uiV2 ? <Md3TopBar
+    <ReaderChrome
+      uiV2={uiV2}
+      activeDrawer={activeDrawer}
       bookName={bookName}
-      chapterTitle={chapter?.title ? convert(chapter.title) : null}
-      menuItems={settings.menuItems}
-      isFullscreen={isFullscreen}
-      mediaDisabled={!!mediaSrc}
-      ttsActive={ttsActive}
-      ttsPlayState={ttsPlayState}
-      onBack={() => { persist(); stopTts(); onClose() }}
-      onToggleToc={() => setActiveDrawer(d => d === 'toc' ? null : 'toc')}
-      onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
-      onToggleFullscreen={toggleFullscreen}
-      onToggleTts={toggleTts}
-      onResetTtsBar={resetTtsBarPosition}
-      onBookSearch={() => setBookSearchOpen(true)}
-      onToggleNotes={() => { setActiveDrawer('toc'); setNotesPanel(true) }}
-      notesCount={notes.length}
-      onToggleBookmark={() => void toggleBookmark()}
-    /> : <ReaderHeader
-      bookName={bookName}
+      bookAuthor={currentBook.details.author ?? ''}
+      sourceId={currentBook.details.sourceId}
+      chapter={chapter}
       chapterIndex={chapterIndex}
       totalChapters={currentBook.chapters.length}
-      menuItems={settings.menuItems}
       isFullscreen={isFullscreen}
       mediaDisabled={!!mediaSrc}
       ttsActive={ttsActive}
       ttsPlayState={ttsPlayState}
-      onBack={() => { persist(); stopTts(); onClose() }}
-      onToggleToc={() => setActiveDrawer(d => d === 'toc' ? null : 'toc')}
-      onPrevChapter={goPrevChapter}
-      onNextChapter={goNextChapter}
-      onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
-      onToggleFullscreen={toggleFullscreen}
-      onToggleTts={toggleTts}
-      onResetTtsBar={resetTtsBarPosition}
-      onToggleBookmark={() => void toggleBookmark()}
-    />}
-
-    {/* 扩展槽位：第三方/用户可在此注入自定义组件（如统计卡片、快捷工具等）。
-        页面不依赖具体插件，运行时通过 attachmentStore 挂载。 */}
-    <ExtensionSlot name="reader.toolbar.right" />
-
-    {/* MD3 底栏：只剩窄屏那一排动作 pill（宽屏整条不渲染）。
-        章节导航走点按区 / 键盘 ←→ / 目录，顶栏不再摆「上一章 / 下一章》。 */}
-    {uiV2 && <Md3BottomBar
       notesCount={notes.length}
-      ttsActive={ttsActive}
-      onToggleToc={() => setActiveDrawer(d => d === 'toc' ? null : 'toc')}
-      onToggleNotes={() => { setActiveDrawer('toc'); setNotesPanel(true) }}
-      onToggleTts={toggleTts}
-      onToggleSettings={() => setActiveDrawer(d => d === 'settings' ? null : 'settings')}
-      onBookSearch={() => setBookSearchOpen(true)}
-    />}
-
-    {/* TOC Drawer (Left)：桌面与移动统一为覆盖式抽屉，不挤压正文；内容在 ReaderCatalog 里 */}
-    <ReaderCatalog
-      open={activeDrawer === 'toc'}
-      chapterTitle={chapter?.title ? convert(chapter.title) : null}
-      chapters={currentBook.chapters}
-      chapterIndex={chapterIndex}
-      cachedUrlsSet={cachedChapterUrls}
-      wordCounts={chapterWordCounts}
-      convertTitle={convert}
-      onSelectChapter={(index) => {
-        changeChapter(index)
-        setActiveDrawer(null)
-      }}
-      onCloseDrawer={() => setActiveDrawer(null)}
       notesPanel={notesPanel}
-      onBackToToc={() => setNotesPanel(false)}
-      onOpenSourceSwitch={() => {
-        setActiveDrawer(null)
-        setShowSourceSwitch(true)
-      }}
-      onOpenRefresh={currentBook.details.sourceId === 'loc_book' ? undefined : () => setShowRefreshChapters(true)}
       inShelf={inShelf}
-      onToggleShelf={() => void toggleShelf()}
-      notes={notes}
-      onJumpNote={jumpToNote}
-      onBookmarkHere={() => void toggleBookmark()}
-      bookMeta={{
-        bookName: currentBook.details.name,
-        author: currentBook.details.author,
-        sourceId: currentBook.details.sourceId,
-      }}
-      chapterTitles={Object.fromEntries(
-        currentBook.chapters.map((chapter, index) => [index, chapter.title]),
-      )}
-      autoScrollKey={activeDrawer === 'toc' ? 1 : 0}
-    />
-
-    {/* 阅读设置：弹层（MD3）或右侧抽屉（旧界面），内容与标签页在 ReaderSettingsSheet 里 */}
-    <ReaderSettingsSheet
-      uiV2={uiV2}
-      open={activeDrawer === 'settings'}
+      tapZoneEditing={tapZoneEditing}
+      readingLeft={readingLeft}
       settings={settings}
-      onSettingsChange={onSettingsChange}
-      onClose={() => setActiveDrawer(null)}
-      onOpenReplaceRules={() => setShowReplaceRules(true)}
-      onEditTapZones={() => {
-        setActiveDrawer(null)
-        setTapZoneEditing(true)
-      }}
+      chapters={currentBook.chapters}
+      cachedChapterUrls={cachedChapterUrls}
+      chapterWordCounts={chapterWordCounts}
+      convert={convert}
+      notes={notes}
+      chapterTitles={Object.fromEntries(currentBook.chapters.map((item, index) => [index, item.title]))}
       localBook={currentBook.details.sourceId === 'loc_book' ? { name: bookName, tocRule: shelfTocRule } : null}
       tocRuleOptions={tocRuleOptions}
-      onReparseLocal={currentBook.details.sourceId === 'loc_book' ? reparseLocalBook : undefined}
-    />
-
-    {/* Backdrop for Drawers：目录抽屉两种界面都用；设置抽屉在 MD3 下改由弹层自带遮罩 */}
-    {activeDrawer && (activeDrawer === 'toc' || !uiV2) && (
-      <div className="reader-drawer-backdrop" onClick={() => setActiveDrawer(null)} aria-hidden="true" />
-    )}
-
-    {/*
-      「在正文上编辑点击区域」那层：盖在正文之上（正文仍渲染，看得见字），
-      画横竖虚线分区、控制条收在底部一行。只编**当前翻页方式**那张表 —— 分页看竖线、滚动看横线。
-    */}
-    {tapZoneEditing && (
-      <TapZoneEditor
-        map={settings.pageMode === 'paginate' ? settings.tapZones.paginate : settings.tapZones.scroll}
-        mode={settings.pageMode}
-        left={readingLeft}
-        onMap={map => onSettingsChange({
+      actions={{
+        onBack: () => { persist(); stopTts(); onClose() },
+        onToggleToc: () => setActiveDrawer(d => d === 'toc' ? null : 'toc'),
+        onToggleSettings: () => setActiveDrawer(d => d === 'settings' ? null : 'settings'),
+        onToggleFullscreen: toggleFullscreen,
+        onToggleTts: toggleTts,
+        onBookSearch: () => setBookSearchOpen(true),
+        onToggleNotes: () => { setActiveDrawer('toc'); setNotesPanel(true) },
+        onToggleBookmark: () => void toggleBookmark(),
+        onPrevChapter: goPrevChapter,
+        onNextChapter: goNextChapter,
+        onSelectChapter: index => { changeChapter(index); setActiveDrawer(null) },
+        onCloseDrawer: () => setActiveDrawer(null),
+        onBackToToc: () => setNotesPanel(false),
+        onOpenSourceSwitch: () => { setActiveDrawer(null); setShowSourceSwitch(true) },
+        onOpenRefresh: currentBook.details.sourceId === 'loc_book' ? undefined : () => setShowRefreshChapters(true),
+        onToggleShelf: () => void toggleShelf(),
+        onJumpNote: jumpToNote,
+        onOpenReplaceRules: () => setShowReplaceRules(true),
+        onEditTapZones: () => { setActiveDrawer(null); setTapZoneEditing(true) },
+        onCloseTapZone: () => setTapZoneEditing(false),
+        onTapZoneMap: map => onSettingsChange({
           ...settings,
           tapZones: settings.pageMode === 'paginate'
             ? { ...settings.tapZones, paginate: map }
             : { ...settings.tapZones, scroll: map },
-        })}
-        onMode={mode => onSettingsChange({ ...settings, pageMode: mode })}
-        onPreset={(paginate, scroll) => onSettingsChange({ ...settings, tapZones: { paginate, scroll } })}
-        onClose={() => setTapZoneEditing(false)}
-      />
-    )}
+        }),
+        onTapZoneMode: mode => onSettingsChange({ ...settings, pageMode: mode }),
+        onTapZonePreset: (paginate, scroll) => onSettingsChange({ ...settings, tapZones: { paginate, scroll } }),
+        onSettingsChange,
+        onReparseLocal: currentBook.details.sourceId === 'loc_book' ? reparseLocalBook : undefined,
+      }}
+    />
 
     {/* Central Reading Canvas */}
     <ReaderBody

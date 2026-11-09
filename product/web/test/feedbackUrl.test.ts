@@ -24,22 +24,20 @@ test('生成的地址指向仓库的新建 Issue 页，并带上 markdown 模板
   assert.equal(params.get('title'), base.title)
 })
 
-test('正文带描述、版本与构建号，且不含未编码的换行', () => {
+test('正文带描述与版本，且不含未编码的换行', () => {
   const url = buildFeedbackUrl(base)
   const body = new URL(url).searchParams.get('body') ?? ''
   assert.ok(body.includes(base.description))
   assert.ok(body.includes('版本：0.2.14'))
-  assert.ok(body.includes('构建：#11'))
+  assert.ok(!body.includes('构建：'), '构建号已不再出现在反馈正文里')
   assert.ok(body.includes('关于 → 提交建议'))
   // URL 里不能出现裸换行，否则部分客户端会在那里截断
   assert.ok(!url.includes('\n'))
 })
 
-test('构建号缺失或为 0 时不编一个假构建', () => {
-  const body = new URL(buildFeedbackUrl({ ...base, build: '0' })).searchParams.get('body') ?? ''
+test('即使草稿里带了 build，正文也不再输出构建号', () => {
+  const body = new URL(buildFeedbackUrl({ ...base, build: '11' })).searchParams.get('body') ?? ''
   assert.ok(!body.includes('构建：'))
-  const noBuild = new URL(buildFeedbackUrl({ ...base, build: null })).searchParams.get('body') ?? ''
-  assert.ok(!noBuild.includes('构建：'))
 })
 
 test('标题与描述按上限截断，且按字符而不是码元截', () => {

@@ -49,7 +49,6 @@ export function buildFeedbackUrl(draft: FeedbackDraft): string {
 
   const meta = [
     draft.version ? `版本：${draft.version}` : '',
-    draft.build && draft.build !== '0' ? `构建：#${draft.build}` : '',
   ].filter(Boolean)
   const body = [
     description,

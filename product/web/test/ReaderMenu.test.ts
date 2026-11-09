@@ -55,8 +55,9 @@ test('moveReaderMenu：上移 / 下移；到头不动', () => {
 })
 
 test('工具栏按 settings.menuItems 渲染，且与配置面板同源', () => {
-  // 工具栏在 PROPOSAL-019 F 里抽成了 ReaderHeader：清单从 settings.menuItems 传进去，逐项渲染。
-  assert.match(readerScreen, /menuItems=\{settings\.menuItems\}/, '工具栏要拿 settings.menuItems')
+  // 工具栏在 PROPOSAL-019 F 里抽成 ReaderHeader，外壳再收进 ReaderChrome：清单从 settings.menuItems 传进去。
+  const shell = read('../src/features/reader/ReaderChrome.tsx')
+  assert.match(shell, /menuItems=\{settings\.menuItems\}/, '工具栏要拿 settings.menuItems')
   assert.match(read('../src/features/reader/ReaderHeader.tsx'), /menuItems\.map\(/, '工具栏要逐项渲染')
   assert.match(read('../src/features/reader/settingsPanel/OtherSettingsPanel.tsx'), /READER_MENU_ITEMS\.map\(/, '配置面板要按同一份清单列（PROPOSAL-020 P4 后这一节住在「设置」弹层）')
   // 旧版那四个写死的按钮不该再直接挂在 header 里（否则配置改了它也不动）
@@ -74,9 +75,10 @@ test('桌面端目录是普通覆盖式抽屉：没有固定侧栏与拖宽', ()
   assert.match(header, /label="关闭目录"/, '关闭键只负责关闭抽屉')
   assert.doesNotMatch(readerScreen, /sidebarPinned|sidebar-pinned|sidebarWidth|reader-sidebar-resizer/, '调用方不再有固定侧栏状态、拖宽与分隔条')
   assert.doesNotMatch(styles, /sidebar-pinned|reader-sidebar-resizer/, '样式里不再有固定侧栏与拖宽')
-  const tocToggles = readerScreen.match(/onToggleToc=\{\(\) => setActiveDrawer\(d => d === 'toc' \? null : 'toc'\)\}/g) ?? []
+  const shell = read('../src/features/reader/ReaderChrome.tsx')
+  const tocToggles = shell.match(/onToggleToc=\{actions\.onToggleToc\}/g) ?? []
   assert.equal(tocToggles.length, 3, '顶栏（新旧两套）与底栏的目录键都只切换覆盖式抽屉')
-  assert.match(readerScreen, /activeDrawer === 'toc' \|\| !uiV2/, '目录抽屉打开时始终有遮罩')
+  assert.match(shell, /activeDrawer === 'toc' \|\| !uiV2/, '目录抽屉打开时始终有遮罩')
 })
 
 test('设置项随包存读：默认带 menuItems，读时过清洗', () => {
