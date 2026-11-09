@@ -33,7 +33,7 @@ test('阅读器：选中正文 → 浮层 → 保存，且偏移按章节内字�
   const overlays = read('../src/features/reader/ReaderOverlays.tsx')
   assert.match(overlays, /<NoteToolbar/, '浮层要在（挂在阅读器的弹层集合上）')
   assert.match(read('../src/features/reader/notes/NoteToolbar.tsx'), /reader-note-toolbar/, '浮层外壳标记要在')
-  assert.match(reader, /reader-note-highlight/, '正文要能画高亮')
+  assert.match(read('../src/features/reader/NoteHighlights.tsx'), /reader-note-highlight/, '正文要能画高亮')
 })
 
 test('阅读器：抽屉里有「笔记」面板，按书查看', () => {

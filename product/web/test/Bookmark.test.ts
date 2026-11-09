@@ -103,5 +103,5 @@ test('跳到书签要落到那一段，不是只切章；书签不画正文高�
   assert.match(screen, /setPageIndex\(Math\.min\(pageCount - 1/, '分页模式换页码，与朗读跟读同一套矩形差')
   assert.match(screen, /pendingNoteJumpRef\.current = target/, '跨章要等正文挂进 DOM 再滚')
   assert.match(screen, /jumpToNotePosition\(target\)/, '同章直接滚')
-  assert.match(screen, /note\.bookmark \? false|!note\.bookmark/, '书签不进高亮渲染')
+  assert.match(read('../src/features/reader/NoteHighlights.tsx'), /!note\.bookmark/, '书签不进高亮渲染')
 })

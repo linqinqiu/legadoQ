@@ -36,6 +36,7 @@ import { useReaderPageTurn } from './useReaderPageTurn'
 import { usePaginationMeasurement } from './usePaginationMeasurement'
 import { useReadingLog } from './useReadingLog'
 import { useReaderNotes } from './useReaderNotes'
+import { renderNoteHighlights } from './NoteHighlights'
 import { TtsContext } from './tts/ReaderTtsContext'
 import { useReaderTts } from './tts/useReaderTts'
 import { ITtsEngine, WebSpeechEngine, HttpAudioTtsEngine, TtsSpeakMode, isPlayInterruptedError } from './tts/ttsEngine'
@@ -712,42 +713,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     jumpToNotePosition(target)
   }
 
-  /**
-   * 这一段里落着的笔记高亮。按 `excerpt` 在这段文字里定位 ——
-   * 简繁转换只换字形不换词，转换后仍然找得到；找不到（原文被源站改过）就安静跳过。
-   */
-  const renderNoteHighlights = (text: string, ownerIndex: number) => {
-    // 书签不画高亮：它只标位置，正文上留一条彩色底纹反而像"这段被划了重点"。
-    const chapterNotes = notesApi.notes.filter(note => !note.bookmark && note.chapterIndex === ownerIndex && note.excerpt && text.includes(note.excerpt))
-    if (!chapterNotes.length) return null
-    const marks: Array<{ start: number; end: number; note: BookNote }> = []
-    for (const note of chapterNotes) {
-      const at = text.indexOf(note.excerpt)
-      if (at < 0) continue
-      // 与已有高亮重叠的跳过：重叠的 <mark> 没法叠着画
-      if (marks.some(mark => at < mark.end && at + note.excerpt.length > mark.start)) continue
-      marks.push({ start: at, end: at + note.excerpt.length, note })
-    }
-    if (!marks.length) return null
-    marks.sort((a, b) => a.start - b.start)
-    const out: React.ReactNode[] = []
-    let cursor = 0
-    for (const mark of marks) {
-      if (mark.start > cursor) out.push(text.slice(cursor, mark.start))
-      out.push(
-        <mark
-          key={`note-${mark.note.id}`}
-          className={`reader-note-highlight${mark.note.note ? ' has-note' : ''}`}
-          data-note-id={mark.note.id}
-          title={mark.note.note || '划线'}
-          onClick={event => { event.stopPropagation(); notesApi.openNote(mark.note, event.clientX, event.clientY) }}
-        >{text.slice(mark.start, mark.end)}</mark>,
-      )
-      cursor = mark.end
-    }
-    if (cursor < text.length) out.push(text.slice(cursor))
-    return out
-  }
+  // 划线高亮渲染搬进 ./noteHighlights（纯函数，收 notes + onOpenNote），不再闭包本组件状态。
   // 朗读管线只认"当前这一章已经到位"的正文，过渡期间给空数组，避免读进上一章剩下的段落。
   // 非文本章节（音频/视频/文件）：这一章的"正文"其实是一个媒体地址，不能当段落排出来。
   // 优先用服务端给的 `mediaUrl`；离线缓存没有它，但音频源的 `content` 本身就是那串地址，故兜底。
@@ -1006,7 +972,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
 
   const renderParagraphContent = (rawLine: string, pIndex: number, ownerIndex = chapterIndex) => {
     // 有笔记就先画高亮。一段里「笔记高亮」与「朗读到哪句」叠着画不出来，笔记优先。
-    const highlighted = renderNoteHighlights(rawLine, ownerIndex)
+    const highlighted = renderNoteHighlights(rawLine, ownerIndex, notesApi.notes, notesApi.openNote)
     if (highlighted) return highlighted
     /*
       刚跳过来的搜索命中：只画在锚点章的那一段上。段起点来自本章 `paragraphStarts`，
