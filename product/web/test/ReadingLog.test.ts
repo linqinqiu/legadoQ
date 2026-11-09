@@ -50,7 +50,8 @@ test('dayLabel：今天 / 昨天说人话，更早给日期', () => {
 })
 
 test('接线：阅读页真的按停留上报（api.addReadingLog + 30 秒一段）', () => {
-  const reader = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/ReaderScreen.tsx'), 'utf8')
+  // 计时逻辑搬进了 useReadingLog；判据盯真实实现，不盯它住在哪个文件。
+  const reader = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/useReadingLog.ts'), 'utf8')
   assert.match(reader, /api\.addReadingLog\(/, '阅读页要上报停留')
   assert.match(reader, /pending >= 30/, '每攒够 30 秒上报一段')
   assert.match(reader, /visibilitychange/, '切走标签页 / 锁屏不算在读')

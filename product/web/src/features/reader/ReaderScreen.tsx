@@ -34,7 +34,7 @@ import { clampScrollPosition, effectiveReaderFontFamily, isBuiltinSkinHidden, re
 import { stepFontSize } from './content/fontSizeControl'
 import { ReaderMenuAction } from './interaction/readerMenu'
 import { IDENTITY_CONVERTER, loadScriptConverter, type ScriptConverter } from './content/scriptConvert'
-import { coverDirection, pageTurnAnim, planNextPage, planPrevPage } from './interaction/pageTurn'
+import { coverDirection, planNextPage, planPrevPage } from './interaction/pageTurn'
 import { flowAdvance, holdScroll, pageAlignmentPads, pageAlignmentStarts, pageProgress, pageWindowShift, prependLandingPage, resolveMeasuredPage, sectionAtPage, sectionProgress } from './content/readerFlow'
 import { findFirstIntersectingParagraphIndex } from './interaction/readerInteractions'
 import { caretOffsetWithin, checksumText, offsetToParagraph, paragraphAnchor, textOffsetRect, type LogicalPosition } from './content/logicalPosition'
@@ -45,6 +45,8 @@ import { ReplaceRulesModal } from '../../components/ReplaceRulesModal'
 import { ReaderCatalog } from './ReaderCatalog'
 import { useReaderCacheStatus } from './useReaderCacheStatus'
 import { useReaderChapterContent } from './useReaderChapterContent'
+import { useReaderPageTurn } from './useReaderPageTurn'
+import { useReadingLog } from './useReadingLog'
 import { ReaderSettingsSheet } from './settingsPanel/ReaderSettingsSheet'
 import { ReaderTtsManager } from './tts/ReaderTtsManager'
 import { TtsContext } from './tts/ReaderTtsContext'
@@ -199,64 +201,21 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [isDoubleColumn, setIsDoubleColumn] = useState(false)
   const columnGap = 40
 
-  /**
-   * 翻页动画（参照 legado-with-MD3 的 PageAnim，Web 里做真的三种）：
-   * `slide` 给 track 挂过渡类 —— 只在**逐页翻**（页码差 1）时挂；接章补偿/窗口挪动是几页的跳，
-   * 滑过去反而像"又跳了一次"，所以大跳一律即时切。`fade` 在页码变化时把 track 淡出再淡回。
-   * `none` 即时切换（改动前的行为）。连续滚动没有页，整段不生效。
-   */
-  const pageAnim = settings.pageMode === 'paginate' ? settings.pageAnim : 'none'
-  const prevPageIndexRef = useRef(pageIndex)
-  const [fading, setFading] = useState(false)
-  /**
-   * 这一下该播哪种动画：只有**逐页翻**才播（接章补偿/挪窗口是几页的跳，滑过去像又跳了一次）。
-   * 决策在 `pageTurn.ts`，这里只拿去渲染。
-   */
-  const turnAnim = pageTurnAnim(pageAnim, prevPageIndexRef.current, pageIndex)
-  const slideAnimOn = turnAnim === 'slide'
-  useEffect(() => { prevPageIndexRef.current = pageIndex }, [pageIndex])
-  useEffect(() => {
-    if (pageAnim !== 'fade') return
-    setFading(true)
-    const timer = window.setTimeout(() => setFading(false), 150)
-    return () => window.clearTimeout(timer)
-  }, [pageIndex, pageAnim])
-  // 分页模式的进度上报（PROPOSAL-020 P2）与漫画那一份一起放在文件后半段：
-  // 两者互斥，且都要读到漫画状态，摆在正文解析之前会用到尚未声明的 `isMangaMode`。
-  /**
-   * 覆盖动画（`pageAnim === 'cover'`）：逐页翻**不立刻改 pageIndex** ——
-   * 先挂一层"新页"从一侧滑进来盖住旧页，动画结束才真正翻页。
-   * `to` 是目标页，`direction` 是新页从哪一侧进来（右=+1、左=-1）。
-   */
-  const [coverTurn, setCoverTurn] = useState<{ to: number; direction: 1 | -1 } | null>(null)
-  const [coverEntered, setCoverEntered] = useState(false)
-  const coverTurnRef = useRef<{ to: number; direction: 1 | -1 } | null>(null)
-  coverTurnRef.current = coverTurn
-  // 先挂上（此时在视口外），下一帧再置 entered —— CSS transition 才有得演。
-  useEffect(() => {
-    if (!coverTurn) { setCoverEntered(false); return }
-    const raf = window.requestAnimationFrame(() => setCoverEntered(true))
-    return () => window.cancelAnimationFrame(raf)
-  }, [coverTurn])
-  const finishCover = useCallback(() => {
-    const current = coverTurnRef.current
-    if (!current) return
-    setPageIndex(current.to)
-    setCoverTurn(null)
-  }, [])
-  /** `transitionend` 是主路径；`coverTurnRef` 挡住重复收尾（兜底定时器与它可能都到）。 */
-  const onCoverTransitionEnd = useCallback((event: React.TransitionEvent) => {
-    if (event.propertyName === 'transform') finishCover()
-  }, [finishCover])
-  /**
-   * 别只靠 `transitionend`：系统开了"减少动态效果"、或这条 transition 被别的规则盖掉时它可能不来，
-   * 那样页码就永远翻不过去。给一个略长于动画时长的兜底，谁先到谁收尾。
-   */
-  useEffect(() => {
-    if (!coverTurn) return
-    const timer = window.setTimeout(finishCover, 600)
-    return () => window.clearTimeout(timer)
-  }, [coverTurn, finishCover])
+  // 翻页动画（slide / fade / cover）整段收进 hook；这里只拿渲染要用的值。
+  const {
+    pageAnim,
+    fading,
+    slideAnimOn,
+    coverTurn,
+    setCoverTurn,
+    coverEntered,
+    onCoverTransitionEnd,
+  } = useReaderPageTurn({
+    pageMode: settings.pageMode,
+    pageAnim: settings.pageAnim,
+    pageIndex,
+    setPageIndex,
+  })
 
   const currentRef = useRef<{ chapter: Chapter; position: number } | null>(null)
   const timerRef = useRef<number | null>(null)
@@ -381,41 +340,13 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     onLoaded: handleChapterLoaded,
   })
 
-  /**
-   * 阅读记录（PROPOSAL-019 D）：在阅读页停留计时，每攒够 30 秒上报一段。
-   *
-   * 只在页面**可见**时计时（切到别的标签页 / 锁屏不算在读）；换章时把没满 30 秒的零头也报上去 ——
-   * 否则「每章只读二十秒」的读者一条记录都不会有。上报失败只吞掉：它是统计，丢了不影响读书。
-   * 依赖里带 `chapterIndex` 是故意的：换章就是一次收尾。
-   */
-  useEffect(() => {
-    const sourceId = currentBook.details.sourceId
-    const bookUrl = currentBook.bookUrl
-    const name = currentBook.details.name
-    const index = chapterIndex
-    let pending = 0
-    let last = Date.now()
-    let visible = document.visibilityState !== 'hidden'
-    const report = (seconds: number) => {
-      if (seconds <= 0) return
-      void api.addReadingLog({ sourceId, bookUrl, bookName: name, chapterIndex: index, seconds }).catch(() => undefined)
-    }
-    const tick = () => {
-      const now = Date.now()
-      if (visible) pending += (now - last) / 1000
-      last = now
-      if (pending >= 30) { report(Math.round(pending)); pending = 0 }
-    }
-    const timer = window.setInterval(tick, 2000)
-    const onVisibility = () => { tick(); visible = document.visibilityState !== 'hidden'; last = Date.now() }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisibility)
-      tick()
-      report(Math.round(pending))
-    }
-  }, [currentBook.bookUrl, currentBook.details.sourceId, currentBook.details.name, chapterIndex])
+  // 阅读记录：停留计时与 30 秒分段上报收进 hook。
+  useReadingLog({
+    sourceId: currentBook.details.sourceId,
+    bookUrl: currentBook.bookUrl,
+    bookName: currentBook.details.name,
+    chapterIndex,
+  })
 
   /** 读本地书时才去取规则清单；取不到就整档不出现，不摆一个点了没反应的控件。 */
   useEffect(() => {

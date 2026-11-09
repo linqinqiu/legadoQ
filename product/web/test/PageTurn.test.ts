@@ -50,5 +50,7 @@ test('与产品接线同源：ReaderScreen 用这几个函数，不自己再写�
   const src = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/ReaderScreen.tsx'), 'utf8')
   assert.match(src, /planNextPage\(/, '「下一页」要调 planNextPage')
   assert.match(src, /planPrevPage\(/, '「上一页」要调 planPrevPage')
-  assert.match(src, /pageTurnAnim\(/, '动画选择要调 pageTurnAnim')
+  // 动画选择搬进了 useReaderPageTurn；判据盯真实调用点，不盯它住在哪个文件。
+  const hook = fs.readFileSync(path.resolve(import.meta.dirname, '../src/features/reader/useReaderPageTurn.ts'), 'utf8')
+  assert.match(hook, /pageTurnAnim\(/, '动画选择要调 pageTurnAnim')
 })
