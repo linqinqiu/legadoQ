@@ -238,6 +238,10 @@ def generatedBuildInfo = layout.buildDirectory.dir('generated/build-info')
  *
  * 取不到 git（Docker 构建上下文里没有 `.git`、源码包解压后也没有）就写 `unknown`：
  * 宁可显示"不知道"，也不要编一个看起来合理的值。
+ *
+ * **提交数需要完整历史**：浅克隆（`fetch-depth: 1`）里 `rev-list --count` 恒为 1。
+ * 打 jar 的 CI job 已经用 `fetch-depth: 0` 检出（见 `.github/workflows/build-jar.yml`），
+ * 本地浅克隆请先 `git fetch --unshallow`。
  */
 def gitOutput = { List<String> args ->
     try {

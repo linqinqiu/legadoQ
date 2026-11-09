@@ -27,10 +27,11 @@
 | 版本 tag | `v0.2.37` | `git tag --points-at HEAD` |
 | 版本 / 构建号 | **0.2.37 / 50** | `cat VERSION BUILD_NUMBER`；`/healthz` |
 | 版本真源 | `product/app/build.gradle` 的 `version` | 其余 6 处为抄本，`npm run version:check` 钉住 |
-| 代码修订 | `rev-981807a` | `/healthz` 的 `rev` 字段（0.2.36 起） |
+| 代码修订 | `rev-<提交数>` + 短 sha | `/healthz` 的 `rev` / `sha` 字段（0.2.37 起） |
 
-> `rev` 是打包时 `git rev-parse --short HEAD` 写进 `meta/build-info.properties` 的值。
-> **没发版、只在本地改时，版本号不动，只有 rev 会变** —— 判断"跑的是哪一版代码"看它。
+> `rev` 是打包时 `git rev-list --count HEAD` 写进 `meta/build-info.properties` 的值，`sha` 是
+> `git rev-parse --short HEAD`。**没发版、只在本地改时，版本号不动，只有 rev 随提交递增** ——
+> 判断"跑的是哪一版代码"看 rev，精确定位提交看 sha。
 
 ---
 
@@ -46,19 +47,19 @@
 | 前端行数 | **37,024** | 同上 `-exec cat {} + \| wc -l` | — |
 | 前端测试文件 | **129** | `ls product/web/test/*.test.ts \| wc -l` | — |
 
-**跑起来的通过数（2026-11-09 21:32–21:38 复跑）**：后端 **1,090 / 1,090**（0 失败 0 错误），
-前端 **1,009 / 1,009**。合计 **2,099**。
+**跑起来的通过数（2026-11-09 22:05–22:07 复跑）**：后端 **1,090 / 1,090**（0 失败 0 错误），
+前端 **1,012 / 1,012**。合计 **2,102**。
 
 > 静态 1,091 与运行 1,090 的差额来自一条没被任何测试类执行的用例，不是失败。
 
-**覆盖率（jacoco / c8，2026-11-09 21:44 同一次 `npm run coverage`）**：后端行 **70.05%**
-（13,204 / 18,850），前端行 **63.38%**（14,982 / 23,636），前后端合计 **66.3%**。
+**覆盖率（jacoco / c8，2026-11-09 22:11 同一次 `npm run coverage`）**：后端行 **70.04%**
+（13,209 / 18,860），前端行 **63.51%**（15,070 / 23,726），前后端合计 **66.4%**。
 
 按包看后端，最薄的四块：
 
 | 包 | 行数 | 行覆盖 |
 |---|---:|---:|
-| `io.legado`（根，含启动与配置） | 909 | 44.4% |
+| `io.legado`（根，含启动与配置） | 912 | 44.6% |
 | `io.legado.tts` | 601 | 56.6% |
 | `io.legado.http` | 2,388 | 49.3% |
 | `io.legado.source` | 963 | 60.5% |
@@ -108,14 +109,14 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 ---
 
-## 5. 现场状态（瞬时，2026-11-09 21:00）
+## 5. 现场状态（瞬时，2026-11-09 22:15）
 
 | 项 | 状态 |
 |---|---|
-| 工作树 | **干净**，`main` 与 `origin/main` 同点 |
-| 服务 | 运行中，`127.0.0.1:1234`，`0.2.37 / build 50 / rev-981807a` |
-| `/healthz` | `{"version":"0.2.37","status":"ok","ui":"index-CbOLdce1.js","build":"50","rev":"rev-981807a"}` |
-| 端点 | **161 条 / 19 组**（`GET /api/catalog` 实测） |
+| 工作树 | 本文提交后干净（此前有文档与代码改动） |
+| 服务 | **未运行**；本轮验证用 `gradlew :app:test` 与 `npm test`，没有起 1234 |
+| `/healthz` | 无应答（服务未启动）；修订号格式见 §1 的 `rev` / `sha` |
+| 端点 | **161 条 / 19 组**（`docs:api-check` 实测） |
 | 门禁 | `version:check` 7 处一致；`docs:api-check` 161/19 一致；`changelog:check` 无待记录 |
 | CI | main：契约 / 真浏览器 / 覆盖率 / Test&Build 全 success；tag：三资产已发布 |
 
@@ -131,7 +132,7 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 来源 | 说法 | 实测 | 处置 |
 |---|---|---|---|
-| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,009、161、24 | 已按本文重写 |
+| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,012、161、24 | 已按本文重写 |
 | `backend-layering.md` | 123 / 32,153 / 935 | 133 / 35,066 / 1,091 | 写于旧 commit，数字以本文为准 |
 | `frontend-host.md` | 177 / 110 | 188 / 129 | 同上 |
 | `docs/ARCHITECTURE.md` §13 | `HttpClients` 零调用方 | 0.2.36 已删除该文件 | 该行已改为「已撤销」 |
