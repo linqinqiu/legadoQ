@@ -579,10 +579,21 @@ internal class JavaPackages(
             "isNotEmpty" to { a -> textOf(a.firstOrNull()).isNotEmpty() },
             "isBlank" to { a -> textOf(a.firstOrNull()).isBlank() },
             "isNotBlank" to { a -> textOf(a.firstOrNull()).isNotBlank() },
+            // 单遍扫描替换 `{}`。
+            //
+            // 原写法是 `a.drop(1).forEach { text = text.replaceFirst("{}", arg) }`：
+            // 每次替换都**全串扫描并新分配一整串**，k 个参数就是 k 次 × n 字符的复制。
+            // 实测 `format(200000 字的模板, 再塞 20000 个参数)` 约 4GB 拷贝，分钟到小时级的
+            // 纯宿主 CPU —— 而整个 forEach 在一次 Rhino 调用里，指令观察器零回调。
+            // 改成一次遍历模板、边拼边推进，复杂度 O(n + 参数总长)。
             "format" to { a ->
-                var text = textOf(a.firstOrNull())
-                a.drop(1).forEach { arg -> text = text.replaceFirst("{}", textOf(arg)) }
-                text
+                val template = textOf(a.firstOrNull())
+                requireAllowedLength(template.length, "StrUtil.format 模板长度")
+                val args = a.drop(1)
+                // 参数个数上限：`{}` 的个数不会超过模板里能出现的次数，
+                // 但脚本可以塞进远超所需的参数让旧实现空转，这里直接拦住。
+                requireAllowedLength(args.size, "StrUtil.format 参数个数")
+                StrUtilFormat.render(template) { args.getOrNull(it)?.let(::textOf) }
             },
             "contains" to { a -> textOf(a.getOrNull(0)).contains(textOf(a.getOrNull(1))) },
             "toString" to { a -> textOf(a.firstOrNull()) },
@@ -762,6 +773,26 @@ internal class JavaPackages(
         }
     }
 
+    /**
+     * 记住一个密钥/IV 盒子对应的材料，并**限制条目数**。
+     *
+     * 这张表是 `IdentityHashMap`，键是给脚本用的 JS 盒子对象。JS 侧丢弃盒子之后，
+     * 这张表的**强引用**仍然把盒子和密钥字节永久钉住 —— 脚本只要在循环里
+     * `new SecretKeySpec(...)` 二十万次，就能让单次执行内的内存无界增长到 OOM，
+     * 而每次创建只消耗几条 Rhino 指令，墙钟守卫看不见。
+     *
+     * 用条目上限而不是 `WeakHashMap`：`WeakHashMap` 的回收时机由 GC 决定，
+     * 判据无法稳定断言；而密钥材料的真实使用场景（几套 AES key/iv）远少于 1024。
+     */
+    private fun rememberKeyMaterial(box: Any, material: KeyMaterial) {
+        if (keyMaterial.size >= MAX_KEY_MATERIAL_ENTRIES && !keyMaterial.containsKey(box)) {
+            throw IllegalArgumentException(
+                "一次执行内创建的密钥/IV 超过 ${MAX_KEY_MATERIAL_ENTRIES} 个上限，已拒绝（疑似脚本放大攻击）",
+            )
+        }
+        keyMaterial[box] = material
+    }
+
     private fun nativeString(text: String): Scriptable =
         runCatching { nativeStringCtor?.construct(cx, top, arrayOf<Any?>(text)) as? Scriptable }.getOrNull()
             ?: obj("toString" to fn { text })
@@ -837,19 +868,19 @@ internal class JavaPackages(
             "getAlgorithm" to fn { algorithm },
             "getEncoded" to fn { bytesArray(bytes) },
         )
-        keyMaterial[box] = KeyMaterial(secret = bytes, algorithm = algorithm)
+        rememberKeyMaterial(box, KeyMaterial(secret = bytes, algorithm = algorithm))
         return box
     }
 
     private fun ivBox(bytes: ByteArray): NativeObject {
         val box = obj("getIV" to fn { bytesArray(bytes) })
-        keyMaterial[box] = KeyMaterial(iv = bytes)
+        rememberKeyMaterial(box, KeyMaterial(iv = bytes))
         return box
     }
 
     private fun gcmBox(tag: Int, bytes: ByteArray): NativeObject {
         val box = obj("getIV" to fn { bytesArray(bytes) }, "getTLen" to tag)
-        keyMaterial[box] = KeyMaterial(iv = bytes, gcmTag = tag)
+        rememberKeyMaterial(box, KeyMaterial(iv = bytes, gcmTag = tag))
         return box
     }
 
@@ -861,7 +892,7 @@ internal class JavaPackages(
             "getEncoded" to fn { bytesArray(bytes ?: ByteArray(0)) },
             "toString" to fn { "$name key" },
         )
-        if (key != null) keyMaterial[box] = KeyMaterial(key = key, secret = bytes, algorithm = name)
+        if (key != null) rememberKeyMaterial(box, KeyMaterial(key = key, secret = bytes, algorithm = name))
         return box
     }
 
@@ -898,7 +929,14 @@ internal class JavaPackages(
     )
 
     private fun decodeBase64Text(text: String, urlSafe: Boolean, mime: Boolean = false): ByteArray {
-        val clean = text.filterNot { it.isWhitespace() }
+        // 输入上限。三套口径（java.util / android.util / hutool）的解码都收口到这里，
+        // 所以只在这一处判就够。不设限时 `Base64.decode('A'.repeat(100000000), 0)`
+        // 会先整串复制一遍（1 亿字符 ≈ 200MB），再解码出 7500 万字节，
+        // 全程宿主侧分配，`JsGuard` 的指令观察器零回调。
+        requireAllowedLength(text.length, "Base64 输入长度")
+        // 只有确实含空白时才复制。原写法无条件 `filterNot`，对没有空白的输入
+        // （绝大多数）纯属白复制一整串 —— 在百万级字符串上这是实打实的宿主开销。
+        val clean = if (text.any { it.isWhitespace() }) text.filterNot { it.isWhitespace() } else text
         val decoder = when {
             mime -> Base64.getMimeDecoder()
             urlSafe -> Base64.getUrlDecoder()
@@ -1157,6 +1195,10 @@ internal class JavaPackages(
                 body = data.body,
                 sourceId = execContext?.sourceId,
                 database = execContext?.database,
+                // 把这次 JS 执行的墙钟截止时刻带下去：`execute()` 是**宿主阻塞**，
+                // 阻塞期间指令观察器零回调，30 秒的 JS 上限对它无效；而它内部最坏
+                // 4 跳 × 20s + 重试 ≈ 100 秒。带上截止时刻后每一跳都被压进预算。
+                deadlineMs = BoundedJs.deadlineOrNull(),
             )
         }.getOrElse { error ->
             RuleRunner.Fetched(data.url, fetchFailureText(error), 0, emptyMap())
@@ -1268,6 +1310,15 @@ internal class JavaPackages(
          * 8M 对任何真实的书源规则都绰绰有余（真实页面正文通常几十 KB ~ 几 MB）。
          */
         private const val MAX_HOST_ALLOC_BYTES = 8 * 1024 * 1024
+
+        /**
+         * 一次执行内最多记住多少个密钥/IV 盒子。
+         *
+         * 表是 `IdentityHashMap`，JS 侧丢弃盒子后强引用仍在 —— 无上限就等于让脚本
+         * 用几次 Rhino 指令换宿主侧无界内存增长。真实书源同一轮里用到的密钥材料
+         * （几套 AES key/iv）远少于这个数。
+         */
+        private const val MAX_KEY_MATERIAL_ENTRIES = 1024
 
         private val OBJECT_MEMBERS = setOf(
             "toString", "valueOf", "hasOwnProperty", "constructor", "__proto__", "toJSON", "isPrototypeOf",

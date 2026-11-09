@@ -96,4 +96,15 @@ object BoundedJs {
         }
 
     fun exit() { Context.exit() }
+
+    /**
+     * 当前线程上这次执行的墙钟截止时刻（`System.currentTimeMillis()` 口径）。
+     *
+     * 给**宿主侧阻塞调用**用：`observeInstructionCount` 在阻塞期间一次都不会被回调，
+     * 所以光有 `deadlineMs` 拦不住一次 100 秒的网络请求。把截止时刻交给调用方
+     * （见 `RuleRunner.fetchResponse` 的 `deadlineMs` 参数），让那次阻塞自己收敛在预算内。
+     *
+     * 没在 [enter] 的上下文里时返回 `null`，调用方据此保持原有行为。
+     */
+    fun deadlineOrNull(): Long? = (Context.getCurrentContext() as? BoundedContext)?.deadlineMs
 }

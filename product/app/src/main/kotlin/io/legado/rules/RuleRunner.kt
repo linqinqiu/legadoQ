@@ -1441,6 +1441,21 @@ class RuleRunner(
         body: String? = null,
         sourceId: String? = null,
         database: PortBundle? = null,
+        /**
+         * 本次抓取的**墙钟截止时刻**（`System.currentTimeMillis()` 口径），`null` 表示不限。
+         *
+         * 只有书源 JS 里的 `Packages.okhttp3....execute()` 会传：那是一次**宿主阻塞**调用，
+         * `JsGuard` 的指令观察器在它阻塞期间一次都不会被回调，所以 30 秒的 JS 墙钟上限
+         * 对它是失效的 —— 而单次 `execute()` 内部最多 4 跳重定向 × 每跳 20 秒，再加首次
+         * 失败重试一次，最坏约 100 秒，是上限的 3 倍多。
+         *
+         * 传了截止时刻之后：每跳开始前先判是否已过期，并把这一跳的超时压到
+         * `min(单跳上限, 剩余预算)`，于是整个 `execute()` 被约束在 JS 的预算之内。
+         *
+         * **默认 `null` 即行为与改动前完全一致** —— 这条路径被所有书源抓取（搜索/目录/
+         * 正文/封面）共用，不能因为给 JS 加一道闸就让常规抓取承担风险。
+         */
+        deadlineMs: Long? = null,
     ): Fetched {
         val (cleanUrl, parsed) = splitUrlOptions(url)
         val verb = method.uppercase().takeIf { it == "POST" || it == "HEAD" } ?: "GET"
@@ -1451,7 +1466,7 @@ class RuleRunner(
             headers = parsed?.headers.orEmpty() + headers,
             body = body ?: parsed?.body,
         )
-        return fetchDetailed(cleanUrl, options, null, sourceId, database ?: this.database)
+        return fetchDetailed(cleanUrl, options, null, sourceId, database ?: this.database, deadlineMs)
     }
 
     /** 书源自己的 `header` 字段（`{"User-Agent":"...","Referer":"..."}`）。凭据不在这里合，见 [effectiveHeaders]。 */
@@ -1626,7 +1641,8 @@ class RuleRunner(
         keyword: String?,
         sourceId: String? = null,
         database: PortBundle? = null,
-    ): Fetched = Metrics.timed(STAGE_HTTP) { fetchDetailedImpl(url, options, keyword, sourceId, database) }
+        deadlineMs: Long? = null,
+    ): Fetched = Metrics.timed(STAGE_HTTP) { fetchDetailedImpl(url, options, keyword, sourceId, database, deadlineMs) }
 
     private fun fetchDetailedImpl(
         url: String,
@@ -1634,6 +1650,7 @@ class RuleRunner(
         keyword: String?,
         sourceId: String? = null,
         database: PortBundle? = null,
+        deadlineMs: Long? = null,
     ): Fetched {
         fetchedFetcher?.let { return it(url) }
         responseFetcher?.let { return Fetched(url, it(url), 200, emptyMap()) }
@@ -1646,15 +1663,18 @@ class RuleRunner(
         // 不重试会表现为「规则执行成功但内容为空」这类极难排查的现象。
         var transientAttempt = 0
         repeat(4) {
+            // 每一跳都重新算一次剩余预算：这样「4 跳各 20 秒」不会叠乘成 80 秒，
+            // 整个抓取被整体约束在调用方给的截止时刻之内。
+            val hopRequest = capToDeadline(request, deadlineMs, url, sourceId)
             val response = try {
-                client.send(request, HttpResponse.BodyHandlers.ofInputStream())
+                client.send(hopRequest, HttpResponse.BodyHandlers.ofInputStream())
             } catch (error: java.io.IOException) {
                 // 第一次失败是要重试的信号，不是事故；重试还失败才是。以前两次都记 ERROR，
                 // 于是一个偶发抖动在日志里和"这本书源彻底读不了"长得一模一样。
                 if (transientAttempt == 0) {
                     transientAttempt++
                     logNetwork("首次连接失败，重试一次", networkContext(url, sourceId) + mapOf("原因" to (error.message ?: error.javaClass.simpleName)), error, LogLevel.WARN)
-                    client.send(request, HttpResponse.BodyHandlers.ofInputStream())
+                    client.send(hopRequest, HttpResponse.BodyHandlers.ofInputStream())
                 } else {
                     logNetwork("网络请求 IO 异常（已重试）", networkContext(url, sourceId) + mapOf("尝试" to (transientAttempt + 1).toString()), error, LogLevel.ERROR)
                     throw error
@@ -1730,6 +1750,30 @@ class RuleRunner(
         "sourceId" to (sourceId ?: ""),
         "url" to url.take(120),
     )
+
+    /**
+     * 把一次请求的超时压到「剩余预算」以内，预算耗尽则直接中止。
+     *
+     * `deadlineMs == null` 时**原样返回**，一个字段都不碰 —— 常规书源抓取走的就是这条，
+     * 行为与改动前完全一致。
+     */
+    private fun capToDeadline(
+        request: HttpRequest,
+        deadlineMs: Long?,
+        url: String,
+        sourceId: String?,
+    ): HttpRequest {
+        if (deadlineMs == null) return request
+        val remaining = deadlineMs - System.currentTimeMillis()
+        if (remaining <= 0L) {
+            logNetwork("书源 JS 执行时间已用尽，中止网络请求", networkContext(url, sourceId))
+            throw RuleExecutionException("书源 JS 执行时间已用尽，已中止本次网络请求")
+        }
+        // `HttpRequest` 是不可变的，改超时只能重建；headerFilter 恒 true 表示原样保留全部请求头。
+        return HttpRequest.newBuilder(request, java.util.function.BiPredicate<String, String> { _, _ -> true })
+            .timeout(Duration.ofMillis(remaining.coerceAtMost(PER_HOP_TIMEOUT_MS)))
+            .build()
+    }
 
     internal fun buildRequest(
         initial: URI,
@@ -2310,6 +2354,14 @@ class RuleRunner(
     /** 书源 `bookSourceType`：0 文本 / 1 音频 / 2 图片(漫画) / 3 文件 / 4 视频；缺省或非数字给 0。 */
     private fun JsonObject.sourceType(): Int = (get("bookSourceType") as? JsonPrimitive)?.intOrNull ?: 0
     private companion object {
+        /**
+         * 单跳网络请求的超时上限（毫秒）。
+         *
+         * 有调用方给截止时刻时，这一跳的实际超时取 `min(PER_HOP_TIMEOUT_MS, 剩余预算)` ——
+         * 既不让一跳吃掉整个预算，也不让多跳叠乘超出预算。
+         */
+        const val PER_HOP_TIMEOUT_MS = 20_000L
+
         /** 诊断里的阶段名：按这些名字分组，改名等于换一张报表，别随手改。 */
         const val STAGE_SEARCH = "search"
         const val STAGE_EXPLORE = "explore"

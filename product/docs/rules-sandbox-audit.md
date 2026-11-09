@@ -68,21 +68,20 @@ legadoQ 执行用户导入的「书源」里的 JavaScript，那是**不可信�
 
 ---
 
-## 3. 仍未修（已知风险，按性价比排序）
+## 3. A~D 已修（第二轮），E~G 仍未修
 
-这些是**明确记录在案的已知项**，不是遗漏。修它们需要改动面更大的设计决策。
+第一轮只修了 §1 里那 10 项；本节 A~D 是第二轮补的。E~G 是**明确记录在案的已知项**，
+不是遗漏 —— 它们需要改动面更大的设计决策。
 
-| # | 问题 | 定级 | 为什么暂不修 |
+| # | 问题 | 定级 | 状态 |
 |---|---|---|---|
-| A | `keyMaterial`（`IdentityHashMap`）无界增长，且强引用已丢弃的密钥 | 中 | 每次 `eval` 新建，只影响单次执行；但脚本一次执行内可创建数十万次 `SecretKeySpec` 直到 OOM。修法是加条目上限或改 `WeakHashMap`，需要确认不破坏「密钥材料不在 JS 侧暴露」的设计 |
-| B | `Base64` 编解码无输入上限 | 中 | `filterNot` 先整串复制；修法简单（加长度判），但涉及 5 处调用口径（android / hutool / java.util 三套），要逐个确认兼容 |
-| C | `StrUtil.format` 的 O(参数数 × 模板长度) | 中 | 需要重写成单遍扫描，属实现重写而非加一行 |
-| D | okhttp3 `execute()` 是宿主阻塞，单次最坏 ~100s（4 跳 × 20s + 重试），超出 30s 守卫 | 中 | 与 B/C 不同，这条**不是**「无上限」而是「有界但超过守卫」；真正的解法是给宿主侧调用加统一耗时预算（见 E） |
-| E | 宿主侧调用**没有统一预算**（时间/分配字节累计） | 架构级 | 这是第 3 层盲区的**通用解**：在 `BoundedJs` 的 context 上挂 `hostBudget`，每个 `JavaPackages` 入口返回前记账，超预算抛 `EvaluatorException`。改动面大、回归风险高，应先做完 A~D 再评估 |
-| F | `System.getProperty("java.version")` 返回真实 JVM 版本 | 低 | 仅是指纹，改常量会变成假值（更糟），改空串有极小概率影响「探测 JDK 版本」的源。收益接近零，风险非零，**刻意保留** |
-| G | `_request` 把一个真实 Java `data class` 实例放进沙箱 | 低 | 当前不可利用 —— Rhino 把它包成 `NativeJavaObject`，成员访问被 `ClassShutter { false }` 拦下。但它打破了「沙箱里不出现 Java 引用」这条不变量，安全完全押在 shutter 上。修法是把 `_request` 移进宿侧表 |
-
----
+| A | `keyMaterial`（`IdentityHashMap`）无界增长，强引用已丢弃的密钥 | 中 | **已修**：`rememberKeyMaterial` 收口四处插入并限 `MAX_KEY_MATERIAL_ENTRIES = 1024`。选条目上限而非 `WeakHashMap`，是因为后者回收时机由 GC 决定、判据无法稳定断言 |
+| B | `Base64` 编解码无输入上限 | 中 | **已修**：在唯一收口 `decodeBase64Text` 判输入长度（三套口径都走它）；同时把无条件 `filterNot` 全串复制改成「确实含空白才复制」 |
+| C | `StrUtil.format` 的 O(参数数 × 模板长度) | 中 | **已修**：提成顶层纯函数 `StrUtilFormat.render`，单遍扫描 O(n + 参数总长)；同时限模板长度与参数个数。语义按原 `replaceFirst` 口径保持（参数用尽后 `{}` 原样保留），判据 `StrUtilFormatTest` 11 例 |
+| D | okhttp3 `execute()` 宿主阻塞，单次最坏 ~100s，超出 30s 守卫 | 中 | **已修**：`BoundedJs.deadlineOrNull()` 把这次 JS 执行的截止时刻传进 `fetchResponse(deadlineMs=…)`，每跳超时压到 `min(20s, 剩余预算)`，过期即中止。**默认 `null` 时行为与改动前完全一致**——这条路径被所有抓取共用 |
+| E | 宿主侧调用**没有统一预算**（时间/分配字节累计） | 架构级 | **未修**。这是第 3 层盲区的通用解（`BoundedJs` 挂 `hostBudget`，每个入口记账），但「漏记一处等于没有」—— 和手写白名单是同一个失效模式，只是换了一层。做它之前应先加一条**枚举式判据**（列出全部 `JavaPackages` 公开入口，断言每一个都记了账），否则预算本身就会变成新的漏洞面 |
+| F | `System.getProperty("java.version")` 返回真实 JVM 版本 | 低 | **刻意保留**。仅是指纹；改常量会变成假值（更糟），改空串有极小概率影响「探测 JDK 版本」的源。收益接近零，风险非零 |
+| G | `_request` 把一个真实 Java `data class` 实例放进沙箱 | 低 | **未修**。当前不可利用 —— Rhino 把它包成 `NativeJavaObject`，成员访问被 `ClassShutter { false }` 拦下。但它打破了「沙箱里不出现 Java 引用」这条不变量，安全完全押在 shutter 上。修法是把 `_request` 移进宿侧表 |
 
 ## 4. 判据在哪
 
@@ -91,6 +90,7 @@ legadoQ 执行用户导入的「书源」里的 JavaScript，那是**不可信�
 | `JsSandboxResourceLimitTest` | 已知的 4 个具体 API 上限（sleep / getenv / setLength / unGzip） |
 | `JsGuardLimitsTest` | `GzipLimits` 的行为 + **墙钟守卫真的会中断死循环** |
 | `JsSandboxHostAmplificationTest` | 「长度由脚本给、开销在宿主」这一整个模式 |
+| `StrUtilFormatTest` | `StrUtil.format` 的**语义等价**（参数用尽后 `{}` 原样保留）+ 复杂度没有退化成平方 |
 
 三个文件都遵守同一条判据纪律：**既断言「被拦住」，也断言「沙箱随后仍可用」** ——
 只证明抛了错不够，还要证明线程没被打掉。
