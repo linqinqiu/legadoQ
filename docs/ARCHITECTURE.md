@@ -653,9 +653,9 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 | # | 缺口 | 状态 |
 |---|---|---|
-| 1 | 收口只做了书架域 | **部分完成**：`BookshelfRepository` 已承接书架清单/增删改/分组/批量/换源/本地书导入；书源、订阅、缓存仍是 Route → DAO 直连 |
+| 1 | 收口只做了书架与书源两域 | **部分完成**：`BookshelfRepository` / `SourceRepository` 已承接两域的清单、增删改、分组、批量、换源与体检；订阅与缓存在 0.2.36 核查后判定**不值得**再包一层 —— 业务已在 `SubscriptionService` 与 `BookshelfRepository` 里，再包就是纯转发 |
 | 2 | `/api/catalog` 与运行时注册不绑定 | **未解**：静态 JSON + 源码扫描，模块漏挂载不会红 |
-| 3 | 无统一出站客户端层 | **未生效**：`http/HttpClients.kt` 已写好（薄封装 `NetworkSecurity`，固定 10s 连接超时 + 不跟随重定向），但**零调用方**。真正在用的仍是各调用点直接 `NetworkSecurity.newHttpClient(...)`。要算解决，得先迁移调用方，并加一条「业务代码不许出现裸 newHttpClient」的枚举式判据 |
+| 3 | 无统一出站客户端层 | **已撤销（0.2.36 删除）**：`http/HttpClients.kt` 是零调用方的薄封装，却写着「所有外部请求必须经过这里」。真正在用的是 `ops/NetworkSecurity`，各调用点直接建客户端、闸门在解析期生效。要真做统一层，得先有「业务代码不许出现裸 `newHttpClient`」的判据，而不是先写一个没人用的类 |
 | 4 | 可观测性薄 | **进行中**：Metrics 已暴露到 `/api/diagnostics`，持续增强 |
 | 5 | `0.0.0.0` 未在代码层禁止 | **已解**：启动期 `requireLoopbackBind()` 拒绝非回环绑定 |
 | 6 | 发布链路 | **未解**：`build-jar.yml` 触发面过宽、未签名、无 Secrets 注入 |
@@ -663,9 +663,9 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 8 | 用户侧仍依赖 Node | **部分完成**：`npm start` → `start.mjs` 负责端口/数据目录/开浏览器；原生启动器（jpackage + jlink）尚未做 |
 
 > 关于 #3 和 #7 的说明：这两项曾被记为「已完成」，但对照代码不成立 ——
-> `HttpClients` 没有调用方；`ReaderScreen` 的拆分版本引用了不存在的 `ReaderSettings`/`Chapter`
-> 字段（54 处类型错误），已回退到可编译的实现。**「写了文件」不等于「做完了」**，
-> 这两项的判据分别是「调用方迁移完成」和「`tsc` 通过且行为不变」。
+> `HttpClients` 零调用方（0.2.36 已删，不再假装有这一层）；`ReaderScreen` 的拆分版本引用了
+> 不存在的 `ReaderSettings`/`Chapter` 字段（54 处类型错误），已回退到可编译的实现。
+> **「写了文件」不等于「做完了」**，判据分别是「调用方真的在用」和「`tsc` 通过且行为不变」。
 
 ---
 
