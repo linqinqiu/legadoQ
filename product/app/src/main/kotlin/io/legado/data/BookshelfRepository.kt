@@ -120,42 +120,40 @@ class BookshelfRepository(
     // ==================== 批量操作 ====================
     
     /**
-     * 批量删除书籍
+     * 批量删除书籍。
+     *
+     * **不要在外面再包一层 `database.write { autoCommit = false … }`。**
+     * 池里只有一条写连接，`removeBookshelf` 自己就是一个 `write {}`，它退出时会把
+     * `autoCommit` 复位成 true —— 外层再 `commit()` 就抛 `database in auto-commit mode`。
+     * 于是整批会被判成「失败」：每本书其实已经各自提交了，返回的却是 `deleted=0` + error。
+     * 这里按 DAO 的实际粒度逐本删，失败的书进 `failedBooks`，不再假装有整批事务。
      */
     fun batchDeleteBooks(books: List<BookIdentifier>): BatchDeleteResult {
         require(books.isNotEmpty()) { "书籍列表不能为空" }
-        
+
         var deletedCount = 0
         val failedBooks = mutableListOf<BookIdentifier>()
-        
+
         try {
-            database.write { db ->
-                db.autoCommit = false
-                try {
-                    for (book in books) {
-                        if (book.sourceId.isBlank() || book.bookUrl.isBlank()) continue
-                        
-                        // 取消缓存任务
-                        bookCache.cancel(book.sourceId, book.bookUrl)
-                        
-                        // 删除本地文件
-                        deleteLocalBookFile(book.sourceId, book.bookUrl)
-                        
-                        // 删除数据库记录
-                        val success = database.removeBookshelf(book.sourceId, book.bookUrl) != null
-                        if (success) deletedCount++
-                        else failedBooks.add(book)
-                    }
-                    
-                    db.commit()
-                } catch (error: Throwable) {
-                    db.rollback()
-                    throw error
-                } finally {
-                    db.autoCommit = true
+            for (book in books) {
+                if (book.sourceId.isBlank() || book.bookUrl.isBlank()) continue
+
+                // 判据必须是「删之前它在不在架上」，不能拿 removeBookshelf 的返回值：
+                // 它回的是「顺手回收掉的孤儿封面」，没封面的书回 null。
+                val existed = database.shelfBook(book.sourceId, book.bookUrl) != null
+                if (!existed) {
+                    failedBooks.add(book)
+                    continue
                 }
+
+                bookCache.cancel(book.sourceId, book.bookUrl)
+                deleteLocalBookFile(book.sourceId, book.bookUrl)
+
+                val orphanCover = database.removeBookshelf(book.sourceId, book.bookUrl)
+                orphanCover?.let { coverCache.delete(it) }
+                deletedCount++
             }
-            
+
             return BatchDeleteResult(
                 deleted = deletedCount,
                 total = books.size,
@@ -166,51 +164,44 @@ class BookshelfRepository(
             return BatchDeleteResult(
                 deleted = deletedCount,
                 total = books.size,
+                failed = failedBooks.size,
                 error = e.message ?: "未知错误"
             )
         }
     }
     
     /**
-     * 批量移动书籍到指定分组
+     * 批量移动书籍到指定分组。
+     *
+     * 同 [batchDeleteBooks]：`assignBookGroup` 自己带事务，外层再包一层只会让 commit 抛错。
+     * `null` 表示「移出所有分组」，DAO 用 0 表示未分组。
      */
     fun batchMoveToGroup(books: List<BookIdentifier>, groupId: Long?): BatchMoveResult {
         require(books.isNotEmpty()) { "书籍列表不能为空" }
-        
+
         var updatedCount = 0
         val failedBooks = mutableListOf<BookIdentifier>()
-        
+
         try {
-            database.write { db ->
-                db.autoCommit = false
-                try {
-                    for (book in books) {
-                        if (book.sourceId.isBlank() || book.bookUrl.isBlank()) continue
-                        
-                        // null 表示「移出所有分组」：DAO 用 0 表示未分组（见 ShelfDao.assignBookGroup）
-                        val updated = database.assignBookGroup(book.sourceId, book.bookUrl, groupId ?: 0L)
-                        if (updated != null) updatedCount++
-                        else failedBooks.add(book)
-                    }
-                    
-                    db.commit()
-                } catch (error: Throwable) {
-                    db.rollback()
-                    throw error
-                } finally {
-                    db.autoCommit = true
-                }
+            for (book in books) {
+                if (book.sourceId.isBlank() || book.bookUrl.isBlank()) continue
+
+                val updated = database.assignBookGroup(book.sourceId, book.bookUrl, groupId ?: 0L)
+                if (updated != null) updatedCount++
+                else failedBooks.add(book)
             }
-            
+
             return BatchMoveResult(
                 moved = updatedCount,
                 total = books.size,
-                failed = failedBooks.size
+                failed = failedBooks.size,
+                failedBooks = failedBooks.take(10)
             )
         } catch (e: Exception) {
             return BatchMoveResult(
                 moved = updatedCount,
                 total = books.size,
+                failed = failedBooks.size,
                 error = e.message ?: "未知错误"
             )
         }
