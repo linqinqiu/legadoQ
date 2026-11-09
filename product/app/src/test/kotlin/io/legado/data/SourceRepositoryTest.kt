@@ -5,6 +5,8 @@ import io.legado.rules.RuleRunner
 import io.legado.source.SourceCodec
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -170,6 +172,68 @@ class SourceRepositoryTest {
             )
             assertEquals(0, response.total)
             assertEquals(0, response.successCount)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    // ==================== 单源读写 ====================
+
+    @Test
+    fun `新建后能读回，重复写要带对版本号`() {
+        val fixture = fixture("legado-repo-source-save")
+        try {
+            val json = """{"bookSourceUrl":"https://src-probe.example/s","bookSourceName":"初版"}"""
+            val created = fixture.repository.save(json, null)
+            assertEquals("https://src-probe.example/s", created.id)
+            assertTrue(
+                "读回来的应当就是刚写进去的那份",
+                fixture.repository.get(created.id)?.json?.contains("初版") == true,
+            )
+
+            // 带着过期版本号写：必须抛 VersionConflict，路由据此回 409，而不是静默覆盖别人的改动。
+            val stale = runCatching { fixture.repository.save(json, created.version - 1) }.exceptionOrNull()
+            assertTrue("过期版本号应当抛 VersionConflict，实际 $stale", stale is VersionConflict)
+
+            // 带对版本号就能写进去
+            val updated = fixture.repository.save(
+                """{"bookSourceUrl":"https://src-probe.example/s","bookSourceName":"二版"}""",
+                created.version,
+            )
+            assertEquals(created.version + 1, updated.version)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `删除返回是否真的删掉了，重复删回 false`() {
+        val fixture = fixture("legado-repo-source-delete")
+        try {
+            val id = addSource(fixture.database, "https://src-probe.example/d")
+            assertTrue(fixture.repository.delete(id))
+            assertNull("删完就查不到", fixture.repository.get(id))
+            assertFalse("再删一次没有东西可删", fixture.repository.delete(id))
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `校验优先看草稿，没有草稿才看库里那一份`() {
+        val fixture = fixture("legado-repo-source-validate")
+        try {
+            val id = addSource(fixture.database, "https://src-probe.example/v")
+
+            // 库里那份是合法的
+            assertTrue("库里那份应当校验通过", fixture.repository.validate(id, null)?.valid == true)
+
+            // 草稿是坏的：校验必须看草稿，否则「校验」永远在检查上一次落库的旧版本
+            val bad = fixture.repository.validate(id, "{ not json")
+            assertTrue("草稿坏了就该报不合法，实际 $bad", bad?.valid == false)
+
+            // 既没草稿、库里也没有 → null（路由据此回 404，而不是回一个「合法」的空结论）
+            assertNull(fixture.repository.validate("https://src-probe.example/ghost", null))
         } finally {
             fixture.close()
         }

@@ -11,7 +11,6 @@ import io.legado.data.Database
 import io.legado.data.cookieBucket
 import io.legado.data.cookieBucketMentions
 import io.legado.data.cookieBucketState
-import io.legado.data.deleteSource
 import io.legado.data.exportSources
 import io.legado.data.getCookieForUrl
 import io.legado.data.getSource
@@ -25,7 +24,6 @@ import io.legado.data.removeCookieBucket
 import io.legado.data.removeSourceLoginHeader
 import io.legado.data.removeSourceLoginInfo
 import io.legado.data.SourceRepository
-import io.legado.data.saveSource
 import io.legado.data.saveSourceLoginHeader
 import io.legado.data.saveSourceLoginInfo
 import io.legado.data.setCookieForUrl
@@ -60,7 +58,6 @@ import io.legado.rules.RuleRunner
 import io.legado.source.DebugStep
 import io.legado.source.ExternalBrowserLogin
 import io.legado.source.ProxiedPayload
-import io.legado.source.SourceCodec
 import io.legado.source.SourceDebugger
 import io.legado.source.WebViewException
 import io.legado.source.WebViewProxy
@@ -284,30 +281,30 @@ fun Route.sourcesRoutes(
         }
         route("/sources/{id}") {
             get {
-                val source = database.getSource(call.parameters["id"]!!)
+                val source = repositoryFor(call).get(call.parameters["id"]!!)
                 if (source == null) call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")) else call.respond(source)
             }
             put {
                 if (!call.requireSameOriginWrite()) return@put
                 val request = call.receive<SourceWriteRequest>()
-                try { call.respond(database.saveSource(SourceCodec.parse(request.json), request.version)); call.application.log.info("source updated: {}", call.parameters["id"]) }
+                try { call.respond(repositoryFor(call).save(request.json, request.version)); call.application.log.info("source updated: {}", call.parameters["id"]) }
                 catch (_: VersionConflict) { call.respond(HttpStatusCode.Conflict, ApiError("version_conflict", "书源已在其他页面更新，请刷新后重试")) }
                 catch (error: IllegalArgumentException) { call.respond(HttpStatusCode.BadRequest, ApiError("invalid_source", error.message ?: "书源无效")) }
             }
             delete {
                 if (!call.requireSameOriginWrite()) return@delete
-                if (database.deleteSource(call.parameters["id"]!!)) { call.application.log.info("source deleted: {}", call.parameters["id"]); call.respond(HttpStatusCode.NoContent) } else call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在"))
+                if (repositoryFor(call).delete(call.parameters["id"]!!)) { call.application.log.info("source deleted: {}", call.parameters["id"]); call.respond(HttpStatusCode.NoContent) } else call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在"))
             }
             post("/validate") {
                 if (!call.requireSameOriginWrite()) return@post
                 // 带草稿时校验编辑器里的未保存内容：否则「校验」永远在检查上一次落库的旧版本。
                 val draft = runCatching { call.receive<SourceValidateRequest>().json }.getOrNull()?.takeIf { it.isNotBlank() }
-                val text = draft ?: database.getSource(call.parameters["id"]!!)?.json
+                val result = repositoryFor(call).validate(call.parameters["id"]!!, draft)
                     ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
-                call.respond(SourceCodec.validate(text))
+                call.respond(result)
             }
             get("/debug") {
-                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
+                val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
                 val keyword = call.request.queryParameters["keyword"]?.takeIf { it.isNotBlank() } ?: "测试"
                 val targetBookUrl = call.request.queryParameters["bookUrl"]
                 val chapterIndex = call.request.queryParameters["chapterIndex"]?.toIntOrNull() ?: 0
@@ -331,13 +328,13 @@ fun Route.sourcesRoutes(
                 }
             }
             get("/explore") {
-                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
+                val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
                 call.respond(runCatching { runner.exploreTabs(source.json) }.getOrElse { error ->
                     call.respond(HttpStatusCode.BadGateway, ApiError("explore_failed", error.message ?: "发现页解析失败")); return@get
                 })
             }
             get("/login-ui") {
-                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
+                val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
                 // v2 的字段由 loginUrl 里的 loginUi(state) 现算；v1 是静态（或 @js:）数组。
                 val version = runner.loginUiVersion(source.json)
                 val rendered = if (version == 2) runner.renderLoginUiV2(source.json) else null
@@ -366,7 +363,7 @@ fun Route.sourcesRoutes(
             }
             post("/login-ui/render") {
                 if (!call.requireSameOriginWrite()) return@post
-                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+                val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
                 val req = runCatching { call.receive<SourceLoginUiRenderRequest>() }.getOrElse {
                     call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 JSON")); return@post
                 }
@@ -374,7 +371,7 @@ fun Route.sourcesRoutes(
             }
             post("/login-ui/action") {
                 if (!call.requireSameOriginWrite()) return@post
-                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+                val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
                 val req = runCatching { call.receive<SourceLoginUiActionRequest>() }.getOrElse {
                     call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "请求体不是合法的 JSON")); return@post
                 }
@@ -421,10 +418,10 @@ fun Route.sourcesRoutes(
             }
             post("/login-cookie") {
                 val sourceId = call.parameters["id"]!!
-                val targetSource = database.getSource(sourceId)
+                val targetSource = repositoryFor(call).get(sourceId)
                     ?: database.listSources(null).firstOrNull {
                         it.id.contains(sourceId) || sourceId.contains(it.id) || (it.url.isNotBlank() && (sourceId.contains(it.url) || it.url.contains(sourceId)))
-                    }?.let { database.getSource(it.id) }
+                    }?.let { repositoryFor(call).get(it.id) }
 
                 // 这个接口是给「在目标站点页面上运行的书签 / Chrome 扩展」用的，跨站、拿不到会话，
                 // 所以原来写成 Access-Control-Allow-Origin: *。那等于任何网页都能往用户书源的 Cookie 罐里注入。
@@ -465,7 +462,7 @@ fun Route.sourcesRoutes(
             }
             post("/login-action") {
                 if (!call.requireSameOriginWrite()) return@post
-                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+                val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
                 val req = call.receive<SourceLoginActionRequest>()
                 val outcome = runner.executeLoginAction(
                     source.json,
@@ -478,7 +475,7 @@ fun Route.sourcesRoutes(
                 call.respond(outcome)
             }
             get("/login-check") {
-                val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
+                val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }
                 val check = runner.checkLoginStatus(source.json)
                 call.respond(check)
             }
@@ -496,7 +493,7 @@ fun Route.sourcesRoutes(
             route("/browser") {
                 post("/session") {
                     if (!call.requireSameOriginWrite()) return@post
-                    val source = database.getSource(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+                    val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
                     val sourceObj = runCatching { Json.parseToJsonElement(source.json).jsonObject }.getOrNull()
                     val sourceUrl = (sourceObj?.get("bookSourceUrl") as? JsonPrimitive)?.contentOrNull?.trim()
                     val homeUrl = sourceUrl?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
@@ -537,7 +534,7 @@ fun Route.sourcesRoutes(
                 }
                 get("/cookies") {
                     val sourceId = call.parameters["id"]!!
-                    val json = database.getSource(sourceId)?.json ?: "{}"
+                    val json = repositoryFor(call).get(sourceId)?.json ?: "{}"
                     val jar = withContext(Dispatchers.IO) { webView.jarSnapshot(json) }
                     call.respond(SourceBrowserCookieResponse(count = jar.size, domains = jar.keys.toList(), cookies = jar))
                 }
@@ -546,7 +543,7 @@ fun Route.sourcesRoutes(
                 delete("/cookies") {
                     if (!call.requireSameOriginWrite()) return@delete
                     val sourceId = call.parameters["id"]!!
-                    val json = database.getSource(sourceId)?.json ?: "{}"
+                    val json = repositoryFor(call).get(sourceId)?.json ?: "{}"
                     val target = call.request.queryParameters["u"]?.trim()
                     if (target.isNullOrBlank()) {
                         call.respond(HttpStatusCode.BadRequest, ApiError("missing_parameter", "缺少 u 参数（要删除哪个域名的 Cookie）"))
@@ -560,13 +557,14 @@ fun Route.sourcesRoutes(
                 // 内嵌 iframe 过不了站点风控，这里交给真引擎，登录完自动按域读回 HttpOnly 凭据。
                 route("/external-login") {
                     suspend fun targetHosts(id: String): Pair<String, List<String>> {
+                        // 局部函数拿不到 `call` 的接收者，所以这一处仍直连 DAO。
                         val source = database.getSource(id) ?: return id to emptyList()
                         return source.id to WebViewProxy.credentialDomains(source.json)
                     }
                     post {
                         if (!call.requireSameOriginWrite()) return@post
                         val sourceId = call.parameters["id"]!!
-                        val source = database.getSource(sourceId)
+                        val source = repositoryFor(call).get(sourceId)
                             ?: return@post call.respond(HttpStatusCode.NotFound, ApiError("source_not_found", "书源不存在"))
                         // 请求体是可选的小 JSON（`{"url": ...}`）。严格解码放在 runCatching 之外：
                         // 编码错了要回 400 说清楚，不能被"解析失败就当没传"吞掉。
@@ -601,7 +599,7 @@ fun Route.sourcesRoutes(
                         val sourceId = call.parameters["id"]!!
                         val (resolvedId, hosts) = targetHosts(sourceId)
                         val stored = withContext(Dispatchers.IO) { externalLogin.capture(hosts) }
-                        val json = database.getSource(sourceId)?.json ?: "{}"
+                        val json = repositoryFor(call).get(sourceId)?.json ?: "{}"
                         val jar = withContext(Dispatchers.IO) { webView.jarSnapshot(json) }
                         call.application.log.info(
                             "external login captured cookies for {}: {} domains",

@@ -6,7 +6,10 @@ import io.legado.model.SourceHealthCheckItem
 import io.legado.model.SourceHealthCheckRequest
 import io.legado.model.SourceHealthCheckResponse
 import io.legado.model.SourceSummary
+import io.legado.model.SourceRecord
+import io.legado.model.ValidateResponse
 import io.legado.rules.RuleRunner
+import io.legado.source.SourceCodec
 import io.legado.source.SourceHealth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -137,6 +140,31 @@ class SourceRepository(
             durationMs = (System.nanoTime() - startTotalNs) / 1_000_000,
             results = results,
         )
+    }
+
+    // ==================== 单源读写 ====================
+
+    fun get(id: String): SourceRecord? = database.getSource(id)
+
+    /**
+     * 新建或覆盖一份书源。
+     *
+     * @param expectedVersion 乐观锁：给了就比对库里的 version，不符抛 [VersionConflict]（路由翻成 409）。
+     * @throws IllegalArgumentException 书源 JSON 结构不合法。
+     */
+    fun save(json: String, expectedVersion: Long?): SourceRecord =
+        database.saveSource(SourceCodec.parse(json), expectedVersion)
+
+    fun delete(id: String): Boolean = database.deleteSource(id)
+
+    /**
+     * 校验一份书源：给了 [draft] 就校验草稿（编辑器里未保存的内容），否则校验库里那一份。
+     *
+     * @return `null` 表示库里没有这个 id 且没给草稿 —— 路由据此回 404，而不是回一个「合法」的空结论。
+     */
+    fun validate(id: String, draft: String?): ValidateResponse? {
+        val text = draft?.takeIf { it.isNotBlank() } ?: database.getSource(id)?.json ?: return null
+        return SourceCodec.validate(text)
     }
 
     // ==================== 导入 / 导出 / 排序 ====================
