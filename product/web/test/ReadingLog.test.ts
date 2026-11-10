@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { bookStats, dayLabel, formatDuration, groupByDay, summarize } from '../src/plugins/reading-log/ReadingLogPage'
+import { bookStats, dayLabel, formatDuration, groupByDay, READING_LOG_RANGES, summarize } from '../src/plugins/reading-log/ReadingLogPage'
 import type { ReadingLogEntry } from '../src/lib/api'
 
 /**
@@ -143,4 +143,15 @@ test('接线：页面把汇总与「读到第几章」真的画出来', () => {
   assert.match(page, /bookStats\(entries\)/, '按书统计要走纯函数')
   assert.match(page, /读到第 \{book\.maxChapterIndex \+ 1\} 章/, '章号 0 起，展示时 +1')
   assert.match(page, /streakDays/, '连续阅读要出现在汇总里')
+})
+
+test('统计范围：30 / 90 / 365 三档可切，切了要按新窗口重新取数', () => {
+  assert.deepEqual([...READING_LOG_RANGES], [30, 90, 365], '三档是页面常量，别散落在 JSX 里')
+
+  const page = fs.readFileSync(path.resolve(import.meta.dirname, '../src/plugins/reading-log/ReadingLogPage.tsx'), 'utf8')
+  assert.match(page, /api\.readingLog\(range\)/, '取数要跟着选中的窗口走，不能写死 30')
+  assert.match(page, /\}, \[range\]\)/, 'range 变了 effect 要重跑')
+  assert.doesNotMatch(page, /最近 30 天/, '窗口文案要跟着 range 变，不能写死')
+  assert.match(page, /aria-pressed=/, '切换按钮要暴露选中态')
+  assert.match(page, /role="group"/, '三档按钮是一组')
 })

@@ -21,6 +21,10 @@ export function formatDuration(seconds: number): string {
   return `${total} 秒`
 }
 
+/** 统计窗口：后端把 days 夹在 1..365，这里只给三档常用值。 */
+export type ReadingLogRange = 30 | 90 | 365
+export const READING_LOG_RANGES: readonly ReadingLogRange[] = [30, 90, 365]
+
 export type ReadingDay = { day: string; seconds: number; books: ReadingLogEntry[] }
 
 /** 把「一天一本书」的行聚成「一天 → 若干本」，按天倒序（服务端已按天倒序、天内按秒数倒序）。 */
@@ -148,29 +152,69 @@ export function bookStats(entries: ReadingLogEntry[]): BookReadingStat[] {
 export function ReadingLogPage() {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [entries, setEntries] = useState<ReadingLogEntry[]>([])
+  const [range, setRange] = useState<ReadingLogRange>(30)
 
   useEffect(() => {
     let alive = true
-    api.readingLog(30)
+    setState('loading')
+    api.readingLog(range)
       .then(list => { if (alive) { setEntries(list); setState('ready') } })
       .catch(() => { if (alive) setState('error') })
     return () => { alive = false }
-  }, [])
+  }, [range])
 
-  if (state === 'loading') return <p className="reading-log-status">正在读取…</p>
-  if (state === 'error') return <p className="reading-log-status">没能取到阅读记录，稍后再试。</p>
+  const rangePicker = (
+    <div className="segmented-control reading-log-range" role="group" aria-label="统计范围">
+      {READING_LOG_RANGES.map(value => (
+        <button
+          key={value}
+          type="button"
+          className={`segmented-option${range === value ? ' selected' : ''}`}
+          aria-pressed={range === value}
+          onClick={() => setRange(value)}
+        >
+          {value} 天
+        </button>
+      ))}
+    </div>
+  )
+
+  if (state === 'loading') {
+    return (
+      <>
+        {rangePicker}
+        <p className="reading-log-status">正在读取…</p>
+      </>
+    )
+  }
+  if (state === 'error') {
+    return (
+      <>
+        {rangePicker}
+        <p className="reading-log-status">没能取到阅读记录，稍后再试。</p>
+      </>
+    )
+  }
 
   const days = groupByDay(entries)
-  if (days.length === 0) return <p className="reading-log-status">最近 30 天还没有阅读记录。</p>
+  if (days.length === 0) {
+    return (
+      <>
+        {rangePicker}
+        <p className="reading-log-status">最近 {range} 天还没有阅读记录。</p>
+      </>
+    )
+  }
 
   const summary = summarize(entries)
   const books = bookStats(entries)
   return (
     <div className="reading-log">
+      {rangePicker}
       <div className="reading-log-summary">
         <div className="reading-log-stat">
           <span className="reading-log-stat-value">{formatDuration(summary.totalSeconds)}</span>
-          <span className="reading-log-stat-label">最近 30 天</span>
+          <span className="reading-log-stat-label">最近 {range} 天</span>
         </div>
         <div className="reading-log-stat">
           <span className="reading-log-stat-value">{summary.activeDays} 天</span>

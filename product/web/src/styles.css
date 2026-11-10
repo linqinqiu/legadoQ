@@ -6097,6 +6097,9 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 .page-dialog .backup-page { padding-block-start: var(--s-5); }
 /* 阅读记录（PROPOSAL-019 D）：上半屏汇总 + 按书，下半屏按天时间轴。 */
 .page-dialog .reading-log { min-height: 0; margin: 0; padding: var(--s-5) var(--s-6); }
+.reading-log-range { margin: 0 0 var(--s-4); }
+/* 加载/失败/空结果时没有 .reading-log 外壳，切换条自己留出与正文一致的边距。 */
+.page-dialog-body > .reading-log-range { margin: var(--s-5) var(--s-6) var(--s-4); }
 .reading-log-status { margin: 0; padding: var(--s-5) var(--s-6); color: var(--muted); }
 .reading-log-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--s-3); margin-bottom: var(--s-4); }
 .reading-log-stat { display: flex; flex-direction: column; gap: 2px; padding: var(--s-3) var(--s-4); border: 1px solid var(--line); border-radius: var(--r-2, 12px); background: var(--surface-muted); }
