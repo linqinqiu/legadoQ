@@ -36,6 +36,7 @@ import { useReaderPageTurn } from './useReaderPageTurn'
 import { usePaginationMeasurement } from './usePaginationMeasurement'
 import { useReadingLog } from './useReadingLog'
 import { useReaderNotes } from './useReaderNotes'
+import { useReaderPositionJump } from './useReaderPositionJump'
 import { renderNoteHighlights } from './NoteHighlights'
 import { TtsContext } from './tts/ReaderTtsContext'
 import { useReaderTts } from './tts/useReaderTts'
@@ -668,50 +669,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }
 
   // 标记快捷条动作（划线 / 笔记 / 复制 / 发 AI / 关闭）与 openNote 已搬进 useReaderNotes；
+  // 笔记/搜索命中跳转的导航原语收进 useReaderPositionJump（见下方 hook 调用）。
   // 下方 ReaderOverlays / ReaderChrome 接线改用 notesApi.*。
-
-  /**
-   * 从「笔记」面板跳到那一条所在的章，并滚到它的位置。
-   *
-   * 以前只切章、停在章首 —— 划线还能靠高亮认出来，书签只有一条摘要，等于"跳了但没到"。
-   * 跨章时正文是异步加载的，所以把目标位置挂到 ref 上，等内容挂进 DOM 再滚（见下面的 effect）。
-   */
-  const jumpToNote = (note: BookNote) => {
-    const target = {
-      chapterIndex: note.chapterIndex,
-      charOffset: note.startOffset,
-      paragraphAnchor: note.paragraphAnchor ?? '',
-      positionChecksum: note.positionChecksum ?? '',
-    }
-    const index = currentBook.chapters.findIndex(item => item.url === note.chapterUrl)
-    notesApi.setNotesPanel(false)
-    setActiveDrawer(null)
-    if (index >= 0 && index !== chapterIndex) {
-      pendingNoteJumpRef.current = target
-      changeChapter(index, 'first')
-      return
-    }
-    jumpToNotePosition(target)
-  }
-
-  /**
-   * 跳到搜索命中处：切章、滚到那一段、把关键词临时高亮几秒。
-   *
-   * 以前只给章号，跳过去还得自己找（STATUS 的已知缺口原话）。现在后端回了命中偏移，
-   * 落点复用笔记跳转那套（滚动滚视口、分页换页码），高亮只画在命中那一段上。
-   */
-  const jumpToSearchHit = (hit: BookSearchHit, term: string) => {
-    setBookSearchOpen(false)
-    setSearchFlash({ chapterIndex: hit.chapterIndex, offset: hit.offset, term })
-    const target = { chapterIndex: hit.chapterIndex, charOffset: hit.offset, paragraphAnchor: '', positionChecksum: '' }
-    const index = currentBook.chapters.findIndex(item => item.url === hit.chapterUrl)
-    if (index >= 0 && index !== chapterIndex) {
-      pendingNoteJumpRef.current = target
-      changeChapter(index, 'first')
-      return
-    }
-    jumpToNotePosition(target)
-  }
 
   // 划线高亮渲染搬进 ./noteHighlights（纯函数，收 notes + onOpenNote），不再闭包本组件状态。
   // 朗读管线只认"当前这一章已经到位"的正文，过渡期间给空数组，避免读进上一章剩下的段落。
@@ -845,48 +804,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     return true
   }, [])
 
-  /**
-   * 跳到某一条笔记 / 书签的位置：滚动模式滚视口，分页模式换页码。
-   * 分页下的换算与朗读跟读（`activeParagraphIndex` 那条 effect）用同一套矩形差 ——
-   * `offsetLeft` 与 `rect.left` 混着量会稳定偏一整页。
-   */
-  const jumpToNotePosition = useCallback((position: LogicalPosition & { chapterIndex: number }): boolean => {
-    if (settings.pageMode !== 'paginate') {
-      /*
-        分块章节里目标段可能还没挂出来：先补块，把落点交给 pending 的 effect，
-        等这一轮渲染完再滚（直接滚会找不到那一段，然后悄悄退化成章首）。
-      */
-      if (chunked && logicalMetaRef.current.starts.length) {
-        const { index } = offsetToParagraph(logicalMetaRef.current.starts, position.charOffset)
-        if (index >= renderLimit) {
-          pendingNoteJumpRef.current = position
-          revealParagraph(index)
-          return false
-        }
-      }
-      return scrollToLogicalPosition(position)
-    }
-    const meta = logicalMetaRef.current
-    const body = bodyRef.current
-    if (!meta.starts.length || !body || stride <= 0) return false
-    const section = body.querySelector<HTMLElement>(`.reader-page-chapter[data-chapter-index="${position.chapterIndex}"]`)
-    const els = section ? Array.from(section.querySelectorAll<HTMLElement>('[data-paragraph-index]')) : []
-    if (!els.length) return false
-    const { index, within } = offsetToParagraph(meta.starts, position.charOffset)
-    const target = els.find(el => Number(el.dataset.paragraphIndex ?? 0) === index) ?? els[0]
-    const rect = textOffsetRect(target, within) ?? target.getBoundingClientRect()
-    const offset = rect.left - body.getBoundingClientRect().left
-    setPageIndex(Math.min(pageCount - 1, Math.max(0, Math.round(offset / stride))))
-    return true
-  }, [scrollToLogicalPosition, settings.pageMode, stride, pageCount, chunked, renderLimit, revealParagraph])
-
-  /** 跨章跳转的落点：正文挂进 DOM 之后才能滚，所以挂在 ref 上等这一条 effect。 */
-  useEffect(() => {
-    const pending = pendingNoteJumpRef.current
-    if (!pending || loading || !content || !chapter) return
-    if (chapter.index !== pending.chapterIndex) return
-    if (jumpToNotePosition(pending)) pendingNoteJumpRef.current = null
-  }, [content, loading, chapter, jumpToNotePosition])
 
   /** 搜索高亮是临时的：6 秒后自己消失，不留在正文里（它不是笔记，不该被当成标记）。 */
   useEffect(() => {
@@ -1179,6 +1096,31 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [chapterIndex, currentBook.chapters.length, isMangaMode, persist, settings.pageMode, settings.ttsEngine, showBoundaryNotice, stopTts, stopAllEngines])
   // 把最新那份 changeChapter 交给朗读 hook（它要用 ref 打破循环依赖）。
   changeChapterRef.current = changeChapter
+
+  // 笔记/搜索命中跳转的导航原语收进 useReaderPositionJump（与渲染解耦，降低本组件体量）。
+  const { jumpToNote, jumpToSearchHit } = useReaderPositionJump({
+    chapters: currentBook.chapters,
+    chapterIndex,
+    chapter,
+    content,
+    loading,
+    setNotesPanel: notesApi.setNotesPanel,
+    setActiveDrawer,
+    setBookSearchOpen,
+    setSearchFlash,
+    changeChapter,
+    pendingNoteJumpRef,
+    pageMode: settings.pageMode,
+    scrollToLogicalPosition,
+    stride,
+    pageCount,
+    chunked,
+    renderLimit,
+    revealParagraph,
+    bodyRef,
+    logicalMetaRef,
+    setPageIndex,
+  })
 
   /**
    * legacy 顶栏的「上一章 / 下一章」：沿用旧底栏进度行那套动作（先落进度、再切章），
