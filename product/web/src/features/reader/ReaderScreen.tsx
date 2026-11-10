@@ -299,6 +299,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     preloadNextChapter,
     preloadPrevChapter,
     clearPreload,
+    reload: reloadChapter,
   } = useReaderChapterContent({
     chapter,
     chapters: currentBook.chapters,
@@ -2277,6 +2278,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onMore: () => setRenderLimit(limit => growLimit(limit, paragraphs.length)),
         onScrub: setScrubIndex,
         onScrubCommit: () => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) },
+        onRetryChapter: reloadChapter,
       }}
     >
       {boundaryMessage && <p className="reader-boundary-message" role="status">{boundaryMessage}</p>}

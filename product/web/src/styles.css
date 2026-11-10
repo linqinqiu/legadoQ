@@ -1296,6 +1296,9 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .reader-boundary-message { position: fixed; z-index: 25; top: calc(18px + var(--safe-top)); left: 50%; transform: translateX(-50%); padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: 0 6px 20px rgba(0, 0, 0, .12); color: var(--ink); font-size: 13px; pointer-events: none; }
 .reader-status, .reader-error { color: var(--muted) !important; text-align: center !important; padding: 60px 0; }
 .reader-error { color: var(--danger) !important; }
+/* 正文失败不能是死路：给一个"重新加载"，重拉当前章（换章 / 刷新整页都是更重的动作）。 */
+.reader-error-retry { margin-left: 10px; padding: 2px 12px; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: var(--t-sm); cursor: pointer; vertical-align: baseline; }
+.reader-error-retry:hover { opacity: .72; }
 
 /* 切章过渡：新章正文整块淡入；过渡期间上一章只是变暗 + 顶部挂一条「正在载入：新章名」，
    不再用骨架屏把整页挖空（用户 2026-09-30「章节之间的过渡没有做好」指的就是那一帧白闪）。

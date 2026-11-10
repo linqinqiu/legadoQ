@@ -46,6 +46,8 @@ export function useReaderChapterContent({
 
   const preloadedContentRef = useRef(new Map<string, string>())
   const preloadingRef = useRef(new Set<string>())
+  /** 手动重试：自增一次就让加载 effect 重跑（正文失败时界面上的"重新加载"）。 */
+  const [reloadToken, setReloadToken] = useState(0)
   const onLoadedRef = useRef(onLoaded)
   onLoadedRef.current = onLoaded
 
@@ -73,6 +75,15 @@ export function useReaderChapterContent({
   const preloadNextChapter = useCallback((index: number) => preload(index, 1), [preload])
   const preloadPrevChapter = useCallback((index: number) => preload(index, -1), [preload])
   const clearPreload = useCallback(() => preloadedContentRef.current.clear(), [])
+
+  /**
+   * 重拉当前章：先把这个 URL 的预取缓存删掉，否则重试会直接命中那份旧的
+   * （失败时通常是空的，但"正文加载到一半被取消"这类也会留一条）。
+   */
+  const reload = useCallback(() => {
+    preloadedContentRef.current.delete(chapter.url)
+    setReloadToken(token => token + 1)
+  }, [chapter.url])
 
   useLayoutEffect(() => {
     let cancelled = false
@@ -102,7 +113,7 @@ export function useReaderChapterContent({
     return () => {
       cancelled = true
     }
-  }, [chapter, sourceId, bookUrl, startIndex, progress?.scrollPosition, progress?.charOffset, progress?.paragraphAnchor, progress?.positionChecksum])
+  }, [chapter, sourceId, bookUrl, startIndex, progress?.scrollPosition, progress?.charOffset, progress?.paragraphAnchor, progress?.positionChecksum, reloadToken])
 
   return {
     content,
@@ -120,5 +131,6 @@ export function useReaderChapterContent({
     preloadNextChapter,
     preloadPrevChapter,
     clearPreload,
+    reload,
   }
 }

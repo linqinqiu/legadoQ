@@ -89,6 +89,8 @@ export interface ReaderBodyProps {
     onMore: () => void
     onScrub: (index: number) => void
     onScrubCommit: () => void
+    /** 正文加载失败时"重新加载"：重拉当前章（不是换章、不是刷新整页）。 */
+    onRetryChapter: () => void
   }
 }
 
@@ -111,7 +113,7 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
     mediaSrc, sourceType, isMangaMode, paragraphs, shownParagraphs,
     chunked, renderLimit, nextChapterTitle, chapterProgress, shownChapterIndex, scrubIndex,
   } = content
-  const { convert, splitBody, renderLine, renderManga, onMediaEnded, onNextChapter, onMore, onScrub, onScrubCommit } = actions
+  const { convert, splitBody, renderLine, renderManga, onMediaEnded, onNextChapter, onMore, onScrub, onScrubCommit, onRetryChapter } = actions
 
   const renderSections = () => (
     <>
@@ -129,7 +131,12 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
         <h1>{convert(shownTitle ?? '')}</h1>
         {stale && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingTitle)}</p>}
         {loading && !hasContent && <ReaderContentSkeleton />}
-        {message && <p className="reader-error">{message}</p>}
+        {message && (
+          <p className="reader-error" role="alert">
+            {message}
+            <button type="button" className="reader-error-retry" onClick={onRetryChapter}>重新加载</button>
+          </p>
+        )}
         {mediaSrc
           ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={onMediaEnded} />
           : isMangaMode
@@ -188,7 +195,12 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
             <h1>{convert(shownTitle ?? '')}</h1>
             {stale && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingTitle)}</p>}
             {loading && !hasContent && <ReaderContentSkeleton />}
-            {message && <p className="reader-error">{message}</p>}
+            {message && (
+          <p className="reader-error" role="alert">
+            {message}
+            <button type="button" className="reader-error-retry" onClick={onRetryChapter}>重新加载</button>
+          </p>
+        )}
             {mediaSrc
               ? <MediaBlock mediaSrc={mediaSrc} sourceType={sourceType} onEnded={onMediaEnded} />
               : isMangaMode
