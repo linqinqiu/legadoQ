@@ -83,6 +83,30 @@ class AgentPromptContextTest {
 
     // ===== 存储层 =====
 
+    private fun agentSource(): String {
+        var dir: java.io.File? = java.io.File(".").absoluteFile
+        while (dir != null) {
+            val candidate = java.io.File(dir, "src/main/kotlin/io/legado/ai/Agent.kt")
+            if (candidate.exists()) return candidate.readText()
+            dir = dir.parentFile
+        }
+        error("找不到 ai/Agent.kt：测试工作目录既不是 app/ 也不是它的子目录")
+    }
+
+    /**
+     * 工具循环每轮都要复查预算。
+     *
+     * 工具结果是在循环里追加的（单条最多 `MAX_TOOL_DATA` 字符），只在进循环前裁一次，
+     * 第 3、4 轮就会超过预算 —— 用户看到的是「同一段对话聊到一半突然 400 / context too long」。
+     * 这里钉接线位置（非流式与流式各一处）；预算算法本身由下面「裁剪」那组用例守。
+     */
+    @Test
+    fun `工具循环每轮都复查上下文预算`() {
+        val source = agentSource()
+        val rechecks = Regex("""if \(round > 0\) trimmed \+= trimToBudget\(convo\)""").findAll(source).count()
+        assertEquals("非流式与流式两条路径各一处", 2, rechecks)
+    }
+
     @Test
     fun `预设按 order 排序且只取启用的`() {
         val home = Files.createTempDirectory("prompt-store")

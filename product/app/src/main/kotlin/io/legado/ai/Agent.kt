@@ -299,7 +299,8 @@ class Agent(
         val prompts = injected.prompts
         val skills = injected.skills
         val convo = injected.messages.toMutableList()
-        val trimmed = trimToBudget(convo)
+        // 进循环前先裁一次；循环里每轮还会再复查（工具结果是在循环里追加的）。
+        var trimmed = trimToBudget(convo)
         var usage = LlmUsage()
 
         // 多轮：模型要调工具 → 框架执行 → 结果回灌 → 再问。
@@ -322,6 +323,10 @@ class Agent(
         // 只用来把 HTTP 层那句套话换成能照着做事的话，不参与控制流。
         var providerFailure: String? = null
         for (round in 0 until MAX_TOOL_ROUNDS) {
+            // 每轮开头复查预算：工具结果（单条最多 MAX_TOOL_DATA 字符）是循环里追加的，
+            // 进循环前裁过一次不等于后面还够 —— 否则第 3、4 轮就撞上游的 context too long，
+            // 表现是「同一个问题聊到一半突然 400」，与模型能力无关。
+            if (round > 0) trimmed += trimToBudget(convo)
             // 内网地址被闸门拒了要**说清是拒绝**，不能混进 runCatching 变成
             // "返回 null → 上层报 upstream_unreachable" —— 那会让用户去查网络，
             // 而真相是他填的 baseUrl 指向本机/内网。这两件事的修法完全不同。
@@ -540,7 +545,7 @@ class Agent(
         val prompts = injected.prompts
         val skills = injected.skills
         val convo = injected.messages.toMutableList()
-        val trimmed = trimToBudget(convo)
+        var trimmed = trimToBudget(convo)
         val toolRounds = mutableListOf<String>()
         var usage = LlmUsage()
         var providerFailure: String? = null
@@ -558,6 +563,8 @@ class Agent(
         )
 
         for (round in 0 until MAX_TOOL_ROUNDS) {
+            // 与 /chat 同一口径：流式这条路径也会在循环里追加工具结果，同样要每轮复查。
+            if (round > 0) trimmed += trimToBudget(convo)
             val roundText = StringBuilder()
             val callbacks = LlmStreamCallbacks(
                 onDelta = { piece ->
