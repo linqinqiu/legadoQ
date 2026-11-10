@@ -1302,6 +1302,8 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 /* 正文失败不能是死路：给一个"重新加载"，重拉当前章（换章 / 刷新整页都是更重的动作）。 */
 .reader-error-retry { margin-left: 10px; padding: 2px 12px; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: var(--t-sm); cursor: pointer; vertical-align: baseline; }
 .reader-error-retry:hover { opacity: .72; }
+/* 「怎么办」那一行：说清该改哪里（换源 / 登录 / 等一会儿），比重复报错有用。 */
+.reader-error-hint { display: block; margin-top: 6px; color: var(--muted); font-size: var(--t-sm); line-height: 1.6; }
 
 /* 切章过渡：新章正文整块淡入；过渡期间上一章只是变暗 + 顶部挂一条「正在载入：新章名」，
    不再用骨架屏把整页挖空（用户 2026-09-30「章节之间的过渡没有做好」指的就是那一帧白闪）。

@@ -8,6 +8,7 @@ import type {
 } from 'react'
 import { Fragment } from 'react'
 import type { Chapter } from '../../lib/api'
+import { describeLoadError } from '../../lib/loadErrors'
 import { Icon } from '../../icons'
 import { MediaBlock } from './content/MediaBlock'
 import { ReaderContentSkeleton } from './ReaderContentSkeleton'
@@ -114,6 +115,9 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
     chunked, renderLimit, nextChapterTitle, chapterProgress, shownChapterIndex, scrubIndex,
   } = content
   const { convert, splitBody, renderLine, renderManga, onMediaEnded, onNextChapter, onMore, onScrub, onScrubCommit, onRetryChapter } = actions
+  // 原始报错翻一句人话：内网被拦 / 要登录 / 站点挂了 三类修法完全不同，
+  // 直接把 `message` 糊上去时用户只看到"书源执行失败"，不知道该改哪里。
+  const loadError = describeLoadError(message)
 
   const renderSections = () => (
     <>
@@ -133,7 +137,8 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
         {loading && !hasContent && <ReaderContentSkeleton />}
         {message && (
           <p className="reader-error" role="alert">
-            {message}
+            {loadError.headline}
+            {loadError.hint && <span className="reader-error-hint">{loadError.hint}</span>}
             <button type="button" className="reader-error-retry" onClick={onRetryChapter}>重新加载</button>
           </p>
         )}
@@ -197,7 +202,8 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
             {loading && !hasContent && <ReaderContentSkeleton />}
             {message && (
           <p className="reader-error" role="alert">
-            {message}
+            {loadError.headline}
+            {loadError.hint && <span className="reader-error-hint">{loadError.hint}</span>}
             <button type="button" className="reader-error-retry" onClick={onRetryChapter}>重新加载</button>
           </p>
         )}
