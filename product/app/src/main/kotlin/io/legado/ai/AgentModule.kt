@@ -8,6 +8,7 @@ import io.legado.rules.RuleRunner
 import io.legado.source.SourceDebugger
 import io.legado.source.SourceHealth
 import io.legado.subscription.SubscriptionService
+import kotlin.coroutines.coroutineContext
 
 /**
  * 把 AI 连接 API 挂到本进程的接线处。
@@ -101,6 +102,11 @@ object AgentModule {
             ) { callCtx, args ->
                 val id = (args["id"] as? String)?.trim().orEmpty()
                 val target = registry.find(id) ?: return@Tool callCtx.error("not_found", "工具 $id 不存在，先用 tool.search 查")
+                // 与最外层同一条策略：`tool.call` 是"工具里再调工具"，不能成为停用开关的绕行口。
+                val policy = coroutineContext[ToolPolicyElement]?.policy ?: ToolPolicy.UNRESTRICTED
+                if (!policy.allows(target.meta)) {
+                    return@Tool callCtx.error("tool_disabled", "工具「${target.meta.id}」已被停用，没有执行")
+                }
                 val inner = (args["args"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
                 target.handler(callCtx, inner)
             })

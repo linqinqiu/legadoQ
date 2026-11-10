@@ -9,6 +9,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -75,10 +76,20 @@ class Agent(
     /** 是否注册了外部（openai-compatible）连接；供 manifest 的 `enabled` 字段使用。 */
     fun hasConnection(): Boolean = selectedProfile() != null
 
-    /** 直接按工具 id 执行（已解析出该调哪个工具时用）。 */
-    suspend fun runTool(id: String, args: ToolArgs): AgentResult {
+    /**
+     * 直接按工具 id 执行（已解析出该调哪个工具时用）。
+     *
+     * [policy] 是**执行期**护栏：下发给模型的清单由 [ToolSelection.select] 决定，但模型完全可以
+     * 点名清单外的工具（注入文本、历史里的旧调用、经 `tool.call` 转弯）。这里不判，
+     * 「停用某个工具」就只是一句建议 —— 用户关掉的删源 / 改配置照样能被调起来。
+     */
+    suspend fun runTool(id: String, args: ToolArgs, policy: ToolPolicy = ToolPolicy.UNRESTRICTED): AgentResult {
         val tool = registry.find(id) ?: return ctx.error("unknown_tool", "未注册的工具：$id")
         val meta = tool.meta
+        if (!policy.allows(meta)) {
+            // 走 after 链：审计钩子要能看见"这次被护栏拦了什么"，与 before 拦截同一口径。
+            return hooks.runAfter(meta, args, ctx.error("tool_disabled", "工具「${meta.id}」已被停用，没有执行"))
+        }
 
         // 1) before 链：任一钩子返回非 null 即拦截，工具不执行。
         val blocked = try {
@@ -91,7 +102,8 @@ class Agent(
 
         // 2) 执行工具本体（异常统一兜底成 error 结果）。
         val raw: AgentResult = try {
-            tool.invoke(ctx, args)
+            // 策略挂进协程上下文：`tool.call` 在工具内部再调一次工具时靠它读到同一份开关。
+            withContext(ToolPolicyElement(policy)) { tool.invoke(ctx, args) }
         } catch (e: Guardrails.AgentVersionConflict) {
             ctx.error("version_conflict", e.message ?: "书源版本冲突，请先读取最新版本再保存")
         } catch (e: VersionConflict) {
@@ -287,7 +299,9 @@ class Agent(
             errorDetail = "没有能处理「${ext.kind.name}」这种连接的 provider",
         )
         // 只下发与这一轮相关的工具组：55 个全量塞进每次请求会白烧 token、也让模型更容易挑错工具。
-        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
+        // 同一份开关也交给执行期（runTool）：下发是"提示"，执行校验才是"护栏"。
+        val policy = ToolPolicy(allowedToolGroups, disabledToolIds.toSet())
+        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, policy.disabledTools)
         val toolRounds = mutableListOf<String>()
         val injected = injectContext(
             norm,
@@ -407,7 +421,7 @@ class Agent(
                     toolCalls = reply.toolCalls,
                 )
                 for (call in reply.toolCalls) {
-                    val result = runTool(call.name, call.args)
+                    val result = runTool(call.name, call.args, policy)
                     toolRounds += "${call.name}:${result.code}"
                     convo += LlmMessage(
                         role = "tool",
@@ -418,7 +432,7 @@ class Agent(
             } else {
                 // 文本回灌形态：结果写成 user 消息，历史里不留 tool 角色。
                 val executed = reply.toolCalls.map { call ->
-                    val result = runTool(call.name, call.args)
+                    val result = runTool(call.name, call.args, policy)
                     toolRounds += "${call.name}:${result.code}"
                     renderToolResult(call.name, result)
                 }
@@ -536,7 +550,8 @@ class Agent(
                 emit(AgentStreamEvent("error", code = "upstream_unreachable", message = "没有能处理「${ext.kind.name}」这种连接的 provider"))
             }
 
-        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, disabledToolIds.toSet())
+        val policy = ToolPolicy(allowedToolGroups, disabledToolIds.toSet())
+        val tools = ToolSelection.select(registry.manifest(), lastUserText, allowedToolGroups, policy.disabledTools)
         val injected = injectContext(
             norm,
             AgentPromptStore.select(homeDirectory, promptTasks),
@@ -689,7 +704,7 @@ class Agent(
                 convo += LlmMessage(role = "assistant", content = reply.content, toolCalls = reply.toolCalls)
                 for (call in reply.toolCalls) {
                     val startedAt = System.currentTimeMillis()
-                    val result = runTool(call.name, call.args)
+                    val result = runTool(call.name, call.args, policy)
                     toolRounds += "${call.name}:${result.code}"
                     emit(toolEndEvent(call.name, call.id, result, System.currentTimeMillis() - startedAt))
                     convo += LlmMessage(
@@ -701,7 +716,7 @@ class Agent(
             } else {
                 val executed = reply.toolCalls.map { call ->
                     val startedAt = System.currentTimeMillis()
-                    val result = runTool(call.name, call.args)
+                    val result = runTool(call.name, call.args, policy)
                     toolRounds += "${call.name}:${result.code}"
                     emit(toolEndEvent(call.name, call.id, result, System.currentTimeMillis() - startedAt))
                     renderToolResult(call.name, result)

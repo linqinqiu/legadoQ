@@ -1,6 +1,7 @@
 package io.legado
 
 import io.legado.ai.ToolMeta
+import io.legado.ai.ToolPolicy
 import io.legado.ai.ToolSelection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -100,5 +101,27 @@ class ToolSelectionTest {
         val noProgram = listOf(meta("notes.list", "notes"), meta("tts.speak", "tts"))
         val selected = ToolSelection.select(noProgram, "帮我记笔记", setOf("notes", "tts"), setOf("notes.list", "tts.speak"))
         assertEquals(setOf("notes.list", "tts.speak"), selected.map { it.id }.toSet())
+    }
+
+    // ===== 执行期护栏（与 select 同一套口径）=====
+    //
+    // 下发清单只是提示：模型可以点名清单外的工具（注入文本 / 历史旧调用 / tool.call 转弯）。
+    // 所以执行前要再判一次，否则「停用」是一句建议而不是护栏。
+
+    @Test
+    fun `执行期：被逐项停用的工具不被允许，program 组照旧豁免`() {
+        val policy = ToolPolicy(disabledTools = setOf("tts.speak"))
+        assertFalse("停用的工具执行期也要拒", policy.allows(meta("tts.speak", "tts")))
+        assertTrue("同组其余工具不受影响", policy.allows(meta("notes.list", "notes")))
+        assertTrue("program 组豁免", policy.allows(meta("program.catalog", "program")))
+    }
+
+    @Test
+    fun `执行期：没启用的组一律拒，null 组表示不按组限制`() {
+        val narrow = ToolPolicy(allowedGroups = setOf("tts"))
+        assertTrue(narrow.allows(meta("tts.speak", "tts")))
+        assertFalse("组没启用：模型点名也不执行", narrow.allows(meta("source.save", "sources", writes = true)))
+        assertTrue("program 常驻", narrow.allows(meta("program.catalog", "program")))
+        assertTrue("null = 不限制组", ToolPolicy.UNRESTRICTED.allows(meta("source.save", "sources")))
     }
 }

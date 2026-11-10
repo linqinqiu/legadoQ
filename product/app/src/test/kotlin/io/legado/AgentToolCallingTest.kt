@@ -12,6 +12,7 @@ import io.legado.ai.LlmToolCall
 import io.legado.ai.Tool
 import io.legado.ai.ToolHooks
 import io.legado.ai.ToolMeta
+import io.legado.ai.ToolPolicy
 import io.legado.ai.ToolRegistry
 import io.legado.cache.CoverCache
 import io.legado.data.Database
@@ -243,6 +244,58 @@ class AgentToolCallingTest {
             val out = runBlocking { agent.chat(listOf("user" to "用插件能力")) }
             assertEquals("插件能力已执行", out.content)
             assertEquals(listOf("plugin.capability:ok"), out.toolRounds)
+        } finally { runCatching { db.close() } }
+    }
+
+    /**
+     * 「停用」是护栏不是提示（2026-11-10 审计的 P0）。
+     *
+     * 从前 `ToolSelection.select` 只决定"下发给模型什么"，执行只做 `registry.find(id)` ——
+     * 模型（或注进来的文本）点名一个被停用的工具照样能执行：用户关掉的删源 / 改配置形同虚设。
+     */
+    @Test
+    fun `被逐项停用的工具即使被模型点名也不执行`() {
+        val home = Files.createTempDirectory("tc-home-disabled")
+        registerExternal(home)
+        val called = mutableListOf<Map<String, Any?>>()
+        val registry = ToolRegistry().apply { register(echoTool(called)) }
+        val providers = LlmProviderRegistry().apply {
+            register(ScriptedProvider(mutableListOf(
+                LlmReply(content = "", toolCalls = listOf(LlmToolCall("plugin.query", mapOf("q" to "测试")))),
+                LlmReply(content = "好的，没有查。"),
+            )), replace = true)
+        }
+        val (db, agent) = buildAgent(providers, registry, home)
+        try {
+            val out = runBlocking {
+                agent.chat(
+                    listOf("user" to "查一下"),
+                    allowedToolGroups = setOf("demo"),
+                    disabledToolIds = listOf("plugin.query"),
+                )
+            }
+            assertTrue("被停用的工具不该被执行", called.isEmpty())
+            assertEquals("要回报成被停用，而不是静默跳过", listOf("plugin.query:tool_disabled"), out.toolRounds)
+        } finally { runCatching { db.close() } }
+    }
+
+    @Test
+    fun `runTool 执行期校验：直接点名停用工具返回 tool_disabled`() {
+        val home = Files.createTempDirectory("tc-home-disabled2")
+        val called = mutableListOf<Map<String, Any?>>()
+        val registry = ToolRegistry().apply { register(echoTool(called)) }
+        val (db, agent) = buildAgent(LlmProviderRegistry(), registry, home)
+        try {
+            val blocked = runBlocking {
+                agent.runTool("plugin.query", emptyMap(), ToolPolicy(disabledTools = setOf("plugin.query")))
+            }
+            assertEquals("tool_disabled", blocked.code)
+            assertTrue("工具本体不该被调用", called.isEmpty())
+
+            // 没给策略时行为不变：进程内自检 / 自动化照常能调。
+            val allowed = runBlocking { agent.runTool("plugin.query", emptyMap()) }
+            assertEquals("ok", allowed.code)
+            assertEquals(1, called.size)
         } finally { runCatching { db.close() } }
     }
 }

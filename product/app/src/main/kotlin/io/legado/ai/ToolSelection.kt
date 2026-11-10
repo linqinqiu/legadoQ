@@ -1,5 +1,8 @@
 package io.legado.ai
 
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+
 /**
  * 按当前对话只挑相关的工具组下发给模型。
  *
@@ -79,4 +82,43 @@ object ToolSelection {
         if (disabledTools.isEmpty()) return picked
         return picked.filterNot { it.id in disabledTools && it.group !in ALWAYS }.ifEmpty { picked }
     }
+
+    /**
+     * 这一条工具在当前策略下允许**执行**吗（与 [select] 同一套口径）。
+     *
+     * 下发清单只是"提示"：模型完全可以点名一个没下发过的工具（注入文本、历史里的旧调用、
+     * `tool.call` 转弯）。所以执行前必须再判一次 —— 否则「停用」是一句建议，而不是一道护栏。
+     */
+    fun allows(meta: ToolMeta, policy: ToolPolicy): Boolean {
+        if (meta.group in ALWAYS) return true
+        if (policy.allowedGroups != null && meta.group !in policy.allowedGroups) return false
+        return meta.id !in policy.disabledTools
+    }
+}
+
+/**
+ * 本轮对话的工具执行策略：启用哪些组、逐项停用了谁。
+ *
+ * `allowedGroups == null` 表示"没按组限制"（只有逐项停用生效）；`UNRESTRICTED` 是进程内
+ * 调用方（自检、自动化）的默认值 —— 它们没有"用户这次点的开关"这层概念。
+ */
+data class ToolPolicy(
+    val allowedGroups: Set<String>? = null,
+    val disabledTools: Set<String> = emptySet(),
+) {
+    fun allows(meta: ToolMeta): Boolean = ToolSelection.allows(meta, this)
+
+    companion object {
+        val UNRESTRICTED = ToolPolicy()
+    }
+}
+
+/**
+ * 把策略挂进协程上下文，供"工具里再调工具"的路径（`tool.call`）读到同一份策略。
+ *
+ * 为什么不用 Agent 上的可变字段：`Agent` 是进程内单例，多个对话并发跑在同一个实例上，
+ * 谁都能读到别人那一轮的开关。协程上下文天然是每轮一份。
+ */
+class ToolPolicyElement(val policy: ToolPolicy) : AbstractCoroutineContextElement(ToolPolicyElement) {
+    companion object Key : CoroutineContext.Key<ToolPolicyElement>
 }
