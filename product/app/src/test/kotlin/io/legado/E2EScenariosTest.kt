@@ -157,7 +157,7 @@ class E2EScenariosTest {
         runCatching { database.close() }
         Unit
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabaseFileWithRetry(path)
         }
     }
 
@@ -323,10 +323,13 @@ class E2EScenariosTest {
             }
 
             service.stop()
+            // 与 scenario 2 同一口径：等异步缓存 worker 把借出的连接归还/关闭，
+            // 否则 Windows 上 close 之后文件仍被占用（表现为清理阶段假失败）。
+            delay(300)
         runCatching { database.close() }
         Unit
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabaseFileWithRetry(path)
         }
     }
 
@@ -420,7 +423,7 @@ class E2EScenariosTest {
         runCatching { database.close() }
         Unit
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabaseFileWithRetry(path)
         }
     }
 
@@ -515,7 +518,7 @@ class E2EScenariosTest {
         runCatching { database.close() }
         Unit
         } finally {
-            Files.deleteIfExists(java.nio.file.Path.of(path))
+            deleteDatabaseFileWithRetry(path)
         }
     }
 
