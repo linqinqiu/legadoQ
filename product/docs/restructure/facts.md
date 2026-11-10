@@ -126,17 +126,17 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 上述任一项都会随下一次 commit / 重启变化，**不要**把它们写进"项目常驻描述"。
 
-### 5.1 续（2026-11-09 深夜，本地，`HEAD=7ae52d0`，领先 origin 20 提交）
+### 5.1 续（2026-11-09 深夜 → 2026-11-10，本地，领先 origin 28 提交）
 
 > 自 §5 之后又做了阅读器拆分（4.1/4.2/4.3 第一步）。规模数字见 `研究-阅读器拆分续-下一步.md` §5。
 
 | 项 | 状态 |
 |---|---|
 | 工作树 | 代码已提交（`7afd4ea` 外壳抽成 ReaderChrome + 撤掉界面构建号；`7ae52d0` 笔记状态搬进 useReaderNotes）；本轮收尾只剩文档改动 |
-| 阅读器拆分 | `ReaderScreen.tsx` 3,200 → **2,402**；拆出 `ReaderBody`(227) / `ReaderOverlays`(226) / `ReaderChrome`(218) / `useReaderNotes`(200) / `NoteHighlights`(47) 与 `useReaderChapterContent`(124) / `useReaderCacheStatus`(139) / `usePaginationMeasurement`(190) / `useReaderPageTurn`(77) / `useReadingLog`(46) |
+| 阅读器拆分 | `ReaderScreen.tsx` 3,200 → **2,344**；拆出 `ReaderBody`(227) / `ReaderOverlays`(226) / `ReaderChrome`(218) / `useReaderNotes`(200) / `useReaderPositionJump`(120) / `NoteHighlights`(47) 与 `useReaderChapterContent`(124) / `useReaderCacheStatus`(139) / `usePaginationMeasurement`(190) / `useReaderPageTurn`(77) / `useReadingLog`(46) |
 | 后端拆分 | `RuleRunner` 2,419 → **2,333**；响应解码/字符集/限读（`decodeBody`/`resolveBodyCharset`/`metaCharset`/`readAll`/`readLimited` + `MAX_BODY_BYTES`/`META_CHARSET`）抽进同包 `ResponseBody`(112)，`resolveBodyCharset` 留一行委托保 `ResponseCharsetTest` |
-| 前端判据 | **1,022 通过 / 0 失败**（`npm --prefix product/web test`） |
-| 笔记拆分边界 | `useReaderNotes` 收了状态与增删改；`toggleBookmark`（依赖 `readLogicalPosition`，与 persist 共用逻辑位置）与 `renderNoteHighlights`/`jumpToNote`/`jumpToSearchHit`（依赖正文渲染路径与导航原语）仍留 `ReaderScreen`，经 `notesApi.*` 复用状态 |
+| 前端判据 | **1,022 通过 / 0 失败**（`npm --prefix product/web test`，2026-11-10 复跑） |
+| 笔记拆分边界 | `useReaderNotes` 收了状态与增删改；`useReaderPositionJump` 收了 `jumpToNote`/`jumpToSearchHit`/`jumpToNotePosition`/跨章落点 effect；`toggleBookmark`（依赖 `readLogicalPosition`，与 persist 共用逻辑位置）仍留 `ReaderScreen`，经 `notesApi.*` 复用状态 |
 | 门禁 | `check`(tsc -b) 通过；version/docs:api/changelog 未重跑（未改版本/接口/修复提交）。注：`check:test` 在 `test/PerformanceMonitor.test.ts` 有既有类型报错（上次动于 `c660963`），非本轮引入 |
 
 ---
