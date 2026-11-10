@@ -148,11 +148,11 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 项 | 状态 |
 |---|---|
-| 后端判据 | **1,094 通过 / 0 失败 / 0 错误**（`./gradlew :app:test --no-daemon`，2026-11-10 复跑，4m11s） |
-| 前端判据 | **1,030 通过 / 0 失败**（`npm --prefix product/web test`，15s）；`tsc -b` 通过 |
+| 后端判据 | **1,098 通过 / 0 失败 / 0 错误**（`./gradlew :app:test --no-daemon`，2026-11-10 两轮合计） |
+| 前端判据 | **1,032 通过 / 0 失败**（`npm --prefix product/web test`，15s）；`tsc -b` 通过 |
 | 端点 | 161 条 / 19 组不变（未加接口；阅读记录是纯前端聚合） |
-| 后端修复 | 脚本缓存回填丢 deadline（P0，`ScriptCacheTtlTest`）；响应超限改抛规则异常（`ResponseBody`）；AI 循环每轮复查上下文预算（`AgentPromptContextTest`）；删死代码 `getBatchBooks` |
-| 前端 | `fetchWithMetrics(url, init, timeoutMs)` 统一超时（调用方 signal 优先）；AI 实测 20 秒上限 + 失败原因；阅读记录加汇总卡片与按书统计 |
+| 后端修复 | 脚本缓存回填丢 deadline（P0，`ScriptCacheTtlTest`）；响应超限改抛规则异常（`ResponseBody`）；AI 循环每轮复查上下文预算（`AgentPromptContextTest`）；停用工具的执行期护栏（`ToolPolicy`/`runTool`，`ToolSelectionTest` + `AgentToolCallingTest`）；删死代码 `getBatchBooks` |
+| 前端 | `fetchWithMetrics(url, init, timeoutMs)` 统一超时（调用方 signal 优先）；AI 实测 20 秒上限 + 失败原因；阅读记录加汇总卡片与按书统计；正文失败可「重新加载」（`ReaderReload.test.ts`） |
 | 未修 | 见 `研究-审计与优化-2026-11-10.md` §3（后端 5 条 / 前端 7 条，按 ROI 排列） |
 
 ---
