@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.URI
@@ -46,6 +47,14 @@ internal object ProviderHttp {
 
     /** 上游给的 `Retry-After` 最多听这么多，别让一次重试把请求拖到超时。 */
     private const val MAX_RETRY_AFTER_MS = 10_000L
+
+    /**
+     * SSE 读空闲上限。
+     *
+     * 逐字输出持续几分钟是正常的，所以不能套整体超时；但"90 秒一个字都没有"基本就是
+     * 半开连接（TCP 活着、上游已经不吐字）。没有这道闸，那次对话只能靠用户刷新页面。
+     */
+    const val SSE_IDLE_TIMEOUT_MS = 90_000L
 
     private val client: HttpClient by lazy {
         // 走受控出站 client：每次 send 前都会在 GuardedHttpClient.guard() 里
@@ -344,25 +353,64 @@ internal object ProviderHttp {
      *
      * 只关心 `data:` 行：`event:` / `id:` / 注释行（`:` 开头）都跳过，
      * 空行是事件分隔符。三家实测都发单行 data，这里按单行处理。
+     *
+     * [idleMs] 是**读空闲**上限（不是整体时长）：上游半开连接 —— TCP 活着、再也不吐字 ——
+     * 会让 `readLine()` 永远挂住，界面只能刷新页面。到点由看门狗关掉流，读循环抛
+     * [SseIdleTimeoutException]，上层把它翻成 `upstream_unreachable` + 一句人话。
      */
-    inline fun forEachSseData(stream: InputStream, onData: (String) -> Unit) {
-        BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
-            readSseData(reader, onData)
+    fun forEachSseData(
+        stream: InputStream,
+        idleMs: Long = SSE_IDLE_TIMEOUT_MS,
+        onData: (String) -> Unit,
+    ) {
+        val reader = BufferedReader(InputStreamReader(stream, Charsets.UTF_8))
+        try {
+            readSseData(stream, reader, idleMs, onData)
+        } finally {
+            runCatching { reader.close() }
         }
     }
 
-    /** 同上，但复用调用方给的 reader（需要先探一行判断"到底是不是 SSE"时用）。 */
-    inline fun readSseData(reader: BufferedReader, onData: (String) -> Unit) {
-        while (true) {
-            val line = reader.readLine() ?: break
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith(":") || trimmed.startsWith("event:")
-                || trimmed.startsWith("id:") || trimmed.startsWith("retry:")
-            ) continue
-            if (!trimmed.startsWith("data:")) continue
-            val payload = trimmed.removePrefix("data:").trim()
-            if (payload.isEmpty()) continue
-            onData(payload)
+    /**
+     * 同上，但复用调用方给的 reader（需要先探一行判断"到底是不是 SSE"时用）。
+     * [stream] 与 [reader] 指同一条流：看门狗要关**底层流**才叫得醒阻塞读（原因见 [SseIdleWatchdog]）。
+     */
+    fun readSseData(
+        stream: InputStream,
+        reader: BufferedReader,
+        idleMs: Long = SSE_IDLE_TIMEOUT_MS,
+        onData: (String) -> Unit,
+    ) {
+        val watchdog = if (idleMs > 0) SseIdleWatchdog(stream, idleMs) else null
+        watchdog?.start()
+        try {
+            while (true) {
+                val line = try {
+                    reader.readLine()
+                } catch (error: IOException) {
+                    // 看门狗到点会关流，表现是这里抛 "Stream closed"/"closed" —— 说清是空闲超时，
+                    // 别让用户以为上游断线（两者修法不同：一个换模型/重试，一个查网络）。
+                    if (watchdog?.expired == true) {
+                        throw SseIdleTimeoutException("上游 ${idleMs / 1000} 秒没有任何输出（流式应答中断）")
+                    }
+                    throw error
+                } ?: break
+                watchdog?.touch()
+                val trimmed = line.trim()
+                if (trimmed.isEmpty() || trimmed.startsWith(":") || trimmed.startsWith("event:")
+                    || trimmed.startsWith("id:") || trimmed.startsWith("retry:")
+                ) continue
+                if (!trimmed.startsWith("data:")) continue
+                val payload = trimmed.removePrefix("data:").trim()
+                if (payload.isEmpty()) continue
+                onData(payload)
+            }
+            // 有的流 close() 之后不抛异常而是直接返回 EOF：那也不能当成"上游正常结束"。
+            if (watchdog?.expired == true) {
+                throw SseIdleTimeoutException("上游 ${idleMs / 1000} 秒没有任何输出（流式应答中断）")
+            }
+        } finally {
+            watchdog?.stopQuietly()
         }
     }
 

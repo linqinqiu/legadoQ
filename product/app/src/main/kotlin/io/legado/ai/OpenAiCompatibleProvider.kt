@@ -164,7 +164,7 @@ class OpenAiCompatibleProvider(
         if (firstLine.startsWith("data:")) {
             firstLine.removePrefix("data:").trim().takeIf { it.isNotEmpty() }?.let { handle(it) }
         }
-        ProviderHttp.readSseData(reader) { handle(it) }
+        ProviderHttp.readSseData(resp.body(), reader) { handle(it) }
 
         val parsedCalls = calls.values.mapNotNull { acc ->
             val name = acc.name ?: return@mapNotNull null
