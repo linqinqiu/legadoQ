@@ -180,14 +180,28 @@ class PerformanceCollector {
   }
   
   /**
-   * 封装 API 请求性能监控
+   * 封装 API 请求性能监控。
+   *
+   * [timeoutMs] 给了就**统一超时**：浏览器原生 `fetch` 没有超时，一个挂住的上游
+   * （AI 网关、书源站、体检）会让界面永远转圈，用户只能刷新页面。
+   * 调用方自己传了 `signal` 时不叠加控制器 —— 谁的中止语义更具体，就用谁的。
    */
-  async fetchWithMetrics(url: string, options: RequestInit = {}): Promise<Response> {
+  async fetchWithMetrics(url: string, options: RequestInit = {}, timeoutMs?: number): Promise<Response> {
     const requestId = `${options.method || 'GET'}:${url}`;
     const start = performance.now();
-    
+
+    const hasOwnSignal = Boolean(options.signal);
+    const controller = !hasOwnSignal && timeoutMs && timeoutMs > 0 ? new AbortController() : null;
+    let timedOut = false;
+    const timer = controller
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs)
+      : null;
+
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, controller ? { ...options, signal: controller.signal } : options);
       const duration = performance.now() - start;
       
       const metric: PerformanceMetric = {
@@ -218,7 +232,11 @@ class PerformanceCollector {
       };
       
       this.metrics.set(requestId, errorMetric);
+      // 中止是"我们主动掐的"，说清是超时，别让调用方把它当成上游断线。
+      if (timedOut) throw new Error(`请求超时（${Math.round((timeoutMs ?? 0) / 1000)} 秒没有响应）`);
       throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
   

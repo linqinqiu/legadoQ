@@ -38,6 +38,8 @@ export function ConnectionsPanel() {
   /** 实测状态：真的发一条探测消息，看外部模型此刻可达不可达。 */
   const [probe, setProbe] = useState<'idle' | 'probing' | 'ok' | 'fail'>('idle')
   const [probeEngine, setProbeEngine] = useState('')
+  /** 失败原因：只说"不可达"时，用户不知道是超时、地址被闸门拒了，还是密钥不对。 */
+  const [probeReason, setProbeReason] = useState('')
 
   const refresh = () => {
     api.listAgentConnections()
@@ -48,16 +50,21 @@ export function ConnectionsPanel() {
 
   const runProbe = async () => {
     setProbe('probing')
+    setProbeReason('')
     try {
-      const res = await api.agentChat([{ role: 'user', content: 'ping' }])
+      // 20 秒上限：浏览器 fetch 没有超时，上游半开连接会让「实测中…」永远转下去，
+      // 用户既不知道通不通、也不知道该改什么。超时由统一客户端换算成一句人话。
+      const res = await api.agentChat([{ role: 'user', content: 'ping' }], undefined, undefined, undefined, { timeoutMs: 20_000 })
       if (res.engine.startsWith('external:')) {
         setProbe('ok')
         setProbeEngine(res.engine.replace('external:', ''))
       } else {
         setProbe('fail')
+        setProbeReason(res.error || '模型没有返回可用结果')
       }
-    } catch {
+    } catch (failure) {
       setProbe('fail')
+      setProbeReason(failure instanceof Error ? failure.message : '探测失败')
     }
   }
 
@@ -109,7 +116,9 @@ export function ConnectionsPanel() {
               ) : probe === 'ok' ? (
                 <span className="ai-tag ai-tag-ok">实测可达{probeEngine ? `（${probeEngine}）` : ''}</span>
               ) : probe === 'fail' ? (
-                <span className="ai-tag ai-tag-warn">实测不可达</span>
+                <span className="ai-tag ai-tag-warn" title={probeReason || undefined}>
+                  实测不可达{probeReason ? `（${probeReason}）` : ''}
+                </span>
               ) : (
                 <span className="ai-tag">待实测</span>
               )}

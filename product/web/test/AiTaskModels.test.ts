@@ -56,3 +56,23 @@ test('契约：两条新端点进了随包目录，写的那条过同源写门',
   assert.match(routes, /get\("task-models"\)/)
   assert.match(routes, /post\("task-models"\)[\s\S]{0,200}requireSameOriginWrite/, '写的这条要过同源写门')
 })
+
+/**
+ * 实测可达：上游挂住时不能永远转圈。
+ *
+ * 从前 `runProbe` 没有超时，浏览器 `fetch` 也没有 —— 半开连接会让「实测中…」一直转，
+ * 用户既不知道通不通，也拿不到一句能照着改的原因。
+ */
+test('实测可达：20 秒上限，失败要把原因说出来', () => {
+  const modal = read('../src/features/ai/AiConnectionsModal.tsx')
+  assert.match(modal, /timeoutMs: 20_000/, '探测要有上限，不能永远转圈')
+  assert.match(modal, /const \[probeReason, setProbeReason\] = useState\(''\)/, '失败原因要有地方放')
+  assert.match(modal, /实测不可达\{probeReason/, '界面要把原因带出来，不能只说"不可达"')
+
+  const client = read('../src/lib/api/client.ts')
+  assert.match(client, /opts: \{ timeoutMs\?: number \}/, '统一客户端要能把上限透传下去')
+
+  const perf = read('../src/lib/performance.ts')
+  assert.match(perf, /controller\.abort\(\)/, '到点要真的 abort 请求，而不是只把 promise 丢掉')
+  assert.match(perf, /请求超时（/, '中止要换成一句人话，不能把 AbortError 原样丢给调用方')
+})

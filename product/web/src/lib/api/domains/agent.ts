@@ -75,12 +75,13 @@ export const comprehend = (req: {
     body: JSON.stringify(req),
   })
 
-/** 自由对话。 */
+/** 自由对话。`opts.timeoutMs` 给"实测可达"这类短探测用：上游挂住时不该永远转圈。 */
 export const chat = (
   messages: AgentChatMessage[],
   toolGroups?: string[] | null,
   skills?: string[],
   disabledTools?: string[],
+  opts: { timeoutMs?: number } = {},
 ) =>
   request<AgentChatResult>('/api/agent/chat', {
     method: 'POST',
@@ -90,7 +91,7 @@ export const chat = (
       ...(skills && skills.length > 0 ? { skills } : {}),
       ...(disabledTools && disabledTools.length > 0 ? { disabledTools } : {}),
     }),
-  })
+  }, opts)
 
 /** 流式对话（SSE）。 */
 export const chatStream = async (

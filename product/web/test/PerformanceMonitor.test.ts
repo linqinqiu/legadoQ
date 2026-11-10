@@ -146,3 +146,44 @@ test('慢请求的两个阈值不是同一个数：300ms 报 warn，500ms 才进
     console.warn = originalWarn
   }
 })
+
+/**
+ * 统一超时（2026-11-10）。浏览器 `fetch` 本身没有超时：上游半开连接会让界面永远转圈。
+ * 这两个用例盯的是"到点真的掐断"与"别把调用方自己的取消改写成超时"。
+ */
+test('timeoutMs：到点 abort 请求，并抛一句能照着改的话', async () => {
+  performanceMonitor.reset()
+  const original = globalThis.fetch
+  let aborted = false
+  try {
+    globalThis.fetch = ((_url: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          aborted = true
+          reject(new Error('aborted'))
+        })
+      })) as typeof fetch
+
+    await assert.rejects(fetchWithMetrics('/api/agent/chat', {}, 25), /请求超时/)
+    assert.equal(aborted, true, '只丢 promise 不算超时 —— 请求必须真的被中止')
+  } finally {
+    globalThis.fetch = original
+  }
+})
+
+test('timeoutMs：调用方自己的 signal 优先，不把它的中止说成超时', async () => {
+  performanceMonitor.reset()
+  const original = globalThis.fetch
+  const controller = new AbortController()
+  try {
+    globalThis.fetch = ((_url: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('caller-abort')))
+      })) as typeof fetch
+
+    setTimeout(() => controller.abort(), 10)
+    await assert.rejects(fetchWithMetrics('/api/slow', { signal: controller.signal }, 5_000), /caller-abort/)
+  } finally {
+    globalThis.fetch = original
+  }
+})
