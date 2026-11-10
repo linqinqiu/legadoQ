@@ -148,12 +148,12 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 项 | 状态 |
 |---|---|
-| 后端判据 | **1,100 通过 / 0 失败 / 0 错误**（`./gradlew :app:test --no-daemon`，2026-11-10 三轮合计） |
+| 后端判据 | **1,103 通过 / 0 失败 / 0 错误**（`./gradlew :app:test --no-daemon`，2026-11-10 四轮合计） |
 | 前端判据 | **1,032 通过 / 0 失败**（`npm --prefix product/web test`，15s）；`tsc -b` 通过 |
 | 端点 | 161 条 / 19 组不变（未加接口；阅读记录是纯前端聚合） |
 | 后端修复 | 脚本缓存回填丢 deadline（P0，`ScriptCacheTtlTest`）；响应超限改抛规则异常（`ResponseBody`）；AI 循环每轮复查上下文预算（`AgentPromptContextTest`）；停用工具的执行期护栏（`ToolPolicy`/`runTool`，`ToolSelectionTest` + `AgentToolCallingTest`）；删死代码 `getBatchBooks` |
 | 前端 | `fetchWithMetrics(url, init, timeoutMs)` 统一超时（调用方 signal 优先）；AI 实测 20 秒上限 + 失败原因；阅读记录加汇总卡片与按书统计；正文失败可「重新加载」（`ReaderReload.test.ts`） |
-| 未修 | 见 `研究-审计与优化-2026-11-10.md` §3（后端 2 条 / 前端 6 条，按 ROI 排列） |
+| 未修 | 见 `研究-审计与优化-2026-11-10.md` §3（后端 1 条 / 前端 6 条，按 ROI 排列） |
 
 > **本机跑后端全量必须设 `LEGADO_TEST_TMP`**：系统临时目录（`E:\Apps\Cache\tmp`）里的 sqlite
 > 会被杀软扫到锁住，`E2EScenariosTest` 在清理阶段报"另一个程序正在使用此文件"的假失败。
