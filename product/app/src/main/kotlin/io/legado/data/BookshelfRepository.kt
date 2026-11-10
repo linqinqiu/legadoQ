@@ -106,17 +106,6 @@ class BookshelfRepository(
         return database.shelfBook(sourceId, bookUrl)
     }
     
-    /**
-     * 批量获取书籍信息
-     */
-    fun getBatchBooks(books: List<BookIdentifier>): Map<String, BookshelfItem> {
-        return books.mapNotNull { book ->
-            val key = "${book.sourceId}:${book.bookUrl}"
-            val item = database.shelfBook(book.sourceId, book.bookUrl)
-            if (item != null) key to item else null
-        }.toMap()
-    }
-    
     // ==================== 批量操作 ====================
     
     /**
