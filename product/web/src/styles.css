@@ -6092,11 +6092,20 @@ body:has(.reader-drawer.open) .ai-fab:not(.ai-fab-open) {
 /* 功能说明关在浮层里读：宽屏的两栏是给「关于」那几小节的，不能套到长文档上。 */
 .page-dialog .guide-page { display: block; }
 .page-dialog .backup-page { padding-block-start: var(--s-5); }
-/* 阅读记录（PROPOSAL-019 D）：按天一条时间轴，天与书都是「名字 + 时长」两栏。 */
+/* 阅读记录（PROPOSAL-019 D）：上半屏汇总 + 按书，下半屏按天时间轴。 */
 .page-dialog .reading-log { min-height: 0; margin: 0; padding: var(--s-5) var(--s-6); }
 .reading-log-status { margin: 0; padding: var(--s-5) var(--s-6); color: var(--muted); }
+.reading-log-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--s-3); margin-bottom: var(--s-4); }
+.reading-log-stat { display: flex; flex-direction: column; gap: 2px; padding: var(--s-3) var(--s-4); border: 1px solid var(--line); border-radius: var(--r-2, 12px); background: var(--surface-muted); }
+.reading-log-stat-value { font-size: var(--t-lg); font-weight: 600; color: var(--ink); }
+.reading-log-stat-label { font-size: var(--t-sm); color: var(--muted); }
 .reading-log-total { margin: 0 0 var(--s-4); color: var(--muted); font-size: var(--t-lg); }
 .reading-log-total strong { color: var(--ink); }
+.reading-log-section { margin-bottom: var(--s-5); }
+.reading-log-section-title { margin: 0 0 var(--s-3); font-size: var(--t-md); font-weight: 600; color: var(--muted); }
+.reading-log-book-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.reading-log-book-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); font-size: var(--t-md); }
+.reading-log-book-meta { flex: none; color: var(--muted); font-size: var(--t-sm); }
 .reading-log-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-4); }
 .reading-log-day { border-left: 2px solid var(--line); padding-left: var(--s-4); }
 .reading-log-day-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }

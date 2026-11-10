@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { dayLabel, formatDuration, groupByDay } from '../src/plugins/reading-log/ReadingLogPage'
+import { bookStats, dayLabel, formatDuration, groupByDay, summarize } from '../src/plugins/reading-log/ReadingLogPage'
 import type { ReadingLogEntry } from '../src/lib/api'
 
 /**
@@ -67,4 +67,80 @@ test('接线：「我的」菜单有「阅读记录」入口，且开的是同�
   assert.match(main, /openModalDirect\('reading-log'\)/, '入口要开阅读记录浮层')
   const panel = fs.readFileSync(path.resolve(import.meta.dirname, '../src/plugins/reading-log/ReadingLogModal.tsx'), 'utf8')
   assert.match(panel, /<ReadingLogPage \/>/, '浮层里要真的渲染这一页，不是挂个空组件')
+})
+
+/** 借自 HapeLee/legado-with-MD3 的「阅读记录」：时间轴之外要有汇总与章节维度。 */
+const logEntry = (
+  day: string,
+  bookUrl: string,
+  seconds: number,
+  chapterIndex = 0,
+  bookName = bookUrl,
+): ReadingLogEntry => ({ day, sourceId: 'src', bookUrl, bookName, chapterIndex, seconds, updatedAt: 0 })
+
+const today = new Date(2026, 9, 13) // 2026-10-13
+
+test('summarize：总时长 / 阅读天数 / 日均 / 最久一天 / 书数', () => {
+  const entries = [
+    logEntry('2026-10-12', 'a', 30, 2),
+    logEntry('2026-10-12', 'b', 80, 0),
+    logEntry('2026-10-11', 'a', 60, 5),
+    logEntry('2026-10-10', 'c', 10, 0),
+  ]
+  const summary = summarize(entries, today)
+  assert.equal(summary.totalSeconds, 180)
+  assert.equal(summary.activeDays, 3, '同一天多本只算一天')
+  assert.equal(summary.avgSecondsPerDay, 60, '日均按「读过书的天数」摊，不是按 30 天')
+  assert.equal(summary.bookCount, 3)
+  assert.deepEqual(summary.bestDay, { day: '2026-10-12', seconds: 110 }, '最久一天按当天合计算')
+})
+
+test('summarize：连续天数从昨天起算，断一天就停', () => {
+  const continuous = summarize([
+    logEntry('2026-10-12', 'a', 30),
+    logEntry('2026-10-11', 'a', 30),
+    logEntry('2026-10-10', 'a', 30),
+  ], today)
+  assert.equal(continuous.streakDays, 3, '今天还没读，不该把昨晚的记录抹掉')
+
+  const broken = summarize([
+    logEntry('2026-10-12', 'a', 30),
+    logEntry('2026-10-10', 'a', 30),
+  ], today)
+  assert.equal(broken.streakDays, 1, '中间断了一天就只算断点之前的')
+
+  const stale = summarize([logEntry('2026-10-10', 'a', 30)], today)
+  assert.equal(stale.streakDays, 0, '今天和昨天都没读，连续天数是 0')
+})
+
+test('summarize：空输入全零，不出现 NaN', () => {
+  const summary = summarize([], today)
+  assert.equal(summary.totalSeconds, 0)
+  assert.equal(summary.activeDays, 0)
+  assert.equal(summary.avgSecondsPerDay, 0)
+  assert.equal(summary.streakDays, 0)
+  assert.equal(summary.bookCount, 0)
+  assert.equal(summary.bestDay, null)
+})
+
+test('bookStats：按书累计、取最大章号、按累计时长降序', () => {
+  const books = bookStats([
+    logEntry('2026-10-12', 'a', 30, 2, '甲'),
+    logEntry('2026-10-12', 'b', 80, 0, '乙'),
+    logEntry('2026-10-11', 'a', 60, 5, '甲'),
+  ])
+  assert.deepEqual(books.map(book => book.bookUrl), ['a', 'b'], '累计久的排前面')
+  assert.equal(books[0].seconds, 90)
+  assert.equal(books[0].maxChapterIndex, 5, '章号取最大，不是最后一条')
+  assert.equal(books[0].days, 2)
+  assert.equal(books[0].lastDay, '2026-10-12')
+  assert.equal(books[1].maxChapterIndex, 0)
+})
+
+test('接线：页面把汇总与「读到第几章」真的画出来', () => {
+  const page = fs.readFileSync(path.resolve(import.meta.dirname, '../src/plugins/reading-log/ReadingLogPage.tsx'), 'utf8')
+  assert.match(page, /summarize\(entries\)/, '汇总要走纯函数')
+  assert.match(page, /bookStats\(entries\)/, '按书统计要走纯函数')
+  assert.match(page, /读到第 \{book\.maxChapterIndex \+ 1\} 章/, '章号 0 起，展示时 +1')
+  assert.match(page, /streakDays/, '连续阅读要出现在汇总里')
 })
