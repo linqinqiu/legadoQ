@@ -19,7 +19,7 @@
 流程是 `node scripts/package-desktop.mjs` 打完再传上 tag 的发行版 —— 忘了传，发行版就只有 jar。
 
 桌面壳为什么是 jlink + jpackage 而不是 Tauri / GraalVM，见
-[`研究-桌面外壳与Tauri.md`](研究-桌面外壳与Tauri.md)：结论是现有外壳已经满足"免装 JDK、只跑一个进程、
+[`研究-桌面外壳与Tauri.md`](../../docs/research/研究-桌面外壳与Tauri.md)：结论是现有外壳已经满足"免装 JDK、只跑一个进程、
 界面同源"，换 Tauri 省不下体积，还得再养一条 Rust 打包链。
 
 ## 2. 构建顺序不是可选的

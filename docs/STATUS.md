@@ -1,9 +1,9 @@
 # 当前结构与成果
 
-> **本文写于 0.2.37（2026-11-09），数字与当时的 HEAD 对齐**；再往后的事实以
-> `product/docs/restructure/facts.md` 为准（带命令与时间戳）。两份冲突时以 facts.md 为准。
+> **规模数字采集于 2026-11-10 工作树**（含未提交改动，跑法见文末「数字口径」）；
+> 更细的命令与时间戳见 `product/docs/restructure/facts.md`。两份冲突时以 facts.md 为准。
 >
-> 版本 **0.2.37 / build 50** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 后端 **1,090** 项测试 / Web **1,019** 项测试，全绿
+> 版本 **0.2.37 / build 50** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 后端 **1,103** 项测试 / Web **1,041** 项测试，全绿
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -25,13 +25,13 @@
 
 ## 2. 后端结构（Kotlin / Ktor 3.4.3，JDK 17）
 
-**规模**（实测计数）：后端 133 个源文件 / 35,109 行，137 个测试文件 / 1,091 项测试（实跑 1,090 全绿）；前端 196 个 `.ts/.tsx` / 37,695 行，129 个测试文件 / 1,019 项测试。
+**规模**（2026-11-10 工作树实测）：后端 136 个源文件 / 35,404 行，140 个测试文件 / 1,104 项 `@Test`（实跑 1,103 全绿）；前端 200 个 `.ts/.tsx` / 38,180 行，132 个测试文件 / 1,041 项测试。
 
 ### 2.1 包职责
 
 | 包 | 职责 |
 |---|---|
-| `http/` | 路由与 HTTP 边界：13 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；系统域（目录/服务/日志/诊断/关于/更新日志）独立成 `http/system/SystemRoutes.kt`；`Guard.kt`（同源写门）、`NetworkSecurity.kt`（出站 SSRF）、`RouteCatalog.kt`（端点目录）、`ProxyHeaders.kt` |
+| `http/` | 路由与 HTTP 边界：14 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；系统域（目录/服务/日志/诊断/关于/更新日志）独立成 `http/system/SystemRoutes.kt`；`Guard.kt`（同源写门）、`NetworkSecurity.kt`（出站 SSRF）、`RouteCatalog.kt`（端点目录）、`ProxyHeaders.kt` |
 | `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 只是组合根（连接池 / 建表 / 迁移 / Cookie 工具四件事拆在 `data/db/`：`ConnectionPool` `Schema` `Migration` `CookieUtil`） |
 | `reading/` | 阅读域收口 `ReadingRepository`：进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口 |
 | `ai/` | 进程内 AI 网关：三种协议（OpenAI 兼容 / Responses / Anthropic）、流式 SSE、工具循环、连接与预设、技能库、内置工具与参数 schema、MCP 客户端（外部工具接入） |
@@ -77,12 +77,12 @@
 
 ## 3. 前端结构（TypeScript / React 19）
 
-**规模**：196 个 ts/tsx / 37,695 行（`src/`，实测计数），129 个测试文件 / 1,019 项。
+**规模**：200 个 ts/tsx / 38,180 行（`src/`，2026-11-10 实测），132 个测试文件 / 1,041 项。
 
 | 目录 | 内容 |
 |---|---|
 | `app/` | 应用外壳：`AppHeader`（顶栏、版本芯片、功能菜单）、`pages.tsx`（页面注册表） |
-| `features/reader/` | **64 个文件**（含 `settingsPanel/` `typeset/` `dict/` `content/` `dialogs/` `interaction/` `notes/` `tts/` 等子目录）：阅读器主体、目录虚拟列表、笔记/标注、TTS、排版（无 DOM 布局引擎 + Worker）、分页缓存、翻页动画、手势/快捷键 |
+| `features/reader/` | **75 个文件**（含 `settingsPanel/` `typeset/` `dict/` `content/` `dialogs/` `interaction/` `notes/` `tts/` 等子目录）：阅读器主体、目录虚拟列表、笔记/标注、TTS、排版（无 DOM 布局引擎 + Worker）、分页缓存、翻页动画、手势/快捷键 |
 | `features/bookshelf/` | 书架页（`ShelfPage`）与书库页（`LibraryPage`）+ 封面、空态引导、拖拽排序、布局与自定义顺序 |
 | `features/explore/` | 发现页：按书源 `exploreUrl` 分栏浏览 |
 | `features/source-editor/` | 书源页 + 编辑器面板、字段表单、健康体检、登录浮层、换源弹窗、订阅面板 |
@@ -118,14 +118,14 @@
 
 | 门禁 | 命令 | 现状（0.2.37 实测） |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **1,090 项 / 0 失败**（静态 `@Test` 1,091） |
-| Web 测试 | `web: npm test` | **1,019 项 / 0 失败** |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **1,103 项 / 0 失败**（静态 `@Test` 1,104，2026-11-10 实跑） |
+| Web 测试 | `web: npm test` | **1,041 项 / 0 失败** |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过 |
-| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **70.04%**，前端行 **63.51%**（合计 66.4%） |
+| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 最近一次实测（2026-11-09）：后端行 **70.04%**，前端行 **63.51%**；重跑 `npm run coverage` 取当次值 |
 | 端点文档一致 | `npm run docs:api-check` | 161 条 / 19 组，一致 |
 | 更新日志 | `npm run changelog:check` | 无待记录（提交后钩子自动起草；`fix`/`feat` 必须进日志，否则红） |
 | 版本单一来源 | `npm run version:check` | 7 处一致，0.2.37 |
-| 真浏览器门禁 | `tools/verify/*-check.mjs` | 共 **79** 个脚本（约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
+| 真浏览器门禁 | `product/tools/verify/*-check.mjs` | **47** 个 `*-check.mjs`（该目录下共 79 个 `.mjs`，约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
 
 CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约）。
 
@@ -148,8 +148,11 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - 删除 `http/HttpClients.kt`：零调用方，却写着「所有外部请求必须经过这里」。
 - 界面外壳门禁 `ui-shell-check.mjs` 的 `SkinModal` 路径跟着文件搬家修正（此前一直 ENOENT 假绿）。
 
-### 6.3 未发布（HEAD 上已有，版本号仍 0.2.37）
+### 6.3 未发布（工作树已有，版本号仍 0.2.37）
 
+- 阅读记录顶部可切「最近 30 / 90 / 365 天」，切了按新窗口重新取数，空态与汇总标签一起变。
+- 弹窗内按 Tab 不再跑到背后页面：焦点陷阱按打开顺序分层，只有最上层接管 Tab，关闭后焦点回到原处。
+- 前端网络请求收口到 `lib/api/client.ts`（`request` / `requestText` / `requestBlob` / `requestArrayBuffer`），裸 `fetch` 有静态判据挡着。
 - 修订号改为 `rev-<提交数>`（`git rev-list --count HEAD`），短 sha 另存 `sha` 字段；
   版本号只在发版时动，日常改动只让 rev 递增。
 - 前端性能采集器真正接线：统一 API 客户端走 `fetchWithMetrics`，分页测量记
@@ -157,7 +160,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - 离线缓存状态搬进 `useReaderCacheStatus`；章节正文加载与预取搬进 `useReaderChapterContent`；
   阅读停留计时搬进 `useReadingLog`；翻页动画状态搬进 `useReaderPageTurn`；分页测量搬进
   `usePaginationMeasurement`；分页轨道与滚动续接的正文画布搬进 `ReaderBody`；换源 / TTS / 规则 /
-  缓存等弹层搬进 `ReaderOverlays`，笔记状态与增删改搬进 `useReaderNotes`，划线高亮搬进纯函数 `NoteHighlights`（`ReaderScreen.tsx` 3,200 → 2,402 行）；
+  缓存等弹层搬进 `ReaderOverlays`，笔记状态与增删改搬进 `useReaderNotes`，划线高亮搬进纯函数 `NoteHighlights`（`ReaderScreen.tsx` 3,200 → 2,346 行）；
   `RuleRunner` 的列表取值段搬进 `RuleNodeSelection`。
 - 顶栏「我的」菜单不再显示「构建」号（`BUILD_NUMBER`）：它只在发版时递增，日常区分版本看「修订」（`rev`）；
   后端 `AboutInfo.build` 与 `/healthz`、`/api/about` 仍照常上报，只是界面不显。
@@ -168,10 +171,10 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 | 缺口 | 现状 | 影响 |
 |---|---|---|
-| ReaderScreen 未拆完 | 已拆出 TTS、目录（`ReaderCatalog`）、设置（`settingsPanel/`）、缓存状态与章节加载、笔记状态（`useReaderNotes`）、划线高亮（`NoteHighlights`）；`ReaderScreen.tsx` 仍有 **2,402 行**，**正文渲染与分页测量**还在里面 | 剩下两块是交互核心（段落点击/划词/图片放大/分页锚点），拆它们要先补交互判据，否则改坏了静态测试看不见 |
-| 后端覆盖率偏低的大包 | 整体行覆盖 **70.04%**；最薄的是 `http`（2,388 行 49.3%）、`ai`（3,987 行 65.8%）、`tts`（601 行 56.6%） | `tts` 与 `data.db` 的纯逻辑部分已补到 56.6% / 89.8%；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
+| ReaderScreen 未拆完 | 已拆出 TTS、目录（`ReaderCatalog`）、设置（`settingsPanel/`）、缓存状态与章节加载、笔记状态（`useReaderNotes`）、划线高亮（`NoteHighlights`）、正文画布（`ReaderBody`）、分页测量（`usePaginationMeasurement`）与跳转原语（`useReaderPositionJump`）；`ReaderScreen.tsx` 仍有 **2,346 行**，剩下的是跨模块状态编排与交互接线（段落点击 / 划词 / 图片放大 / 翻页落点） | 剩下这块是交互核心，拆它要先补交互判据，否则改坏了静态测试看不见 |
+| 后端覆盖率偏低的大包 | 2026-11-09 覆盖率快照：整体行覆盖 **70.04%**；最薄的是 `http`（2,388 行 49.3%）、`ai`（3,987 行 65.8%）、`tts`（601 行 56.6%） | `tts` 与 `data.db` 的纯逻辑部分已补到 56.6% / 89.8%；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
 | 图标小尺寸清晰度 | 512 插画细分多，16–24px 仍糊；ICO 尺寸声明已修（按档渲染 16/24/32/48/64/128/256） | 任务栏/托盘辨识度（要根治得换扁平标记，待定） |
-| 可观测性 | 解析/规则求值/出站抓取已有分阶段耗时与失败率（`GET /api/diagnostics` 的 `stages`，运行日志页可展开）；**前端分页测量仍无指标** | 后端慢在哪一层能查了，界面卡顿仍只能靠猜 |
+| 可观测性 | 解析/规则求值/出站抓取已有分阶段耗时与失败率（`GET /api/diagnostics` 的 `stages`，运行日志页可展开）；前端已接 `fetchWithMetrics` 与 `pagination_measure`，但只有控制台 `__legadoPerf.report()`，没有界面与持久化 | 界面卡顿能取到原始数据，但仍靠控制台手查，没形成产品化观测 |
 | 发布链路 | 有打包脚本与手动发布，未做签名 | 产物未签名 |
 | 插件 jar 装载 | 默认关闭、无沙箱 | 有意为之，不是缺陷 |
 
@@ -179,4 +182,31 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是「单进程 + 单写 SQLite + 19 组 HTTP 端点」的本地阅读服务，前端是自研排版引擎的 Web 阅读器。到 0.2.37，AI 侧已是「多协议 + 流式 + 技能 + 提示词预设 + 内置工具 + MCP 外部工具」的完整闭环，阅读侧有正文刷新、兄弟备份导入、登录界面本地解析与逻辑位置模型。质量靠 **2,109 项自动化测试**（1,090 后端 + 1,019 前端）、8 条命令门禁与 79 个 `tools/verify/*-check.mjs` 脚本守着；后端行覆盖 70.04%、前端 63.51%。当前最大的未完成项仍是**阅读器正文渲染的拆分**与**把内联解析搬进处理器（把 RuleRunner 拆薄）**。
+后端是「单进程 + 单写 SQLite + 19 组 HTTP 端点」的本地阅读服务，前端是自研排版引擎的 Web 阅读器。到 0.2.37，AI 侧已是「多协议 + 流式 + 技能 + 提示词预设 + 内置工具 + MCP 外部工具」的完整闭环，阅读侧有正文刷新、兄弟备份导入、登录界面本地解析与逻辑位置模型。质量靠 **2,144 项自动化测试**（1,103 后端 + 1,041 前端）、8 条命令门禁与 47 个 `product/tools/verify/*-check.mjs` 脚本守着；覆盖率以最近一次 `npm run coverage` 为准。当前最大的未完成项仍是**阅读器交互层的拆分**与**把内联解析搬进处理器（把 RuleRunner 拆薄）**。
+
+---
+
+## 9. 数字口径
+
+本文的规模与测试数字都在 **2026-11-10 工作树**（含未提交改动）上复测：
+
+```bash
+# 后端源文件 / 行数
+find product/app/src/main/kotlin/io/legado -name '*.kt' | wc -l
+find product/app/src/main/kotlin/io/legado -name '*.kt' -exec cat {} + | wc -l
+
+# 后端测试：静态计数与实际运行
+grep -rho '@Test' product/app/src/test --include=*.kt | wc -l
+cd product && ./gradlew :app:test --no-daemon
+
+# 前端源文件 / 行数 / 测试文件
+find product/web/src \( -name '*.ts' -o -name '*.tsx' \) | wc -l
+find product/web/src \( -name '*.ts' -o -name '*.tsx' \) -exec cat {} + | wc -l
+ls product/web/test/*.test.ts | wc -l
+npm --prefix product/web test
+
+# 真浏览器门禁脚本
+ls product/tools/verify/*-check.mjs | wc -l
+```
+
+后端「实跑 1,103」取自 `product/app/build/test-results/test/*.xml` 的 `<testsuite tests="…">` 求和；静态 `@Test` 1,104 与实跑差 1 是历史现象（有一条用例没有被任何测试类执行），不是失败。

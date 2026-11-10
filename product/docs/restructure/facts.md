@@ -4,7 +4,7 @@
 > 其他文档（`docs/STATUS.md`、`backend-layering.md`、`frontend-host.md`）里的规模数字写于各自 commit，
 > 属于历史事实；与本文冲突时以本文为准，并重新跑一遍命令。
 >
-> 最近采集：**2026-11-09 21:00–21:10（本地）**。工作树**干净**，HEAD 就是 tag `v0.2.37`。
+> 最近采集：**2026-11-10**（规模与测试数按工作树复测；构建产物 / 数据库快照仍是 2026-11-09 的值）。
 
 ---
 
@@ -35,22 +35,22 @@
 
 ---
 
-## 2. 源码规模（工作树，2026-11-09 21:00）
+## 2. 源码规模（工作树，2026-11-10）
 
 | 项 | 值 | 命令 | 口径 |
 |---|---:|---|---|
-| 后端 `.kt` | **134** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含全部包 |
-| 后端行数 | **35,109** | `find … -exec cat {} + \| wc -l` | — |
-| 后端 `@Test` | **1,091** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
-| 后端测试文件 | **137** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
-| 前端 ts/tsx | **196** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | — |
-| 前端行数 | **37,695** | 同上 `-exec cat {} + \| wc -l` | — |
-| 前端测试文件 | **129** | `ls product/web/test/*.test.ts \| wc -l` | — |
+| 后端 `.kt` | **136** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含全部包 |
+| 后端行数 | **35,404** | `find … -exec cat {} + \| wc -l` | — |
+| 后端 `@Test` | **1,104** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
+| 后端测试文件 | **140** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
+| 前端 ts/tsx | **200** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | 2026-11-10 |
+| 前端行数 | **38,180** | 同上 `-exec cat {} + \| wc -l` | 同日 |
+| 前端测试文件 | **132** | `ls product/web/test/*.test.ts \| wc -l` | 同日 |
 
-**跑起来的通过数（2026-11-09 22:05–22:07 复跑）**：后端 **1,090 / 1,090**（0 失败 0 错误），
-前端 **1,019 / 1,019**。合计 **2,109**。
+**跑起来的通过数（2026-11-10 复跑）**：后端 **1,103 / 1,103**（0 失败 0 错误，`product/app/build/test-results/test/*.xml` 求和），
+前端 **1,041 / 1,041**。合计 **2,144**。
 
-> 静态 1,091 与运行 1,090 的差额来自一条没被任何测试类执行的用例，不是失败。
+> 静态 1,104 与运行 1,103 的差额来自一条没有被任何测试类执行的用例，不是失败。
 
 **覆盖率（jacoco / c8，2026-11-09 22:11 同一次 `npm run coverage`）**：后端行 **70.04%**
 （13,209 / 18,860），前端行 **63.51%**（15,070 / 23,726），前后端合计 **66.4%**。
@@ -88,7 +88,8 @@
 | 指标 | 值 |
 |---|---:|
 | 库文件 | 66 MB（WAL 69 MB，SHM 32 KB） |
-| 代码建的表 | **24** |
+| 代码建的表 | **20**（`data/db/Schema.kt`） |
+| 磁盘上的表 | **24**（20 + 遗留 `book_mark` + `sqlite_sequence` / `sqlite_stat1` / `sqlite_stat4`） |
 | 书源总数 / 启用 | 5,600 / 5,600 |
 | RSS 源 | 178 |
 | 书架书 / 分组 | 0 / 4 |
@@ -109,11 +110,11 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 ---
 
-## 5. 现场状态（瞬时，2026-11-09 22:15）
+## 5. 现场状态（瞬时，2026-11-10）
 
 | 项 | 状态 |
 |---|---|
-| 工作树 | 本文提交后干净（此前有文档与代码改动） |
+| 工作树 | **有未提交改动**（2026-11-10：文档归拢 + 前端统一传输层 / 焦点陷阱 / 阅读记录范围）；未提交未推送 |
 | 服务 | **未运行**；本轮验证用 `gradlew :app:test` 与 `npm test`，没有起 1234 |
 | `/healthz` | 无应答（服务未启动）；修订号格式见 §1 的 `rev` / `sha` |
 | 端点 | **161 条 / 19 组**（`docs:api-check` 实测） |
@@ -137,23 +138,25 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 后端拆分 | `RuleRunner` 2,419 → **2,333**；响应解码/字符集/限读（`decodeBody`/`resolveBodyCharset`/`metaCharset`/`readAll`/`readLimited` + `MAX_BODY_BYTES`/`META_CHARSET`）抽进同包 `ResponseBody`(112)，`resolveBodyCharset` 留一行委托保 `ResponseCharsetTest` |
 | 前端判据 | **1,022 通过 / 0 失败**（`npm --prefix product/web test`，2026-11-10 复跑） |
 | 笔记拆分边界 | `useReaderNotes` 收了状态与增删改；`useReaderPositionJump` 收了 `jumpToNote`/`jumpToSearchHit`/`jumpToNotePosition`/跨章落点 effect；`toggleBookmark`（依赖 `readLogicalPosition`，与 persist 共用逻辑位置）仍留 `ReaderScreen`，经 `notesApi.*` 复用状态 |
-| 门禁 | `check`(tsc -b) 通过；version/docs:api/changelog 未重跑（未改版本/接口/修复提交）。注：`check:test` 在 `test/PerformanceMonitor.test.ts` 有既有类型报错（上次动于 `c660963`），非本轮引入 |
+| 门禁 | `check`(tsc -b) 通过；version/docs:api/changelog 未重跑（未改版本/接口/修复提交）。注：`check:test` 当时在 `test/PerformanceMonitor.test.ts` 有类型报错（上次动于 `c660963`），非该轮引入；**2026-11-10 复查：该报错已随 fetch mock 修补消除，`check:test` 现已通过** |
 
 ---
 
 ### 5.2 续（2026-11-10 下午，本地，审计与优化轮）
 
-> 这一轮没加端点、没动数据格式：4 条后端行为修复 + 1 条前端统一超时 + 阅读记录汇总（借 MD3）。
-> 逐条证据与判据见 `product/docs/研究-审计与优化-2026-11-10.md`。
+> 这一轮没加端点、没动数据格式：后端行为修复 + 前端统一超时/统一传输层/焦点陷阱 + 阅读记录汇总与范围切换（借 MD3）。
+> 逐条证据与判据见 `docs/research/研究-审计与优化-2026-11-10.md`。
 
 | 项 | 状态 |
 |---|---|
-| 后端判据 | **1,103 通过 / 0 失败 / 0 错误**（`./gradlew :app:test --no-daemon`，2026-11-10 四轮合计） |
-| 前端判据 | **1,032 通过 / 0 失败**（`npm --prefix product/web test`，15s）；`tsc -b` 通过 |
+| 后端判据 | **1,103 通过 / 0 失败 / 0 错误**（`./gradlew :app:test --no-daemon`，2026-11-10 复跑；`ResponseBody.kt` 改动后重跑仍全绿） |
+| 前端判据 | **1,041 通过 / 0 失败**（`npm --prefix product/web test`，2026-11-10 第五轮）；`tsc -b` 与 `tsc -p tsconfig.test.json` 均通过 |
 | 端点 | 161 条 / 19 组不变（未加接口；阅读记录是纯前端聚合） |
 | 后端修复 | 脚本缓存回填丢 deadline（P0，`ScriptCacheTtlTest`）；响应超限改抛规则异常（`ResponseBody`）；AI 循环每轮复查上下文预算（`AgentPromptContextTest`）；停用工具的执行期护栏（`ToolPolicy`/`runTool`，`ToolSelectionTest` + `AgentToolCallingTest`）；删死代码 `getBatchBooks` |
-| 前端 | `fetchWithMetrics(url, init, timeoutMs)` 统一超时（调用方 signal 优先）；AI 实测 20 秒上限 + 失败原因；阅读记录加汇总卡片与按书统计；正文失败可「重新加载」（`ReaderReload.test.ts`） |
-| 未修 | 见 `研究-审计与优化-2026-11-10.md` §3（后端 1 条 / 前端 6 条，按 ROI 排列） |
+| 前端 | `fetchWithMetrics(url, init, timeoutMs)` 统一超时（调用方 signal 优先）；AI 实测 20 秒上限 + 失败原因；阅读记录加汇总卡片、按书统计与 30/90/365 切换；正文失败可「重新加载」（`ReaderReload.test.ts`）；裸 `fetch` 收口到 `lib/api/client.ts` 的 text/blob/arraybuffer 助手（`BareFetch.test.ts` 守卫）；三处弹层接 `useFocusTrap`（`FocusTrap.test.ts`，嵌套栈） |
+| 未修 | 见 `研究-审计与优化-2026-11-10.md` §3（后端 1 条 / 前端 5 条，按 ROI 排列） |
+| 文档归拢 | 8 份研究 + 14 份会话记录（另各自 README）已迁入 `docs/research/` / `docs/sessions/`，`docs/README.md` 是唯一索引；77 份 Markdown、116 条相对链接全部可达（2026-11-10 脚本核查） |
+| 复跑 | 文档改完后后端 `:app:test` **1,103 通过 / 0 失败**、前端 `npm --prefix product/web test` **1,041 通过 / 0 失败**；`check`、`check:test`、`vite build` 与 version/docs:api/changelog 三条门禁均通过 |
 
 > **本机跑后端全量必须设 `LEGADO_TEST_TMP`**：系统临时目录（`E:\Apps\Cache\tmp`）里的 sqlite
 > 会被杀软扫到锁住，`E2EScenariosTest` 在清理阶段报"另一个程序正在使用此文件"的假失败。
@@ -165,9 +168,9 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 来源 | 说法 | 实测 | 处置 |
 |---|---|---|---|
-| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,090 / 1,019、161、24 | 已按本文重写 |
-| `backend-layering.md` | 123 / 32,153 / 935 | 134 / 35,109 / 1,091 | 写于旧 commit，数字以本文为准 |
-| `frontend-host.md` | 177 / 110 | 188 / 129 | 同上 |
+| `docs/STATUS.md`（0.2.14 版） | 927 / 900 测试、161 端点、20 张表 | 1,103 / 1,041、161、20（代码建表） | 已按本文重写 |
+| `backend-layering.md` | 123 / 32,153 / 935 | 136 / 35,404 / 1,104 | 写于旧 commit，数字以本文为准 |
+| `frontend-host.md` | 177 / 110 | 200 / 132 | 同上 |
 | `docs/ARCHITECTURE.md` §13 | `HttpClients` 零调用方 | 0.2.36 已删除该文件 | 该行已改为「已撤销」 |
 | 旧记忆 | 0.2.17 / build 13 | 0.2.37 / build 50 | 已更新 |
 

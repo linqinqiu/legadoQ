@@ -80,4 +80,4 @@ Hash 路由（`/#shelf`）确实天然兼容，但解决不了上面这两条。
   `.app-shell` 底部余量 92px；`?desktop=1` 下不出现安装条
 - `stalled-client-check` 仍然红：这是引擎层的旧账（任务 #36），0.1.6 同样红，
   实测台阶在 10 个停读对端上下；调大 `Dispatchers.IO` 并行度不解决，详见
-  [`gates-guide.md`](gates-guide.md) §6.3.1。与桌面壳无关，不挡桌面包。
+  [`gates-guide.md`](../../product/docs/gates-guide.md) §6.3.1。与桌面壳无关，不挡桌面包。

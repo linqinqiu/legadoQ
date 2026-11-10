@@ -64,13 +64,14 @@ Kotlin JVM 17 + Ktor 3.4 + SQLite（WAL）。前端 React 19 + TypeScript + Vite
 - **本地书**：TXT / EPUB 导入，26 条分章规则可选、可新建、可编辑，也能让程序读文件头打分自动挑一条；已经在读的那本可以换规则重切目录。
 - **手机备份包**：见下面单独一节。
 - **写操作保护**：浏览器发出的跨站写请求一定带 `Origin`，与本机 Host 不一致就 403。抓取侧对重定向后的地址复验，拒绝内网与链路本地目标；正文进界面前做净化，图片走代理。
-- **AI 接入**：程序内部的 AI 网关（8 个端点，`GET /api/agent/manifest` 可查能力清单）。**要先登记一个外部模型**（任何 openai-compatible 的地址：本机 Ollama、各家 API、自建网关都行）才能用；没登记就是明确报「未连接」，不会拿本地规则拼一段话冒充模型回答。接上之后它能做两类事，见下面单独一节。
+- **AI 接入**：程序内部的 AI 网关（22 个端点，`GET /api/agent/manifest` 可查能力清单）。**要先登记一个外部模型**（任何 openai-compatible 的地址：本机 Ollama、各家 API、自建网关都行）才能用；没登记就是明确报「未连接」，不会拿本地规则拼一段话冒充模型回答。接上之后它能做两类事，见下面单独一节。
 
 ## AI 能帮你做什么
 
 先说清楚它**是什么**：一个**进程内**的 AI 网关，不是外挂的聊天框。
 它拿到的服务和界面用的是同一批 —— 所以它知道你在哪一页、在看哪本书、读到第几章，
-也能调用程序自己的 54 个能力（查书源、搜书、改净化规则、读正文……）。
+也能调用程序自己的 55 个内置能力（查书源、搜书、改净化规则、读正文……），
+外加按 MCP 配置动态发现的工具。
 
 **用法**：设置 → 接入与扩展 → AI 接入 → 登记一个 openai-compatible 连接。
 登记完输入框才可用；面板顶部有两个状态，别混：「已连接」说的是**配没配**，
@@ -204,8 +205,9 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     StaticWeb.kt            界面静态资源挂载（同端口的 `/` 与 `/next`）
     BuildInfo.kt · DesktopLauncher.kt  版本清单 · 桌面壳（探端口、开浏览器、托盘退出）
     http/                   Guard.kt 写操作同源闸门 · NetworkSecurity.kt · Routes.kt 装配点 + 按面拆组的 <面>Routes.kt（REST 与 WebSocket）· RouteCatalog.kt 端点契约（与 /api/catalog 双向核对）
-    rules/                  RuleRunner.kt 规则执行（Rhino + Jsoup + JsonPath + XPath）· JsSandbox.kt · JsGuard.kt · RuleSplit.kt · RuleValue.kt · PagingRule.kt
-    data/                   Database.kt 连接与建表 · <面>Dao.kt 各数据面（同包扩展）
+    rules/                  RuleRunner.kt 规则执行（Rhino + Jsoup + JsonPath + XPath）· JsSandbox.kt · JsGuard.kt · RuleSplit.kt · RuleValue.kt · RuleNodeSelection.kt · ResponseBody.kt
+    data/                   Database.kt 连接与建表 · <面>Dao.kt 各数据面（同包扩展）· SourceRepository.kt 书源编排
+    reading/                ReadingRepository.kt 进度 / 阅读记录 / 笔记划线书签 / 章节窗口
     source/                 SourceCodec.kt 书源编解码 · SourceHealth.kt 体检分档 · SourceDebugger.kt 分阶段调试 · WebViewProxy.kt 整站反代 · ExternalBrowserLogin.kt
     content/                ContentPipeline.kt · ContentProcessor.kt 正文净化 · LooseJson.kt 宽松 JSON
     cache/                  BookCacheService.kt 离线缓存调度 · CoverCache.kt 封面与防盗链代理
@@ -214,29 +216,22 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     backup/                 BackupImporter.kt · BackupStore.kt · LegacyBackup.kt
     subscription/           SubscriptionService.kt 订阅同步
     ops/                    LogService.kt · UpdateCheck.kt
+    port/                   规则内核需要的窄接口（PortBundle 等），把 rules → data 的横穿收成一组访问器
     model/                  Models.kt 全部请求 / 响应体
-    ai/                     进程内 AI 网关：Agent.kt · AgentConnection.kt 句柄 · AgentRoutes.kt 薄收口 · LlmProvider.kt / ToolRegistry.kt / ConnectionSelector.kt 扩展点 · Guardrails.kt · BuiltinTools.kt · AgentCatalog.kt 契约
-    plugin/                 EventBus.kt · AppEvents.kt · Plugin.kt · PluginManager.kt 进程内插件框架
-  src/main/resources/       agent-api.json（`/api/agent/*` 组 8 条端点契约）· assets/txtTocRule.json
+    ai/                     进程内 AI 网关：Agent.kt · AgentConnection.kt 句柄 · AgentRoutes.kt 薄收口 · LlmProvider.kt / ToolRegistry.kt / ConnectionSelector.kt 扩展点 · Guardrails.kt · BuiltinTools.kt（55 个内置工具）· McpBridge.kt · AgentCatalog.kt 契约
+  src/main/resources/       agent-api.json（161 条端点契约）· assets/txtTocRule.json
 web/                        前端（React 19 + TS + Vite，构建产物进同一个 jar）
   src/main.tsx              应用外壳 + hash 路由 + 全局快捷键
-  src/app/                  destinations.ts 路由登记 · pageMeta.ts 页头元信息 · pages.tsx 页面装配
-  src/reader/               阅读器与朗读：翻页与滚动几何、点击分区、分句、悬浮条位置、设置读写
-                             VirtualChapterList.tsx 目录虚拟列表 · useReaderTts.ts 朗读集群 · contentImages.ts 图片预热 · paragraphs.ts 正文切段 · openBook.ts 传书合同
-
-  src/sources/              书源：结构化字段表、编辑、体检、换源、登录五条路、内置反代浏览器、批量
-  src/lib/                  api 端点表、流式搜索 store、IndexedDB 离线库、结果清洗、报错翻译
-  src/components/           浮层一档、下拉 / Toast / 右键菜单、日志、订阅 RSS、PWA 更新、皮肤、书源候选列表与书籍详情弹窗
-  src/pages/                关于、更新日志、备份、发现、阅读记录、设置、订阅 RSS，与书库 / 书架 / 书源三个主页面
-  src/shelf/                封面、空态引导、书架布局与拖动排序
-  src/settings/             settingsSections.ts 设置分组登记
-  src/features/             按业务面分的功能块（AI 接入面板、设置分区等）
-  src/plugins/              内置插件实装：about · backup · changelog · plugin-intro · reading-log · source-health
-  src/extensions/           扩展契约（registry.ts）：前端插件的接口面
+  src/app/                  AppHeader.tsx 顶栏 · pages.tsx 页面注册表（导航项在 lib/nav.ts）
+  src/features/             按业务域分：reader（正文画布/目录/笔记/TTS/排版/分页/手势）· bookshelf · explore · source-editor · settings · ai · rss
+  src/plugins/              页面级内置插件：about · backup · changelog · reading-log · source-health
+  src/components/           通用浮层与控件（Select / Toast / 右键菜单 / 各类 Modal）
+  src/lib/                  跨域工具：api/（client.ts + domains/*，统一传输层）· 导航 · 离线存储 · 拖拽排序 · 字体库 · 性能采集
+  src/i18n/                 zh.ts 中文文案
   src/icons.tsx · styles.css  全站单色图标 · 样式与皮肤令牌
   test/                     单元与静态判据，入口是 test/run-all.ts（它扫目录登记，新加测试文件不用改清单）
 
-tools/verify/               在真实浏览器和真实服务上跑的门禁脚本
+product/tools/verify/       在真实浏览器和真实服务上跑的门禁脚本（47 个 *-check.mjs）
 scripts/                    tasks.mjs（build / package / dev 单一入口）· runtime.mjs 启动运行时 · package-desktop.mjs 桌面打包 · coverage-report.mjs 覆盖率汇总
 docs/                       见下面「文档」一节
 compose.yml          Docker Compose 编排
@@ -261,7 +256,7 @@ Dockerfile           多阶段构建（前端 + 服务端）
 | **覆盖率怎么看、先补哪里** | [docs/coverage-guide.md](docs/coverage-guide.md) |
 | 对外接口的完整清单 | [`../docs/API-REFERENCE.md`](../docs/API-REFERENCE.md) 或 `GET /api/catalog` |
 | 改完端点怎么同步文档 | `npm run docs:api` 重新生成；`npm run docs:api-check` 只比对（CI 会跑） |
-| 某个改动当初为什么那样定、量到了什么 | [docs/sessions/](docs/sessions/) 工程日志（一版一份，命名与骨架见其 README） |
+| 某个改动当初为什么那样定、量到了什么 | [../docs/sessions/](../docs/sessions/) 工程日志（一版一份，命名与骨架见其 README） |
 
 
 ## 测试

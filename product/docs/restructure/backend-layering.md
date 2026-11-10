@@ -181,10 +181,12 @@ ai/ProviderHttp.kt:5      import io.legado.http.ServerIdentity
 cache/CoverCache.kt:22    import io.legado.http.proxyRequestHeaders
 ```
 
-- `ServerIdentity` 定义在 [http/Guard.kt:30](../../app/src/main/kotlin/io/legado/http/Guard.kt#L30)，语义是**运行时监听地址持有者**，与 HTTP 路由无关；`ai/ProviderHttp.kt` 用它拼出站回调地址。
-- `proxyRequestHeaders` 定义在 [http/ProxyHeaders.kt:20](../../app/src/main/kotlin/io/legado/http/ProxyHeaders.kt#L20)，是纯 header 组装函数；`cache/CoverCache.kt` 用它给代取资源补请求头。
+- `ServerIdentity` 当时定义在 `http/Guard.kt:30`，语义是**运行时监听地址持有者**，与 HTTP 路由无关；`ai/ProviderHttp.kt` 用它拼出站回调地址。
+- `proxyRequestHeaders` 当时定义在 `http/ProxyHeaders.kt:20`，是纯 header 组装函数；`cache/CoverCache.kt` 用它给代取资源补请求头。
 
 两者都是「住在 api 包里的非 api 原语」。修法与 `NetworkSecurity` 从 `http/` 下沉到 `ops/` 完全同构（见 [architecture-audit.md](../../docs/architecture-audit.md) §3 第 3 行）。
+
+> **执行后更正（2026-11-10 核查）**：这两个原语都已下沉到 `ops/`（[ServerIdentity](../../app/src/main/kotlin/io/legado/ops/ServerIdentity.kt)、[proxyRequestHeaders](../../app/src/main/kotlin/io/legado/ops/ProxyHeaders.kt#L24)），上表的 `infra → api` 边已清零。本段保留的是 `bebd824` 当时的诊断。
 
 #### D. `engine → infra（非 ops）`：**9 条** ❌（= 既有基线 1 条 + `source/` 的 6 条 + `source/ExternalBrowserLogin` 2 条）
 

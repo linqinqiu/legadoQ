@@ -22,7 +22,7 @@
 | `product/app/` | Kotlin/Ktor 源码与资源 | 前端代码 |
 | `product/web/` | 内置 Web UI 源码与测试 | 独立前端实验 |
 | `product/data/` · `product/app/data/` | 运行数据库、封面、本地书、浏览器配置 | 任何需要提交的文件 |
-| `docs/` | API 参考、目录规划、索引 | 历史文档 |
+| `docs/` | 总览、API 参考、目录规划、研究快照、工程日志、唯一索引 | 产品操作手册（在 `product/docs/`）、构建产物 |
 | `scripts/` | `start` / `stop` 包装，委托 `product` | 旧内嵌模式启动脚本 |
 | `product/logs/` | 1234 运行日志 | 需要提交的文件 |
 
@@ -43,8 +43,10 @@
 
 - 后端功能 → `product/app/src/...`
 - 内置 UI → `product/web/src/...`
-- 后端文档 → `product/docs/`
+- 产品操作手册（部署 / 兼容 / 门禁等） → `product/docs/`
 - 总览/API/目录说明 → `docs/`
+- 研究结论与方案取舍 → `docs/research/研究-<主题>.md`
+- 一轮工程记录 → `docs/sessions/YYYY-MM-DD-<主题>.md`
 - 发布包 → 仓库外 `<仓库外>/legado-out/`（或按发布流程另指）
 - 临时脚本 → `product/tmp/`（已忽略）或仓库外
 

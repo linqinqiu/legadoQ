@@ -2,6 +2,7 @@
 
 > 状态：**规划完成，未执行**。本文只做分析与清单，仓库里没有任何文件被移动。
 > 工作区已有的未提交改动（架构判据、`ops/` 下沉、前端 `lib/pageMeta.ts`）**原样保留**，未受本文影响。
+> 规模与端点数字是写作时的快照，现行数字以 [facts.md](./facts.md) 为准。
 
 ---
 
@@ -103,7 +104,7 @@ cd E:/legado && git grep -l "product/" | wc -l                            # → 
 | 32 | `RELEASES.md` | 1 | 发布记录 |
 | 33 | `CHANGELOG.md` | 1 | 变更日志 |
 | 34 | `.gitignore` | 1 | 仅注释（`:19`） |
-| 35-37 | `product/docs/sessions/2026-10-26-*.md`、`product/docs/研究-借鉴-*.md`、`docs/archive/CHANGELOG-0.8.6及以前.md` | 各 1 | **历史文档，建议原样保留不改**（改历史记录反而制造噪音） |
+| 35-37 | `docs/sessions/2026-10-26-*.md`、`docs/research/研究-借鉴-*.md`、`docs/archive/CHANGELOG-0.8.6及以前.md` | 各 1 | **历史文档，建议原样保留不改**（改历史记录反而制造噪音） |
 
 > **可豁免的 4 处**：`NotesPanel.tsx`、`recycle.mjs`、`.githooks/post-commit`、`.gitignore` 都是注释，
 > 不构成功能性耦合。再加 3 处历史文档（已归档的 changelog、会话记录、研究笔记）建议原样保留。

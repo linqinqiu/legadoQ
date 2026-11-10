@@ -38,9 +38,10 @@
 - 发版：`npm run release -- --no-push` 后 `git push origin main vX.Y.Z`（tag 与 main 同批推，避免 main CI 先红）。
 - 发行三资产必须齐：`legado.jar` / `legado-dist.zip` / `legadoq-desktop-<版本>.zip`。
 
-## 6. 研究 / 历史文档（`product/docs/`）
-- 当前 frontier：`研究-阅读器拆分续-下一步.md`、`研究-0.2.37-成果核查与下一步.md`
-- 实测事实源：`restructure/facts.md`；按日会话记录：`sessions/`
+## 6. 研究 / 历史文档
+- 当前 frontier：`docs/research/研究-阅读器拆分续-下一步.md`、`docs/research/研究-0.2.37-成果核查与下一步.md`
+- 实测事实源：`product/docs/restructure/facts.md`；按日会话记录：`docs/sessions/`；归档：`docs/archive/`
+- 统一索引入口：`docs/README.md`。研究文档是**当时快照**，数字不随代码更新；现行数字只看 facts.md。
 
 ## 7. 大文件拆分路线图（每拆一刀，后续 AI 改造成本永久下降）
 按「先低风险、后高耦合」排，每步单独提交、先补判据：

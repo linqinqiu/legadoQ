@@ -50,7 +50,7 @@ Legado 的 `bookSourceType` 只有 0~3；`4 视频`是社区扩展（本机库�
 - `cache/CoverCache.kt`
   - 正文图片上限 5 MiB → **20 MiB**（漫画长图），封面仍 5 MiB；读流时就限，不先整包进内存。
 - 前端
-  - 新增 `reader/mediaKind.ts`（纯分类）、`reader/HlsVideo.tsx`（hls.js）；
+  - 新增 `features/reader/content/mediaKind.ts`（纯分类）、`features/reader/content/HlsVideo.tsx`（hls.js）；
   - `MediaBlock` 支持 HLS / 播放页 iframe / 文件下载；
   - 新增 `web/test/mediaKind.test.ts`；`package.json` 增加 `hls.js@^1.7.3`。
 - 判据：后端 **626** 项（新增 8）、前端 **744** 项（新增 6），全绿。
@@ -111,9 +111,9 @@ curl -s -r 0-99 -D - -o /dev/null "http://127.0.0.1:1234/api/book/media?url=…m
 - `product/app/src/main/kotlin/io/legado/cache/CoverCache.kt`
 - `product/app/src/test/kotlin/io/legado/MediaProxyHelpersTest.kt`（新增）
 - `product/app/src/test/kotlin/io/legado/MediaUrlSniffTest.kt`
-- `product/web/src/reader/mediaKind.ts`（新增）
-- `product/web/src/reader/HlsVideo.tsx`（新增）
-- `product/web/src/reader/MediaBlock.tsx`
+- `product/web/src/features/reader/content/mediaKind.ts`（新增）
+- `product/web/src/features/reader/content/HlsVideo.tsx`（新增）
+- `product/web/src/features/reader/content/MediaBlock.tsx`
 - `product/web/src/styles.css`
 - `product/web/test/mediaKind.test.ts`（新增）
 - `product/web/package.json` / `package-lock.json`（`hls.js`）

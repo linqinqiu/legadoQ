@@ -1,8 +1,8 @@
 # 架构示意
 
-> 依据当前 1234 的源码与运行态整理，只画已经存在的部分。**这里不写版本号也不写端点数** ——
-> 版本以 `/healthz` 为准、端点以 `/api/catalog` 为准（`docs/API-REFERENCE.md` 由契约生成）。
-> 抄一份数字在这里，下次发版就多一处会忘记改的地方（0.8.2→0.8.3 那轮就集体滞后过）。
+> 依据当前源码整理，只画已经存在的部分。**版本号以 `/healthz` 为准，端点以 `/api/catalog` 为准**
+> （`docs/API-REFERENCE.md` 由契约生成）。本文里的端点数与表数是 **2026-11-10 快照**，
+> 发版后可能变化；以 `product/docs/restructure/facts.md` 与 `docs:api-check` 的当次输出为准。
 > 接口清单见 [`API-REFERENCE.md`](API-REFERENCE.md)，目录职责见 [`STRUCTURE.md`](STRUCTURE.md)。
 
 ## 1. 全景
@@ -17,7 +17,7 @@ flowchart LR
 
     subgraph PROC["单个 JVM 进程 · Ktor CIO 3.4.3 · 默认 127.0.0.1:1234"]
         GUARD["同源写门<br/>http/Guard.kt<br/>只拦跨站写"]
-        ROUTE["路由层<br/>http/Routes.kt 装配点 + 13 个组文件<br/>142 个端点 / 19 组<br/>WS /api/search/stream"]
+        ROUTE["路由层<br/>http/Routes.kt 装配点 + 14 个组文件<br/>161 个端点 / 19 组<br/>WS /api/search/stream"]
         STATIC["静态资源<br/>StaticWeb.kt<br/>SPA 壳 + /next 挂载点"]
 
         subgraph DOMAIN["业务模块"]
@@ -33,7 +33,7 @@ flowchart LR
             OPS["ops<br/>日志落库 / 更新检查"]
         end
 
-        DB[("SQLite<br/>data/legado.sqlite · WAL<br/>代码建 16 张表")]
+        DB[("SQLite<br/>data/legado.sqlite · WAL<br/>代码建 20 张表")]
         NETSEC["出站闸门<br/>http/NetworkSecurity.kt<br/>拒内网 / 链路本地 / 保留段"]
     end
 
@@ -86,7 +86,7 @@ flowchart TB
     end
 
     subgraph L2["HTTP 层"]
-        B1["Routes.kt 装配点<br/>+ 13 个 <组>Routes.kt<br/>全部 /api/* 与 WebSocket"]
+        B1["Routes.kt 装配点<br/>+ 14 个 <组>Routes.kt<br/>全部 /api/* 与 WebSocket"]
         B2["Guard.kt<br/>同源写门"]
         B3["NetworkSecurity.kt<br/>出站 SSRF 闸门"]
         B4["ProxyHeaders.kt<br/>反代头"]
@@ -107,7 +107,7 @@ flowchart TB
     end
 
     subgraph L4["基础设施"]
-        D1["data/Database.kt 装配点<br/>建表 / 迁移 / 连接池<br/>+ 11 个 <面>Dao.kt"]
+        D1["data/Database.kt 装配点<br/>建表 / 迁移 / 连接池<br/>+ 13 个 <面>Dao.kt"]
         D2["SQLite 文件"]
         D3["data/covers<br/>封面落盘"]
         D4["data/external-browser-profile<br/>内置浏览器配置"]
@@ -156,7 +156,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     ROOT["安装根目录<br/>可整体移动"]
-    ROOT --> L["legado/<br/>产品本体"]
+    ROOT --> L["product/<br/>产品本体"]
     ROOT --> D["docs/<br/>对外文档"]
     ROOT --> S["scripts/<br/>start / stop 包装"]
 
@@ -173,19 +173,19 @@ flowchart LR
 
 | 位置 | 内容 | 是否入库 |
 |---|---|---|
-| `legado/data/legado.sqlite` | 书源、书架、进度、缓存索引、日志等（代码建 16 张表；老库里可能还有已停用的旧表） | 否 |
-| `legado/data/covers/` | 封面文件 | 否 |
-| `legado/data/external-browser-profile/` | 内置浏览器登录态 | 否 |
-| `legado/data/local_books/` | 导入的 TXT / EPUB | 否 |
-| `legado/data/backup_kept/` | 备份包里没有原生归宿的条目 | 否 |
-| `legado/logs/`、`legado/server.log` | 运行日志 | 否 |
+| `product/data/legado.sqlite` | 书源、书架、进度、缓存索引、日志等（代码建 20 张表；老库里可能还有已停用的旧表） | 否 |
+| `product/data/covers/` | 封面文件 | 否 |
+| `product/data/external-browser-profile/` | 内置浏览器登录态 | 否 |
+| `product/data/local_books/` | 导入的 TXT / EPUB | 否 |
+| `product/data/backup_kept/` | 备份包里没有原生归宿的条目 | 否 |
+| `product/logs/`、`product/server.log` | 运行日志 | 否 |
 
 ## 5. 启动与进程
 
 ```mermaid
 flowchart LR
-    A["npm start<br/>或 scripts/start.cmd / start.sh"] --> B["legado/start.mjs<br/>解析端口、数据目录、日志"]
-    B --> C["java -jar<br/>app/build/libs/legado-*-all.jar"]
+    A["npm start<br/>或 product/start.cmd / start.sh"] --> B["product/start.mjs<br/>解析端口、数据目录、日志"]
+    B --> C["java -jar<br/>product/app/build/libs/legado-*-all.jar"]
     C --> D["Ktor CIO<br/>127.0.0.1:1234"]
     D --> E["/healthz<br/>版本与状态"]
     D --> F["/api/catalog<br/>机器可读端点目录"]
@@ -194,10 +194,10 @@ flowchart LR
 
 - 端口优先级：`--port` → `port.txt` → `.env` / `LEGADO_PORT` → `1234`。`port.txt` 排第二是因为它是
   使用者在界面上最后改的那一下（`PUT /api/server/port` 写的就是它），比一份可能早就不记得的 `.env` 更算数。
-  注意服务端自己的兜底默认是 `8080`（`ServerConfig.kt`），`1234` 是 `scripts/runtime.mjs` 这个启动器给的 ——
+  注意服务端自己的兜底默认是 `8080`（`ServerConfig.kt`），`1234` 是 `product/scripts/runtime.mjs` 这个启动器给的 ——
   裸跑 jar 不经过启动器时，缺省端口是 8080 而不是 1234。
 - 数据与日志都相对安装根解析，换盘或改名后无需改配置。
-- 停止用 `npm run stop`（`legado/stop.mjs`），只结束本目录启动的进程。
+- 停止用 `npm run stop`（`product/stop.mjs`），只结束本目录启动的进程。
 
 ## 6. 安全边界
 
@@ -225,38 +225,39 @@ flowchart TB
 
 | 目录 | 职责 | 关键文件 |
 |---|---|---|
-| `legado/app/src/main/kotlin/io/legado/` | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`StaticWeb.kt`、`BuildInfo.kt`、`DesktopLauncher.kt` |
-| `legado/app/src/main/kotlin/io/legado/http/` | 路由、写门、出站闸门、目录生成 | `Routes.kt` 装配点 + 13 个组文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ProgressRoutes`/`TtsRoutes`/`AgentApiRoutes`，共 14 个 `*Routes.kt` 含装配点本身）、`Guard.kt`、`NetworkSecurity.kt`、`RouteCatalog.kt` |
-| `legado/app/src/main/kotlin/io/legado/rules/` | 规则解析与求值 | `RuleRunner.kt`、`RuleSplit.kt`、`RuleValue.kt`、`JsSandbox.kt`、`PagingRule.kt` |
-| `legado/app/src/main/kotlin/io/legado/source/` | 书源、登录、体检、调试 | `SourceCodec.kt`、`SourceHealth.kt`、`SourceDebugger.kt`、`WebViewProxy.kt`、`ExternalBrowserLogin.kt` |
-| `legado/app/src/main/kotlin/io/legado/content/` | 正文净化 | `ContentPipeline.kt`、`ContentProcessor.kt`、`LooseJson.kt` |
-| `legado/app/src/main/kotlin/io/legado/localbook/` | TXT / EPUB | `LocalBookParser.kt`、`TxtTocRule.kt` |
-| `legado/app/src/main/kotlin/io/legado/cache/` | 整书缓存与封面 | `BookCacheService.kt`、`CoverCache.kt` |
-| `legado/app/src/main/kotlin/io/legado/tts/` | 朗读 | `EdgeTtsService.kt`、`TtsSessionService.kt` |
-| `legado/app/src/main/kotlin/io/legado/backup/` | 备份 | `BackupImporter.kt`、`BackupStore.kt`、`LegacyBackup.kt` |
-| `legado/app/src/main/kotlin/io/legado/subscription/` | 书源订阅与 RSS | `SubscriptionService.kt` |
-| `legado/app/src/main/kotlin/io/legado/ai/` | 进程内 AI 网关 | `Agent.kt` 实现 · `AgentConnection.kt` 句柄 · `AgentRoutes.kt` 薄收口 · `LlmProvider.kt` / `ToolRegistry.kt` / `ConnectionSelector.kt` 扩展点 · `Guardrails.kt` · `BuiltinTools.kt` · `AgentCatalog.kt` 契约 |
-| `legado/app/src/main/kotlin/io/legado/plugin/` | 进程内插件框架 | `Plugin.kt`、`PluginManager.kt`、`EventBus.kt`、`AppEvents.kt` |
-| `legado/app/src/main/kotlin/io/legado/ops/` | 日志与更新检查 | `LogService.kt`、`UpdateCheck.kt` |
-| `legado/app/src/main/kotlin/io/legado/data/` | 建表、迁移、连接池 + 各数据面 | `Database.kt` 装配点 + 11 个 `<面>Dao.kt`（同包扩展函数） |
-| `legado/app/src/main/kotlin/io/legado/model/` | 请求 / 响应体 | `Models.kt` |
-| `legado/web/src/` | 内置 UI | `app/`（路由表 + 页面渲染表）、`pages/`、`reader/`、`shelf/`、`sources/`、`settings/`、`components/`、`lib/`、`lab/`（容器）、`extensions/`（插件契约）、`plugins/`（内置插件）、`features/`（功能条目） |
+| `product/app/src/main/kotlin/io/legado/` | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`AppConfig.kt`、`StaticWeb.kt`、`BuildInfo.kt`、`DesktopLauncher.kt` |
+| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、出站闸门、目录生成 | `Routes.kt` 装配点 + 14 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`，共 15 个 `*Routes.kt` 含装配点本身）、`Guard.kt`、`NetworkSecurity.kt`、`RouteCatalog.kt` |
+| `product/app/src/main/kotlin/io/legado/rules/` | 规则解析与求值 | `RuleRunner.kt`、`RuleSplit.kt`、`RuleValue.kt`、`RuleNodeSelection.kt`、`ResponseBody.kt`、`JsSandbox.kt`、`JavaPackages.kt` |
+| `product/app/src/main/kotlin/io/legado/source/` | 书源、登录、体检、调试 | `SourceCodec.kt`、`SourceHealth.kt`、`SourceDebugger.kt`、`WebViewProxy.kt`、`ExternalBrowserLogin.kt` |
+| `product/app/src/main/kotlin/io/legado/content/` | 正文净化 | `ContentPipeline.kt`、`ContentProcessor.kt`、`LooseJson.kt` |
+| `product/app/src/main/kotlin/io/legado/localbook/` | TXT / EPUB | `LocalBookParser.kt`、`TxtTocRule.kt` |
+| `product/app/src/main/kotlin/io/legado/cache/` | 整书缓存与封面 | `BookCacheService.kt`、`CoverCache.kt` |
+| `product/app/src/main/kotlin/io/legado/tts/` | 朗读 | `EdgeTtsService.kt`、`TtsSessionService.kt` |
+| `product/app/src/main/kotlin/io/legado/backup/` | 备份 | `BackupImporter.kt`、`BackupStore.kt`、`LegacyBackup.kt` |
+| `product/app/src/main/kotlin/io/legado/subscription/` | 书源订阅与 RSS | `SubscriptionService.kt` |
+| `product/app/src/main/kotlin/io/legado/reading/` | 阅读域收口 | `ReadingRepository.kt`（进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口） |
+| `product/app/src/main/kotlin/io/legado/ai/` | 进程内 AI 网关 | `Agent.kt` 实现 · `AgentConnection.kt` 句柄 · `AgentRoutes.kt` 薄收口 · `LlmProvider.kt` / `ToolRegistry.kt` / `ConnectionSelector.kt` 扩展点 · `Guardrails.kt` · `BuiltinTools.kt` · `McpBridge.kt` · `AgentCatalog.kt` 契约 |
+| `product/app/src/main/kotlin/io/legado/port/` | 规则内核窄接口 | `PortBundle.kt`、`StorePorts.kt`（`rules/` 不直接依赖 `data/`） |
+| `product/app/src/main/kotlin/io/legado/ops/` | 日志与更新检查 | `LogService.kt`、`UpdateCheck.kt` |
+| `product/app/src/main/kotlin/io/legado/data/` | 建表、迁移、连接池 + 各数据面 | `Database.kt` 装配点 + 13 个 `<面>Dao.kt`（同包扩展函数）+ `SourceRepository.kt` |
+| `product/app/src/main/kotlin/io/legado/model/` | 请求 / 响应体 | `Models.kt` |
+| `product/web/src/` | 内置 UI | `main.tsx` · `app/`（`AppHeader.tsx`、`pages.tsx`）· `features/`（reader/bookshelf/explore/source-editor/settings/ai/rss）· `plugins/`（about/backup/changelog/reading-log/source-health）· `components/` · `lib/`（`api/`、`nav.ts`、`pageMeta.ts`、`offlineStorage.ts` 等）· `i18n/` |
 
 ## 8. 接口分组
 
-`/api/catalog` 当前返回 142 条，按 19 组分布：
+`/api/catalog` 当前返回 161 条，按 19 组分布（2026-11-10 快照）：
 
 | 分组 | 条数 | 分组 | 条数 |
 |---|---:|---|---:|
-| 书架 | 16 | 内置浏览器 | 17 |
-| 书源 | 12 | 登录与凭据 | 11 |
-| 净化规则 | 10 | 朗读 | 9 |
-| 进度与笔记 | 9 | AI 自定义接入 | 8 |
+| AI 自定义接入 | 22 | 内置浏览器 | 17 |
+| 登录与凭据 | 15 | 书架 | 14 |
+| 书源 | 12 | 净化规则 | 10 |
+| 进度与笔记 | 9 | 朗读 | 9 |
 | 系统 | 8 | 分章规则 | 7 |
-| RSS | 7 | 图片与媒体 | 6 |
-| 书源订阅 | 5 | 发现页 | 3 |
-| 阅读 | 5 | 离线缓存 | 3 |
-| 备份 | 3 | 搜索 | 2 |
+| RSS | 7 | 阅读 | 6 |
+| 图片与媒体 | 6 | 书源订阅 | 5 |
+| 备份 | 5 | 发现页 | 3 |
+| 离线缓存 | 3 | 搜索 | 2 |
 | 目录 | 1 |  |  |
 
 逐条路径与方法见 [`API-REFERENCE.md`](API-REFERENCE.md)。
@@ -278,10 +279,10 @@ flowchart TB
 │                                                              │
 │  SameOriginWriteGate（全局插件，拦跨站写）                    │
 │  ─────────────────────────────────────────────────────────  │
-│  Routes.kt 装配点 + 13 个域路由文件（142 端点 / 19 组）        │
+│  Routes.kt 装配点 + 14 个域路由文件（161 端点 / 19 组）        │
 │  ─────────────────────────────────────────────────────────  │
 │  领域层：source · rules · content · localbook · cache ·       │
-│          tts · subscription · backup · ops · ai · plugin     │
+│          tts · subscription · backup · ops · ai · reading    │
 │  ─────────────────────────────────────────────────────────  │
 │  ReadingRepository（阅读域收口）                              │
 │  ─────────────────────────────────────────────────────────  │
@@ -289,7 +290,7 @@ flowchart TB
 └──────────────────────────────────────────────────────────────┘
         │                        │
         ▼                        ▼
-  SQLite（WAL，18 张表）     文件：封面 / 本地书 / 日志 / 浏览器 profile
+  SQLite（WAL，代码建 20 张表）  文件：封面 / 本地书 / 日志 / 浏览器 profile
         │
         ▼ 出站（NetworkSecurity 闸门）
   书源站点 / RSS / TTS / 外部模型
@@ -299,7 +300,7 @@ flowchart TB
 
 ## 1. 进程与启动序列
 
-入口 `legado/app/src/main/kotlin/io/legado/Application.kt` → `Application.legadoApplication(config)`。启动顺序是有依赖的，不能随便调：
+入口 `product/app/src/main/kotlin/io/legado/Application.kt` → `Application.legadoApplication(config)`。启动顺序是有依赖的，不能随便调：
 
 | 步 | 动作 | 为什么是这个顺序 |
 |---:|---|---|
@@ -310,7 +311,7 @@ flowchart TB
 | 5 | `CoverCache` → `BookCacheService` | 封面缓存必须先于整书缓存：离线缓存漫画章节时要顺手抓图进同一个磁盘缓存 |
 | 6 | `EdgeTtsService` → `TtsSessionService` | 会话服务依赖引擎 |
 | 7 | `AgentModule.connect(...)` | 进程内 AI 网关，**不开端口、不注册路由**；注入的是与 HTTP 端点**同一份**服务实例 |
-| 8 | `PluginManager(...)` | 四个扩展点照旧接线；`LEGADO_PLUGIN_JAR_SCAN` 默认 false，不扫 `plugins/` 的 jar |
+| 8 | 订阅 `ApplicationStarted`，挂后台任务 | 端口就绪**不等**订阅同步 / 缓存续跑 / 封面回收，避免启动被外部网络拖住 |
 | 9 | `install(ContentNegotiation / WebSockets / StatusPages)` | 序列化、WS、异常映射 |
 | 10 | `install(SameOriginWriteGate)` | 全局写门，必须在 `routing {}` 之前 |
 | 11 | `routing { get("/healthz"); apiRoutes(...) }` | 全部业务端点 |
@@ -349,10 +350,10 @@ Database（data/Database.kt）
 1. **一个域 = 一张路由文件 + 一组 DAO + （可选）一个 Repository**，装配入口固定为 `fun Route.xxxRoutes(deps)`。
 2. **跨域复用必须有第二个消费方**。只有一处用到的东西留在原域，不许"为省一次 import"搬进公共包 —— 公共包一旦长成杂物间，就再也分不清谁能删。
 3. **`Routes.kt` 只构造依赖并调用域入口**。新增域**不改中央签名**；若发现必须改，说明依赖没归位。
-4. **依赖方向单向**：领域服务不反向依赖 `ai/` 或 `plugin/`（它们是扩展面，不是基础设施）；`reading/` 可被任何域引用，但它不引用其他域的 DAO。
+4. **依赖方向单向**：领域服务不反向依赖 `ai/`（它是扩展面，不是基础设施）；`reading/` 可被任何域引用，但它不引用其他域的 DAO。插件系统已整体移除，不再有 `plugin/` 依赖面。
 5. **一个域只有一个对外动词面**：HTTP 路由只做"入参 → 域方法 → 响应"，业务判断留在域内，别在路由里写 if-else 分支业务。
 
-> 现状：规则 1 基本成立（13 个域文件），但 `Routes.kt` 里仍内联着 books / sources / search / system 四组端点，属于**待收口**；规则 4 已被违反过（AI 工具层直调其他域 DAO，尚未收回）。
+> 现状：规则 1 已成立（14 个域文件，`Routes.kt` 只做挂载，不再内联端点）；规则 4 仍有 AI 工具层直调其他域 DAO 的历史遗留，尚未全部收回。
 
 ---
 
@@ -360,17 +361,17 @@ Database（data/Database.kt）
 
 ### 3.1 装配点
 
-`legado/app/src/main/kotlin/io/legado/http/Routes.kt` 的 `apiRoutes(...)` 是唯一装配点，签名即依赖清单（Database、RuleRunner、CoverCache、SubscriptionService、BookCacheService、EdgeTtsService、TtsSessionService、安装根、当前 host/port、Agent 连接、ProfileStore、PluginManager）。
+`product/app/src/main/kotlin/io/legado/http/Routes.kt` 的 `apiRoutes(...)` 是唯一装配点，签名即依赖清单（Database、RuleRunner、CoverCache、SubscriptionService、BookCacheService、EdgeTtsService、TtsSessionService、安装根、当前 host/port、Agent 连接、ProfileStore）。
 
 域路由在 `route("/api") { ... }` 内逐个挂：
 
 ```kotlin
-backupRoutes · rssRoutes · readingRoutes · replaceRulesRoutes · shelfRoutes
-tocRulesRoutes · mediaRoutes · readerRoutes · ttsRoutes · agentApiRoutes
-（另有在装配点内直接登记的 books / sources / search / system 等）
+systemRoutes · sourcesRoutes · searchRoutes · subscriptionsRoutes · backupRoutes
+rssRoutes · readingRoutes · replaceRulesRoutes · shelfRoutes · tocRulesRoutes
+mediaRoutes · readerRoutes · ttsRoutes · agentApiRoutes
 ```
 
-13 个域文件：`AgentApiRoutes` `BackupRoutes` `MediaRoutes` `ReadersRoutes` `ReadingRoutes` `ReplaceRulesRoutes` `RssRoutes` `SearchRoutes` `ShelfRoutes` `SourcesRoutes` `SubscriptionsRoutes` `TocRulesRoutes` `TtsRoutes`。
+14 个域文件：`AgentApiRoutes` `BackupRoutes` `MediaRoutes` `ReadersRoutes` `ReadingRoutes` `ReplaceRulesRoutes` `RssRoutes` `SearchRoutes` `ShelfRoutes` `SourcesRoutes` `SubscriptionsRoutes` `SystemRoutes` `TocRulesRoutes` `TtsRoutes`。
 
 ### 3.2 一次请求的生命周期
 
@@ -399,7 +400,7 @@ Ktor Call
 
 ### 3.3 端点契约与门禁
 
-- 契约文件：`legado/app/src/main/resources/agent-api.json`（142 条 / 19 组）。
+- 契约文件：`product/app/src/main/resources/agent-api.json`（161 条 / 19 组）。
 - `web/test/ApiCatalog.test.ts` 双向核对：源码里多一条 / 目录里少一条都红。
 - `npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 与契约一致。
 - ⚠️ 目录是**扫源码文本**得出的，不是运行时路由表 —— 曾经因此漏过「路由写进别的 handler 里、启动后 404」的缺陷。现在有 `RouteCatalogTest` 真起服务打一发的判据兜底。
@@ -420,7 +421,8 @@ Ktor Call
 | `backup/` | `BackupStore` | 备份包导入导出、无归宿条目的保留区 |
 | `ops/` | `LogService`、`UpdateCheck` | 结构化日志落库、更新检查 |
 | `ai/` | `Agent`、`ToolRegistry`、`LlmProvider`、`ConnectionSelector` | 进程内 AI 网关（§7） |
-| `plugin/` | `Plugin`、`EventBus`、`PluginManager` | 插件骨架，默认不装 jar |
+| `reading/` | `ReadingRepository` | 阅读域收口：进度、阅读记录、笔记/划线/书签、本书检索、章节窗口 |
+| `port/` | `PortBundle`、`StorePorts` | 规则内核需要的窄接口，`rules/` 只依赖它而不依赖 `data/` |
 
 ---
 
@@ -440,16 +442,16 @@ close()       = 关写连接 + 清空池 + 关掉所有曾创建的连接（Wind
 
 **为什么单写**：SQLite 同一时刻只允许一个写者；本项目有「流式搜索（长读）+ 阅读进度写入（频繁写）+ 缓存任务（批量写）」三条并发路径，放开多写必然撞 `SQLITE_BUSY`。用一个 `ReentrantLock` 把写串行化，配合 `busy_timeout` 兜住跨进程/其它连接的瞬时竞争。
 
-### 5.2 18 张表（按用途分组）
+### 5.2 20 张表（按用途分组）
 
 | 组 | 表 |
 |---|---|
 | 书源 | `source`（payload 存整份 JSON）、`source_login_state`、`cookie`、`source_health`（体检结论，搜索按它排序） |
 | 书架与阅读 | `book_shelf`（含 `toc_rule`、`group_id`）、`book_group`、`reading_progress`、`reading_log`、`book_note` |
 | 内容缓存 | `book_content_cache`（正文，含 `chapter_index`）、`book_content_process`（AI 覆盖正文）、`book_cache_status`（缓存状态机）、`book_toc_cache`（目录 JSON）、`cover_cache` |
-| 规则 | `replace_rule` |
+| 规则 | `replace_rule`、`script_cache` |
 | 订阅 | `source_subscription`、`rss_source` |
-| 运维 | `log_entry` |
+| 运维 | `log_entry`、`app_meta` |
 
 **迁移策略**：没有 schema 版本号，靠 `pragma table_info` 判断「列在不在」，缺就 `ALTER TABLE ADD COLUMN`（`migrateReadingProgress` / `migrateBookshelf` / `migrateSourceTable` / `migrateBookNote` / `migrateBookContentCache`）。老库只加列、不改列、不删表（除已废弃的 `app_user` / `session`）。需要回填的迁移（如 `chapter_index`）在同一事务内按目录 JSON 回填一次。
 
@@ -484,7 +486,7 @@ close()       = 关写连接 + 清空池 + 关掉所有曾创建的连接（Wind
 
 ### 6.3 分页引擎（前端，自研）
 
-> **接线状态（2026-10-26 核）**：下面这张图描述的是 `reader/typeset/`（`typesetParams` + `layoutEngine` + `layoutWorker`）与 `reader/paginationCache.ts` 这条设计线。两者**都有实现、也都有单测，但目前没有任何生产者调用它们** —— 全仓唯一的引用是 `web/test/PaginationCache.test.ts`，`ReaderScreen` 走的是自己那套 DOM 测量分页（见 6.2 末段），IndexedDB 里的 `pagination_cache` 仓库实际从未被写入。
+> **接线状态（2026-10-26 核）**：下面这张图描述的是 `features/reader/typeset/`（`typesetParams` + `layoutEngine` + `layoutWorker`）与 `features/reader/content/paginationCache.ts` 这条设计线。两者**都有实现、也都有单测，但目前没有任何生产者调用它们** —— 全仓唯一的引用是 `product/web/test/PaginationCache.test.ts`，`ReaderScreen` 走的是自己那套 DOM 测量分页（见 6.2 末段），IndexedDB 里的 `pagination_cache` 仓库实际从未被写入。
 > 也就是说这是**待决**而不是已交付：要么把分页接到这条线上，要么整簇删掉（443 行 + 1 份判据）。留着它最坏的代价不是那 443 行，而是文档按"已经这样工作"的口吻描述一个没在跑的设计 —— 读到图的人按图找代码会找不到。
 
 ```
@@ -500,7 +502,7 @@ paginationCache（IndexedDB `legado-reader` / store `pagination_cache`）
    key = 书 + 章 + 内容哈希 + 排版参数
 ```
 
-- 计算放 **Web Worker**（`typeset/layoutWorker.ts`），主线程只收发消息，不阻塞输入。
+- 计算放 **Web Worker**（`features/reader/typeset/layoutWorker.ts`），主线程只收发消息，不阻塞输入。
 - 改字号/字体/分栏时，先用旧结果的偏移定位到「当前页首字符」，新布局算完再按同一字符偏移找回位置 —— 所以**不会跳回第一页**。
 - 缓存命中即可跳过重算；`IndexedDB` 不可用（无头/隐私模式）时静默降级，不影响阅读。
 
@@ -532,7 +534,7 @@ paginationCache（IndexedDB `legado-reader` / store `pagination_cache`）
 AgentRoutes（HTTP）
   → AgentConnection（句柄）
       → Agent
-          ├ toolManifest()     能力清单（含每个工具的 origin：builtin / plugin:<id>）
+          ├ toolManifest()     能力清单（含每个工具的 origin：builtin / 外部注册）
           ├ runTool(id, args)  工具分发
           ├ comprehend(text,…) 阅读理解（必须有外部模型；无连接 409，外呼失败 502）
           └ chat(messages)     多轮对话（工具调用循环，最多 AppConfig.aiMaxToolRounds 轮，
@@ -543,7 +545,7 @@ AgentRoutes（HTTP）
 
 | 扩展点 | 实现 | 用途 |
 |---|---|---|
-| 工具注册表 | `ToolRegistry` | 内置工具 + 插件注册的工具 |
+| 工具注册表 | `ToolRegistry` | 内置工具 + 宿主 `register()` 注册的工具 |
 | 生命周期钩子 | `ToolHooks` | 工具调用前后 |
 | 模型提供方 | `LlmProviderRegistry`（内置 `OpenAiCompatibleProvider`） | 换协议/换后端 |
 | 连接选择策略 | `ConnectionSelectorRegistry`（默认 `FirstProfileSelector`） | 多连接时选哪个；默认取配置文件第一条，不自动 failover |
@@ -584,9 +586,8 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 ### 8.3 边界与开关
 
-- 只绑回环；`0.0.0.0` 未在代码里禁止（Dockerfile 会设），属于已知缺口。
-- `LEGADO_PLUGIN_JAR_SCAN` 默认 false：装 jar = 在本机进程执行任意代码，能读明文 apiKey、绕过护栏改库、自写 provider 不过出站闸门。
-- 插件框架不提供沙箱；无沙箱不开放第三方插件。
+- 默认只绑回环；非回环绑定必须 `LEGADO_ALLOW_EXTERNAL_BIND=1` 显式放行（启动闸门 `requireLoopbackBind`），否则拒绝启动。
+- 插件系统已于 2026-10-26 整体移除：没有 `plugin/` 包、没有 jar 扫描开关，AI 工具只能由宿主代码 `register()` 注册。
 
 ---
 
@@ -607,9 +608,9 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 ## 10. 构建与发布
 
-- **构建**：Gradle（Kotlin JVM）。依赖版本统一在 `gradle/libs.versions.toml`（Version Catalog）；`app/build.gradle` 是**版本真源**，`jar` task 写 manifest（`Implementation-Version`），发行版 `/healthz` 才报得出真实版本（开发态 `gradlew :app:run` 跑 classes 目录，显示 `dev` 属正常）。
+- **构建**：Gradle（Kotlin JVM）。依赖版本统一在 `gradle/libs.versions.toml`（Version Catalog）；`product/app/build.gradle` 是**版本真源**，`jar` task 写 manifest（`Implementation-Version`），发行版 `/healthz` 才报得出真实版本（开发态 `gradlew :app:run` 跑 classes 目录，显示 `dev` 属正常）。
 - **前端**：Vite 构建产物打进 jar 的静态资源；`StaticWeb.kt` 提供 SPA 壳。
-- **脚本**：`scripts/tasks.mjs`（build/test 编排）、`gen-api-reference.mjs`（文档生成与校验）、`changelog.mjs`（提交后自动起草日志）、`version-check.mjs`（版本单一来源）、`install-hooks.mjs`（装 git 钩子）。
+- **脚本**：`product/scripts/tasks.mjs`（build/test 编排）、`gen-api-reference.mjs`（文档生成与校验）、`changelog.mjs`（提交后自动起草日志）、`version-check.mjs`（版本单一来源）、`install-hooks.mjs`（装 git 钩子）。
 - **门禁**：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本；Tag 与版本一致）、`contract.yml`。
 - **发布**：`build-jar.yml`（⚠️ 目前在 master 每次非 PR push 都会发 Release，属已知缺口）、Dockerfile。
 - **版本治理**：`CHANGELOG.md` 每个版本一条，小节顺序固定「新增 → 变更 → 修复 → 移除」；同名小节全文件唯一；判据在 `web/test/Changelog.test.ts`。
@@ -620,15 +621,15 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 | 层 | 位置 | 做法 |
 |---|---|---|
-| 纯函数单测 | `app/src/test/kotlin` | 规则解析、版本比较、Cookie 解析、逻辑位置 |
+| 纯函数单测 | `product/app/src/test/kotlin` | 规则解析、版本比较、Cookie 解析、逻辑位置 |
 | DAO / Repository | 同上 | 临时 SQLite 文件当库，真建表真读写 |
 | HTTP 层 | 同上 | `testApplication { application { legadoApplication(config) } }`，真起服务断言**状态码 + 文案** |
-| 前端单测 | `web/test` | `node:test` + tsx，纯函数与组件行为 |
-| 真浏览器门禁 | `legado/tools/verify/*.mjs` | 阅读排版、笔记、备份、缓存、书源链路等端到端 |
+| 前端单测 | `product/web/test` | `node:test` + tsx，纯函数与组件行为 |
+| 真浏览器门禁 | `product/tools/verify/*.mjs` | 阅读排版、笔记、备份、缓存、书源链路等端到端 |
 
 **一条被反复使用的纪律：反向对照**。写判据时要问「把被测实现改坏，这条会红吗」——例如「把搜索改成只搜标题必须被逮住」「撤掉路由修复必须报 404」。没有反向验证过的判据不算数。
 
-当前：后端 **643** 项、Web **738** 项，全绿。
+当前（2026-11-10）：后端 **1,103** 项、Web **1,041** 项，全绿。
 
 ---
 
@@ -639,10 +640,10 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 新端点 | `http/<域>Routes.kt` + `Routes.kt` 挂载 | `agent-api.json`、`ApiCatalog.test.ts` 计数、`docs/API-REFERENCE.md` |
 | 新表/新列 | `data/Database.kt` 建表 + `migrate*` | 老库迁移必须只加不改 |
 | 新业务查询 | `data/*Dao.kt`（表级）→ `reading/ReadingRepository`（组合） | 不许 Route 拼 SQL |
-| 新设置项 | `web/src/settings/settingsSections.ts` | `SettingsSections.test.ts`（动作数从 actions 派生，不写死） |
-| 新 AI 工具 | `ai/BuiltinTools.kt` 或插件 `register()` | 工具要带 `origin` 与 `writes` 标记 |
-| 新前端页面 | `web/src/pages/` + `lib/nav.ts` | 路由与导航 |
-| 新排版参数 | `web/src/reader/typeset/typesetParams.ts` | 会进分页缓存 key，改动即缓存失效 |
+| 新设置项 | `web/src/features/settings/settingsSections.ts` | `SettingsSections.test.ts`（动作数从 actions 派生，不写死） |
+| 新 AI 工具 | `ai/BuiltinTools.kt` 或宿主 `ToolRegistry.register()` | 工具要带 `origin` 与 `writes` 标记 |
+| 新前端页面 | `web/src/features/<域>/` + `app/pages.tsx` | 路由与导航：`lib/nav.ts` + `app/pages.tsx` |
+| 新排版参数 | `web/src/features/reader/typeset/typesetParams.ts` | 会进分页缓存 key，改动即缓存失效 |
 
 ---
 
@@ -655,11 +656,11 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 |---|---|---|
 | 1 | 收口只做了书架与书源两域 | **部分完成**：`BookshelfRepository` / `SourceRepository` 已承接两域的清单、增删改、分组、批量、换源与体检；订阅与缓存在 0.2.36 核查后判定**不值得**再包一层 —— 业务已在 `SubscriptionService` 与 `BookshelfRepository` 里，再包就是纯转发 |
 | 2 | `/api/catalog` 与运行时注册不绑定 | **未解**：静态 JSON + 源码扫描，模块漏挂载不会红 |
-| 3 | 无统一出站客户端层 | **已撤销（0.2.36 删除）**：`http/HttpClients.kt` 是零调用方的薄封装，却写着「所有外部请求必须经过这里」。真正在用的是 `ops/NetworkSecurity`，各调用点直接建客户端、闸门在解析期生效。要真做统一层，得先有「业务代码不许出现裸 `newHttpClient`」的判据，而不是先写一个没人用的类 |
+| 3 | 无统一出站客户端层 | **已撤销（0.2.36 删除）**：`http/HttpClients.kt` 是零调用方的薄封装，却写着「所有外部请求必须经过这里」。真正在用的是 `http/NetworkSecurity`，各调用点直接建客户端、闸门在解析期生效。要真做统一层，得先有「业务代码不许出现裸 `newHttpClient`」的判据，而不是先写一个没人用的类 |
 | 4 | 可观测性薄 | **进行中**：Metrics 已暴露到 `/api/diagnostics`，持续增强 |
 | 5 | `0.0.0.0` 未在代码层禁止 | **已解**：启动期 `requireLoopbackBind()` 拒绝非回环绑定 |
 | 6 | 发布链路 | **未解**：`build-jar.yml` 触发面过宽、未签名、无 Secrets 注入 |
-| 7 | 前端阅读器单文件过大 | **未解**：`ReaderScreen.tsx` 约 3200 行，待拆分 |
+| 7 | 前端阅读器单文件过大 | **部分完成**：`ReaderBody` / `ReaderChrome` / `ReaderOverlays`、6 个 `useReader*` hook 与纯函数目录已拆出；`ReaderScreen.tsx` 仍有 **2,346 行**，剩下跨模块状态编排与交互接线 |
 | 8 | 用户侧仍依赖 Node | **部分完成**：`npm start` → `start.mjs` 负责端口/数据目录/开浏览器；原生启动器（jpackage + jlink）尚未做 |
 
 > 关于 #3 和 #7 的说明：这两项曾被记为「已完成」，但对照代码不成立 ——
@@ -680,8 +681,8 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 层 | 文件 | 负责什么 | 边界 |
 | :--- | :--- | :--- | :--- |
 | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`DesktopLauncher.kt` | Ktor 特性装配、路由注册、启动后台任务 | 端口就绪**不等**订阅同步 / 缓存续跑 / 封面回收，它们挂在 `ApplicationStarted` 之后 |
-| 路由 | `http/Routes.kt` 装配点 + `http/<组>Routes.kt`（13 个业务组，0.8.2 拆出） | 全部 `/api/*` 与 WebSocket | 装配点只留目录/系统两组与挂载调用；响应体一律 `@Serializable data class`；`Map<String, Any>` 在 Ktor 这边直接 500 |
-| 数据 | `data/Database.kt` 装配点 + `data/<面>Dao.kt`（11 个，0.8.2 拆出） | 建表、迁移、连接生命周期在装配点；书源/书架/缓存/导入/RSS/订阅/日志/登录/凭据/净化各归各面 | 源清单在库层缓存，写路径统一失效；`close()` 也清缓存。DAO 写成同包扩展函数，调用点 `database.foo()` 不变；跨包用要 `import io.legado.data.<方法>` |
+| 路由 | `http/Routes.kt` 装配点 + `http/<域>Routes.kt`（14 个域文件，0.8.2 起拆出） | 全部 `/api/*` 与 WebSocket | 装配点只构造依赖并逐个挂载；`SystemRoutes` 也已是独立文件；响应体一律 `@Serializable data class`；`Map<String, Any>` 在 Ktor 这边直接 500 |
+| 数据 | `data/Database.kt` 装配点 + `data/<面>Dao.kt`（13 个，0.8.2 起拆出） | 建表、迁移、连接生命周期在装配点；书源/书架/缓存/导入/RSS/订阅/日志/登录/凭据/净化/脚本缓存各归各面 | 源清单在库层缓存，写路径统一失效；`close()` 也清缓存。DAO 写成同包扩展函数，调用点 `database.foo()` 不变；跨包用要 `import io.legado.data.<方法>` |
 | 规则引擎 | `rules/RuleSplit.kt`、`rules/RuleValue.kt`、`rules/RuleRunner.kt`、`rules/JsSandbox.kt` | 把 Legado 的取值语法求值成值 | 沙箱**不开真实 Java 反射**：`JavaImporter` 是安全空替身；`{{}}` 模板展开后早退，不再被当选择器二次求值 |
 | 内容管道 | `content/ContentProcessor.kt`、`content/LooseJson.kt` | 正文净化、脏 JSON 兜底 | 净化在落库**之前**执行，离线缓存与朗读因此自动拿到干净文本 |
 | 缓存 | `cache/BookCacheService.kt`、`cache/CoverCache.kt`、`book_*_cache` 表 | 整书离线、封面代理与落盘 | 封面边读边限大小、落盘原子化；正文缓存有 SQLite 层，改章节逻辑时别读已缓存的那一章 |
@@ -693,19 +694,19 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 ## 3. 数据模型
 
-库文件默认 `$LEGADO_DATA_DIR/legado.sqlite`（WAL，所以同级还有 `-wal` / `-shm`）。代码会建 16 张表，按归属分六组：
+库文件默认 `$LEGADO_DATA_DIR/legado.sqlite`（WAL，所以同级还有 `-wal` / `-shm`）。代码会建 20 张表，按归属分六组：
 
-- **书源与凭据**：`source`（整份书源 JSON 存 `payload`）、`source_login_state`、`cookie`。
+- **书源与凭据**：`source`（整份书源 JSON 存 `payload`）、`source_login_state`、`cookie`、`source_health`（体检结论）。
 - **书架与进度**：`book_shelf`、`book_group`、`reading_progress`、`reading_log`。
 - **阅读标记**：`book_note`（划线 / 备注）。
-- **缓存**：`book_toc_cache`、`book_content_cache`、`book_cache_status`；封面字节走 `cover_cache` + 磁盘文件。
-- **内容与规则**：`replace_rule`、`source_subscription`、`rss_source`。
-- **诊断**：`log_entry`（含 `repeat_count` 合并同类、`host` 让界面说得出哪个站在失败）。
+- **缓存**：`book_toc_cache`、`book_content_cache`、`book_content_process`（AI 覆盖正文）、`book_cache_status`；封面字节走 `cover_cache` + 磁盘文件。
+- **内容与规则**：`replace_rule`、`script_cache`、`source_subscription`、`rss_source`。
+- **诊断与元数据**：`log_entry`（含 `repeat_count` 合并同类、`host` 让界面说得出哪个站在失败）、`app_meta`。
 
-> 注意"代码建的表"与"磁盘上的表"不是一回事：`Database.kt` 只建不删，早年版留下又已停用的表
+> 注意"代码建的表"与"磁盘上的表"不是一回事：`data/db/Schema.kt` 只建不删，早年版留下又已停用的表
 > （如书签功能 0.6.12 移除后遗留的 `book_mark`）仍会躺在老库里。数表数量要用
-> `sqlite_master` 查实际库，别按本文当断言；代码里的权威清单是 `Database.kt` 的
-> `create table if not exists`（当前 16 条）。
+> `sqlite_master` 查实际库，别按本文当断言；代码里的权威清单是 `data/db/Schema.kt` 的
+> `create table if not exists`（当前 20 条）。
 
 **不在库里的两类东西**：TXT 分章规则是"随包 `app/src/main/resources/assets/txtTocRule.json` ∪ 本机覆盖文件"；
 备份包里"原样收下"的条目只是文件（`data/backup_kept/`），不给它们建表。
@@ -718,7 +719,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 | 步 | 端点 | 关键实现 | 为什么长这样 |
 | :--- | :--- | :--- | :--- |
-| 导入 | `POST /api/sources/import` | `http/SourcesRoutes.kt` + 前端 `sources/bookSourceFields.ts` | 兼容 BOM、`{data｜sources｜bookSources: []}` 外层包装，以及中文自定义标识 |
+| 导入 | `POST /api/sources/import` | `http/SourcesRoutes.kt` + 前端 `features/source-editor/bookSourceFields.ts` | 兼容 BOM、`{data｜sources｜bookSources: []}` 外层包装，以及中文自定义标识 |
 | 搜索 | `webSocket /api/search/stream` | `SearchConcurrencyTest` 守着的那条：一个慢源的 30 秒超时算"这一个源失败"，不能把整次搜索取消成 500 | 边搜边出；前端判重表常驻（`lib/searchStore.ts`），每条结果不再 O(N×M) |
 | 详情 | `POST /api/books/details` | `RuleRunner.details` | 只请求主书源；候补源按需再取 |
 | 目录 | `POST /api/books/chapters` | `book_toc_cache` | 命中缓存直接回，几千章不再重抓 |
@@ -729,32 +730,25 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 ## 5. 前端模块
 
-入口是 `web/src/main.tsx`（0.8.2 结构重排后只剩应用状态与外壳；P2 起页面路由与渲染也搬了出去）。
+入口是 `product/web/src/main.tsx`（应用状态、hash 路由与全局快捷键；页面渲染在 `app/pages.tsx`）。
 
-- **外壳与导航**：一级目的地只有一张表（`app/pageMeta.ts` 的 `PAGES` 同时喂顶栏、数字键、`Alt+←/→` 与 hash 解析；
-  `app/pages.tsx` 只决定每页渲染什么）。加一页只改这两处，不再改 `main.tsx` 的三元链。
-  规则 / 备份 / 更新日志 / 关于是悬浮层（`AppModal` / `PageDialog`），不占路由。
-- **阅读器**：`reader/ReaderScreen.tsx` 只做编排，几何与翻页算术在 `reader/readerFlow.ts`、手势在
-  `reader/readerInteractions.ts`、点击区域在 `reader/tapZones.ts` + `reader/TapZoneEditor.tsx`。
-  0.8.2 结构重排又拆出四块：目录虚拟列表 `reader/VirtualChapterList.tsx`（窗口算式仍只有
-  `reader/virtualSlice.ts` 一份）、朗读集群 `reader/useReaderTts.ts`（状态 + 回调 + effect）、
-  图片预热 `reader/contentImages.ts`、正文切段 `reader/paragraphs.ts`；传书合同 `reader/openBook.ts`。
-- **设置与本机存储**：`reader/readerSettings.ts`（唯一那份阅读偏好）、`lib/offlineStorage.ts`
-  （IndexedDB：正文分片 + 书架快照 + 离线进度队列）。
-- **浮层**：所有弹窗共用 `.dialog-shell` + `.overlay-backdrop` + `.overlay-close` 一档几何。
+- **外壳与导航**：一级目的地由 `lib/nav.ts` + `lib/pageMeta.ts` 的 `PAGES` 驱动，同时喂顶栏（`app/AppHeader.tsx`）、数字键、`Alt+←/→` 与 hash 解析；`app/pages.tsx` 只决定每页渲染什么。加一页改这两处，不再改 `main.tsx` 的三元链。规则 / 备份 / 更新日志 / 关于是悬浮层（`AppModal` / `PageDialog`），不占路由。
+- **阅读器**：`features/reader/ReaderScreen.tsx` 只做编排；几何与翻页算术在 `features/reader/content/readerFlow.ts`、手势在 `features/reader/interaction/readerInteractions.ts`、点击区域在 `features/reader/interaction/tapZones.ts` + `TapZoneEditor.tsx`。目录虚拟列表是 `features/reader/VirtualChapterList.tsx`，朗读集群是 `features/reader/tts/useReaderTts.ts`，图片预热与正文切段在 `features/reader/content/`，传书合同在 `lib/openBook.ts`。分页测量、章节加载、缓存状态、笔记、翻页动画、跳转原语各自是 `useReader*` hook。
+- **设置与本机存储**：`features/reader/settingsPanel/readerSettings.ts`（唯一那份阅读偏好）、`lib/offlineStorage.ts`（IndexedDB：正文分片 + 书架快照 + 离线进度队列）。
+- **浮层**：所有弹窗共用 `.dialog-shell` + `.overlay-backdrop` + `.overlay-close` 一档几何；嵌套弹层的 Tab 由 `lib/useFocusTrap.ts` 的模块级栈按打开顺序接管。
 - **错误边界**：`components/ErrorBoundary.tsx` 包根与阅读器；某一块炸了不能把整棵树带走。
 
 ## 6. 验证面
 
 | 档 | 命令 | 覆盖 | 注意 |
 | :--- | :--- | :--- | :--- |
-| 单测与静态判据 | `npm --prefix web test`、`./gradlew :app:test` | 纯算式、组件静态渲染、规则求值、库层 | Windows 上服务端有既有失败基线，**判回归比失败集合，不比数量** |
-| 真浏览器门禁 | `node tools/verify/<name>-check.mjs` | 版面、图层、交互、端到端链路，全部现量 | 一律串行跑；判据等条件不 `sleep`；探针带本轮 STAMP 并自清 |
-| 部署后 | `node tools/verify/selfcheck.mjs`、`version-check.mjs` | 搜索→详情→目录→正文→净化，以及版本号一致 | jar 必须在 `web/dist` 之后打，否则烤进旧 bundle |
+| 单测与静态判据 | `npm --prefix product/web test`、`./gradlew :app:test`（在 `product/` 下） | 纯算式、组件静态渲染、规则求值、库层 | 后端与前端当前均为 0 失败；判回归比失败集合，不比数量 |
+| 真浏览器门禁 | `node product/tools/verify/<name>-check.mjs` | 版面、图层、交互、端到端链路，全部现量 | 一律串行跑；判据等条件不 `sleep`；探针带本轮 STAMP 并自清 |
+| 部署后 | `node product/tools/verify/selfcheck.mjs`、`version-check.mjs` | 搜索→详情→目录→正文→净化，以及版本号一致 | jar 必须在 `web/dist` 之后打，否则烤进旧 bundle |
 
 ## 7. 改动边界
 
-- 后端与规则引擎：`app/`
-- 内置 Web UI：`web/`
-- 文档：`docs/`
-- 版本号唯一来源：`app/build.gradle`
+- 后端与规则引擎：`product/app/`
+- 内置 Web UI：`product/web/`
+- 文档：`docs/`（总览/研究/日志）与 `product/docs/`（产品手册）
+- 版本号唯一来源：`product/app/build.gradle`

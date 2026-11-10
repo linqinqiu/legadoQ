@@ -82,7 +82,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 
 ## API
 
-- 端点总数：**157**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
+- 端点总数：**161**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
 - 机器可读目录：`GET http://127.0.0.1:1234/api/catalog`。
 - 接入说明：[`product/AGENTS.md`](product/AGENTS.md)。
 
@@ -101,11 +101,11 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 ├── product/             # 产品本体：Ktor 后端 + 内置 UI + 数据
 │   ├── app/             # 后端源码（Kotlin/Ktor）
 │   ├── web/             # 内置 Web UI 源码
-│   ├── docs/            # 后端文档（部署 / 兼容 / 插件框架 / 门禁 等）
+│   ├── docs/            # 产品手册（部署 / 兼容 / 插件框架 / 门禁 等）
 │   ├── AGENTS.md        # AI / 脚本自定义接入面（`/api/agent/*`）
 │   ├── CONTRIBUTING.md  # 中文协作约定（权威版见仓库根 .github/）
 │   └── SECURITY.md      # 中文安全基线（权威版见仓库根 .github/）
-├── docs/                # 架构示意、API 参考、目录规划、文档索引（archive/ 存历史归档）
+├── docs/                # 唯一索引 + 架构/API/规划 + research/ 研究快照 + sessions/ 工程日志
 ├── scripts/             # 版本 / 发布工具（start、stop 在 product/）
 ├── .github/             # CI 与治理文件（CONTRIBUTING / SECURITY 英文权威版）
 ├── BUILD_NUMBER         # 内部构建号（与对外版本解耦）

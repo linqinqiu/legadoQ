@@ -108,7 +108,7 @@ web/src/
 
 | 判据 | 守什么 |
 |---|---|
-| `ApiCatalog.test.ts` | 端点契约 142/19 双向核对 |
+| `ApiCatalog.test.ts` | 端点契约双向核对（当前 161 / 19；绝对计数以测试里的断言为准） |
 | `CopyStyle.test.ts` | 界面文案不许用装饰字形 |
 | `HeaderMenu.test.ts` | 前端不许出现字面量版本号 |
 | `UiContract.test.ts` | 浮层只有一档几何（不许弹窗套弹窗） |

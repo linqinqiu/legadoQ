@@ -1,6 +1,6 @@
 # 贡献指南（指向权威版）
 
-> 权威版（英文，GitHub「Contribute」页展示）在仓库根 [`../../.github/CONTRIBUTING.md`](../../.github/CONTRIBUTING.md)。
+> 权威版（英文，GitHub「Contribute」页展示）在仓库根 [`../.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md)。
 > 本文件只保留中文读者需要的**本地操作要点**，政策口径以权威版为准，避免双份维护。
 
 ## 环境要求
@@ -47,4 +47,4 @@ node start.mjs       # 起服务并自动开浏览器（默认 127.0.0.1:1234）
 - 版本号唯一来源是 `app/build.gradle` 的 `version`；发版前升一档并在 `CHANGELOG.md` 顶部补一条。
 - 从 `main` 切描述性分支，**别直接推 `main`**；一个 PR 只做一件事。
 - 提交信息沿用 `<type>(<scope>): <中文说明>`（`fix` / `feat` / `refactor` / `docs` / `chore` / `test`）。
-- 政策口径、支持范围、漏洞报告方式见仓库根 [`../../.github/CONTRIBUTING.md`](../../.github/CONTRIBUTING.md)。
+- 政策口径、支持范围、漏洞报告方式见仓库根 [`../.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md)。
