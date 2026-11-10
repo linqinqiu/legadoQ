@@ -39,6 +39,32 @@ test('三处弹窗真的接上了：共用壳 + 书籍详情 + 替换规则', ()
   }
 })
 
+test('新增接线过的真弹层也进了守护清单（分类：真正阻断 Tab 的是 dialog + overlay）', () => {
+  // 不把所有带 aria-modal 的文件都塞进来 —— 许多是抽屉/面板（不阻断 Tab），盲接会抢焦点。
+  // 这里列的是「根元素就是 dialog + aria-modal」的真弹层，逐个接上。
+  for (const file of [
+    'BrandModal.tsx',
+    'LogsModal.tsx',
+    'OfflineCacheModal.tsx',
+    'ServerPortModal.tsx',
+    'SourceSwitchModal.tsx',
+    'TocRulesModal.tsx',
+  ]) {
+    const src = read('../src/components/' + file)
+    assert.match(src, /useFocusTrap\(shellRef/, `${file} 要接上焦点锁`)
+    assert.match(src, /ref=\{shellRef\}/, `${file} 的对话框壳要带 ref`)
+  }
+  const readerDialogs = [
+    '../src/features/reader/dialogs/RefreshChaptersModal.tsx',
+    '../src/features/reader/dialogs/BookSearchDialog.tsx',
+  ]
+  for (const file of readerDialogs) {
+    const src = read(file)
+    assert.match(src, /useFocusTrap\(shellRef/, `${file} 要接上焦点锁`)
+    assert.match(src, /ref=\{shellRef\}/, `${file} 的对话框壳要带 ref`)
+  }
+})
+
 test('替换规则：hook 在早退之前无条件调用，否则 React 会报 hook 数量变化', () => {
   const src = read('../src/components/ReplaceRulesModal.tsx')
   const hookAt = src.indexOf('useFocusTrap(shellRef')

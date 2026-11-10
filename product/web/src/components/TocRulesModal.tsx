@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { zh } from '../i18n/zh'
 import { api, type TocRuleList } from '../lib/api'
 import { Icon } from '../icons'
 import { Select } from './Select'
 import { toast } from './Toast'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 /**
  * 本地书分章规则（用户 2026-10-03：「『自定义』弹窗成了杂物间」）。
@@ -32,6 +33,8 @@ export function TocRulesModal({
   onImport: () => void
 }) {
   useEscapeClose(onClose)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   const [rules, setRules] = useState<TocRuleList | null>(null)
   const [failed, setFailed] = useState('')
 
@@ -105,7 +108,7 @@ export function TocRulesModal({
 
   return (
     <div className="overlay-backdrop" onClick={onClose}>
-      <div className="dialog-shell size-m toc-rules-modal" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="本地书分章规则">
+      <div ref={shellRef} className="dialog-shell size-m toc-rules-modal" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="本地书分章规则">
         <header className="dialog-head toc-rules-head">
           <h2><Icon name="list" /> 本地书分章规则</h2>
           <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>

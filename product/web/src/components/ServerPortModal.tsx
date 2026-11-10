@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { zh } from '../i18n/zh'
 import { api } from '../lib/api'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import { bindAddressLabel, browseHost, isLoopbackHost } from '../lib/serverHost'
 
 /**
@@ -13,6 +14,8 @@ import { bindAddressLabel, browseHost, isLoopbackHost } from '../lib/serverHost'
  */
 export function ServerPortModal({ onClose }: { onClose: () => void }) {
   useEscapeClose(onClose)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   const [current, setCurrent] = useState<number | null>(null)
   const [host, setHost] = useState('')
   const [value, setValue] = useState('')
@@ -46,7 +49,7 @@ export function ServerPortModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="overlay-backdrop" onClick={onClose}>
-      <div className="dialog-shell size-s" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="服务端口">
+      <div ref={shellRef} className="dialog-shell size-s" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="服务端口">
         <header className="dialog-head">
           <h2><Icon name="sliders" /> 服务端口</h2>
           <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>

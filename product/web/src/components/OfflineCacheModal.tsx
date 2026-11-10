@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { zh } from '../i18n/zh'
 import { Icon } from '../icons'
 import { sourceLabel } from '../lib/sourceOrder'
@@ -11,6 +11,7 @@ import {
 } from '../lib/offlineStorage'
 import { toast } from './Toast'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 /**
  * 「还没取到」「取失败了」「这台电脑确实没有缓存」是三件事（与备份页、订阅页同一口径）。
@@ -90,9 +91,12 @@ export function OfflineCacheModal({ onClose }: OfflineCacheModalProps) {
   }
 
   useEscapeClose(onClose)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   return (
     <div className="overlay-backdrop" onClick={onClose}>
       <div
+        ref={shellRef}
         className="dialog-shell size-s"
         onClick={e => e.stopPropagation()}
         role="dialog"

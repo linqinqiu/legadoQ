@@ -8,6 +8,7 @@ import { Icon } from '../icons'
 import { Select } from './Select'
 import { toast } from './Toast'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 
 export type SourceCandidate = {
@@ -381,9 +382,12 @@ export function SourceSwitchModal({
     : 0
 
   useEscapeClose(onClose)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   return (
     <div className="overlay-backdrop" onClick={onClose}>
       <div
+        ref={shellRef}
         className="dialog-shell size-m"
         onClick={e => e.stopPropagation()}
         role="dialog"

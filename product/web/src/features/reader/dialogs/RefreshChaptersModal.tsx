@@ -4,6 +4,7 @@ import { Icon } from '../../../icons'
 import type { Chapter } from '../../../lib/api'
 import { api } from '../../../lib/api'
 import { useEscapeClose } from '../../../lib/useEscapeClose'
+import { useFocusTrap } from '../../../lib/useFocusTrap'
 
 /**
  * 手动刷新正文（0.2.0）：正文平时一律先吃缓存，站点改了错字/补了内容时读者只能干等。
@@ -53,6 +54,8 @@ export function RefreshChaptersModal({ sourceId, bookUrl, chapters, currentIndex
   const [retryUrls, setRetryUrls] = useState<string[] | null>(null)
   const stoppedRef = useRef(false)
   const runningRef = useRef(false)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
 
   const selection = useMemo((): Chapter[] => {
     if (retryUrls) return retryUrls.map(url => list.find(chapter => chapter.url === url)).filter((chapter): chapter is Chapter => !!chapter)
@@ -136,7 +139,7 @@ export function RefreshChaptersModal({ sourceId, bookUrl, chapters, currentIndex
 
   return (
     <div className="overlay-backdrop" onClick={() => { if (!running) onClose() }} role="dialog" aria-modal="true" aria-label="刷新正文">
-      <div className="dialog-shell size-s refresh-chapters" onClick={event => event.stopPropagation()}>
+      <div ref={shellRef} className="dialog-shell size-s refresh-chapters" onClick={event => event.stopPropagation()}>
         <header className="dialog-head">
           <div className="source-login-title">
             <span><Icon name="refresh" /></span>

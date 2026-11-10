@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type BookSearchHit } from '../../../lib/api'
 import { useEscapeClose } from '../../../lib/useEscapeClose'
+import { useFocusTrap } from '../../../lib/useFocusTrap'
 import { splitByTerm } from '../searchTerm'
 
 /**
@@ -24,6 +25,8 @@ export function BookSearchDialog({ sourceId, bookUrl, onJump, onClose }: {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
 
   // 打开即聚焦。
   useEffect(() => { inputRef.current?.focus() }, [])
@@ -63,8 +66,10 @@ export function BookSearchDialog({ sourceId, bookUrl, onJump, onClose }: {
   }, [debounced, sourceId, bookUrl])
 
   return (
-    <div className="overlay-backdrop" onClick={onClose} role="dialog" aria-label="搜索本书" aria-modal="true">
-      <div className="dialog-shell size-m reader-book-search" onClick={event => event.stopPropagation()}>
+    <div className="overlay-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-label="搜索本书">
+      <div
+        ref={shellRef}
+        className="dialog-shell size-m reader-book-search" onClick={event => event.stopPropagation()}>
         <header className="dialog-head">
           <h2>搜索本书</h2>
           <small>只在已离线缓存的章节正文里检索；没缓存的章节搜不到。</small>

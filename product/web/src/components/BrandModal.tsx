@@ -4,6 +4,7 @@ import { api, type BrandInfo } from '../lib/api'
 import { reportBrand } from '../lib/brandStore'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 /**
  * 「应用名称与图标」（用户 2026-10-23：「允许自定义图标和名称」）。
@@ -35,6 +36,8 @@ function publishBrand(info: BrandInfo): void {
 
 export function BrandModal({ onClose }: { onClose: () => void }) {
   useEscapeClose(onClose)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   const [brand, setBrand] = useState<BrandInfo | null>(null)
   const [name, setName] = useState('')
   const [shortName, setShortName] = useState('')
@@ -123,7 +126,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="overlay-backdrop" onClick={onClose}>
-      <div className="dialog-shell size-s" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="应用名称与图标">
+      <div ref={shellRef} className="dialog-shell size-s" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="应用名称与图标">
         <header className="dialog-head">
           <h2><Icon name="sliders" /> 应用名称与图标</h2>
           <button type="button" className="overlay-close" onClick={onClose} aria-label={zh.common.close}><Icon name="close" /></button>

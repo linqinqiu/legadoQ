@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { zh } from '../i18n/zh'
 import { api, type LogEntry } from '../lib/api'
 import { Icon } from '../icons'
@@ -6,6 +6,7 @@ import { Select } from './Select'
 import { DiagnosticsStrip } from './DiagnosticsStrip'
 import { toast } from './Toast'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 /**
  * 「运行日志」弹窗：把服务端 LogService 收集的结构化日志摊开给人看。
@@ -139,9 +140,12 @@ export function LogsModal({ onClose }: { onClose: () => void }) {
   }
 
   useEscapeClose(onClose)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   return (
     <div className="overlay-backdrop" onClick={onClose}>
       <div
+        ref={shellRef}
         className="dialog-shell size-l logs-modal"
         onClick={event => event.stopPropagation()}
         role="dialog"
