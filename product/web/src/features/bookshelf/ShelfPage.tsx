@@ -8,6 +8,7 @@ import { BookGroup, BookshelfItem, Chapter, SearchResult, SourceSummary, api } f
 import { Icon } from '../../icons'
 import { Select } from '../../components/Select'
 import { ShelfLayout, ShelfSort, readShelfLayout, readShelfSort, writeShelfLayout, writeShelfSort } from '../../lib/shelfLayout'
+import { SHELF_PAGE_SIZE, hasMoreOf, moreCountOf, visibleCountOf } from './shelfPaging'
 import { SourceSwitchModal } from '../../components/SourceSwitchModal'
 import { TocRulesModal } from '../../components/TocRulesModal'
 import { bookTypeMeta } from '../../lib/bookType'
@@ -674,10 +675,21 @@ export function ShelfPage({
     }
     return sorted
   }, [items, view, sort, groupFilter])
+  // 分页：默认只渲染前 120 本。换个页签/分组/排序后回到第一页 ——
+  // 否则"按分组筛完还剩 3 本"却因为页码还停在 5 而显示空白，看着像筛选坏了。
+  const [visibleCount, setVisibleCount] = useState(SHELF_PAGE_SIZE)
+  useEffect(() => { setVisibleCount(SHELF_PAGE_SIZE) }, [view, sort, groupFilter])
+  const shownItems = useMemo(
+    () => visibleItems.slice(0, visibleCountOf(visibleItems.length, visibleCount)),
+    [visibleItems, visibleCount],
+  )
+  const hasMore = hasMoreOf(visibleItems.length, visibleCount)
   // 「全选」全选的是**看得见的那一列**：按钮 title 写着"全选当前页所有书籍"，而页签与分组
   // 只作用于 visibleItems —— 按 items 整架选会让批量删除动到当前筛不出来的书。
+  // 分页后跟着收窄到 shownItems：多选的目标必须和眼睛看到的一致，
+  // 否则"加载更多"之前的批量删除会动到还没显示出来的书。
   const selectAllBooks = () => {
-    setSelectedBooks(new Set(visibleItems.map(item => `${item.sourceId}::${item.bookUrl}`)))
+    setSelectedBooks(new Set(shownItems.map(item => `${item.sourceId}::${item.bookUrl}`)))
   }
   /** 取失败时上面那行 form-error 已经把原因说了，列表区不能再声称"书架是空的"。 */
   const shelfFailedEmpty = !!message && items.length === 0
@@ -1027,7 +1039,7 @@ export function ShelfPage({
         <section
           className={`shelf-grid shelf-mode-${layout.mode}${batchMode ? ' is-batching' : ''}`}
         >
-          {visibleItems.map((item, index) => {
+          {shownItems.map((item, index) => {
             const isCaching = item.cacheState === 'caching'
             const isLocal = item.sourceId === 'loc_book'
             const percent = Math.min(100, Math.round((item.cachedChapters / Math.max(1, item.totalChapters || 1)) * 100))
@@ -1155,6 +1167,15 @@ export function ShelfPage({
               </article>
             )
           })}
+          {hasMore && (
+            <button
+              type="button"
+              className="shelf-more"
+              onClick={() => setVisibleCount(count => moreCountOf(count))}
+            >
+              已显示 {shownItems.length} / {visibleItems.length}，点击加载更多
+            </button>
+          )}
         </section>
       )}
 

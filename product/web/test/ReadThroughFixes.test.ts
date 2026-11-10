@@ -119,10 +119,18 @@ test('书架：还没到手 / 取失败了 / 确实没有 是三件事，全选�
 
   const selectAll = /const selectAllBooks = \(\) => \{([\s\S]*?)\n  \}/.exec(body)
   assert.ok(selectAll, '全选的实现要还在')
-  assert.match(selectAll[0], /visibleItems\.map/, '按可见那一列取键（title 写着"全选当前页所有书籍"）')
+  // 原意是"全选 = 屏幕上那一列"。分页之后"屏幕上那一列"是 shownItems（visibleItems 的可见切片），
+  // 所以两种写法都接受；要防的从来不是用哪个变量名，而是"按整架取键"。
+  assert.match(selectAll[0], /(?:shownItems|visibleItems)\.map/,
+    '按屏幕上那一列取键（title 写着"全选当前页所有书籍"）')
   assert.doesNotMatch(selectAll[0], /items\.map/, '反向对照：按整架取键要清零 —— 批量删除会动到筛不出来的书')
   assert.ok(body.indexOf('const visibleItems = useMemo') < body.indexOf('const selectAllBooks'),
     'selectAllBooks 必须定义在 visibleItems 之后')
+  // 分页之后取键的对象还得是切片，否则「加载更多」之前的批量删除会动到没显示的书。
+  assert.ok(
+    body.indexOf('const shownItems = useMemo') < body.indexOf('const selectAllBooks'),
+    '若用了 shownItems，它必须定义在 selectAllBooks 之前',
+  )
 })
 
 test('一张卡只有一个百分比口径，本地同步的进度分子只数这一次切片', () => {

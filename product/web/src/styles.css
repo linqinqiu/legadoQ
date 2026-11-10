@@ -793,6 +793,9 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 /* 批量模式下的选中状态 */
 .shelf-card.selected { border-color: var(--accent); background: var(--accent-soft); }
 .shelf-card.selected .shelf-card-cover { opacity: 0.7; }
+/* 「加载更多」跨满整行：它在 grid 里，不显式 span 就只能挤在一格里变成一张怪卡片。 */
+.shelf-grid > button.shelf-more { grid-column: 1 / -1; min-height: 44px; padding: 12px 16px; color: var(--muted); font-size: 12px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; background: transparent; cursor: pointer; }
+.shelf-grid > button.shelf-more:hover { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 
 /* 批量选择框（用户 2026-10-03：「你只处理了网格没处理列表…优化选择框的位置，封面全部盖住了」）。
    实测过三种布局才定：网格卡封面 153×203，压在左上角只挡掉 3%，是相册那种角标；
