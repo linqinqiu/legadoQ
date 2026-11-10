@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { zh } from '../i18n/zh'
 import { api, ReplaceRule, ReplaceRulePreviewResponse } from '../lib/api'
 import { toast } from './Toast'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import { Select } from './Select'
 
 interface Props {
@@ -230,7 +231,7 @@ export const ReplaceRulesModal: React.FC<Props> = ({
   }
 
   // Esc 一次只关一层：里层弹窗开着时先关里层，都关了才轮到外面这一层。
-  // 这个 hook 必须在下面的 `if (!isOpen) return null` 之前无条件调用 —— 放到早退之后
+  // 这个 hook 必须在下面的提前返回之前无条件调用 —— 放到早退之后
   // 会让「关→开」时 hook 数量变化，React 抛 #300（Rendered fewer hooks than expected）。
   useEscapeClose(() => {
     if (!isOpen) return
@@ -239,10 +240,15 @@ export const ReplaceRulesModal: React.FC<Props> = ({
     onClose()
   })
 
+  // 同上：Tab 锁必须在早退之前无条件调用。`active` 传 isOpen —— 关着的时候不抢焦点。
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef, isOpen)
+
   if (!isOpen) return null
   return (
     <div className="overlay-backdrop" onClick={onClose}>
       <div
+        ref={shellRef}
         className="dialog-shell size-l"
         role="dialog"
         aria-modal="true"

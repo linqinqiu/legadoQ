@@ -16,6 +16,7 @@ import { scrollPosition } from '../lib/scrollProgress'
 import { toast } from './Toast'
 import { SourceChoiceList } from './SourceChoiceList'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 export function BookDetailModal({
   book,
@@ -199,6 +200,9 @@ export function BookDetailModal({
   // 第一条负责收大图（没开就什么都不做）；第二条带 blockedBy —— 大图还挂在 DOM 上时它让位。
   useEscapeClose(() => { if (coverZoom) setCoverZoom(false) })
   useEscapeClose(handleClose, '[aria-label="封面预览"]')
+  // 详情也是一层弹窗：Tab 不锁的话会跑到背后的书架 / 搜索列表上。
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
 
   const handleSelectChoice = (choice: SourceChoice) => {
     const key = `${choice.result.sourceId}\u0000${choice.result.bookUrl}`
@@ -229,6 +233,7 @@ export function BookDetailModal({
   return (
     <div className="overlay-backdrop" onClick={handleClose}>
       <div
+        ref={shellRef}
         className="dialog-shell size-m book-detail-modal"
         onClick={e => e.stopPropagation()}
         role="dialog"

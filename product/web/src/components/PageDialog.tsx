@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import { zh } from '../i18n/zh'
 
 /**
@@ -9,9 +10,13 @@ import { zh } from '../i18n/zh'
  */
 export function PageDialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEscapeClose(onClose)
+  // 对话框语义只是说明：Tab 要真的被关在这一层里，关闭时焦点要还给打开它的元素。
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   return (
     <div className="overlay-backdrop" onClick={onClose}>
       <div
+        ref={shellRef}
         className="dialog-shell size-l page-dialog"
         onClick={event => event.stopPropagation()}
         role="dialog"
