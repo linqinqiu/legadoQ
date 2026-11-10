@@ -1,0 +1,19 @@
+# legado — AI 省 token 协议（自动加载版）
+
+你正在修改 legado（阅读器：后端 Kotlin + 前端 React/TS）。**首要目标：别疯狂读文件，token 消耗巨大。**
+
+## 铁律（务必遵守）
+1. 改任何功能前，先查 `AGENTS.md` 的「§8 任务→精确位置 速查表」。90% 的定位需求直接拿 `文件:符号`，不要全仓 grep、不要整读大文件。
+2. 需要横向/探索性扫描时，**委派给一个在隔离上下文里运行的子代理**（你的工具若支持 subagent），让它只回 `file:line` + ≤8 行片段；若不支持子代理，则自己严格做到：先 `Grep`/`Glob` 拿位置，再定向 `Read` 相关 ≤150 行窗口，绝不「先读一堆再找」。
+3. 大文档（`docs/ARCHITECTURE.md` 760 行、`product/CHANGELOG.md` 684 行）只在需要具体章节时用 `Grep` 定位行号再读那段，绝不每轮重读或全篇读。
+4. 跨轮不重复读同一文件：要点记到计划/记忆里，下轮直接引 `file:line`。
+5. 禁止「读一遍全仓再总结」式探索——那正是 token 爆炸根因。
+
+## 热点（最常改、最烧 token，按需 grep 段，别整读）
+- 前端阅读器：`product/web/src/features/reader/` —— `ReaderScreen.tsx`(2344) 是状态中枢，**整读最烧 token**；跳转原语已抽到 `useReaderPositionJump.ts`，书签/笔记在 `useReaderNotes.ts`。
+- 后端规则引擎：`product/app/src/main/kotlin/io/legado/rules/RuleRunner.kt`(2333) 是最大文件，改规则逻辑时按需 grep 段，别整读。
+- 完整「任务→文件」映射、测试门禁、常见坑：见 `AGENTS.md`（CodeBuddy/Qoder 会自动读；其他工具请也读它）。
+
+## 改完跑门禁
+- 前端：`cd product/web && npm test`（~1022 项，node:test）
+- 后端：`cd product && ./gradlew :app:test --no-daemon`（GoldenRuleTest 逐字节守门）
