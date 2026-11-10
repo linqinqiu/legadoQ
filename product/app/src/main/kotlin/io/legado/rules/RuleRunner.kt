@@ -1693,11 +1693,9 @@ class RuleRunner(
                     )
                     throw RuleExecutionException("上游返回 HTTP $status")
                 }
+                // readLimited 自己就在超限时抛 RuleExecutionException，这里不用再判一次
+                // （原先的 `bytes.size > MAX_BODY_BYTES` 永远为假，是死分支）。
                 val bytes = response.body().use { ResponseBody.readLimited(it) }
-                if (bytes.size > ResponseBody.MAX_BODY_BYTES) {
-                    logNetwork("响应体过大", networkContext(url, sourceId) + mapOf("size" to bytes.size.toString()))
-                    throw RuleExecutionException("上游响应超过 2 MiB 限制")
-                }
                 val charset = (options?.charset)
                 return Fetched(
                     // 落地地址：重定向是这一层自己一跳一跳跟的（`client` 不跟随），

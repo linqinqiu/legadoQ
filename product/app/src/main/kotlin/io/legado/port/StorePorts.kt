@@ -62,9 +62,23 @@ interface VariableStore {
  */
 interface ScriptCacheStore {
     fun getScriptCache(sourceId: String, key: String, now: Long): String?
+
+    /**
+     * 值与过期时刻一起取回。
+     *
+     * 内存层回填必须带上 deadline：只回填 value 会把「缓存 5 分钟」变成「进程活着就一直命中」，
+     * 与 `ScriptCache` 自己写的「内存层也认 deadline」正好相反。默认实现给不出 deadline，
+     * 只能按「永不过期」兜底，所以真正落盘的实现必须覆盖它。
+     */
+    fun getScriptCacheEntry(sourceId: String, key: String, now: Long): ScriptCacheValue? =
+        getScriptCache(sourceId, key, now)?.let { ScriptCacheValue(it, 0) }
+
     fun putScriptCache(sourceId: String, key: String, value: String, deadline: Long): Boolean
     fun deleteScriptCache(sourceId: String, key: String): Boolean
 }
+
+/** 脚本缓存的一条：值 + 过期时刻（`0` = 不过期）。 */
+data class ScriptCacheValue(val value: String, val deadline: Long)
 
 /**
  * 书源登录态（loginInfo / loginHeader）存储端口 —— `rules → data` 的「登录态组」（5 条）。

@@ -105,7 +105,9 @@ internal object ResponseBody {
         while (true) {
             val count = input.read(buffer)
             if (count < 0) return output.toByteArray()
-            require(output.size() + count <= MAX_BODY_BYTES) { "上游响应超过 2 MiB 限制" }
+            // 超限是「上游给的东西太大」，不是「调用参数非法」：抛 `IllegalArgumentException`
+            // 会被 HTTP 层按 400 invalid_request 报给用户，让人去改自己的书源。
+            if (output.size() + count > MAX_BODY_BYTES) throw RuleExecutionException("上游响应超过 2 MiB 限制")
             output.write(buffer, 0, count)
         }
     }

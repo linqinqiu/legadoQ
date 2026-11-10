@@ -36,7 +36,17 @@ internal object ScriptCache {
     private fun key(sourceId: String?, key: String): String = (sourceId ?: "-") + "\u0000" + key
 
     fun putMemory(sourceId: String?, key: String, value: Any?) {
-        lock.withLock { memory[key(sourceId, key)] = Entry(value, 0) }
+        putMemoryEntry(sourceId, key, value, 0)
+    }
+
+    /**
+     * 带过期时刻写入内存层。
+     *
+     * 从库里回填时**必须**走这条：`putMemory` 的语义是脚本的 `cache.putMemory(k, v)`（不设过期），
+     * 拿它回填会把磁盘上带 deadline 的值洗成「永不过期」。
+     */
+    fun putMemoryEntry(sourceId: String?, key: String, value: Any?, deadline: Long) {
+        lock.withLock { memory[key(sourceId, key)] = Entry(value, deadline) }
     }
 
     fun getFromMemory(sourceId: String?, key: String, now: Long = System.currentTimeMillis()): Any? = lock.withLock {
@@ -57,10 +67,11 @@ internal object ScriptCache {
         if (!onlyDisk) {
             getFromMemory(sourceId, key, now)?.let { return it }
         }
-        val stored = runCatching { db?.asScriptCacheStore()?.getScriptCache(sourceId ?: "-", key, now) }.getOrNull() ?: return null
+        val stored = runCatching { db?.asScriptCacheStore()?.getScriptCacheEntry(sourceId ?: "-", key, now) }.getOrNull() ?: return null
         // 只有默认的读路径回填内存；onlyDisk 的语义就是「绕过内存层」。
-        if (!onlyDisk) putMemory(sourceId, key, stored)
-        return stored
+        // 回填要带上 deadline，否则读一次盘之后这条就永远不过期了。
+        if (!onlyDisk) putMemoryEntry(sourceId, key, stored.value, stored.deadline)
+        return stored.value
     }
 
     fun put(sourceId: String?, key: String, value: String, saveTimeSeconds: Int, db: PortBundle?) {

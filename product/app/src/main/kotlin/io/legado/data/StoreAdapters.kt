@@ -10,6 +10,7 @@ import io.legado.port.CookieStore
 import io.legado.port.KernelReader
 import io.legado.port.LoginStateStore
 import io.legado.port.ScriptCacheStore
+import io.legado.port.ScriptCacheValue
 import io.legado.port.VariableStore
 
 /**
@@ -49,6 +50,8 @@ internal class DatabaseVariableStore(private val db: Database) : VariableStore {
 internal class DatabaseScriptCacheStore(private val db: Database) : ScriptCacheStore {
     override fun getScriptCache(sourceId: String, key: String, now: Long): String? =
         db.getScriptCache(sourceId, key, now)
+    override fun getScriptCacheEntry(sourceId: String, key: String, now: Long): ScriptCacheValue? =
+        db.getScriptCacheEntry(sourceId, key, now)
     override fun putScriptCache(sourceId: String, key: String, value: String, deadline: Long): Boolean =
         db.putScriptCache(sourceId, key, value, deadline)
     override fun deleteScriptCache(sourceId: String, key: String): Boolean = db.deleteScriptCache(sourceId, key)
