@@ -12,6 +12,8 @@
  * 只有"这条字体真的用不了"（坏文件 / 直链失效 / 跨域）才由 `saveFont` 抛出，让界面提示用户。
  */
 
+import { requestArrayBuffer } from './api/client'
+
 const DB_NAME = 'legado-fonts'
 const DB_VERSION = 1
 const STORE = 'fonts'
@@ -157,9 +159,8 @@ export async function saveFont(name: string, source: ArrayBuffer | string): Prom
   if (typeof source === 'string') {
     url = source.trim()
     if (!url) throw new Error('字体地址不能为空')
-    const response = await fetch(`/api/book/media?url=${encodeURIComponent(url)}`)
-    if (!response.ok) throw new Error(`取不到字体文件：服务返回 HTTP ${response.status}`)
-    data = await response.arrayBuffer()
+    // 走统一客户端：同源代理可能很慢，性能采集与错误口径跟其它 API 保持一致。
+    data = await requestArrayBuffer(`/api/book/media?url=${encodeURIComponent(url)}`)
     if (data.byteLength === 0) throw new Error('取到的字体文件是空的')
   } else {
     data = source

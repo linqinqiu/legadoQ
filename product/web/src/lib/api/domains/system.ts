@@ -1,5 +1,5 @@
 /** 系统相关 API：目录、服务自身、日志、诊断、关于、更新日志。 */
-import { request } from '../client'
+import { request, requestText } from '../client'
 import type {
   AboutInfo,
   ChangelogRelease,
@@ -74,10 +74,6 @@ export const system = {
       rollingUrl?: string | null
       rollingPublishedAt?: string | null
     }>('/api/about/update-check', { method: 'POST' }),
-  /** 更新日志：随包发出的 CHANGELOG.md 原文。 */
-  changelog: async (): Promise<string> => {
-    const res = await fetch('/api/changelog')
-    if (!res.ok) throw new Error(`更新日志读取失败（HTTP ${res.status}）`)
-    return res.text()
-  },
+  /** 更新日志：随包发出的 CHANGELOG.md 原文。非 2xx 由统一客户端抛出，不静默回空串。 */
+  changelog: (): Promise<string> => requestText('/api/changelog'),
 }

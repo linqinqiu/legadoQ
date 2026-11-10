@@ -1,5 +1,6 @@
 /** AI 自定义接入（/api/agent/*）相关 API。 */
 import { request } from '../client'
+import { fetchWithMetrics } from '../../performance'
 import type {
   AgentChatMessage,
   AgentChatResult,
@@ -104,7 +105,8 @@ export const chatStream = async (
     onEvent: (event: AgentStreamEvent) => void
   },
 ): Promise<void> => {
-  const response = await fetch('/api/agent/chat/stream', {
+  // 流式响应要自己读 body，所以不走 request 的 JSON 解析；但传输层仍走同一个采集入口。
+  const response = await fetchWithMetrics('/api/agent/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',

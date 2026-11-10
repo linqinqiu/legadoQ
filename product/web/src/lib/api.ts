@@ -157,20 +157,8 @@ export const api = {
   keptBackupEntries: newBackup.listKeptEntries,
   keptBackupEntryUrl: newBackup.keptEntryUrl,
   keptBackupEntry: newBackup.keptEntry,
-  backupSnapshots: async () => {
-    const res = await fetch('/api/backup/snapshots')
-    if (!res.ok) throw new Error('获取快照失败')
-    return res.json()
-  },
-  restoreBackupSnapshot: (name: string) =>
-    fetch('/api/backup/snapshots/restore', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    }).then((res) => {
-      if (!res.ok) throw new Error('恢复快照失败')
-      return res.json()
-    }),
+  backupSnapshots: newBackup.listSnapshots,
+  restoreBackupSnapshot: newBackup.restoreSnapshot,
   // replace rules
   getReplaceRules: newReplaceRules.list,
   getReplaceRule: newReplaceRules.get,

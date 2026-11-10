@@ -7,6 +7,8 @@
  * 两个导入入口只负责把 message 显示出来，不再各自拼一套说法。
  */
 
+import { fetchWithMetrics } from './performance'
+
 /** 把用户填的地址收敛成可请求的 http(s) 地址；不合法时抛出可直接展示的中文提示。 */
 export function normalizeImportUrl(input: string): string {
   const trimmed = (input ?? '').trim()
@@ -50,7 +52,8 @@ async function requestImport(url: string): Promise<Response> {
   const target = importProxyUrl(url)
   let response: Response
   try {
-    response = await fetch(target)
+    // 代理取数也走性能采集；这里保留对状态码的自行判断，因为两条导入入口的提示语不同。
+    response = await fetchWithMetrics(target)
   } catch {
     throw new Error('取不到这个地址：请求没有完成，请确认地址能直接打开')
   }

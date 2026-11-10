@@ -1,11 +1,12 @@
 /**
  * 全局登录凭据（按注册域归桶的 Cookie）的客户端。
  *
- * 单独成文件而不是加进 `lib/api.ts`：那一份正在被另一个任务改，同文件并行改动会互相踩。
- * 取数口径与 `lib/api.ts` 的 `request` 完全一致 —— 相对路径（同源）、`credentials: 'same-origin'`、
- * 非 2xx 时把服务端的 `message` 原样抛出来给界面显示。`request` 在那里是模块私有的，
- * 不能 import 也不该为了复用去动那个文件，所以这里保留一份同样写法的薄封装。
+ * 单独成文件而不是加进 `lib/api.ts`：凭据是独立的一组端点，和书源 / 书架的域客户端分开。
+ * 取数口径直接复用统一客户端 `lib/api/client.ts` 的 `request` —— 相对路径（同源）、
+ * `credentials: 'same-origin'`、非 2xx 时把服务端的 `message` 原样抛出来给界面显示。
  */
+
+import { request } from './api/client'
 
 /** 凭据列表里的一桶：注册域 + 键名。列表接口**刻意不回值**。 */
 export type GlobalCookieEntry = {
@@ -49,17 +50,6 @@ export type GlobalCookieSaveResult = {
 export type GlobalCookieRemoveResult = {
   ok: boolean
   removed: boolean
-}
-
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers)
-  if (init.body) headers.set('Content-Type', 'application/json')
-  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string }
-    throw new Error(body.message ?? '请求失败')
-  }
-  return response.status === 204 ? undefined as T : response.json() as Promise<T>
 }
 
 export const cookieApi = {

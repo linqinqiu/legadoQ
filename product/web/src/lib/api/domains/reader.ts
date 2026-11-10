@@ -1,5 +1,5 @@
 /** 阅读器、书架、笔记、缓存、分章规则、封面、本地书相关 API。 */
-import { request } from '../client'
+import { request, requestBlob } from '../client'
 import type {
   BackupImportSummary,
   BookshelfItem,
@@ -316,21 +316,10 @@ export const localBooks = {
     for (const file of files) {
       formData.append('file', file, file.name)
     }
-    const headers = new Headers()
-    const response = await fetch(
+    return request<LocalBookImportResponse>(
       `/api/bookshelf/import-local${tocRule && tocRule !== 'auto' ? `?tocRule=${encodeURIComponent(tocRule)}` : ''}`,
-      {
-        method: 'POST',
-        headers,
-        credentials: 'same-origin',
-        body: formData,
-      },
+      { method: 'POST', body: formData },
     )
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ message: response.statusText }))
-      throw new Error(err.message ?? '本地书籍上传失败')
-    }
-    return response.json() as Promise<LocalBookImportResponse>
   },
 }
 
@@ -484,18 +473,6 @@ export const tts = {
     customHeader?: string
     customMethod?: string
     customBody?: string
-  }): Promise<Blob> => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    const response = await fetch('/api/tts/speak', {
-      method: 'POST',
-      headers,
-      credentials: 'same-origin',
-      body: JSON.stringify(req),
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ message: response.statusText }))
-      throw new Error(err.message ?? '语音合成失败')
-    }
-    return response.blob()
-  },
+  }): Promise<Blob> =>
+    requestBlob('/api/tts/speak', { method: 'POST', body: JSON.stringify(req) }),
 }

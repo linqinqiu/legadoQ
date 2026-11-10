@@ -13,7 +13,7 @@ import java.util.zip.InflaterInputStream
  * 响应体解码：gzip/deflate 解压 + 字符集判定 + 有上限读取。
  *
  * 纯字节逻辑，不碰网络与 JS —— 从 `RuleRunner` 的 HTTP 段里单独切出来（见
- * `product/docs/研究-阅读器拆分续-下一步.md` 之外的后端拆分计划）。抽走后 `RuleRunner`
+ * `docs/research/研究-阅读器拆分续-下一步.md` 之外的后端拆分计划）。抽走后 `RuleRunner`
  * 只留一行 `resolveBodyCharset` 委托，`ResponseCharsetTest` 照旧直接调它。
  */
 internal object ResponseBody {

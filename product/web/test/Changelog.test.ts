@@ -197,8 +197,8 @@ test('api.changelog 读 /api/changelog，非 2xx 要抛而不是返回空串', (
   const api = read('..', 'src', 'lib', 'api', 'domains', 'system.ts')
   assert.match(api, /changelog:.*\/api\/changelog/s, 'api.ts 要有 changelog()，打到 /api/changelog')
   const body = /changelog:[\s\S]{0,400}/.exec(api)?.[0] ?? ''
-  assert.match(body, /res\.ok/, '要判断 res.ok')
-  assert.match(body, /throw/, '非 2xx 必须抛（静默返回空串会被界面念成"没有更新"）')
+  assert.match(body, /requestText/, '要走统一客户端的 requestText：非 2xx 由它抛出，不会静默回空串')
+  // 非 2xx 抛错的行为在 api-client.test.ts 里对 requestText 本体验证过，这里只钉接线。
 })
 
 test('ChangelogPage 初始态是"正在读取"，不是空列表', () => {

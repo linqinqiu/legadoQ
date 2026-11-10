@@ -40,7 +40,8 @@ test('fetchWithMetrics 记录一次 API 指标并原样返回响应', async () =
   performanceMonitor.reset()
   const original = globalThis.fetch
   try {
-    globalThis.fetch = (async () => ({ status: 200 })) as typeof fetch
+    // 只需 status；用 unknown 过桥，别硬把一个残缺响应说成 Response。
+    globalThis.fetch = (async () => ({ status: 200 })) as unknown as typeof fetch
 
     const response = await fetchWithMetrics('http://127.0.0.1:1234/api/healthz')
 
@@ -119,7 +120,7 @@ test('慢请求的两个阈值不是同一个数：300ms 报 warn，500ms 才进
     // 用假时钟验的是「如果时间走快了」，等于什么都没验。
     await new Promise(resolve => setTimeout(resolve, ms))
     return { status: 200 }
-  }) as typeof fetch
+  }) as unknown as typeof fetch
   try {
     console.warn = (...args: unknown[]) => { warned.push(args.map(String).join(' ')) }
 

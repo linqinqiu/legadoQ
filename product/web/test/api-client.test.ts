@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { api, streamSearch } from '../src/lib/api.ts'
+import { requestArrayBuffer, requestBlob, requestText } from '../src/lib/api/client.ts'
 
 test('api client - 不设身份：请求里不再带任何令牌，但 Content-Type 与错误传递照旧', async () => {
   const originalFetch = globalThis.fetch
@@ -149,6 +150,31 @@ test('api client - streamSearch WebSocket lifecycle and error handling', async (
   } finally {
     globalThis.WebSocket = originalWebSocket
     globalThis.location = originalLocation
+  }
+})
+
+test('api client - 文本 / Blob / ArrayBuffer 助手共用同源凭据与错误口径', async () => {
+  const originalFetch = globalThis.fetch
+  const captured: { url: string; credentials?: RequestCredentials }[] = []
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = input.toString()
+    captured.push({ url, credentials: init?.credentials })
+    if (url === '/missing') {
+      return new Response(JSON.stringify({ message: '服务器上没有这个条目' }), { status: 404 })
+    }
+    if (url === '/text') return new Response('更新日志正文', { status: 200 })
+    if (url === '/blob') return new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+    return new Response(new Uint8Array([4, 5]), { status: 200 })
+  }
+  try {
+    assert.equal(await requestText('/text'), '更新日志正文')
+    assert.equal((await requestBlob('/blob')).size, 3)
+    assert.deepEqual([...new Uint8Array(await requestArrayBuffer('/bytes'))], [4, 5])
+    await assert.rejects(() => requestText('/missing'), /服务器上没有这个条目/,
+      '非 2xx 要把服务端那句 message 抛出来，不能静默回空串')
+    assert.ok(captured.every(item => item.credentials === 'same-origin'), '三条都要带同源凭据')
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })
 

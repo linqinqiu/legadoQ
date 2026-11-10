@@ -70,7 +70,13 @@ test('实测可达：20 秒上限，失败要把原因说出来', () => {
   assert.match(modal, /实测不可达\{probeReason/, '界面要把原因带出来，不能只说"不可达"')
 
   const client = read('../src/lib/api/client.ts')
-  assert.match(client, /opts: \{ timeoutMs\?: number \}/, '统一客户端要能把上限透传下去')
+  // 上限既可以写成内联类型，也可以抽成 RequestOptions；两种都认，判据是「参数里有 timeoutMs 且真的往下传」。
+  assert.match(
+    client,
+    /(opts: \{ timeoutMs\?: number \}|type RequestOptions = \{ timeoutMs\?: number \})/,
+    '统一客户端要能把上限透传下去',
+  )
+  assert.match(client, /opts\.timeoutMs/, '上限要传给 fetchWithMetrics，不能收下就丢')
 
   const perf = read('../src/lib/performance.ts')
   assert.match(perf, /controller\.abort\(\)/, '到点要真的 abort 请求，而不是只把 promise 丢掉')

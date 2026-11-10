@@ -1,7 +1,9 @@
 /** 备份包导入与 kept 条目相关 API。 */
-import { request } from '../client'
+import { request, requestText } from '../client'
 import type {
   BackupImportSummary,
+  BackupRestoreScheduled,
+  BackupSnapshotInfo,
   KeptBackupEntry,
 } from '../types'
 
@@ -22,8 +24,20 @@ export const backup = {
   /** 取 kept 条目 URL。 */
   keptEntryUrl: (name: string) => `/api/backup/kept/${encodeURIComponent(name)}`,
   /** 取 kept 条目原文。 */
-  keptEntry: (name: string) =>
-    fetch(`/api/backup/kept/${encodeURIComponent(name)}`).then((response) =>
-      response.ok ? response.text() : Promise.reject(new Error('服务器上没有这个条目')),
-    ),
+  keptEntry: async (name: string) => {
+    try {
+      return await requestText(`/api/backup/kept/${encodeURIComponent(name)}`)
+    } catch {
+      // kept 目录里没有这一条是一个可预期结果，界面要一句能看懂的话，不是底层 statusText。
+      throw new Error('服务器上没有这个条目')
+    }
+  },
+  /** 数据库快照清单（备份目录里已有的快照 + 校验状态）。 */
+  listSnapshots: () => request<BackupSnapshotInfo[]>('/api/backup/snapshots'),
+  /** 排定一次恢复：只写 .pending-restore 标记，下次启动开库前才真正生效。 */
+  restoreSnapshot: (name: string) =>
+    request<BackupRestoreScheduled>('/api/backup/snapshots/restore', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
 }
