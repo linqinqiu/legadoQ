@@ -1,9 +1,9 @@
 # 当前结构与成果
 
-> **规模数字采集于 2026-11-11 晚工作树**（含未提交 `RuleHttp` 抽取，跑法见文末「数字口径」）；
+> **规模数字采集于 2026-11-11 22:00（HEAD `9564e26`，工作树干净）**（跑法见文末「数字口径」）；
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。两份冲突时以 facts.md 为准。
 >
-> 版本 **0.2.37 / build 50** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ Web **1,056** 项全绿；后端 HEAD `1,103` 全绿，工作树含未提交 `RuleHttp` 抽取 3 例红（架构边界 + 离线 DNS，详见 `facts.md` §2）
+> 版本 **0.2.37 / build 50** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ Web **1,056** 项全绿；后端 **1,109** 项（6 跳过、0 失败；静态 `@Test` 1,110），详见 `facts.md` §2
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -25,7 +25,7 @@
 
 ## 2. 后端结构（Kotlin / Ktor 3.4.3，JDK 17）
 
-**规模**（2026-11-11 晚工作树实测，含未提交 `RuleHttp` 抽取）：后端 139 个源文件 / 35,469 行，142 个测试文件 / 1,110 项 `@Test`（HEAD 实跑 1,103 全绿；工作树 3 红见 `facts.md` §2）；前端 202 个 `.ts/.tsx` / 38,361 行，134 个测试文件 / 1,056 项测试。
+**规模**（2026-11-11 22:00，HEAD `9564e26` 实跑）：后端 139 个源文件 / 35,470 行，142 个测试文件 / 1,110 项 `@Test`（实跑 1,109 完成、6 跳过、0 失败）；前端 202 个 `.ts/.tsx` / 38,361 行，134 个测试文件 / 1,056 项测试。
 
 ### 2.1 包职责
 
@@ -118,7 +118,8 @@
 
 | 门禁 | 命令 | 现状（0.2.37 实测） |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **HEAD 1,103 项 / 0 失败**（静态 `@Test` 现 1,110；工作树含 WIP `RuleHttp` 抽取 3 红，见 `facts.md` §2） |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **1,109 项 / 0 失败**（6 跳过；静态 `@Test` 1,110；HEAD `9564e26`）。满负载并发下曾出现 2 个 AI HTTP 类共 12 例 coroutine 1m 超时，减载后定向重跑通过 → 负载假红，不是缺陷 |
+| 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
 | Web 测试 | `web: npm test` | **1,056 项 / 0 失败** |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过 |
 | 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 最近一次实测（2026-11-09）：后端行 **70.04%**，前端行 **63.51%**；重跑 `npm run coverage` 取当次值 |
@@ -127,7 +128,7 @@
 | 版本单一来源 | `npm run version:check` | 7 处一致，0.2.37 |
 | 真浏览器门禁 | `product/tools/verify/*-check.mjs` | **47** 个 `*-check.mjs`（该目录下共 79 个 `.mjs`，约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
 
-CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约）。
+CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约 / 文档 / 结构）、`build-jar.yml`（打包与发布）、`gates.yml`（真浏览器门禁）、`coverage.yml`、`docker.yml`。
 
 ---
 
@@ -209,4 +210,4 @@ npm --prefix product/web test
 ls product/tools/verify/*-check.mjs | wc -l
 ```
 
-后端「实跑 1,103」取自 `product/app/build/test-results/test/*.xml` 的 `<testsuite tests="…">` 求和；静态 `@Test`（HEAD 1,104 / 工作树 1,110）与实跑差 1 是历史现象（有一条用例没有被任何测试类执行），不是失败。
+后端「实跑 1,109」取自 `product/app/build/test-results/test/*.xml` 的 `<testsuite tests="…">` 求和（6 跳过、0 失败）；静态 `@Test` 1,110 与实跑的差 1 是历史现象（有一条用例没有被任何测试类执行），不是失败。

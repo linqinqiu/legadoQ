@@ -101,8 +101,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 ├── product/             # 产品本体：Ktor 后端 + 内置 UI + 数据
 │   ├── app/             # 后端源码（Kotlin/Ktor）
 │   ├── web/             # 内置 Web UI 源码
-│   ├── docs/            # 产品手册（部署 / 兼容 / 插件框架 / 门禁 等）
-│   ├── AGENTS.md        # AI / 脚本自定义接入面（`/api/agent/*`）
+│   ├── docs/            # 产品手册（部署 / 兼容 / 插件框架 / 门禁 / AI 接入 agent-api.md 等）
 │   ├── CONTRIBUTING.md  # 中文协作约定（权威版见仓库根 .github/）
 │   └── SECURITY.md      # 中文安全基线（权威版见仓库根 .github/）
 ├── docs/                # 唯一索引 + 架构/API/规划 + research/ 研究快照 + sessions/ 工程日志

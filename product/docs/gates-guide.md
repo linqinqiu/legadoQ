@@ -1,6 +1,6 @@
 # 门禁（tools/verify）怎么跑、怎么接 CI
 
-> `tools/verify/` 顶层 **80 个** `.mjs` 脚本（`retired/` 另有 2 个已退役），其中 45 个是 `*-check.mjs` 判据。
+> `tools/verify/` 顶层 **79 个** `.mjs` 脚本（`retired/` 另有 2 个已退役），其中 47 个是 `*-check.mjs` 判据（数量会漂移，以 `node scripts/run-all-gates.mjs --list` 为准）。
 > 它们都是"现量"判据：开真 Chrome 打开真界面量，不打桩、不看快照。这份文档说清它们的分类、怎么在本地跑、CI 里跑哪些。
 >
 > 数字会随脚本增删漂移。**权威清单永远是 `node scripts/run-all-gates.mjs --list` 的输出**，
@@ -9,7 +9,7 @@
 ## 0. 一条命令跑完全部（**先跑这个**）
 
 ```bash
-node scripts/run-all-gates.mjs            # 串行跑全部 45 个 *-check.mjs
+node scripts/run-all-gates.mjs            # 串行跑全部 *-check.mjs（当前 47 个）
 node scripts/run-all-gates.mjs --list     # 只列清单
 node scripts/run-all-gates.mjs --filter=ui  # 只跑名字含 ui 的
 ```

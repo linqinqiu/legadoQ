@@ -92,7 +92,7 @@ jobs:
             echo "✓ 代码路径变更已附带 CHANGELOG 条目或 version 变更，门禁通过。"
           else
             echo "✗ 代码路径有变更，但既未改 CHANGELOG.md 也未改 app/build.gradle 的 version。"
-            echo "  请同步更新 CHANGELOG 或 bump version（细则见 docs/changelog-guide.md）。"
+            echo "  请同步更新 CHANGELOG 或 bump version（细则见 product/docs/changelog-guide.md）。"
             exit 1
           fi
 

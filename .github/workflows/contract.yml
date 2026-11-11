@@ -12,7 +12,7 @@
 # 2026-10-26 重建：重组时这 7 个文件被压成一行（0 换行 + BOM），GitHub 解析不了，
 # CI 自重组起从未真的跑过。重写时把路径挪到 product/ 下、JDK 统一 17，
 # 并且**不再在 job 名里抄端点数** —— 权威值只有 ApiCatalog.test.ts 那条绝对断言，
-# 文档抄一份就必然滞后（"139/19/8" 就是上一个抄本，实际早已是 141）。
+# 文档抄一份就必然滞后（任何具体数字都是上一个抄本：权威值只看 ApiCatalog.test.ts 与 agent-api.json）。
 # 与本地一一对应：`npm --prefix product/web test`、`./gradlew :app:verifyFramework`、
 # `npm run docs:api-check`。
 name: 框架守门（契约双锁）

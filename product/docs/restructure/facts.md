@@ -25,8 +25,8 @@
 | 项 | 值 | 取证 |
 |---|---|---|
 | 仓库 | `E:\legado` | — |
-| HEAD | `5344c39`（2026-11-09 20:46:19 +0800） | `git log -1 --format="%h %ad" --date=iso` |
-| 版本 tag | `v0.2.37` | `git tag --points-at HEAD` |
+| 采集时 HEAD | `9564e26`（2026-11-11 22:00，270 提交） | `git log -1 --format="%h %ad" --date=iso`；HEAD 随后续提交前移，锚点只作复现用 |
+| 版本 tag | `v0.2.37` → `43ea5562`（peel `5344c39`）；采集时 HEAD 无 tag | `git tag --points-at HEAD`（空）；`git rev-parse v0.2.37^{commit}` |
 | 版本 / 构建号 | **0.2.37 / 50** | `cat VERSION BUILD_NUMBER`；`/healthz` |
 | 版本真源 | `product/app/build.gradle` 的 `version` | 其余 6 处为抄本，`npm run version:check` 钉住 |
 | 代码修订 | `rev-<提交数>` + 短 sha | `/healthz` 的 `rev` / `sha` 字段（0.2.37 起） |
@@ -37,12 +37,12 @@
 
 ---
 
-## 2. 源码规模（工作树，2026-11-11 晚，含未提交 RuleHttp 抽取）
+## 2. 源码规模（HEAD `9564e26`，2026-11-11 22:00，工作树干净）
 
 | 项 | 值 | 命令 | 口径 |
 |---|---:|---|---|
 | 后端 `.kt` | **139** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含全部包 |
-| 后端行数 | **35,469** | `find … -exec cat {} + \| wc -l` | — |
+| 后端行数 | **35,470** | `find … -exec cat {} + \| wc -l` | — |
 | 后端 `@Test` | **1,110** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
 | 后端测试文件 | **142** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
 | 前端 ts/tsx | **202** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | 2026-11-11 |
@@ -51,12 +51,11 @@
 
 **跑起来的通过数**：
 
-- **HEAD `e9ed196`（无未提交改动时）**：后端 **1,103 / 1,103**（0 失败 0 错误），前端 **1,056 / 1,056**（0 失败，`tsc -b` 与 `check:test` 均过）；合计 **2,159** 全绿。
-- **工作树复跑（2026-11-11 晚，含未提交 `RuleHttp` 抽取）**：后端 **1,109 完成 / 3 失败 / 6 跳过**，前端 **1,056 / 1,056** 全绿。3 处后端失败均**非文档改动引入**：
-  1. `ArchitectureBoundaryTest`「engine 不得依赖 infra」——新 `rules/RuleHttp.kt` 引入 `io.legado.ops`，WIP 尚未过架构边界；
-  2. `RuleRunnerTest` ×2——`NetworkSecurity` 用例需真实 DNS（`fanqienovel.com`），本机离线不可达（`UnreachableTargetException`）。
+- **HEAD `9564e26`（2026-11-11 22:00，工作树干净）**：后端 **1,109 完成 / 0 失败 / 6 跳过**（静态 `@Test` 1,110），前端 **1,056 / 1,056** 全绿（`tsc -b` 通过）；合计 **2,165**。
+- **满负载复跑（同机并行 4 个审计任务）**：后端 1,109 完成 / **12 失败** / 6 跳过。12 例全在 `io.legado.AgentRoutesHttpTest`(8) 与 `AgentErrorClassHttpTest`(4)，失败信息统一是 `UncompletedCoroutinesError: After waiting for 1m, the test body did not run to completion`；减载后只重跑这两个类 `BUILD SUCCESSFUL`（1m16s）→ 判定为并发负载假红，不是代码缺陷。
+- 旧记录（HEAD `e9ed196` 的 1,103/1,103、工作树 `RuleHttp` WIP 3 红）已过期：`RuleHttp.kt` 已在 HEAD，唯一相关 import 是 `io.legado.port.logNetwork`，`ArchitectureBoundaryTest` 全绿。
 
-> 静态 1,110 与工作树运行 1,109 的差额是「有条用例未被任何测试类执行 + 6 条按条件跳过」，不是新的失败。恢复全绿只需：把 `RuleHttp.kt` 的 `io.legado.ops` 依赖改走端口/注入，或在联网环境复跑 DNS 用例。
+> 静态 1,110 与实跑 1,109 的差 1 是历史现象（有一条用例没有被任何测试类执行），不是失败。
 
 **覆盖率（jacoco / c8，2026-11-09 22:11 同一次 `npm run coverage`）**：后端行 **70.04%**
 （13,209 / 18,860），前端行 **63.51%**（15,070 / 23,726），前后端合计 **66.4%**。
@@ -116,11 +115,11 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 ---
 
-## 5. 现场状态（瞬时，2026-11-10）
+## 5. 现场状态（瞬时，2026-11-11 22:00）
 
 | 项 | 状态 |
 |---|---|
-| 工作树 | **有未提交改动**（2026-11-10：文档归拢 + 前端统一传输层 / 焦点陷阱 / 阅读记录范围）；未提交未推送 |
+| 工作树 | **干净**（`git status --short` 空）；HEAD `9564e26`，本地 `origin/main` 引用同为 `9564e26`（远端最新无法 fetch 验证：代理 127.0.0.1:6480 无服务） |
 | 服务 | **未运行**；本轮验证用 `gradlew :app:test` 与 `npm test`，没有起 1234 |
 | `/healthz` | 无应答（服务未启动）；修订号格式见 §1 的 `rev` / `sha` |
 | 端点 | **161 条 / 19 组**（`docs:api-check` 实测） |
