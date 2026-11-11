@@ -14,7 +14,7 @@ import path from 'node:path'
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const HTTP_DIR = path.join(ROOT, 'app', 'src', 'main', 'kotlin', 'io', 'legado', 'http')
 const CATALOG = path.join(ROOT, 'app', 'src', 'main', 'resources', 'agent-api.json')
-const DOC = path.join(ROOT, 'AGENTS.md')
+const DOC = path.join(ROOT, 'docs', 'agent-api.md')
 
 /**
  * 0.8.2 结构重排：`Routes.kt` 拆成了装配点 + 13 个 `<组>Routes.kt`。
