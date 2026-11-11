@@ -31,7 +31,7 @@
 
 > **2026-10-23 校准**：端点总数已从 139 改为 **142 / 19 组**（`阅读` +2、`进度与笔记` +1；`agent-api.json` 与 `/api/catalog` 实测一致）。下方 §2 各表里的 139 是 2026-10-20/21 的历史记录，保留原样；**当前真值以 142 为准**。
 >
-> 同日校准**工具数**：`GET /api/agent/manifest` 实测 **54 个内置工具 / 16 个前缀组**（source 14、replace 6、shelf 6、note 4、rss 4、ai 3、subscription 3、backup 2、explore 2、progress 2、readingLog 2、tts 2、book 1、chapters 1、content 1、search 1）。`legado/docs/agent-guide.md` 与 `ai-framework.md` 里旧的 39 / 43 已改 54；`docs/research/` 与 `reader-redesign-plan.md` 里的 39/42 是当时的实测快照，保留不改。**端点数 ≠ 工具数**，两者别混。
+> 同日校准**工具数**：`GET /api/agent/manifest` 实测 **54 个内置工具 / 16 个前缀组**（source 14、replace 6、shelf 6、note 4、rss 4、ai 3、subscription 3、backup 2、explore 2、progress 2、readingLog 2、tts 2、book 1、chapters 1、content 1、search 1）。`legado/docs/agent-guide.md` 与 `ai-framework.md` 里旧的 39 / 43 已改 54；`docs/research/` 与 `reader-redesign-history.md` 里的 39/42 是当时的实测快照，保留不改。**端点数 ≠ 工具数**，两者别混。
 >
 > 同轮补正两处易错语义：① `MAX_TOOL_ROUNDS` 默认 **6**、可用 `LEGADO_AI_MAX_TOOL_ROUNDS` 调到 1–20（不是 32，32 会被 `coerceIn` 夹到 20）；② AI **出站**闸门（`assertPublicBaseUrl` → `NetworkSecurity`）**连回环也拒**，`baseUrl` 填 `127.0.0.1` 会得到 `400 invalid_request`；「只许回环」是**入站**的 `Guardrails.refuseExternalBind`，方向相反。
 

@@ -3,6 +3,8 @@
 > 状态：**已落地**。本文记录的是对三份外部架构建议（Kototoro 规则内核端口化、ifc-lite 声明式 Widget 扩展、legado-with-MD3 Feature-first + convention plugin 等）逐条**拿仓库真实代码核对**后的结论，以及据此刻意保留、并由 `ArchitectureBoundaryTest` 钉住的六条边界。
 >
 > 判据文件：`app/src/test/kotlin/io/legado/ArchitectureBoundaryTest.kt`（零依赖，JUnit 4，单模块 `:app`）。取证方式：文件系统 + 实跑命令，非文档转述。
+>
+> **分工**：本文=对三份外部重构报告的审计（写于当次 commit 的快照）；**现行全景架构→[`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)**；规模数字→[`restructure/facts.md`](restructure/facts.md)；重组过程记录→[`restructure/`](restructure/)。
 
 ## 1. 结论先行
 

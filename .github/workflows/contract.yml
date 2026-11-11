@@ -117,8 +117,10 @@ jobs:
 
       # CLAUDE.md / GEMINI.md / .cursorrules 三份入口由 scripts/protocol-template.md 生成，
       # 手动改其中一份就会漂（不同工具拿到不同规则）。这里钉死三份与模板逐字节一致。
+      # 三份入口与模板比对；注意本 workflow 的 run 步骤在 product/ 下执行，
+      # 而 protocol.mjs 在仓库根 scripts/，故用 ../scripts（此前写成 scripts/ 导致 MODULE_NOT_FOUND，doc-gate 恒红）。
       - name: 核对 AI 协议入口与模板不漂
-        run: node scripts/protocol.mjs --check
+        run: node ../scripts/protocol.mjs --check
 
   structure-gate:
     name: 目录深度（后端域包平铺 / 前端限深）
