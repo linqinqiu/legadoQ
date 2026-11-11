@@ -6,7 +6,7 @@
 - [Main README](../README.md) - Quick start and overview
 - [Architecture Guide](../docs/ARCHITECTURE.md) - System design
 - [API Reference](../docs/API-REFERENCE.md) - All 161 endpoints
-- [AI Agent Guide](../product/AGENTS.md) - AI integration
+- [AI Agent Guide](../product/docs/agent-api.md) - AI integration
 - [Plugin Development](../product/docs/plugin-development-guide.md) - Historical only (plugin system removed)
 
 ### 2. **Common Issues**
@@ -24,7 +24,7 @@
 #### AI Connection Failed
 - Verify `agent-profiles.json` configuration
 - Test connection: `GET /api/agent/connections`
-- See [AI Framework docs](../product/AGENTS.md)
+- See [AI Framework docs](../product/docs/agent-api.md)
 
 ### 3. **Community & Discussion**
 

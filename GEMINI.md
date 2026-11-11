@@ -12,10 +12,11 @@
 5. 禁止「读一遍全仓再总结」式探索——那正是 token 爆炸根因。
 
 ## 热点（最常改、最烧 token，按需 grep 段，别整读）
-- 前端阅读器：`product/web/src/features/reader/` —— `ReaderScreen.tsx`(2344) 是状态中枢，**整读最烧 token**；跳转原语已抽到 `useReaderPositionJump.ts`，书签/笔记在 `useReaderNotes.ts`。
-- 后端规则引擎：`product/app/src/main/kotlin/io/legado/rules/RuleRunner.kt`(2333) 是最大文件，改规则逻辑时按需 grep 段，别整读。
+- 前端阅读器：`product/web/src/features/reader/` —— `ReaderScreen.tsx`(2346) 是状态中枢，**整读最烧 token**；跳转原语已抽到 `useReaderPositionJump.ts`，书签/笔记在 `useReaderNotes.ts`。
+- 后端规则引擎：`product/app/src/main/kotlin/io/legado/rules/RuleRunner.kt`(2331) 是最大文件，改规则逻辑时按需 grep 段，别整读。
+- 行数会漂移：定位一律 `grep -n '<符号>'`，别把 `(NNNN)` 当精确行号；`/api/agent/*` 接入说明在 `product/docs/agent-api.md`（不自动加载）。
 - 完整「任务→文件」映射、测试门禁、常见坑：见 `AGENTS.md`（CodeBuddy/Qoder 会自动读；其他工具请也读它）。
 
 ## 改完跑门禁
-- 前端：`cd product/web && npm test`（~1022 项，node:test）
+- 前端：`cd product/web && npm test`（~1056 项，node:test）
 - 后端：`cd product && ./gradlew :app:test --no-daemon`（GoldenRuleTest 逐字节守门）

@@ -39,7 +39,7 @@
 
 - [plugin-framework.md](../product/docs/plugin-framework.md) — 插件框架（已废弃，仅历史参考）
 - [plugin-development-guide.md](../product/docs/plugin-development-guide.md) — 写一个插件（已废弃，仅历史参考）
-- [../product/AGENTS.md](../product/AGENTS.md) — `/api/agent/*` 自定义接入面
+- [../product/docs/agent-api.md](../product/docs/agent-api.md) — `/api/agent/*` 自定义接入面
 
 **开发与验证**
 

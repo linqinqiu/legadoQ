@@ -3,7 +3,9 @@
 ## 0. 先读这里（省 token 规则，务必遵守）
 - **禁读区**（历史/产物，整读纯浪费）：`docs/archive/**`、`legado-releases/**`、`product/data/**`、`**/build/**`、`node_modules/**`、`dist/**`、`*.jar`。需要历史时只按关键词 `grep`，不整读。
 - **事实优先看 `product/docs/restructure/facts.md`**（带时间戳/命令/口径的实测数字）。不要自己 `find` 全仓重数规模。
-- **不整读大文件**（>1000 行，已实测）：`ReaderScreen`2346 · `RuleRunner`2333 · `JsSandbox`2066 · `JavaPackages`1361 · `ShelfPage`1219 · `Models`1112 · `Agent`1035 · `SourcesPage`933 · `types.ts`932 · `AgentRoutes`923 · `SourcesRoutes`824 · `WebViewProxy`817 · `BuiltinTools`804 · `RuleValue`802。用 `grep -n` 定位，再 `Read(offset,limit)` 只读 40–120 行窗口。
+- **不整读大文件**（>1000 行，已实测）：`ReaderScreen`2346 · `RuleRunner`2331 · `JsSandbox`2066 · `JavaPackages`1361 · `ShelfPage`1240 · `Models`1112 · `Agent`1035 · `SourcesPage`933 · `types.ts`932 · `AgentRoutes`923 · `SourcesRoutes`824 · `WebViewProxy`817 · `BuiltinTools`804 · `RuleValue`802。用 `grep -n` 定位，再 `Read(offset,limit)` 只读 40–120 行窗口。
+- **行数是体量提示、会漂移**（一重构就旧）：定位一律 `grep -n '<符号>'`，别把 `(NNNN)` 当精确行号去跳。
+- **`/api/agent/*` 接入说明在 `product/docs/agent-api.md`**（原 `product/AGENTS.md`，2026-11-11 迁出以免被按路径自动加载；日常编码不必读，改 AI 接口再看）。
 - **token 预算**：一次会话只推进一个切点；验证跑一次全量 `npm --prefix product/web test`（~1020 项），不逐文件试；能 `grep` 回答的别 `Read`。
 - **文档事实源优先级**：`product/CHANGELOG.md` > `docs/{ARCHITECTURE,STRUCTURE,API-REFERENCE}.md` > `product/docs/restructure/facts.md`；根 `CHANGELOG.md` 只是一行指针，别当第二事实源。
 - **动手前先 `git status`**（可能有并行 agent 的半成品，未提交改动未必是你的）。
@@ -46,9 +48,9 @@
 ## 7. 大文件拆分路线图（每拆一刀，后续 AI 改造成本永久下降）
 按「先低风险、后高耦合」排，每步单独提交、先补判据：
 1. **`ReaderScreen`(2346)**：已拆 6 hook + 3 展示组件；`useReaderPositionJump`(导航原语) 已抽出 ✅；`NoteHighlights`/`renderNoteHighlights` 此前已迁出 ✅；剩 `toggleBookmark` 留原地。
-2. **`RuleRunner`(2333)**：取值段已在 `RuleNodeSelection`、响应解码/字符集/限读已在 `ResponseBody` → 下一步 HTTP 段（1426–2094，先抽窄接口避开 `JsSandbox(this)`）；靠 `GoldenRuleTest` 逐字节比对。
+2. **`RuleRunner`(2331)**：取值段已在 `RuleNodeSelection`、响应解码/字符集/限读已在 `ResponseBody` → 下一步 HTTP 段（1426–2094，先抽窄接口避开 `JsSandbox(this)`）；靠 `GoldenRuleTest` 逐字节比对。
 3. **`JsSandbox`(2066) / `JavaPackages`(1361)**：Java 桥，动前先跑 `GoldenRuleTest` + 真库抽样。
-4. 前端 **`ShelfPage`(1219) / `SourcesPage`(933)**：按子功能拆 hook。
+4. 前端 **`ShelfPage`(1240) / `SourcesPage`(933)**：按子功能拆 hook。
 纪律：删/拆文件时同步缩 `tools/verify/depth-check.mjs` 的 `KNOWN_DEEP` 基线（只许单调缩小）。
 
 ## 8. 任务→精确位置 速查表（绝大多数「在哪」直接查这里，别探索）
@@ -89,7 +91,7 @@
 ### 8.3 后端 · 规则引擎 / 脚本（`rules/`）
 | 改什么 | 文件 |
 |--------|------|
-| 规则主流程 | `rules/RuleRunner.kt`(2333) |
+| 规则主流程 | `rules/RuleRunner.kt`(2331) |
 | 扩展点调度 | `rules/RuleProcessor.kt`（含 `RuleDispatcher`，认领即拥有） |
 | 列表取值 | `rules/RuleNodeSelection.kt` |
 | 值/拆分/搜索流 | `rules/RuleValue.kt` · `rules/RuleSplit.kt` · `rules/SearchFlow.kt` |
@@ -103,7 +105,7 @@
 |--------|------|
 | 书源仓储（CRUD/批量/体检编排） | `data/SourceRepository.kt`（**一律放 data/**，别放 source/） |
 | 书源 DAO / 体检 | `data/SourcesDao.kt` · `data/SourceHealthDao.kt` |
-| 书架仓储 / DAO | `data/BookshelfRepository.kt`(563) · `data/ShelfDao.kt` |
+| 书架仓储 / DAO | `data/BookshelfRepository.kt`(552) · `data/ShelfDao.kt` |
 | 连接池（只一条写连接） | `data/Database.kt` · `data/db/` |
 | Cookie/登录/会话 | `data/CookieDao.kt`(714) · `data/LoginDao.kt` · `data/SessionCookies.kt` |
 | 阅读/缓存/RSS/替换/脚本缓存 DAO | `data/ReadingDao.kt` · `data/CacheDao.kt` · `data/RssDao.kt` · `data/ReplaceRuleDao.kt` · `data/ScriptCacheDao.kt` |
@@ -117,7 +119,7 @@
 |--------|------|
 | 阅读器（状态中枢） | `features/reader/ReaderScreen.tsx`(2346) |
 | 阅读器 hook/展示 | `features/reader/` 下 `useReader*`(`useReaderPositionJump`=跳转原语：`jumpToNote`/`jumpToSearchHit`/`jumpToNotePosition`) · `ReaderBody`/`ReaderOverlays`/`ReaderChrome`/`ReaderCatalog` |
-| 书架页 | `features/bookshelf/ShelfPage.tsx`(1219) · `LibraryPage.tsx` |
+| 书架页 | `features/bookshelf/ShelfPage.tsx`(1240) · `LibraryPage.tsx` |
 | 书源编辑器 | `features/source-editor/SourcesPage.tsx`(933) · `SourceLoginModal/UiPanel` · `SourceEditorPanel` · `SourceHealthModal` |
 | AI 连接/悬浮球 | `features/ai/AiConnectionsModal.tsx` · `AiFloatingBall.tsx` |
 | 通用模态 | `components/ReplaceRulesModal` · `SourceSwitchModal` · `BookDetailModal` |

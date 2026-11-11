@@ -1,4 +1,8 @@
-# AGENTS — legadoQ 自定义接入面 `/api/agent/*`
+# legadoQ 自定义接入面 `/api/agent/*`
+
+> 本文原名 `product/AGENTS.md`，2026-11-11 迁入 `product/docs/`，以免被 AI 工具按目录自动加载
+> （约 890 行，日常编码用不到）。**端点与字段以 `GET /api/catalog` 与 `resources/agent-api.json` 为准**；
+> 文中部分历史表述可能已过时，冲突时以代码与运行时为准。
 
 本文件给需要把 legadoQ 接入外部系统 / AI 客户端的开发者与智能体看。它描述的是**真实已在 127.0.0.1:1234 跑起来的 HTTP 接口**，不是设计稿。
 
