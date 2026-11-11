@@ -273,21 +273,7 @@ class RuleRunner(
         }
     }
 
-    /**
-     * `ruleExplore` 与 `ruleSearch` 逐字段合并：前者非空的字段用它，空的取后者的。
-     * 两个都缺时返回 null（调用方报错）。
-     */
-    private fun mergeExploreRule(explore: JsonObject?, search: JsonObject?): JsonObject? {
-        if (explore == null) return search
-        if (search == null) return explore
-        val merged = LinkedHashMap<String, JsonElement>()
-        for (key in explore.keys + search.keys) {
-            val own = explore[key]
-            val value = if (own is JsonPrimitive && !own.contentOrNull.isNullOrBlank()) own else search[key] ?: own
-            if (value != null) merged[key] = value
-        }
-        return JsonObject(merged)
-    }
+    // mergeExploreRule 已抽到 RuleUrlSupport.kt（同包顶层）
 
     /**
      * 解析书源的 `exploreUrl`（Legado 的「发现」页配置）：
