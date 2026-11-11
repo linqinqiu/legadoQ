@@ -337,12 +337,13 @@ class RuleRunner(
      * 取 RSS 栏目页的文章列表，字段映射逐条照上游 `model/rss/RssParserByRule.kt`：
      * `ruleArticles` 取列表（`-` 前缀＝倒序，同书源目录）、标题为空的条目丢掉，
      * 图片地址按上游第 125 行用 sourceUrl 归一，文章链接用栏目页地址归一。
+     * 没配 `ruleArticles` 时回落到标准 RSS/Atom 直解（S0/C-01，[RssFeedParser]，
+     * 上游 RssParserDefault 语义 + Atom 扩展）；也不是 feed 才报错。
      */
     fun rssArticles(sourceJson: String, urlTemplate: String, page: Int = 1): List<RssArticle> {
         val source = sourceJson.objectValue()
         val sourceUrl = source.string("sourceUrl") ?: throw RuleExecutionException("RSS 源缺少 sourceUrl")
         val rawListRule = source.string("ruleArticles")?.trim()
-            ?: throw RuleExecutionException("该订阅源没有配置 ruleArticles，服务端无法解析列表")
         return jsSandbox.withSourceContext(sourceContext(source, sourceUrl)) {
             val resolved = if (isJsRule(urlTemplate)) evalRuleJs(urlTemplate, mapOf("baseUrl" to sourceUrl, "sourceId" to sourceUrl, "key" to "", "page" to page)) ?: urlTemplate else urlTemplate
             val analyzed = applyUrlScripts(resolved, "", page, sourceUrl)
@@ -350,6 +351,16 @@ class RuleRunner(
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             val pageUrl = renderUrl(path, "", sourceUrl, page, expandScripts = false).absolute(sourceUrl)
             val body = fetchUrl(pageUrl, mergedOptions, null, sourceUrl, database)
+            if (rawListRule.isNullOrBlank()) {
+                val feed = RssFeedParser.parse(body, sourceUrl)
+                    ?: throw RuleExecutionException("该订阅源没有配置 ruleArticles，返回的也不是标准 RSS/Atom feed，服务端无法解析列表")
+                return@withSourceContext feed.map { article ->
+                    article.copy(
+                        link = if (article.link.isBlank()) "" else article.link.absolute(pageUrl),
+                        image = article.image?.absolute(sourceUrl),
+                    )
+                }
+            }
             val reverse = rawListRule.startsWith("-")
             val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
             val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)

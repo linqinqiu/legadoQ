@@ -54,12 +54,12 @@
 | **凭据按域共享** | 一台机器一个 Cookie 罐，同域的书源共用（`cookie` 表 + `source_login_state`） | 删一条凭据会影响同域其它源，界面上必须这样说明 |
 | **TTS 只有两副引擎** | 浏览器 `speechSynthesis` 与服务端 Edge-TTS 会话流（外加自定义 HTTP 参数一档）；不实现上游其它 TTS 后端 | Edge-TTS 握手要带匹配的 `Sec-MS-GEC-Version` 与 `muid` Cookie，微软改协议时改 `LEGADO_EDGE_TTS_CHROMIUM_VERSION` 免重编译 |
 
-## 4.1 与上游新确认的两条差异
+## 4.1 与上游的差异台账（S0 逐条收口）
 
 | 差异 | 事实 | 影响 |
 | :--- | :--- | :--- |
-| **URL 里的分页占位不一样** | 上游分页用的是 `<页1,页2,…>`（`model/analyzeRule/AnalyzeUrl.kt` 的 `pagePattern = <(.*)>`，组内按逗号切，越界一律取**最后一个**），而 `{{…}}` 在 URL 里是**内嵌 JS**；我们服务端 `rules/RuleRunner.kt` 的 `renderUrl()` 把 `{{page}}` 当字面量替换 | 社区里按上游语义写的源（`...&page=<(1,2,3)>`）**翻不了页**；反过来按我们写法（`{{page}}`）写的源在上游 App 里也翻不了。这条差异会影响按上游语义写的源的翻页。 |
-| **RSS 必须有列表规则才看得见** | 我们把"有 `ruleArticles`"当作可列目的前提（`pages/RssPanel.tsx` 一侧的 `hasListRule` 口径）；上游另有 `model/rss/RssParserDefault.kt`，**标准 RSS/Atom XML 无需任何规则即可直解**（含 `content:encoded`、`dc:date`、从 `description` 抓首图） | 现成 RSS 订阅地址（绝大多数是标准 XML）在界面上被判成"这个源没有列表规则"而看不见条目 —— P1 要补的正是这条，不是让用户去写规则 |
+| **URL 分页占位 `<1,2,3>`（已对齐上游，2026-11-12）** | 上游 `model/analyzeRule/AnalyzeUrl.kt` 的 `pagePattern = <(.*)>`：组内按逗号切、越界取**最后一个**、段内空白裁掉。服务端 `rules/RuleHttp.kt` 的 `renderUrl()` → `rules/RuleUrlSupport.kt` 的 `selectPageSegments()` 逐条同语义，且与 `{{page}}`、`{{(page-1)*20}}` 共存（先替字面量与 JS 表达式，最后展开翻页段）；搜索/发现/RSS 三条链路都带页码（首页 page=1）。「这一栏能不能翻页」由 `rules/PagingRule.kt` 判定，语义照上游 `supportsPageSelection`（AST 认自由变量 `page`，绝不执行源脚本） | 按上游语义写的源（`...&page=<(1,2,3)>`）与按 `{{page}}` 写的源**都能翻页**。判据：`PagingSegmentTest`（端到端拿真实请求地址：空首段/第 N 段/越界取末/裁空白/与 `<key>`、`{{page}}` 共存/搜索逗号段/上游用例原样复算）、`PagingDetectionTest`（判定表含"不执行源脚本"安全用例）。此前本行与导入告警声称"不支持/不解析"，属文档漂移，已随 S0/C-02 撤销 |
+| **RSS/Atom 无列表规则直解（已支持，2026-11-12）** | 曾把"有 `ruleArticles`"当作可列目的前提；现在 `ruleArticles` 缺失/空白时由 `rules/RssFeedParser.kt` 直解标准 feed：RSS 语义照上游 `model/rss/RssParserDefault.kt`（item 边界、title/link/pubDate，取图优先级 media:thumbnail → enclosure(image/) → description 首图 → content:encoded 首图，空标题不列），Atom entry 为**扩展**（上游默认解析器只认 RSS item；取 alternate link、published/updated、summary/content）；link/image 归一复用规则路径的 `absolute()` | 现成 RSS/Atom 订阅地址**无需写任何规则即可列目**；返回的不是 feed 才报"没有配置 ruleArticles，也不是标准 RSS/Atom feed"。判据：`RssFeedParserTest`（字段映射/取图优先级/实体解码/null 与空表之分）+ `RssSubscriptionTest`（引擎端到端：RSS/Atom/空 feed/非 feed 报错）。界面"只看能读的"筛选与徽章措辞已同步；静态 `hasListRule` 口径不变（仍表示"有显式列表规则"，默认折叠保守处理） |
 
 ## 5. 归属、许可与随包数据（"哪些内容是我们的"）
 

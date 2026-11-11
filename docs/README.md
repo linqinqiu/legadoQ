@@ -12,6 +12,7 @@
 | 想知道什么 | 看哪份 |
 | --- | --- |
 | 当前能做什么、还缺什么 | [STATUS.md](STATUS.md)（带日期的快照，数字口径以 [facts.md](../product/docs/restructure/facts.md) 为准） |
+| 长期要做什么、按什么顺序 | [ROADMAP.md](ROADMAP.md)（采纳的外部建议框架：L0→L3 分层、S0 兼容内核优先，带采纳状态） |
 | 整体架构与模块边界 | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 接口完整清单（自动生成） | [API-REFERENCE.md](API-REFERENCE.md) |
 | 这一版对用户多了什么 | [product/CHANGELOG.md](../product/CHANGELOG.md) |

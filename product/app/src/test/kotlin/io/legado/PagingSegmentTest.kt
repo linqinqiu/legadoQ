@@ -51,6 +51,13 @@ class PagingSegmentTest {
     }
 
     @Test
+    fun `上游判据原样复算：数字逗号段第 3 页取第 3 段`() {
+        // 对照上游 AnalyzeUrlPagingTest（legado-with-MD3 参考克隆）：
+        // AnalyzeUrl("https://example.test/list<1,2,3>", page = 3).url == "https://example.test/list3"
+        assertEquals("https://ff.example/list3", exploredAt("/list<1,2,3>", 3))
+    }
+
+    @Test
     fun `逗号段的空白会被裁掉`() {
         // 段里两条各自带空格：` /l< , b >/` 第 2 页取 " b " → 裁成 "b"，拼出 /lb（不是 "/l b"，也不是 "/lb "）
         assertEquals("https://ff.example/lb", exploredAt("/l< , b >", 2))

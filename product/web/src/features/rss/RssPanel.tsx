@@ -159,9 +159,9 @@ export function RssPanel({ onOpenBackup }: { onOpenBackup: () => void }) {
               ]}
             />
           )}
-          {/* 默认收掉"没配列表规则"的那批：它们不是坏源，但也确实读不出东西 */}
+          {/* 默认收掉"没配列表规则"的那批：它们不是坏源——标准 RSS/Atom 会自动直解，其余才真的只能开原页 */}
           {sources.length > readableCount && (
-            <label className="rss-readable-toggle" title="没配 ruleArticles 的源列不出条目、只能打开原页，默认先收起来">
+            <label className="rss-readable-toggle" title="没配 ruleArticles 的源：标准 RSS/Atom 订阅会自动直解列目，其他源只能打开原页；默认先收起来">
               <input type="checkbox" checked={onlyReadable} onChange={event => setOnlyReadable(event.target.checked)} />
               只看能读的（{readableCount} / {sources.length}）
             </label>
@@ -189,7 +189,7 @@ export function RssPanel({ onOpenBackup }: { onOpenBackup: () => void }) {
             )}
             {onlyReadable && readableCount < sources.length && (
               <button type="button" className="link-button" onClick={() => setOnlyReadable(false)}>
-                连读不出的 {sources.length - readableCount} 条一起看
+                连没写列表规则的 {sources.length - readableCount} 条一起看
               </button>
             )}
           </p>
@@ -202,7 +202,7 @@ export function RssPanel({ onOpenBackup }: { onOpenBackup: () => void }) {
               {(item.group || !item.hasListRule) && (
                 <span className="rss-source-tags">
                   {item.group && item.group.split(',').map(name => <em key={name}>{name}</em>)}
-                  {!item.hasListRule && <em className="rss-warn">没写列表规则，只能打开原页</em>}
+                  {!item.hasListRule && <em className="rss-warn">没写列表规则（标准 RSS/Atom 自动直解）</em>}
                 </span>
               )}
             </button>

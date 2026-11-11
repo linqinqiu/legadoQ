@@ -64,7 +64,8 @@ class RssSubscriptionTest {
     }
 
     @Test
-    fun `a source without ruleArticles says so instead of returning an empty list`() {
+    fun `a source without ruleArticles and with a non-feed body says so instead of returning an empty list`() {
+        // S0/C-01 后：无规则先试标准 RSS/Atom 直解；listBody 是 HTML 不是 feed，所以仍要报错说清。
         val runner = RuleRunner { listBody }
 
         val error = runCatching {
@@ -73,6 +74,50 @@ class RssSubscriptionTest {
 
         assertTrue(error is RuleExecutionException)
         assertTrue(error?.message?.contains("ruleArticles") == true)
+    }
+
+    @Test
+    fun `standard RSS feed without ruleArticles lists items directly (S0 C-01)`() {
+        val feed = """<?xml version="1.0"?><rss version="2.0"><channel>
+            <item><title>订阅帖</title><link>/post/9</link><pubDate>2026-11-10</pubDate>
+            <description>&lt;img src="/img/9.png"&gt;摘要</description></item>
+        </channel></rss>"""
+        val runner = RuleRunner { feed }
+
+        val articles = runner.rssArticles(probe("\"enabled\":true"), "https://rss-engine.example/feed")
+
+        assertEquals(1, articles.size)
+        assertEquals("订阅帖", articles[0].title)
+        // 链接按栏目页归一、图片按 sourceUrl 归一——与规则路径同一口径
+        assertEquals("https://rss-engine.example/post/9", articles[0].link)
+        assertEquals("https://rss-engine.example/img/9.png", articles[0].image)
+        assertEquals("2026-11-10", articles[0].pubDate)
+        assertEquals("https://rss-engine.example", articles[0].origin)
+    }
+
+    @Test
+    fun `Atom feed without ruleArticles lists entries (S0 C-01 extension)`() {
+        val feed = """<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+            <entry><title>Atom 帖</title><link rel="alternate" href="/post/a"/>
+            <published>2026-11-11T00:00:00Z</published><summary>摘要</summary></entry>
+        </feed>"""
+        val runner = RuleRunner { feed }
+
+        val articles = runner.rssArticles(probe("\"enabled\":true"), "https://rss-engine.example/feed")
+
+        assertEquals(1, articles.size)
+        assertEquals("Atom 帖", articles[0].title)
+        assertEquals("https://rss-engine.example/post/a", articles[0].link)
+        assertEquals("2026-11-11T00:00:00Z", articles[0].pubDate)
+    }
+
+    @Test
+    fun `empty feed channel returns an empty list instead of an error`() {
+        val runner = RuleRunner { """<rss version="2.0"><channel><title>空栏目</title></channel></rss>""" }
+
+        val articles = runner.rssArticles(probe("\"enabled\":true"), "https://rss-engine.example/feed")
+
+        assertTrue(articles.isEmpty())
     }
 
     @Test

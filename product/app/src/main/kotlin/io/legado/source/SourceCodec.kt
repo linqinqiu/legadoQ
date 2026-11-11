@@ -178,36 +178,15 @@ object SourceCodec {
         }
     }
 
-    /** 上游式分页占位 `<页1,页2,…>`：组内含逗号的 `<…>`。`<js>…</js>` 是合法 JS 段，不算。 */
-    private val PAGE_PLACEHOLDER = Regex("<[^<>]*,[^<>]*>")
-
-    /**
-     * 只在 URL 语义里判分页占位：整串含 `<js>` 或以 `@js:`/`<@js:` 开头的先放行——
-     * 规则里的 JS 段常带逗号，不排除就会误报（这是本扫描最容易踩的坑，单测专门钉它）。
-     */
-    private fun hasUpstreamPagePlaceholder(value: String): Boolean {
-        val trimmed = value.trim()
-        if (trimmed.contains("<js>") || trimmed.startsWith("@js:") || trimmed.startsWith("<@js:")) return false
-        return PAGE_PLACEHOLDER.containsMatchIn(trimmed)
-    }
-
     /**
      * 静态扫「已知不兼容写法」，产出给人看的提示（不执行、不改校验的 valid 结论）。
-     * 依据 `docs/compatibility.md` §4/§4.1/§6：这四类都是「存得下、导入不报错、但服务端跑不出」的写法，
+     * 依据 `docs/compatibility.md` §4/§4.1/§6：这几类都是「存得下、导入不报错、但服务端跑不出」的写法，
      * 静默会让人以为跑不出是本服务的 bug，所以主动说出来。
+     * 注：上游式分页占位 `<页1,页2,…>` 已对齐上游语义（S0/C-02，2026-11-12 收口），不再是兼容缺口，
+     * 原来那条"本服务端不解析它"的告警已撤销——语义判据见 PagingSegmentTest / PagingDetectionTest。
      */
     private fun scanIncompatibilities(obj: JsonObject): List<String> {
         val warnings = mutableListOf<String>()
-
-        val urlValues = mutableListOf<String>()
-        obj.string("searchUrl")?.let(urlValues::add)
-        obj.string("exploreUrl")?.let(urlValues::add)
-        for (key in listOf("ruleSearch", "ruleBookInfo", "ruleToc", "ruleContent")) {
-            (obj[key] as? JsonObject)?.string("url")?.let(urlValues::add)
-        }
-        if (urlValues.any(::hasUpstreamPagePlaceholder)) {
-            warnings += "检测到上游式分页占位 <页1,页2>（如 page=<(1,2,3)>）：本服务端不解析它，翻页会反复取同一页；要分页请改用 {{page}} 写法。"
-        }
 
         val review = obj["ruleReview"] as? JsonObject
         val hasReviewRule = review != null && review.keys.any { key ->

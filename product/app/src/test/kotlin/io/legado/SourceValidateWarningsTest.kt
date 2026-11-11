@@ -49,17 +49,12 @@ class SourceValidateWarningsTest {
     }
 
     @Test
-    fun `上游式分页占位带逗号尖括号会告警`() {
+    fun `上游式分页占位已支持，不再产生误导告警`() {
+        // S0/C-02（2026-11-12）：<页1,页2,…> 语义已对齐上游（renderUrl → selectPageSegments，
+        // PagingSegmentTest / PagingDetectionTest 钉住）。导入时再说"不解析它"就是谎报军情。
         val r = validate("""{"bookSourceUrl":"https://d","searchUrl":"https://d/s?kw={{key}}&page=<(1,2,3)>"}""")
         assertTrue(r.valid)
-        assertTrue(r.warnings.any { it.contains("分页占位") })
-    }
-
-    @Test
-    fun `URL 里的 js 段带逗号不误判成分页占位`() {
-        val r = validate("""{"bookSourceUrl":"https://d","searchUrl":"https://d/s?q=<js>a,b</js>"}""")
-        assertTrue(r.valid)
-        assertFalse(r.warnings.any { it.contains("分页占位") })
+        assertFalse("分页占位已支持，不该再告警", r.warnings.any { it.contains("分页占位") })
     }
 
     @Test
