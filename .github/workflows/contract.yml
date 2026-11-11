@@ -115,6 +115,11 @@ jobs:
       - name: 核对 API-REFERENCE 是最新生成结果
         run: node scripts/gen-api-reference.mjs --check
 
+      # CLAUDE.md / GEMINI.md / .cursorrules 三份入口由 scripts/protocol-template.md 生成，
+      # 手动改其中一份就会漂（不同工具拿到不同规则）。这里钉死三份与模板逐字节一致。
+      - name: 核对 AI 协议入口与模板不漂
+        run: node scripts/protocol.mjs --check
+
   structure-gate:
     name: 目录深度（后端域包平铺 / 前端限深）
     runs-on: ubuntu-latest

@@ -136,7 +136,7 @@
 - 跑法见 §2，勿逐文件试。
 
 ## 9. 探索纪律（防止「疯狂读文件撑爆上下文」，工具无关）
-> 本仓库同时被多种 AI 工具使用（CodeBuddy / Qoder / Codex·Claude / Cursor / Gemini）。协议已在 `CLAUDE.md`·`.cursorrules`·`GEMINI.md`·`AGENTS.md` 各放一份自包含精简版，无论哪个工具加载都会先读到「别乱读」这条铁律。下面是对所有工具通用的纪律：
+> 本仓库同时被多种 AI 工具使用（CodeBuddy / Qoder / Codex·Claude / Cursor / Gemini）。协议已在 `CLAUDE.md`·`.cursorrules`·`GEMINI.md`·`AGENTS.md` 各放一份自包含精简版，无论哪个工具加载都会先读到「别乱读」这条铁律。**三份精简版由 `scripts/protocol-template.md` 生成：改协议只改模板，再 `npm run protocol:sync`；`npm run protocol:check`（CI 已接）防三份漂移。** 下面是对所有工具通用的纪律：
 1. **定位用 §8 表，不用探索**。表里给出的文件/符号直接 `Read(offset,limit)` 读相关窗口（≤150 行），不要整篇读。
 2. **探索性/横向扫描一律委派到隔离上下文**：工具若支持 subagent（CodeBuddy 有 `.codebuddy/agents/code-explorer.md`，Codex/Claude/Cursor 也有各自 subagent 机制），就让它**在隔离上下文**里读，只回 `file:line` 引用 + ≤8 行片段，绝不把整文件灌进主上下文；不支持 subagent 时，自己严格做到第 3 条。主上下文保持精简 = 不重复读、不累积。
 3. **绝不「先读一堆再找」**：先 `Grep`/`Glob` 拿到符号位置，再定向 `Read`。能 `grep` 回答的别 `Read`。
