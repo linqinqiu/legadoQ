@@ -27,7 +27,7 @@
 | 仓库 | `E:\legado` | — |
 | 采集时 HEAD | `9564e26`（2026-11-11 22:00，270 提交） | `git log -1 --format="%h %ad" --date=iso`；HEAD 随后续提交前移，锚点只作复现用 |
 | 版本 tag | `v0.2.37` → `43ea5562`（peel `5344c39`）；采集时 HEAD 无 tag | `git tag --points-at HEAD`（空）；`git rev-parse v0.2.37^{commit}` |
-| 版本 / 构建号 | **0.2.38 / 51**（2026-11-12 本地发版，tag `v0.2.38` → `aa25d9c`，未推送） | `cat VERSION BUILD_NUMBER`；`/healthz` |
+| 版本 / 构建号 | **0.2.39 / 52**（2026-11-12 发版并推送，tag `v0.2.39` → `91b6d5a`；C-01 RSS/Atom 直解 + C-02 分页占位收口） | `cat VERSION BUILD_NUMBER`；`/healthz` |
 | 版本真源 | `product/app/build.gradle` 的 `version` | 其余 6 处为抄本，`npm run version:check` 钉住 |
 | 代码修订 | `rev-<提交数>` + 短 sha | `/healthz` 的 `rev` / `sha` 字段（0.2.37 起） |
 
