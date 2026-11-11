@@ -14,7 +14,7 @@ if /I "%~1"=="--dry-run" set DRY=1
 echo == legado 本地清理 ==
 echo 提示：删除构建产物前建议先运行 npm run stop（避免运行实例占用文件）。
 
-for %%D in (product\dist product\build product\app\build product\web\dist product\coverage-report product\tools\verify\out product\.gradle product\logs logs .dsh-ops) do (
+for %%D in (product\dist product\build product\app\build product\web\dist product\coverage-report product\tools\verify\out product\.gradle product\logs product\tmp logs .dsh-ops) do (
   if exist "%%D" (
     if "!DRY!"=="1" (
       echo [dry] would remove %%D

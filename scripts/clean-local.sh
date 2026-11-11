@@ -22,6 +22,7 @@ TARGETS=(
   product/tools/verify/out
   product/.gradle
   product/logs
+  product/tmp
   logs
   .dsh-ops
 )
