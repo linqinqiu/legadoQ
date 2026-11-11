@@ -17,7 +17,7 @@
 | `product/` | **唯一能跑的产品**：Kotlin/Ktor 后端 + 内置 Web UI + 桌面壳 + 打包脚本 |
 | `docs/` | 总览、API 参考、目录规划、研究笔记与实测记录 |
 | `VERSION` / `package.json` | 安装根版本封条与 npm 入口（`npm start` → `product/start.mjs`） |
-| `legado-releases/` | 本地留存的历史发行产物 |
+| `E:\legado-out\legado-releases/`（仓库外） | 历史发行产物（2026-11-11 移出仓库，符合 STRUCTURE「产物出库」） |
 
 版本号真源是 `product/app/build.gradle`；`product/package.json`、`product/web/package.json`、根 `package.json`、根 `README.md`、根 `VERSION`、`agent-api.json` 六处是抄本，由 `npm run version:check`（7 处含真源）钉住一致。
 

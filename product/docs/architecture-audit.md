@@ -20,7 +20,7 @@
 
 ## 2. `java` 桥暴露面（`createJavaBridge`）
 
-`JsSandbox.kt` 的 `createJavaBridge` 用 `putProperty(api,"…")` 把宿主能力投影给脚本（`ScriptableObject.putProperty(scope,"java", …)`），**共 68 个方法**。取证语料：`legado-releases/qingyue-portable-0.8.6/data/legado.sqlite`，**5598 个源、其中 2019 个含 JS**，正则扫 `java\.[A-Za-z0-9_]+` 得到每方法调用次数。
+`JsSandbox.kt` 的 `createJavaBridge` 用 `putProperty(api,"…")` 把宿主能力投影给脚本（`ScriptableObject.putProperty(scope,"java", …)`），**共 68 个方法**。取证语料：`E:\legado-out\legado-releases/qingyue-portable-0.8.6/data/legado.sqlite`（2026-11-11 从仓库内移出），**5598 个源、其中 2019 个含 JS**，正则扫 `java\.[A-Za-z0-9_]+` 得到每方法调用次数。
 
 ### 2.1 高频（真实依赖，必须保留）
 

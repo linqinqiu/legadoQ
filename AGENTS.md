@@ -13,7 +13,7 @@
 
 ## 1. 仓库形态
 - 单一 git 仓；`product/` 是唯一产品（Kotlin/Ktor 后端 + React/Vite 前端 + 数据）。
-- 顶层：`product/`（产品）· `docs/`（总览/API/架构/研究）· `scripts/`（发版与校验）· `legado-releases/`（本地历史产物）。
+- 顶层：`product/`（产品）· `docs/`（总览/API/架构/研究）· `scripts/`（发版与校验）。历史发行产物已移到仓库外 `E:\legado-out\legado-releases`（2026-11-11，符合 STRUCTURE「产物出库」）。
 - 版本真源：`product/app/build.gradle` 的 `version`；`/healthz` 返回 `version`/`rev`/`sha`。日常提交只涨 `rev`（提交数），**不要提前 bump `BUILD_NUMBER`**（`VersionTracks.test.ts` 钉住）。
 
 ## 2. 常用命令（别乱试，跑这些）
