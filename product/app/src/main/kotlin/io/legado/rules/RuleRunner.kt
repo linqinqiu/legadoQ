@@ -1023,22 +1023,6 @@ class RuleRunner(
         return fetchDetailed(cleanUrl, options, null, sourceId, database ?: this.database, deadlineMs)
     }
 
-    /** 书源自己的 `header` 字段（`{"User-Agent":"...","Referer":"..."}`）。凭据不在这里合，见 [effectiveHeaders]。 */
-    private fun parseSourceHeaders(source: JsonObject): Map<String, String> {
-        val headers = mutableMapOf<String, String>()
-        val headerStr = source.string("header")?.trim()
-        if (!headerStr.isNullOrBlank()) {
-            runCatching {
-                val elem = Json.parseToJsonElement(headerStr)
-                if (elem is JsonObject) {
-                    elem.entries.filter { it.value is JsonPrimitive }.forEach {
-                        headers[it.key] = (it.value as JsonPrimitive).contentOrNull ?: ""
-                    }
-                }
-            }
-        }
-        return headers
-    }
 
     private fun mergeOptions(sourceHeaders: Map<String, String>, options: UrlOptions?): UrlOptions {
         if (sourceHeaders.isEmpty()) return options ?: UrlOptions()
@@ -1247,42 +1231,7 @@ class RuleRunner(
         throw RuleExecutionException("重定向次数超过限制")
     }
 
-    /**
-     * 网络日志的统一上下文：**域名放在最前**。
-     *
-     * 原来只有 `url` 截前 120 字符，一行里既看不出是哪个源、也看不出是哪台机器 ——
-     * `sourceId` 是裸域名串，用户在界面上看到的是「00小说网」这种名字。
-     * 这里给 `host`（合并键与肉眼定位都靠它）并保留截断后的 url。
-     */
-    private fun networkContext(url: String, sourceId: String?): Map<String, String> = mapOf(
-        "host" to (runCatching { java.net.URI(url.trim()).host }.getOrNull() ?: "未知"),
-        "sourceId" to (sourceId ?: ""),
-        "url" to url.take(120),
-    )
 
-    /**
-     * 把一次请求的超时压到「剩余预算」以内，预算耗尽则直接中止。
-     *
-     * `deadlineMs == null` 时**原样返回**，一个字段都不碰 —— 常规书源抓取走的就是这条，
-     * 行为与改动前完全一致。
-     */
-    private fun capToDeadline(
-        request: HttpRequest,
-        deadlineMs: Long?,
-        url: String,
-        sourceId: String?,
-    ): HttpRequest {
-        if (deadlineMs == null) return request
-        val remaining = deadlineMs - System.currentTimeMillis()
-        if (remaining <= 0L) {
-            logNetwork("书源 JS 执行时间已用尽，中止网络请求", networkContext(url, sourceId))
-            throw RuleExecutionException("书源 JS 执行时间已用尽，已中止本次网络请求")
-        }
-        // `HttpRequest` 是不可变的，改超时只能重建；headerFilter 恒 true 表示原样保留全部请求头。
-        return HttpRequest.newBuilder(request, java.util.function.BiPredicate<String, String> { _, _ -> true })
-            .timeout(Duration.ofMillis(remaining.coerceAtMost(PER_HOP_TIMEOUT_MS)))
-            .build()
-    }
 
     internal fun buildRequest(
         initial: URI,
@@ -1399,106 +1348,8 @@ class RuleRunner(
     internal fun resolveBodyCharset(bytes: ByteArray, declared: Charset?, contentType: String?): Charset =
         ResponseBody.resolveBodyCharset(bytes, declared, contentType)
 
-    private fun validateTarget(uri: URI) {
-        try {
-            NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, "站点")
-        } catch (e: IllegalArgumentException) {
-            logNetwork("拒绝访问不安全地址", networkContext(uri.toString(), null) + mapOf("原因" to (e.message ?: "内网或本机地址")))
-            throw RuleExecutionException(e.message ?: "拒绝访问内网或本机地址")
-        }
-    }
 
-    /**
-     * 地址规则里的整段 JS（上游 `AnalyzeUrl.analyzeJs` / `AppPattern.JS_PATTERN`）：
-     * `<js>…</js>` 或 `@js:`（一直吃到串尾）。
-     *
-     * 与字段规则不同，这里**可以前面写地址、后面挂脚本**：每段的返回值成为新的 `result`，
-     * 交给下一段；最后一段之后的文本用 `@result` 引用它（上游 `it.replace("@result", result)`）。
-     * 库里 360 份源的 searchUrl 用这个写法（猫耳：地址在前、`@js:java.put(...);result` 在后；
-     * 番茄/蓝批：整段 `@js:` 自己算地址），以前只认"整串以 @js 开头"，其余的
-     * 地址带着脚本正文去抓，报「URL 解析失败 … Illegal character」。
-     */
-    private fun applyUrlScripts(rawUrl: String, keyword: String?, page: Int?, sourceUrl: String): String {
-        if (!rawUrl.contains("@js:") && !rawUrl.contains("<js>", ignoreCase = true)) return rawUrl
-        val matches = URL_JS_PATTERN.findAll(rawUrl).toList()
-        if (matches.isEmpty()) return rawUrl
-        var start = 0
-        var result = rawUrl
-        for (match in matches) {
-            if (match.range.first > start) {
-                val prefix = rawUrl.substring(start, match.range.first).trim()
-                if (prefix.isNotEmpty()) result = prefix.replace("@result", result)
-            }
-            val code = match.groupValues[2].ifEmpty { match.groupValues[1] }
-            jsSandbox.clearLastError()
-            val value = jsSandbox.eval(
-                code,
-                mapOf(
-                    "result" to result,
-                    "key" to (keyword ?: ""),
-                    "keyword" to (keyword ?: ""),
-                    "page" to page,
-                    "baseUrl" to sourceUrl,
-                    "sourceId" to sourceUrl,
-                ),
-            ) ?: throw RuleExecutionException("URL 规则里的脚本执行失败：${jsSandbox.lastError ?: "脚本没有返回值"}")
-            result = value
-            start = match.range.last + 1
-        }
-        if (rawUrl.length > start) {
-            val tail = rawUrl.substring(start).trim()
-            if (tail.isNotEmpty()) result = tail.replace("@result", result)
-        }
-        return result
-    }
 
-    /**
-     * 把书源地址里的占位写法换成真实值。`page` **只在调用方真给了页码时才传**：
-     * `<页1,页2,…>` 这种翻页段要"有页码"才该被展开（上游 `AnalyzeUrl` 也是 `page?.let { … }`），
-     * 详情/目录那几条没有页码，留着原样才是它的语义。
-     *
-     * [expandScripts] 对应上游 `analyzeJs` 这一步。调用方已经先执行过 URL 级 JS
-     * （为了在切 `,{options}` 之前拿到完整地址）时传 false，避免同一段脚本跑两遍。
-     */
-    private fun renderUrl(
-        template: String,
-        keyword: String,
-        sourceUrl: String,
-        page: Int? = null,
-        expandScripts: Boolean = true,
-    ): String {
-        val expanded = if (expandScripts) applyUrlScripts(template, keyword, page, sourceUrl) else template
-        val literals = expanded
-            .replace("{{key}}", URLEncoder.encode(keyword, Charsets.UTF_8))
-            .replace("{{keyword}}", URLEncoder.encode(keyword, Charsets.UTF_8))
-            .replace("{{page}}", (page ?: 1).toString())
-            .replace("<key>", URLEncoder.encode(keyword, Charsets.UTF_8))
-            .replace("{{source.key}}", URLEncoder.encode(keyword, Charsets.UTF_8))
-            .replace("{{source.bookSourceUrl}}", sourceUrl)
-            .replace("{{cookie.removeCookie(source.key)}}", "")
-        // Legado 把地址里剩下的 `{{…}}` 当 JS 表达式求值（`{{(page-1)*20}}`、`{{java.getDict(…)}}`、
-        // `{{url=source.getKey();cookie.removeCookie(url)}}`）。只认固定字面量的话整串会被当成网址，
-        // 这类书源就永远搜不到东西。求值失败的占位符原样保留，免得把网址悄悄改坏。
-        val context = jsSandbox.threadContext.get()
-        val evaluated = URL_VARIABLE_PATTERN.replace(literals) { match ->
-            context?.lastError = null
-            val value = runCatching {
-                jsSandbox.eval(match.groupValues[1], mapOf(
-                    "key" to keyword,
-                    "keyword" to keyword,
-                    "page" to (page ?: 1),
-                    "baseUrl" to sourceUrl,
-                    "sourceId" to sourceUrl,
-                ))
-            }.getOrNull()
-            when {
-                context?.lastError != null -> match.value
-                value == null || value == "undefined" || value == "null" -> ""
-                else -> trimJsNumberFraction(value.trim())
-            }
-        }
-        return if (page == null) evaluated else selectPageSegments(evaluated, page)
-    }
 
     // selectPageSegments / trimJsNumberFraction 已抽到 RuleUrlSupport.kt（同包顶层）
 
@@ -1649,13 +1500,7 @@ class RuleRunner(
     /** 书源 `bookSourceType`：0 文本 / 1 音频 / 2 图片(漫画) / 3 文件 / 4 视频；缺省或非数字给 0。 */
     private fun JsonObject.sourceType(): Int = (get("bookSourceType") as? JsonPrimitive)?.intOrNull ?: 0
     private companion object {
-        /**
-         * 单跳网络请求的超时上限（毫秒）。
-         *
-         * 有调用方给截止时刻时，这一跳的实际超时取 `min(PER_HOP_TIMEOUT_MS, 剩余预算)` ——
-         * 既不让一跳吃掉整个预算，也不让多跳叠乘超出预算。
-         */
-        const val PER_HOP_TIMEOUT_MS = 20_000L
+        // PER_HOP_TIMEOUT_MS 已抽到 RuleHttp.kt（同包顶层）
 
         /** 诊断里的阶段名：按这些名字分组，改名等于换一张报表，别随手改。 */
         const val STAGE_SEARCH = "search"
@@ -1670,9 +1515,7 @@ class RuleRunner(
         const val MAX_RULE_DATA_KEYS = 4096
         /** Java HttpClient 的受限请求头（设了会抛 IllegalArgumentException，见 request()）。 */
         val RESTRICTED_HEADERS = setOf("connection", "content-length", "expect", "host", "upgrade")
-        val URL_VARIABLE_PATTERN = Regex("\\{\\{(.+?)}}")
-        /** 与上游 `AppPattern.JS_PATTERN` 一字不差：`<js>…</js>`，或 `@js:` 到串尾。 */
-        val URL_JS_PATTERN = Regex("<js>([\\w\\W]*?)</js>|@js:([\\w\\W]*)", RegexOption.IGNORE_CASE)
+        // URL_VARIABLE_PATTERN / URL_JS_PATTERN 已抽到 RuleHttp.kt（同包顶层）
         // LOGIN_CALL / LOGIN_FUNCTION 已随 v1 登录抽到 RuleLogin.kt
         /** 协议相对地址（`//host.tld/path`）。注意别把登录 JS 开头的 `// 注释` 也认成网址。 */
         val PROTOCOL_RELATIVE_URL = Regex("""^//[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?(?:[/?#]|$)""")
