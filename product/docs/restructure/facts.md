@@ -40,7 +40,7 @@
 | 项 | 值 | 命令 | 口径 |
 |---|---:|---|---|
 | 后端 `.kt` | **137** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含全部包 |
-| 后端行数 | **35,427** | `find … -exec cat {} + \| wc -l` | — |
+| 后端行数 | **35,420** | `find … -exec cat {} + \| wc -l` | — |
 | 后端 `@Test` | **1,104** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
 | 后端测试文件 | **140** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
 | 前端 ts/tsx | **202** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | 2026-11-11 |

@@ -83,3 +83,64 @@ internal fun encodeIllegalUrlChars(url: String): String {
     }
     return builder.toString()
 }
+
+/** 解析 `data:` URL 的 payload（可选 base64）。聚合类书源用它把参数从搜索一路带到详情/目录/正文。 */
+internal fun dataUrlPayload(url: String): String? {
+    val value = url.trim()
+    if (!value.startsWith("data:", ignoreCase = true)) return null
+    val comma = value.indexOf(',')
+    if (comma < 0) return null
+    val meta = value.substring(5, comma)
+    var payload = value.substring(comma + 1)
+    // 末尾可能跟一个类型标记（如 ,{"type":"qingtian2"}），取最后一个逗号之前的部分
+    val typeIndex = payload.lastIndexOf(',')
+    if (typeIndex > 0 && payload.substring(typeIndex + 1).trimStart().startsWith("{")) {
+        payload = payload.substring(0, typeIndex)
+    }
+    return if (meta.contains("base64", ignoreCase = true)) {
+        runCatching { String(java.util.Base64.getDecoder().decode(payload.trim()), Charsets.UTF_8) }
+            .getOrElse { payload }
+    } else {
+        runCatching { java.net.URLDecoder.decode(payload, Charsets.UTF_8) }.getOrDefault(payload)
+    }
+}
+
+/** 正文整段是直链时按这些后缀认媒体（音频 / 视频 / 播流）。`.m3u8` 与 `.ts` 是 HLS。 */
+private val MEDIA_URL_SUFFIXES = setOf(".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac", ".mp4", ".m3u8", ".ts", ".webm", ".mkv", ".mov", ".flv", ".avi")
+
+/**
+ * 整段正文就是一条媒体直链时，这一章的"正文"是那个地址，不是那行字。
+ * 判得保守：去空白后只剩一行、以 http(s) 开头、路径落在 [MEDIA_URL_SUFFIXES] 里。
+ */
+internal fun sniffMediaUrl(text: String, sourceType: Int = 0): String? {
+    val trimmed = unescapeUrlSlashes(text.trim())
+    if (trimmed.isEmpty() || trimmed.length > 600) return null
+    fun isMedia(url: String): Boolean {
+        if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) return false
+        val path = runCatching { URI(url).path }.getOrNull()?.lowercase().orEmpty()
+        return path.isNotEmpty() && MEDIA_URL_SUFFIXES.any { path.endsWith(it) }
+    }
+    // 整段就是一条地址：原有行为，所有类型都认。
+    if ('\n' !in trimmed && ' ' !in trimmed && !trimmed.contains(",{") && isMedia(trimmed)) return trimmed
+    // 多行短文本里恰好一条媒体直链：只在媒体类型（音频 / 文件 / 视频）上做。
+    if (sourceType != 0 && sourceType != 2) {
+        val urls = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE).findAll(trimmed).map { it.value }.toList()
+        if (urls.size == 1 && isMedia(urls[0])) return urls[0]
+    }
+    return null
+}
+
+/** `<…>` 翻页段（非贪婪，一段一段来）：见 [selectPageSegments]。 */
+private val PAGE_SEGMENT_PATTERN = Regex("<(.*?)>")
+
+internal fun selectPageSegments(url: String, page: Int): String =
+    PAGE_SEGMENT_PATTERN.replace(url) { match ->
+        val options = match.groupValues[1].split(",")
+        (options.getOrNull(page - 1) ?: options.last()).trim { it <= ' ' }
+    }
+
+/** Rhino 里所有数字都是 double，`{{(page-1)*20}}` 会求值成 `0.0`；网址里必须是 `0`。 */
+private val JS_NUMBER_FRACTION = Regex("""-?\d+\.0+""")
+
+internal fun trimJsNumberFraction(text: String): String =
+    if (JS_NUMBER_FRACTION.matches(text)) text.substringBefore('.') else text

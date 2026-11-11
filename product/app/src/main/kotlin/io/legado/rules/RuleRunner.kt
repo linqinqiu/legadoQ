@@ -547,25 +547,7 @@ class RuleRunner(
      *
      * 聚合类书源用它把 book_id/来源/分栏等参数从搜索结果一路带到详情、目录和正文。
      */
-    private fun dataUrlPayload(url: String): String? {
-        val value = url.trim()
-        if (!value.startsWith("data:", ignoreCase = true)) return null
-        val comma = value.indexOf(',')
-        if (comma < 0) return null
-        val meta = value.substring(5, comma)
-        var payload = value.substring(comma + 1)
-        // 末尾可能跟一个类型标记（如 ,{"type":"qingtian2"}），取最后一个逗号之前的部分
-        val typeIndex = payload.lastIndexOf(',')
-        if (typeIndex > 0 && payload.substring(typeIndex + 1).trimStart().startsWith("{")) {
-            payload = payload.substring(0, typeIndex)
-        }
-        return if (meta.contains("base64", ignoreCase = true)) {
-            runCatching { String(java.util.Base64.getDecoder().decode(payload.trim()), Charsets.UTF_8) }
-                .getOrElse { payload }
-        } else {
-            runCatching { java.net.URLDecoder.decode(payload, Charsets.UTF_8) }.getOrDefault(payload)
-        }
-    }
+    // dataUrlPayload 已抽到 RuleUrlSupport.kt（同包顶层）
 
     private fun declarativeDetails(
         source: JsonObject,
@@ -998,36 +980,7 @@ class RuleRunner(
         return NodeValue.document(body, runtime).also { it.seedVariables(vars) } to body
     }
 
-    /**
-     * 整段正文就是一条媒体直链时，这一章的"正文"是那个地址，不是那行字。
-     *
-     * 判得保守：必须去掉首尾空白后**只剩一行**、以 http(s) 开头、路径落在 [MEDIA_URL_SUFFIXES] 里。
-     * 带空格的、`地址,{"headers":…}` 那种带选项形态的一律不当媒体（后者交给 `splitUrlOptions`，
-     * 从我们这儿嗅出去会留下半截 JSON）；多行或夹着文字的也不当 —— 「本章完 https://…」这类
-     * 正常正文被误判成播放器，比播放器出不来更糟。
-     */
-    private fun sniffMediaUrl(text: String, sourceType: Int = 0): String? {
-        // 视频/音频源常把页面 JSON 里的**转义斜杠**原样带出来（`https:\/\/cdn…\/master.m3u8`）。
-        // 反斜杠不是合法 URL 字符：`URI()` 解析不了、`.m3u8` 后缀也判不出来，于是明明取到了直链
-        // 却不进播放器（实测番茄短剧整条链路就断在这儿）。书源自己在 JS 里写 `result.replace(/\\/g,'')`
-        // 就是为去掉它 —— 我们在嗅探处同样先还原，再把干净地址交出去。
-        val trimmed = unescapeUrlSlashes(text.trim())
-        if (trimmed.isEmpty() || trimmed.length > 600) return null
-        fun isMedia(url: String): Boolean {
-            if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) return false
-            val path = runCatching { URI(url).path }.getOrNull()?.lowercase().orEmpty()
-            return path.isNotEmpty() && MEDIA_URL_SUFFIXES.any { path.endsWith(it) }
-        }
-        // 整段就是一条地址：原有行为，所有类型都认。
-        if ('\n' !in trimmed && ' ' !in trimmed && !trimmed.contains(",{") && isMedia(trimmed)) return trimmed
-        // 多行短文本里恰好一条媒体直链：视频源常写「刷新正文 / ✅直链：」再跟地址。
-        // 只在媒体类型（音频 / 文件 / 视频）上做，避免把文本站正文里的单条链接误当播放器。
-        if (sourceType != 0 && sourceType != 2) {
-            val urls = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE).findAll(trimmed).map { it.value }.toList()
-            if (urls.size == 1 && isMedia(urls[0])) return urls[0]
-        }
-        return null
-    }
+    // sniffMediaUrl 已抽到 RuleUrlSupport.kt（同包顶层）
 
     // isBareUrlLine / unescapeUrlSlashes 已抽到 RuleUrlSupport.kt（同包顶层）
 
@@ -1917,23 +1870,7 @@ class RuleRunner(
         return if (page == null) evaluated else selectPageSegments(evaluated, page)
     }
 
-    /**
-     * Legado 的 `<页1,页2,…>` 翻页段：段内按逗号切，第 N 页取第 N−1 条、**超出条数取最后一条**，
-     * 两端按"≤ 空格"裁掉，整段（含尖括号）替换。必须放在 `{{…}}` 求值**之后** ——
-     * 社区最常见的写法 `<,index_{{page}}.html>` 是把页码同时写进两处的。
-     *
-     * 为什么值得做：本机 25,290 条静态栏目地址里有 **2,644 条**用这个写法，以前尖括号原样留在网址里，
-     * 过不了 URI 解析 —— 那一栏**第 1 页就 502**（实测饭饭小说 `都市言情::/dsyq/<,index_{{page}}.html>`）。
-     */
-    private fun selectPageSegments(url: String, page: Int): String =
-        PAGE_SEGMENT_PATTERN.replace(url) { match ->
-            val options = match.groupValues[1].split(",")
-            (options.getOrNull(page - 1) ?: options.last()).trim { it <= ' ' }
-        }
-
-    /** Rhino 里所有数字都是 double，`{{(page-1)*20}}` 会求值成 `0.0`；网址里必须是 `0`。 */
-    private fun trimJsNumberFraction(text: String): String =
-        if (JS_NUMBER_FRACTION.matches(text)) text.substringBefore('.') else text
+    // selectPageSegments / trimJsNumberFraction 已抽到 RuleUrlSupport.kt（同包顶层）
 
     /**
      * 给 JS 桥用的「再入」入口：对**任意内容**跑一次列表规则，把每条变成文本。
@@ -2103,13 +2040,9 @@ class RuleRunner(
         const val MAX_RULE_DATA_KEYS = 4096
         /** Java HttpClient 的受限请求头（设了会抛 IllegalArgumentException，见 request()）。 */
         val RESTRICTED_HEADERS = setOf("connection", "content-length", "expect", "host", "upgrade")
-        /** 正文整段是直链时按这些后缀认媒体（音频 / 视频 / 播流）。`.m3u8` 与 `.ts` 是 HLS，`.m4a` 是音频站最常见的形态。 */
-        val MEDIA_URL_SUFFIXES = setOf(".mp3", ".m4a", ".aac", ".ogg", ".wav", ".flac", ".mp4", ".m3u8", ".ts", ".webm", ".mkv", ".mov", ".flv", ".avi")
         val URL_VARIABLE_PATTERN = Regex("\\{\\{(.+?)}}")
         /** 与上游 `AppPattern.JS_PATTERN` 一字不差：`<js>…</js>`，或 `@js:` 到串尾。 */
         val URL_JS_PATTERN = Regex("<js>([\\w\\W]*?)</js>|@js:([\\w\\W]*)", RegexOption.IGNORE_CASE)
-        /** `<…>` 翻页段（非贪婪，一段一段来）：见 `selectPageSegments`。 */
-        val PAGE_SEGMENT_PATTERN = Regex("<(.*?)>")
         /** 登录动作是不是一次 `login(...)` 调用：`login`、`login()`、`login(true)`、`login(true, false)` 都算。 */
         val LOGIN_CALL = Regex("""^\s*login\s*(?:\((.*)\))?\s*;?\s*$""", RegexOption.IGNORE_CASE)
         /** jsLib 里到底有没有定义 login 函数（没有 loginUrl 脚本时用它兜底判断）。 */
@@ -2123,7 +2056,6 @@ class RuleRunner(
 
         // 下方几个正则原来在每次调用处现编译：cleanContent 走每章正文（离线缓存整本 = 上万次），
         // 其余的走每个字段取值。语义不变，只是提到类级只编译一次。
-        val JS_NUMBER_FRACTION = Regex("""-?\d+\.0+""")
         val CONTENT_IMG_TAG = Regex("(?i)<img\\b[^>]*>")
         /** 在一个 `<img …>` 标签里找 src / data-src / data-original 的值（到引号或空白为止）。 */
         val IMG_SRC = Regex("(?i)(?:data-original|data-src|src)\\s*=\\s*[\"']?([^\"'\\s>]+)")
