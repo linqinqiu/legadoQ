@@ -19,14 +19,23 @@ TARGETS=(
   product/app/build
   product/web/dist
   product/coverage-report
+  product/web/coverage
   product/tools/verify/out
   product/.gradle
   product/.kotlin
   product/.trash
+  product/.tmp
   product/logs
+  product/app/logs
   product/tmp
+  product/examples/plugin-hello/build
+  product/examples/plugin-hello/.gradle
   logs
   .dsh-ops
+)
+# 单文件产物（rm -rf 也安全）
+FILES=(
+  product/web/tsconfig.tsbuildinfo
 )
 # 绝不删除
 PROTECTED=(
@@ -49,6 +58,18 @@ for t in "${TARGETS[@]}"; do
       rm -rf -- "$t"
     fi
   fi
+done
+
+# 单文件产物
+for f in "${FILES[@]}"; do
+  [ -e "$f" ] || continue
+  if [ "$DRY" = 1 ]; then echo "[dry] would remove $f"; else echo "remove $f"; rm -f -- "$f"; fi
+done
+
+# JVM 崩溃转储与运行日志（散落在 product/ 与 product/app/）
+for f in product/hs_err_pid*.log product/replay_pid*.log product/app/hs_err_pid*.log product/app/replay_pid*.log product/server.log; do
+  [ -e "$f" ] || continue
+  if [ "$DRY" = 1 ]; then echo "[dry] would remove $f"; else echo "remove $f"; rm -f -- "$f"; fi
 done
 
 # 移除「已注册但过期」的 git worktree 工作目录（保留分支 ref，提交不丢）
