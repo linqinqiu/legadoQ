@@ -454,7 +454,7 @@ class RuleRunner(
      * 否则**原样当脚本文本**；是网址（http/https 开头）时它不是脚本。
      * 库内实测：纯网址 293 个、`@js:` 4 个、含 `<js>` 9 个、裸 `function login(){…}` 等 195 个。
      */
-    private fun loginScript(source: JsonObject): String? {
+    internal fun loginScript(source: JsonObject): String? {
         val raw = source.string("loginUrl")?.trim().orEmpty()
         if (raw.isEmpty() || raw.startsWith("http://", true) || raw.startsWith("https://", true)) return null
         // 相对路径也不是脚本：`/login.php` 当 JS 跑是语法错误，连进 jsLib 上下文还会把整段脚本库编译坏。
@@ -974,172 +974,8 @@ class RuleRunner(
     // loginUiVersion / renderLoginUiV2 / executeLoginUiActionV2 / parseLoginUiV2Rows / isValidLoginUiV2Row / loginInfoFromJson
     // 已抽到 RuleLogin.kt（同包顶层扩展）
 
-    fun parseLoginUi(sourceJson: String): List<SourceLoginUiItem> {
-        val source = sourceJson.objectValue()
-        val sourceUrl = source.string("bookSourceUrl") ?: ""
-        val loginUiStr = source.string("loginUi")?.trim()
 
-        if (loginUiStr.isNullOrBlank()) {
-            // 网址型 loginUrl（含相对路径 / 协议相对地址）都生成按钮；纯 JS 脚本没有可直开的页面。
-            val loginPage = SourceUrlProbe.loginPageUrl(sourceJson)
-            if (loginPage != null) {
-                return listOf(
-                    SourceLoginUiItem(
-                        name = "打开登录网页",
-                        type = "button",
-                        action = loginPage,
-                        style = FlexChildStyle(layout_flexBasisPercent = 1.0f),
-                    ),
-                )
-            }
-            return emptyList()
-        }
-
-        val rawJson = if (loginUiStr.startsWith("@js:") || loginUiStr.startsWith("js:") || loginUiStr.contains("<js>")) {
-            val jsCode = if (loginUiStr.contains("<js>")) loginUiStr.substringAfter("<js>").substringBefore("</js>") else loginUiStr.removePrefix("@js:").removePrefix("js:")
-            val execContext = sourceContext(source, sourceUrl)
-                .copy(
-                    sourceName = source.string("bookSourceName") ?: sourceUrl,
-                    // v1 的 loginUi 脚本常直接调用 loginUrl 里定义的辅助函数。
-                    includeLoginScript = true,
-                )
-            jsSandbox.eval(jsCode, mapOf("sourceId" to sourceUrl, "baseUrl" to sourceUrl), execContext) ?: "[]"
-        } else {
-            loginUiStr
-        }
-
-        return runCatching {
-            json.decodeFromString<List<SourceLoginUiItem>>(rawJson)
-        }.getOrElse { emptyList() }
-    }
-
-    fun executeLoginAction(
-        sourceJson: String,
-        actionCode: String,
-        loginData: Map<String, String>,
-        isLongClick: Boolean = false,
-        browserCompleted: Boolean = false,
-        browserBody: String? = null,
-    ): SourceLoginActionResult {
-        val source = sourceJson.objectValue()
-        val sourceUrl = source.string("bookSourceUrl") ?: ""
-        val sourceName = source.string("bookSourceName") ?: sourceUrl
-
-        // 脚本库（jsLib + loginUrl 形式的 JS）由执行上下文统一注入，这里只拼动作本身
-        val execContext = sourceContext(source, sourceUrl).copy(
-            sourceName = sourceName,
-            // 登录动作要跑 loginUrl 里定义的 `login()`；普通规则求值不会预跑它。
-            includeLoginScript = true,
-            initialLoginInfo = loginData.toMutableMap(),
-            isLongClick = isLongClick,
-            browserCompleted = browserCompleted,
-            browserBody = browserBody,
-        )
-
-        val trimmedAction = actionCode.trim()
-        if (trimmedAction.startsWith("http://") || trimmedAction.startsWith("https://")) {
-            return SourceLoginActionResult(
-                success = true,
-                openUrl = trimmedAction,
-            )
-        }
-
-        // 上游两条路径要分清：菜单「确定」走 `BaseSource.login()`，那是 `login.apply(this)`（不带实参）；
-        // 而 loginUi 按钮的 action 是**原样执行的 JS**，`login(true,false)` 这类带实参的调用必须保留实参，
-        // 否则脚本里靠 `checkMode` 分支的源会被当成"打开浏览器"那条路走。
-        //
-        // 但 `login(...)` 不是每个源都定义得起：番茄 v3.4.2 这类源的 loginUrl 只是一个网址，
-        // 没有 loginUi/loginCheckJs，更没有 `login()` 函数。旧逻辑把 `login(true)` 直接丢给 Rhino，
-        // 只会得到 "login is not defined"，界面报「书源脚本执行失败」而实际什么都没发生。
-        // 没有登录脚本时按上游语义退到「打开登录页」；有脚本但没定义 login() 时给中文错误。
-        val loginArgs = LOGIN_CALL.matchEntire(trimmedAction)?.groupValues?.getOrNull(1)
-        val hasLoginFunction = loginScript(source) != null ||
-            source.string("jsLib")?.let { LOGIN_FUNCTION.containsMatchIn(it) } == true
-        if (loginArgs != null && !hasLoginFunction) {
-            // 网址型 loginUrl（含相对路径）交给统一的入口解析；纯 JS 脚本已在 hasLoginFunction 里算过。
-            val loginPage = SourceUrlProbe.loginPageUrl(sourceJson)
-            return SourceLoginActionResult(
-                success = true,
-                toastMessages = listOf(
-                    if (loginPage != null) "这本书源没有登录脚本，已改为打开登录页"
-                    else "这本书源没有登录脚本，无需执行登录",
-                ),
-                openUrl = loginPage,
-                updatedLoginInfo = if (loginData.isEmpty()) null else loginData,
-            )
-        }
-        val fullScript = if (loginArgs != null) {
-            "if (typeof login === 'function') { login($loginArgs); } else { throw new Error('该书源脚本没有定义 login()，无法执行登录') }"
-        } else {
-            trimmedAction
-        }
-
-        val bindings = mapOf(
-            "result" to loginData,
-            "baseUrl" to sourceUrl,
-            "sourceId" to sourceUrl,
-            "bookSourceUrl" to sourceUrl,
-            "isLongClick" to isLongClick,
-        )
-
-        jsSandbox.eval(fullScript, bindings, execContext)
-        val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
-        val failure = execContext.lastError
-
-        return SourceLoginActionResult(
-            success = failure == null,
-            error = failure,
-            toastMessages = execContext.toastMessages,
-            openUrl = execContext.openUrl,
-            copyText = execContext.copyText,
-            updatedLoginInfo = execContext.initialLoginInfo.ifEmpty { state?.loginInfo ?: emptyMap() },
-            updatedLoginHeader = state?.loginHeader,
-            updatedVariable = state?.sourceVariable,
-            reRenderUi = execContext.reRenderUi,
-            inlineHtml = execContext.inlineHtml,
-            inlineTitle = execContext.inlineTitle,
-        )
-    }
-
-    fun checkLoginStatus(sourceJson: String): SourceLoginCheckResult {
-        val source = sourceJson.objectValue()
-        val sourceUrl = source.string("bookSourceUrl") ?: ""
-        val loginCheckJs = source.string("loginCheckJs")?.trim()
-        val loginUrl = source.string("loginUrl") ?: ""
-        val jsLib = source.string("jsLib") ?: ""
-
-        if (loginCheckJs.isNullOrBlank()) {
-            val jar = database?.asCookieStore()?.cookieBucketsForHosts(SourceUrlProbe.credentialDomains(sourceJson)).orEmpty()
-            val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
-            val hasCookie = jar.isNotEmpty()
-            val hasInfo = state?.loginInfo?.isNotEmpty() == true
-            val hasHeader = state?.loginHeader?.isNotEmpty() == true
-            val hasCredential = hasCookie || hasInfo || hasHeader
-            // 无 loginCheckJs 时只能"以有无凭据"判断，无法真正验证登录是否有效；
-            // 保持 loggedIn 的既有语义（有凭据即视为可用，兼容测试），但如实标注未验证。
-            return SourceLoginCheckResult(
-                loggedIn = hasCredential,
-                hasCredential = hasCredential,
-                verified = false,
-                message = if (hasCredential) "已捕获登录凭据（未能自动验证有效性）" else "未登录",
-            )
-        }
-
-        val execContext = sourceContext(source, sourceUrl)
-        val result = jsSandbox.eval(loginCheckJs, mapOf("sourceId" to sourceUrl, "baseUrl" to sourceUrl), execContext)?.trim()
-        val isSuccess = result == "true" || (result != null && result.isNotBlank() && result != "false" && result != "0" && !result.contains("未登录"))
-        val jar = database?.asCookieStore()?.cookieBucketsForHosts(SourceUrlProbe.credentialDomains(sourceJson)).orEmpty()
-        val state = database?.asLoginStateStore()?.getSourceLoginState(sourceUrl)
-        val hasCredential = isSuccess || jar.isNotEmpty() || state?.loginInfo?.isNotEmpty() == true || state?.loginHeader?.isNotEmpty() == true
-        return SourceLoginCheckResult(
-            loggedIn = isSuccess,
-            hasCredential = hasCredential,
-            verified = isSuccess,
-            // 上游的 loginCheckJs 是**响应改写器**（`WebBook.kt:77` 拿它处理正文响应，顺带识别掉登录），
-            // 不是"登录状态查询"。我们把它当布尔判定用是一种借用，措辞上不能说得比这更肯定。
-            message = if (isSuccess) "按书源 loginCheckJs 试判为已登录" else (result ?: "未登录"),
-        )
-    }
+    // parseLoginUi / executeLoginAction / checkLoginStatus 已抽到 RuleLogin.kt（同包顶层扩展）
 
     internal fun fetch(url: String, sourceId: String? = null, database: PortBundle? = null): String {
         val (cleanUrl, options) = splitUrlOptions(url)
@@ -1837,10 +1673,7 @@ class RuleRunner(
         val URL_VARIABLE_PATTERN = Regex("\\{\\{(.+?)}}")
         /** 与上游 `AppPattern.JS_PATTERN` 一字不差：`<js>…</js>`，或 `@js:` 到串尾。 */
         val URL_JS_PATTERN = Regex("<js>([\\w\\W]*?)</js>|@js:([\\w\\W]*)", RegexOption.IGNORE_CASE)
-        /** 登录动作是不是一次 `login(...)` 调用：`login`、`login()`、`login(true)`、`login(true, false)` 都算。 */
-        val LOGIN_CALL = Regex("""^\s*login\s*(?:\((.*)\))?\s*;?\s*$""", RegexOption.IGNORE_CASE)
-        /** jsLib 里到底有没有定义 login 函数（没有 loginUrl 脚本时用它兜底判断）。 */
-        val LOGIN_FUNCTION = Regex("""(?:function\s+login\s*\(|login\s*=\s*function\b)""")
+        // LOGIN_CALL / LOGIN_FUNCTION 已随 v1 登录抽到 RuleLogin.kt
         /** 协议相对地址（`//host.tld/path`）。注意别把登录 JS 开头的 `// 注释` 也认成网址。 */
         val PROTOCOL_RELATIVE_URL = Regex("""^//[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?::\d+)?(?:[/?#]|$)""")
         // LOGIN_UI_V2_COMMANDS / LOGIN_UI_V2_INPUT_TYPES 已随 v2 登录界面抽到 RuleLogin.kt

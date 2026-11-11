@@ -3,6 +3,8 @@ package io.legado
 import io.legado.data.Database
 import io.legado.rules.RuleRunner
 import io.legado.rules.loginUiVersion
+import io.legado.rules.parseLoginUi
+import io.legado.rules.checkLoginStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

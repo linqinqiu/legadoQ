@@ -5,6 +5,9 @@ import io.legado.rules.RuleRunner
 import io.legado.rules.loginUiVersion
 import io.legado.rules.renderLoginUiV2
 import io.legado.rules.executeLoginUiActionV2
+import io.legado.rules.parseLoginUi
+import io.legado.rules.executeLoginAction
+import io.legado.rules.checkLoginStatus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.int
