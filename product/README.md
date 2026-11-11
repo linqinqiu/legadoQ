@@ -101,7 +101,7 @@ AI 面板显示「未连接外部模型，AI 不可用」，输入框禁用。
 - 想接 Anthropic、Ollama、自建服务：实现 `LlmProvider` 注册进 `providerRegistry`，见 [`docs/plugin-framework.md`](docs/plugin-framework.md)。
 - 想给 AI 加自己的工具：往 `ToolRegistry` 注册，AI 立刻能调 —— 不用改框架。
 - 多连接时默认只走**第一个**，不自动顺延（这是已确认的行为，不是 bug）。
-- 完整接入说明见 [`AGENTS.md`](AGENTS.md)。
+- 完整接入说明见 [`docs/agent-api.md`](docs/agent-api.md)。
 
 ## 环境要求
 
@@ -245,9 +245,9 @@ Dockerfile           多阶段构建（前端 + 服务端）
 | 我的书源能不能跑、哪些字段真被执行、和上游 App 差在哪 | [`docs/compatibility.md`](docs/compatibility.md) |
 | 整体架构与模块边界 | [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) |
 | 部署（jar / Docker / Compose / 桌面程序） | [`docs/deploy.md`](docs/deploy.md) |
-| 让 AI 或脚本接进来（管书源、批量整理、走登录） | [`AGENTS.md`](AGENTS.md) · 机器可读的那份是 `GET /api/catalog` |
-| **AI 具体能干什么、怎么接一个模型、怎么给它加能力** | [`AGENTS.md`](AGENTS.md) |
-| 自定义接入面 `/api/agent/*`（外接模型、书源新建/校验、阅读理解） | [`AGENTS.md`](./AGENTS.md) |
+| 让 AI 或脚本接进来（管书源、批量整理、走登录） | [`docs/agent-api.md`](docs/agent-api.md) · 机器可读的那份是 `GET /api/catalog` |
+| **AI 具体能干什么、怎么接一个模型、怎么给它加能力** | [`docs/agent-api.md`](docs/agent-api.md) |
+| 自定义接入面 `/api/agent/*`（外接模型、书源新建/校验、阅读理解） | [`docs/agent-api.md`](docs/agent-api.md) |
 | 插件 / 前端扩展契约 | [docs/plugin-framework.md](docs/plugin-framework.md) |
 | **写一个插件**（加工具 / 协议 / 选择策略 / 钩子） | [docs/plugin-development-guide.md](docs/plugin-development-guide.md) |
 | **反代书源**（自有中转服务访问目标站） | [docs/reverse-proxy-source-guide.md](docs/reverse-proxy-source-guide.md) |

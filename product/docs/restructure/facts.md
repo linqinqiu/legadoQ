@@ -35,7 +35,7 @@
 
 ---
 
-## 2. 源码规模（工作树，2026-11-10）
+## 2. 源码规模（工作树，2026-11-11）
 
 | 项 | 值 | 命令 | 口径 |
 |---|---:|---|---|
@@ -43,9 +43,9 @@
 | 后端行数 | **35,404** | `find … -exec cat {} + \| wc -l` | — |
 | 后端 `@Test` | **1,104** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
 | 后端测试文件 | **140** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
-| 前端 ts/tsx | **200** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | 2026-11-10 |
-| 前端行数 | **38,180** | 同上 `-exec cat {} + \| wc -l` | 同日 |
-| 前端测试文件 | **132** | `ls product/web/test/*.test.ts \| wc -l` | 同日 |
+| 前端 ts/tsx | **202** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | 2026-11-11 |
+| 前端行数 | **38,361** | 同上 `-exec cat {} + \| wc -l` | 同日 |
+| 前端测试文件 | **134** | `ls product/web/test/*.test.ts \| wc -l` | 同日 |
 
 **跑起来的通过数（2026-11-11 复跑）**：后端 **1,103 / 1,103**（0 失败 0 错误，`product/app/build/test-results/test/*.xml` 求和），
 前端 **1,056 / 1,056**（0 失败，`npm --prefix product/web test`；`tsc -b` 与 `check:test` 均通过）。合计 **2,159**。
