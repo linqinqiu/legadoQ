@@ -2,10 +2,13 @@
 
 本目录存放已归档的**历史与规划文档**，不再随产品发版阅读，仅供追溯。对应产品文档见仓库根 `docs/`、`product/docs/`。
 
-- `reader-archive.md` / `reader-p1-*.md` / `reader-redesign-*.md` / `reader-verification-plan.md` — 阅读器改造相关规划与现状清点
+- `reader-redesign-history.md` — 阅读器改造史（原 7 份旧规划/设计/验证文档合并：v0.8.4 基线 → P1 地基）
+- `delivery-2026-10-19.md` — 2026-10-19 交付三件套（继承了解 / 文件清单 / 检查报告，原 3 份合并）
+- `研究-书源规则引擎.md` — 早期规则引擎定位/差距与书源失败模式（原 3 份合并）
+- `研究-界面与AI借鉴.md` — 早期界面可塑性、悬浮层、MD3 与 AI 借鉴调研（原 6 份合并）
 - `RESEARCH-NOTES.md` — 研究纪要（架构速查、契约闸门、文档漂移对照）
-- `research/` — 01~07 调研纪要
-- `delivery/` — 2026-10-19 交付文档（文件清单 / 检查报告 / 继承了解）
 - `version-log-governance.md` — 版本与变更日志治理
+
+> 合并规则：同主题的历史快照按「原文拼接、H1 降级为分节」合并，内容不删只归类；每份开头标明「历史快照、数字以 facts.md 为准」。
 
 > 更早期的历史资料（旧前端、旧框架、proposals 等）已移至仓库外 `<仓库外>/legado-out/assets/archive`。

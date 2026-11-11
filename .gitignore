@@ -62,4 +62,6 @@ agent-profiles.json
 # 已注册 git worktree 的工作目录（分支 ref 仍在仓内，工作副本不入库、不出现在 status）
 /.agents/worktrees/
 # 探索性 / 草稿 md：先落这里，毕业后再迁入 docs/research 或 docs/sessions
-/docs/.scratch/
+# 目录本身与闸门说明入库，其余草稿一律忽略（防止未定稿 md 散落到 docs 根或 product/docs）
+/docs/.scratch/*
+!/docs/.scratch/README.md

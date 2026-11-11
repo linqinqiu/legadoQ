@@ -4,6 +4,8 @@
 > （`docs/API-REFERENCE.md` 由契约生成）。本文里的端点数与表数是 **2026-11-10 快照**，
 > 发版后可能变化；以 `product/docs/restructure/facts.md` 与 `docs:api-check` 的当次输出为准。
 > 接口清单见 [`API-REFERENCE.md`](API-REFERENCE.md)，目录职责见 [`STRUCTURE.md`](STRUCTURE.md)。
+>
+> **架构三份的分工**：本文=全景架构（读这份先）；对三份外部报告的审计→[`product/docs/architecture-audit.md`](../product/docs/architecture-audit.md)；重组过程记录→[`product/docs/restructure/`](../product/docs/restructure/)；规模数字→[`restructure/facts.md`](../product/docs/restructure/facts.md)。
 
 ## 1. 全景
 

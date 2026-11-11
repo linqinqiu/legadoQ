@@ -76,8 +76,9 @@
 ## 归档（`docs/archive/`）
 
 - [archive/README.md](archive/README.md)
-- `archive/research/` — 早期调研
-- `archive/delivery/` — 2026-10-19 交付文档
+- `reader-redesign-history.md` — 阅读器改造史（旧 7 份合并）
+- `delivery-2026-10-19.md` — 2026-10-19 交付三件套（旧 3 份合并）
+- `研究-书源规则引擎.md` / `研究-界面与AI借鉴.md` — 早期调研（旧 9 份合并为 2 份）
 
 ## 根级元文档
 

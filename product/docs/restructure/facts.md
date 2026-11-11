@@ -4,7 +4,9 @@
 > 其他文档（`docs/STATUS.md`、`backend-layering.md`、`frontend-host.md`）里的规模数字写于各自 commit，
 > 属于历史事实；与本文冲突时以本文为准，并重新跑一遍命令。
 >
-> 最近采集：**2026-11-11**（规模与测试数按工作树复测；构建产物 / 数据库快照仍是 2026-11-09 的值）。
+> 最近采集：**2026-11-11 晚**（规模与测试数按工作树复测，含未提交 `RuleHttp` 抽取；构建产物 / 数据库 / 覆盖率仍是 2026-11-09 的值）。
+>
+> **分工**：本文=规模/测试/覆盖率等数字的**唯一真源**；现行全景架构→[`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md)；外部报告审计→[`architecture-audit.md`](../architecture-audit.md)。
 
 ---
 
@@ -35,22 +37,26 @@
 
 ---
 
-## 2. 源码规模（工作树，2026-11-11）
+## 2. 源码规模（工作树，2026-11-11 晚，含未提交 RuleHttp 抽取）
 
 | 项 | 值 | 命令 | 口径 |
 |---|---:|---|---|
-| 后端 `.kt` | **138** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含全部包 |
-| 后端行数 | **35,461** | `find … -exec cat {} + \| wc -l` | — |
-| 后端 `@Test` | **1,104** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
-| 后端测试文件 | **140** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
+| 后端 `.kt` | **139** | `find product/app/src/main/kotlin/io/legado -name '*.kt' \| wc -l` | 含全部包 |
+| 后端行数 | **35,469** | `find … -exec cat {} + \| wc -l` | — |
+| 后端 `@Test` | **1,110** | `grep -rho '@Test' product/app/src/test --include=*.kt \| wc -l` | 静态计数 |
+| 后端测试文件 | **142** | `find product/app/src/test -name '*.kt' \| wc -l` | — |
 | 前端 ts/tsx | **202** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \) \| wc -l` | 2026-11-11 |
 | 前端行数 | **38,361** | 同上 `-exec cat {} + \| wc -l` | 同日 |
 | 前端测试文件 | **134** | `ls product/web/test/*.test.ts \| wc -l` | 同日 |
 
-**跑起来的通过数（2026-11-11 复跑）**：后端 **1,103 / 1,103**（0 失败 0 错误，`product/app/build/test-results/test/*.xml` 求和），
-前端 **1,056 / 1,056**（0 失败，`npm --prefix product/web test`；`tsc -b` 与 `check:test` 均通过）。合计 **2,159**。
+**跑起来的通过数**：
 
-> 静态 1,104 与运行 1,103 的差额来自一条没有被任何测试类执行的用例，不是失败。
+- **HEAD `e9ed196`（无未提交改动时）**：后端 **1,103 / 1,103**（0 失败 0 错误），前端 **1,056 / 1,056**（0 失败，`tsc -b` 与 `check:test` 均过）；合计 **2,159** 全绿。
+- **工作树复跑（2026-11-11 晚，含未提交 `RuleHttp` 抽取）**：后端 **1,109 完成 / 3 失败 / 6 跳过**，前端 **1,056 / 1,056** 全绿。3 处后端失败均**非文档改动引入**：
+  1. `ArchitectureBoundaryTest`「engine 不得依赖 infra」——新 `rules/RuleHttp.kt` 引入 `io.legado.ops`，WIP 尚未过架构边界；
+  2. `RuleRunnerTest` ×2——`NetworkSecurity` 用例需真实 DNS（`fanqienovel.com`），本机离线不可达（`UnreachableTargetException`）。
+
+> 静态 1,110 与工作树运行 1,109 的差额是「有条用例未被任何测试类执行 + 6 条按条件跳过」，不是新的失败。恢复全绿只需：把 `RuleHttp.kt` 的 `io.legado.ops` 依赖改走端口/注入，或在联网环境复跑 DNS 用例。
 
 **覆盖率（jacoco / c8，2026-11-09 22:11 同一次 `npm run coverage`）**：后端行 **70.04%**
 （13,209 / 18,860），前端行 **63.51%**（15,070 / 23,726），前后端合计 **66.4%**。

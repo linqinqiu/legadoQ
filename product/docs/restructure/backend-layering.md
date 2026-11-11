@@ -8,6 +8,8 @@
 >
 > 口径约定：本文路径一律以仓库根为基准；行号取 **当前工作区 HEAD**（`bebd824`）的真实行号。
 >
+> **分工**：本文=后端分层的过程分析（快照）；现行全景架构→[`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md)。
+>
 > 相关文档：[architecture-audit.md](../../docs/architecture-audit.md)（三条既有边界）、[frontend-host.md](./frontend-host.md)（前端宿主侧，同批产出）。
 
 ---
