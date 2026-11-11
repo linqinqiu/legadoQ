@@ -43,6 +43,9 @@ import io.legado.model.SourceLoginUiRenderResponse
 import io.legado.model.SourceLoginUiResponse
 import io.legado.model.SourceSummary
 import io.legado.rules.RuleRunner
+import io.legado.rules.loginUiVersion
+import io.legado.rules.renderLoginUiV2
+import io.legado.rules.executeLoginUiActionV2
 import io.legado.source.SourceCodec
 import io.legado.source.WebViewProxy
 

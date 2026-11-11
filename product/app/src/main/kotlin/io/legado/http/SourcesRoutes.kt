@@ -55,6 +55,9 @@ import io.legado.model.SourceOrderRequest
 import io.legado.model.SourceValidateRequest
 import io.legado.model.SourceWriteRequest
 import io.legado.rules.RuleRunner
+import io.legado.rules.loginUiVersion
+import io.legado.rules.renderLoginUiV2
+import io.legado.rules.executeLoginUiActionV2
 import io.legado.source.DebugStep
 import io.legado.source.ExternalBrowserLogin
 import io.legado.source.ProxiedPayload

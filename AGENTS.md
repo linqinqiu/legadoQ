@@ -3,7 +3,7 @@
 ## 0. 先读这里（省 token 规则，务必遵守）
 - **禁读区**（历史/产物，整读纯浪费）：`docs/archive/**`、`legado-releases/**`、`product/data/**`、`**/build/**`、`node_modules/**`、`dist/**`、`*.jar`。需要历史时只按关键词 `grep`，不整读。
 - **事实优先看 `product/docs/restructure/facts.md`**（带时间戳/命令/口径的实测数字）。不要自己 `find` 全仓重数规模。
-- **不整读大文件**（>1000 行，已实测）：`ReaderScreen`2346 · `RuleRunner`2187 · `JsSandbox`2066 · `JavaPackages`1361 · `ShelfPage`1240 · `Models`1112 · `Agent`1035 · `SourcesPage`933 · `types.ts`932 · `AgentRoutes`923 · `SourcesRoutes`824 · `WebViewProxy`817 · `BuiltinTools`804 · `RuleValue`802。用 `grep -n` 定位，再 `Read(offset,limit)` 只读 40–120 行窗口。
+- **不整读大文件**（>1000 行，已实测）：`ReaderScreen`2346 · `RuleRunner`1993 · `JsSandbox`2066 · `JavaPackages`1361 · `ShelfPage`1240 · `Models`1112 · `Agent`1035 · `SourcesPage`933 · `types.ts`932 · `AgentRoutes`923 · `SourcesRoutes`824 · `WebViewProxy`817 · `BuiltinTools`804 · `RuleValue`802。用 `grep -n` 定位，再 `Read(offset,limit)` 只读 40–120 行窗口。
 - **行数是体量提示、会漂移**（一重构就旧）：定位一律 `grep -n '<符号>'`，别把 `(NNNN)` 当精确行号去跳。
 - **`/api/agent/*` 接入说明在 `product/docs/agent-api.md`**（原 `product/AGENTS.md`，2026-11-11 迁出以免被按路径自动加载；日常编码不必读，改 AI 接口再看）。
 - **token 预算**：一次会话只推进一个切点；验证跑一次全量 `npm --prefix product/web test`（~1020 项），不逐文件试；能 `grep` 回答的别 `Read`。
@@ -48,7 +48,7 @@
 ## 7. 大文件拆分路线图（每拆一刀，后续 AI 改造成本永久下降）
 按「先低风险、后高耦合」排，每步单独提交、先补判据：
 1. **`ReaderScreen`(2346)**：已拆 6 hook + 3 展示组件；`useReaderPositionJump`(导航原语) 已抽出 ✅；`NoteHighlights`/`renderNoteHighlights` 此前已迁出 ✅；剩 `toggleBookmark` 留原地。
-2. **`RuleRunner`(2187)**：取值段已在 `RuleNodeSelection`、响应解码/字符集/限读已在 `ResponseBody`、纯 URL/JSON 工具已抽到 `RuleUrlSupport`（2026-11-11）→ 下一步 HTTP 段（`fetchDetailedImpl`/`buildRequest`/`effectiveHeaders` 一带，先抽窄接口避开 `JsSandbox(this)`）；靠 `GoldenRuleTest` 逐字节比对。
+2. **`RuleRunner`(1993)**：取值段已在 `RuleNodeSelection`、响应解码/字符集/限读已在 `ResponseBody`、纯 URL/JSON 工具已抽到 `RuleUrlSupport`（2026-11-11）、v2 登录界面已抽到 `RuleLogin`（2026-11-11）→ 下一步 HTTP 段（`fetchDetailedImpl`/`buildRequest`/`effectiveHeaders` 一带，先抽窄接口避开 `JsSandbox(this)`）；靠 `GoldenRuleTest` 逐字节比对。
 3. **`JsSandbox`(2066) / `JavaPackages`(1361)**：Java 桥，动前先跑 `GoldenRuleTest` + 真库抽样。
 4. 前端 **`ShelfPage`(1240) / `SourcesPage`(933)**：按子功能拆 hook。
 纪律：删/拆文件时同步缩 `tools/verify/depth-check.mjs` 的 `KNOWN_DEEP` 基线（只许单调缩小）。
@@ -91,7 +91,7 @@
 ### 8.3 后端 · 规则引擎 / 脚本（`rules/`）
 | 改什么 | 文件 |
 |--------|------|
-| 规则主流程 | `rules/RuleRunner.kt`(2187) |
+| 规则主流程 | `rules/RuleRunner.kt`(1993) |
 | 扩展点调度 | `rules/RuleProcessor.kt`（含 `RuleDispatcher`，认领即拥有） |
 | 列表取值 | `rules/RuleNodeSelection.kt` |
 | 值/拆分/搜索流 | `rules/RuleValue.kt` · `rules/RuleSplit.kt` · `rules/SearchFlow.kt` |

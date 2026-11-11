@@ -2,6 +2,9 @@ package io.legado
 
 import io.legado.model.SourceLoginUiItem
 import io.legado.rules.RuleRunner
+import io.legado.rules.loginUiVersion
+import io.legado.rules.renderLoginUiV2
+import io.legado.rules.executeLoginUiActionV2
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.int
