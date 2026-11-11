@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { api, type DebugStep } from '../../lib/api'
 import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { useFocusTrap } from '../../lib/useFocusTrap'
 
 
 export interface SourceDebugModalProps {
@@ -63,9 +64,11 @@ export function SourceDebugModal({ sourceId, sourceName, onClose }: SourceDebugM
   const failedAt = steps.find(step => !step.ok)?.stage
 
   useEscapeClose(onClose)
+  const shellRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(shellRef)
   return (
     <div className="overlay-backdrop is-topped" onClick={onClose}>
-      <div className="dialog-shell size-l source-debug-modal" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`调试书源 ${sourceName}`}>
+      <div ref={shellRef} className="dialog-shell size-l source-debug-modal" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`调试书源 ${sourceName}`}>
         <header className="dialog-head source-debug-header">
           <div>
             <span className="section-kicker">分阶段调试</span>

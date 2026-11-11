@@ -54,6 +54,12 @@ test('新增接线过的真弹层也进了守护清单（分类：真正阻断 T
     assert.match(src, /useFocusTrap\(shellRef/, `${file} 要接上焦点锁`)
     assert.match(src, /ref=\{shellRef\}/, `${file} 的对话框壳要带 ref`)
   }
+  // SourceDebugModal 在 source-editor 下（不是 components/）：SSE 调试浮层也是真 dialog。
+  {
+    const src = read('../src/features/source-editor/SourceDebugModal.tsx')
+    assert.match(src, /useFocusTrap\(shellRef/, 'SourceDebugModal.tsx 要接上焦点锁')
+    assert.match(src, /ref=\{shellRef\}/, 'SourceDebugModal 的对话框壳要带 ref')
+  }
   const readerDialogs = [
     '../src/features/reader/dialogs/RefreshChaptersModal.tsx',
     '../src/features/reader/dialogs/BookSearchDialog.tsx',
