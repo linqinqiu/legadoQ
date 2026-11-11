@@ -1233,6 +1233,16 @@ class RuleRunner(
 
 
 
+    /** 出站安全闸门：拒绝内网/本机地址。`NetworkSecurity` 属 infra，故留在本文件（已在 ENGINE_TO_INFRA_BASELINE 内）。 */
+    internal fun validateTarget(uri: URI) {
+        try {
+            NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, "站点")
+        } catch (e: IllegalArgumentException) {
+            logNetwork("拒绝访问不安全地址", networkContext(uri.toString(), null) + mapOf("原因" to (e.message ?: "内网或本机地址")))
+            throw RuleExecutionException(e.message ?: "拒绝访问内网或本机地址")
+        }
+    }
+
     internal fun buildRequest(
         initial: URI,
         options: UrlOptions?,

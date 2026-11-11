@@ -1,18 +1,18 @@
 package io.legado.rules
 
-import io.legado.ops.NetworkSecurity
 import io.legado.port.logNetwork
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpRequest
 import java.time.Duration
 
 /**
- * 规则引擎里「请求构造 / 地址脚本 / 出站安全校验」这层从 `RuleRunner` 抽出（2026-11-11）。
+ * 规则引擎里「请求构造 / 地址脚本」这层从 `RuleRunner` 抽出（2026-11-11）。
+ * 出站安全校验（`validateTarget`）仍留在 `RuleRunner`：它依赖 `io.legado.ops.NetworkSecurity`，
+ * 放回 engine 侧已有基线内，避免 `RuleHttp` 新增 engine→infra 依赖。
  * 只搬**不涉及嵌套类型 `UrlOptions`/`Fetched`** 的纯函数，调用点仍是 `runner.xxx(...)`（同包）。
  * 判据：`RuleUrlScriptsTest`（地址 JS）、`LooseUrlOptionsTest`、`RuleHttpGuardTest`、`GoldenRuleTest`。
  */
@@ -73,15 +73,6 @@ internal fun RuleRunner.capToDeadline(
     return HttpRequest.newBuilder(request, java.util.function.BiPredicate<String, String> { _, _ -> true })
         .timeout(Duration.ofMillis(remaining.coerceAtMost(PER_HOP_TIMEOUT_MS)))
         .build()
-}
-
-internal fun RuleRunner.validateTarget(uri: URI) {
-    try {
-        NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, "站点")
-    } catch (e: IllegalArgumentException) {
-        logNetwork("拒绝访问不安全地址", networkContext(uri.toString(), null) + mapOf("原因" to (e.message ?: "内网或本机地址")))
-        throw RuleExecutionException(e.message ?: "拒绝访问内网或本机地址")
-    }
 }
 
 /**
