@@ -21,6 +21,8 @@ TARGETS=(
   product/coverage-report
   product/tools/verify/out
   product/.gradle
+  product/.kotlin
+  product/.trash
   product/logs
   product/tmp
   logs
