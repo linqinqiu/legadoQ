@@ -129,6 +129,7 @@ const MARKER_CLASSES: Record<string, string> = {
   'skin-dialog': '「皮肤」浮层根节点，ui-shell-check 与 CustomizeSkin 按它定位',
   'wallpaper-dialog': '「壁纸」浮层根节点，ui-shell-check 按它定位',
   'toc-rules-modal': '「本地书分章规则」弹窗根节点，ui-shell-check 与 toc-rule-check 按它定位',
+  'book-info-edit-modal': '书籍信息编辑弹窗根节点，useEscapeClose 的 blockedBy 按它让位 Esc；BookModals.test 钉住选择器契约',
   'logs-modal': '运行日志弹窗根节点，logs-ui-check 按它定位（19 处）',
   'logs-modal-header': '日志弹窗那一行页头，logs-ui-check 按它取「自动跟随 / 导出」那排按钮',
   'shortcut-modal': '「快捷键」表弹窗根节点，shortcut-check 与 ui-shell-check 按它定位',

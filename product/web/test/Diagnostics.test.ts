@@ -22,8 +22,8 @@ test('api 层：诊断有自己的类型，不再是借来的健康检查形状'
   const system = read('../src/lib/api/domains/system.ts')
   assert.match(system, /diagnostics: \(\) => request<DiagnosticsSnapshot>\('\/api\/diagnostics'\)/)
 
-  const compat = read('../src/lib/api.ts')
-  assert.match(compat, /diagnostics: newSystem\.diagnostics/, '旧 api 对象也要能拿到')
+  const compat = read('../src/lib/api/index.ts')
+  assert.match(compat, /diagnostics: system\.diagnostics/, '旧 api 对象也要能拿到')
 })
 
 test('界面：运行日志页顶上有一条诊断，默认收起、只取一次', () => {

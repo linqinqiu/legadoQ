@@ -38,6 +38,21 @@
   --danger-solid: #b0433c;
   --on-danger: #ffffff;
   --shadow: 0 12px 30px rgba(24, 36, 28, .08);
+  /* M3 令牌补齐（R3）：只加变量与一套浅色默认映射，不动结构、不改预设皮肤。
+     预设皮肤没写这些变量时落到这里；后续皮肤派生（R2）再按皮肤覆盖。
+     语义对齐 Material 3 的 surface-container / outline-variant / inverse / primary-container 角色，
+     取值与 .theme-light 同源。位置约束同上：必须在文件最开头的 :root 里。 */
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f6f8f5;
+  --surface-container: #f1f3f0;
+  --surface-container-high: #eceeeb;
+  --surface-container-highest: #e7eae6;
+  --outline-variant: #d3d8d2;
+  --inverse-surface: #2f3431;
+  --inverse-on-surface: #eff1ee;
+  --inverse-primary: #90d7ad;
+  --primary-container: #eaf4ee;
+  --on-primary-container: #176145;
   color-scheme: light;
 }
 * { box-sizing: border-box; }

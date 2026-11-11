@@ -20,6 +20,10 @@ name: 真浏览器门禁（发布红线）
 on:
   push:
     branches: [main]
+  # 2026-11-12 补：此前注释说 PR 跑冒烟、触发器里却没有 pull_request —— PR 是浏览器门禁盲区。
+  # smoke 无 if 守卫，随触发即跑；full 有显式 if（dispatch+full / release），PR 不会误跑全量。
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       full:

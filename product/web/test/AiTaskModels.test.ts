@@ -25,9 +25,9 @@ test('api 层：两条任务路由接口，路径与后端一致', () => {
   assert.match(types, /export type AgentTaskModel = \{[\s\S]*?task: string[\s\S]*?routed: boolean/, 'routed 要能分辨"跟随默认"')
   assert.match(types, /export type AgentTaskModelInput = \{[\s\S]*?connectionId\?: string \| null/, '连接与模型都可留空')
 
-  const compat = read('../src/lib/api.ts')
-  assert.match(compat, /listAgentTaskModels: newTaskModels\.list/)
-  assert.match(compat, /saveAgentTaskModel: newTaskModels\.save/)
+  const compat = read('../src/lib/api/index.ts')
+  assert.match(compat, /listAgentTaskModels: taskModels\.list/)
+  assert.match(compat, /saveAgentTaskModel: taskModels\.save/)
 })
 
 test('界面：连接一列 + 模型一列，取消走"跟随默认"', () => {
