@@ -1,5 +1,7 @@
 # legado — AI 省 token 协议（自动加载版）
 
+> 完整纪律与「任务→精确位置」速查表见根 `AGENTS.md`；本文件是它的精简自动加载版，冲突以 `AGENTS.md` 为准。
+
 你正在修改 legado（阅读器：后端 Kotlin + 前端 React/TS）。**首要目标：别疯狂读文件，token 消耗巨大。**
 
 ## 铁律（务必遵守）

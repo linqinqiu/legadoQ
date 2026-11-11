@@ -56,7 +56,7 @@
 - 不在根目录新建第二套前端或第二套后端。
 - 不把 `release/`、`refs/`、数据库、JRE、node_modules 加回 git。
 - 不手工改 `product/app/build/libs/` 里的 jar 而不重新构建。
-- 不执行 `git clean -fd` / `git reset --hard`。
+- 不执行 `git clean -fd` / `git reset --hard`；要清本地可再生产物用 `scripts/clean-local.sh`（Windows 用 `scripts/clean-local.cmd`）——它只删 gitignored 产物、过期 worktree 只删工作目录（保留分支 ref），且**绝不碰 `product/data` 与 `legado-releases`**。
 
 ## 版本与入口
 

@@ -57,3 +57,9 @@ agent-profiles.json
 /legado-releases/
 # DSH 工具在仓根留下的本地状态目录，与项目无关
 /.dsh-ops/
+
+# ── 2026-11-11 深度清理：防止副本与草稿污染 ──
+# 已注册 git worktree 的工作目录（分支 ref 仍在仓内，工作副本不入库、不出现在 status）
+/.agents/worktrees/
+# 探索性 / 草稿 md：先落这里，毕业后再迁入 docs/research 或 docs/sessions
+/docs/.scratch/
