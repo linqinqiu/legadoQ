@@ -19,7 +19,7 @@ flowchart LR
 
     subgraph PROC["单个 JVM 进程 · Ktor CIO 3.4.3 · 默认 127.0.0.1:1234"]
         GUARD["同源写门<br/>http/Guard.kt<br/>只拦跨站写"]
-        ROUTE["路由层<br/>http/Routes.kt 装配点 + 14 个组文件<br/>165 个端点 / 19 组<br/>WS /api/search/stream"]
+        ROUTE["路由层<br/>http/Routes.kt 装配点 + 15 个组文件<br/>165 个端点 / 19 组<br/>WS /api/search/stream"]
         STATIC["静态资源<br/>StaticWeb.kt<br/>SPA 壳 + /next 挂载点"]
 
         subgraph DOMAIN["业务模块"]
@@ -88,7 +88,7 @@ flowchart TB
     end
 
     subgraph L2["HTTP 层"]
-        B1["Routes.kt 装配点<br/>+ 14 个 <组>Routes.kt<br/>全部 /api/* 与 WebSocket"]
+        B1["Routes.kt 装配点<br/>+ 15 个 <组>Routes.kt<br/>全部 /api/* 与 WebSocket"]
         B2["Guard.kt<br/>同源写门"]
         B3["NetworkSecurity.kt<br/>出站 SSRF 闸门"]
         B4["ProxyHeaders.kt<br/>反代头"]
@@ -233,7 +233,7 @@ flowchart TB
 | 目录 | 职责 | 关键文件 |
 |---|---|---|
 | `product/app/src/main/kotlin/io/legado/` | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`AppConfig.kt`、`StaticWeb.kt`、`BuildInfo.kt`、`DesktopLauncher.kt` |
-| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、出站闸门、目录生成 | `Routes.kt` 装配点 + 14 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`，共 15 个 `*Routes.kt` 含装配点本身）、`Guard.kt`、`NetworkSecurity.kt`、`RouteCatalog.kt` |
+| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、出站闸门、目录生成 | `Routes.kt` 装配点 + 15 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`PrefsRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`）、`Guard.kt`、`NetworkSecurity.kt`、`RouteCatalog.kt` |
 | `product/app/src/main/kotlin/io/legado/rules/` | 规则解析与求值 | `RuleRunner.kt`、`RuleSplit.kt`、`RuleValue.kt`、`RuleNodeSelection.kt`、`ResponseBody.kt`、`JsSandbox.kt`、`JavaPackages.kt` |
 | `product/app/src/main/kotlin/io/legado/source/` | 书源、登录、体检、调试 | `SourceCodec.kt`、`SourceHealth.kt`、`SourceDebugger.kt`、`WebViewProxy.kt`、`ExternalBrowserLogin.kt` |
 | `product/app/src/main/kotlin/io/legado/content/` | 正文净化 | `ContentPipeline.kt`、`ContentProcessor.kt`、`LooseJson.kt` |
@@ -286,7 +286,7 @@ flowchart TB
 │                                                              │
 │  SameOriginWriteGate（全局插件，拦跨站写）                    │
 │  ─────────────────────────────────────────────────────────  │
-│  Routes.kt 装配点 + 14 个域路由文件（165 端点 / 19 组）        │
+│  Routes.kt 装配点 + 15 个域路由文件（165 端点 / 19 组）        │
 │  ─────────────────────────────────────────────────────────  │
 │  领域层：source · rules · content · localbook · cache ·       │
 │          tts · subscription · backup · ops · ai · reading    │
@@ -360,7 +360,7 @@ Database（data/Database.kt）
 4. **依赖方向单向**：领域服务不反向依赖 `ai/`（它是扩展面，不是基础设施）；`reading/` 可被任何域引用，但它不引用其他域的 DAO。插件系统已整体移除，不再有 `plugin/` 依赖面。
 5. **一个域只有一个对外动词面**：HTTP 路由只做"入参 → 域方法 → 响应"，业务判断留在域内，别在路由里写 if-else 分支业务。
 
-> 现状：规则 1 已成立（14 个域文件，`Routes.kt` 只做挂载，不再内联端点）；规则 4 仍有 AI 工具层直调其他域 DAO 的历史遗留，尚未全部收回。
+> 现状：规则 1 已成立（15 个域文件，`Routes.kt` 只做挂载，不再内联端点）；规则 4 仍有 AI 工具层直调其他域 DAO 的历史遗留，尚未全部收回。
 
 ---
 
@@ -378,7 +378,7 @@ rssRoutes · readingRoutes · replaceRulesRoutes · shelfRoutes · tocRulesRoute
 mediaRoutes · readerRoutes · ttsRoutes · agentApiRoutes
 ```
 
-14 个域文件：`AgentApiRoutes` `BackupRoutes` `MediaRoutes` `ReadersRoutes` `ReadingRoutes` `ReplaceRulesRoutes` `RssRoutes` `SearchRoutes` `ShelfRoutes` `SourcesRoutes` `SubscriptionsRoutes` `SystemRoutes` `TocRulesRoutes` `TtsRoutes`。
+15 个域文件：`AgentApiRoutes` `BackupRoutes` `MediaRoutes` `PrefsRoutes` `ReadersRoutes` `ReadingRoutes` `ReplaceRulesRoutes` `RssRoutes` `SearchRoutes` `ShelfRoutes` `SourcesRoutes` `SubscriptionsRoutes` `SystemRoutes` `TocRulesRoutes` `TtsRoutes`。
 
 ### 3.2 一次请求的生命周期
 
@@ -697,7 +697,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 5 | `0.0.0.0` 未在代码层禁止 | **已解**：启动期 `requireLoopbackBind()` 拒绝非回环绑定 |
 | 6 | 发布链路 | **未解**：`build-jar.yml` 触发面过宽、未签名、无 Secrets 注入 |
 | 7 | 前端阅读器单文件过大 | **部分完成**：`ReaderBody` / `ReaderChrome` / `ReaderOverlays`、6 个 `useReader*` hook 与纯函数目录已拆出；`ReaderScreen.tsx` 仍有 **2,346 行**，剩下跨模块状态编排与交互接线 |
-| 8 | 用户侧仍依赖 Node | **部分完成**：`npm start` → `start.mjs` 负责端口/数据目录/开浏览器；原生启动器（jpackage + jlink）尚未做 |
+| 8 | 用户侧仍依赖 Node | **已解决**：`npm start` → `start.mjs` 负责端口/数据目录/开浏览器；`DesktopLauncher.kt` + jpackage + jlink 出免 Java 的 Windows 便携包（`product/scripts/package-desktop.mjs`，CI 的 `desktop` job 负责打包）。剩余缺口是安装器/自动更新/卸载，见 `product/docs/deploy.md` |
 
 > 关于 #3 和 #7 的说明：这两项曾被记为「已完成」，但对照代码不成立 ——
 > `HttpClients` 零调用方（0.2.36 已删，不再假装有这一层）；`ReaderScreen` 的拆分版本引用了
@@ -717,7 +717,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 层 | 文件 | 负责什么 | 边界 |
 | :--- | :--- | :--- | :--- |
 | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`DesktopLauncher.kt` | Ktor 特性装配、路由注册、启动后台任务 | 端口就绪**不等**订阅同步 / 缓存续跑 / 封面回收，它们挂在 `ApplicationStarted` 之后 |
-| 路由 | `http/Routes.kt` 装配点 + `http/<域>Routes.kt`（14 个域文件，0.8.2 起拆出） | 全部 `/api/*` 与 WebSocket | 装配点只构造依赖并逐个挂载；`SystemRoutes` 也已是独立文件；响应体一律 `@Serializable data class`；`Map<String, Any>` 在 Ktor 这边直接 500 |
+| 路由 | `http/Routes.kt` 装配点 + `http/<域>Routes.kt`（15 个域文件，0.8.2 起拆出） | 全部 `/api/*` 与 WebSocket | 装配点只构造依赖并逐个挂载；`SystemRoutes` 也已是独立文件；响应体一律 `@Serializable data class`；`Map<String, Any>` 在 Ktor 这边直接 500 |
 | 数据 | `data/Database.kt` 装配点 + `data/<面>Dao.kt`（13 个，0.8.2 起拆出） | 建表、迁移、连接生命周期在装配点；书源/书架/缓存/导入/RSS/订阅/日志/登录/凭据/净化/脚本缓存各归各面 | 源清单在库层缓存，写路径统一失效；`close()` 也清缓存。DAO 写成同包扩展函数，调用点 `database.foo()` 不变；跨包用要 `import io.legado.data.<方法>` |
 | 规则引擎 | `rules/RuleSplit.kt`、`rules/RuleValue.kt`、`rules/RuleRunner.kt`、`rules/JsSandbox.kt` | 把 Legado 的取值语法求值成值 | 沙箱**不开真实 Java 反射**：`JavaImporter` 是安全空替身；`{{}}` 模板展开后早退，不再被当选择器二次求值 |
 | 内容管道 | `content/ContentProcessor.kt`、`content/LooseJson.kt` | 正文净化、脏 JSON 兜底 | 净化在落库**之前**执行，离线缓存与朗读因此自动拿到干净文本 |

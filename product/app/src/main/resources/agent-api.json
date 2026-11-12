@@ -8,7 +8,7 @@
     "contentType": "application/json; charset=utf-8",
     "errors": "失败一律是非 2xx + {\"code\":..., \"message\":...}；message 是给人看的一句中文，可以直接显示或据此改动作",
     "response": "每条的 response 字段写的是回包顶层形状。三类不按这个走：GET /api/sources/{id}/debug 是 SSE，WS /api/search/stream 是 WebSocket 帧，内置浏览器那几条（page / res / submit）回的是目标站响应原文而不是 legadoQ 的 JSON。",
-    "note": "这份目录由 web/test/ApiCatalog.test.ts 与 http/ 目录的路由文件（Routes.kt 装配点 + 13 个组文件）双向核对：这里多一条不存在的端点、少一条代码里有的书源端点、write 与门不符、或 response/purpose 缺字，判据就红。",
+    "note": "这份目录由 web/test/ApiCatalog.test.ts 与 http/ 目录的路由文件（Routes.kt 装配点 + 15 个组文件）双向核对：这里多一条不存在的端点、少一条代码里有的书源端点、write 与门不符、或 response/purpose 缺字，判据就红。",
     "keys": "列出的键是该回包模型的全部字段；服务端编码时不写默认值，所以可空字段（如 stackTrace、mediaUrl、author）在没内容时整个键都不出现。接入方要按「可能缺」去读，不要按「一定有」。"
   },
   "workflow": [

@@ -47,7 +47,7 @@
 | `\|\|` 备选规则 | 支持 | 在 XPath 与 `@Json:` 之后拆分 |
 | `<js>…</js>`、`@js:` | 支持 | Rhino 沙箱执行，允许顶层 `return` |
 | `{{…}}` 表达式 | 支持 | `{{page}}` 按字面量替换 |
-| 分页占位 `<1,2,3>` | 不支持 | 上游写法；请改用 `{{page}}` 或自行拼接 |
+| 分页占位 `<1,2,3>` | 支持 | 0.2.39 起对齐上游语义（`PagingSegmentTest`）；与 `{{page}}` 并存 |
 | `:正则` 列表模式与 `$1` 分组 | 支持 | 0.2.4 起 |
 | `source.bookSourceComment` 中的脚本 | 支持 | 原文注入，可用 `eval` 执行 |
 | `Packages.*`、`JavaImporter`、`importPackage` | 支持（白名单） | 加解密、Base64、Hash、UUID、okhttp3 等；Java 反射禁用 |
@@ -56,8 +56,8 @@
 | 图片、音频、视频、文件源（`bookSourceType` 1–4） | 支持 | 按媒体类型展示与播放 |
 | 登录（`loginUrl`、`loginUi`、填表、Cookie） | 支持 | 五种入口；纯前端登录页需手动粘贴 Cookie |
 | `webView: true` 或依赖 WebView 过挑战 | 不支持 | 没有 Android WebView；体检标为 `needs_webview` |
-| `ruleReview` 段评 | 不支持 | 字段可存可备份，但不产出段评 |
-| 标准 RSS/Atom（未写 `ruleArticles`） | 不支持 | 必须提供列表规则，否则只能打开原页 |
+| `ruleReview` 段评 | 只读支持 | 配了 `detailListRule` 就能取段评列表（`POST /api/books/reviews`）；统计徽章、子评论、发帖/点赞/删除不执行 |
+| 标准 RSS/Atom（未写 `ruleArticles`） | 支持 | 0.2.39 起无列表规则时直解 feed（`RssFeedParser`，上游语义 + Atom 扩展）；不是 feed 才报错 |
 
 「不支持」不等于书源损坏：体检会把需要 WebView、没配搜索、只能用于发现的源单独分档，不与「连不上」混在一起。
 

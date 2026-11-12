@@ -17,7 +17,7 @@ const CATALOG = path.join(ROOT, 'app', 'src', 'main', 'resources', 'agent-api.js
 const DOC = path.join(ROOT, 'docs', 'agent-api.md')
 
 /**
- * 0.8.2 结构重排：`Routes.kt` 拆成了装配点 + 13 个 `<组>Routes.kt`。
+ * 0.8.2 结构重排：`Routes.kt` 拆成了装配点 + 15 个 `<组>Routes.kt`。
  * 判据跟着扫本目录的全部路由文件——各文件都视作挂在 `route("/api")` 之下：
  * 装配点里 `route("/api") {` 的那一行在所有文件中**不许出现**（它只在 `Routes.kt`），
  * 于是每个文件的解析栈天然从 `/api` 起算，路径拼装与拆前逐字等价。

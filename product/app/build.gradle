@@ -42,12 +42,13 @@ test {
     finalizedBy jacocoTestReport
 }
 
-// 框架守门：钉死"框架不含内容 + 端点计数契约"。任何破坏默认暴露面（改动 141/19/8
-// 端点计数，或让 plugin/ 容器夹带具体功能）的提交都会在 build 阶段直接红。
-// 与前端 `web/test/FrameworkHasNoContent.test.ts` + `web/test/ApiCatalog.test.ts` 互为双锁。
+// 框架守门：钉死"框架不含内容 + 端点计数契约"。任何破坏默认暴露面（端点计数变了，
+// 或让 plugin/ 容器夹带具体功能）的提交都会在 build 阶段直接红。
+// 端点计数以 `app/src/main/resources/agent-api.json` 为准（当前 165 条 / 19 组），
+// 由 `web/test/ApiCatalog.test.ts` 断言；这里**不抄数字** —— 本注释曾长期停在 141 端点。
 tasks.register('verifyFramework', Test) {
     group = 'verification'
-    description = '钉死框架不夹带内容 + 端点计数契约（141 端点 / 19 组 / AI 自定义接入 8 条）。'
+    description = '钉死框架不夹带内容 + 端点计数契约（数字以 agent-api.json 为准）。'
     maxHeapSize = '768m'
     systemProperty "java.io.tmpdir", legadoTestTmp
     testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }

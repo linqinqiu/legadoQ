@@ -15,8 +15,9 @@
 
 **当前 Releases 上有的**：`latest`（流水线连续构建）给 `legado.jar` + `legado-dist.zip`；
 按版本号打的 tag 给 `legadoq-<版本>.zip` 与桌面版 `legadoq-desktop-<版本>.zip`。
-桌面包**不在 CI 里打**（流水线跑在 ubuntu 上，Windows 镜像要在本机 jpackage），
-流程是 `node scripts/package-desktop.mjs` 打完再传上 tag 的发行版 —— 忘了传，发行版就只有 jar。
+桌面包**在 CI 里打**：`.github/workflows/build-jar.yml` 的 `desktop` job 跑在 `windows-latest` 上，
+用 jlink + jpackage 出 `legadoq-desktop-<版本>.zip`，`release` job 依赖它 —— 桌面包没出来就不发版。
+本机要单独打时用 `node scripts/package-desktop.mjs`，产物落在 `dist/`。
 
 桌面壳为什么是 jlink + jpackage 而不是 Tauri / GraalVM，见
 [`研究-桌面外壳与Tauri.md`](../../docs/research/研究-桌面外壳与Tauri.md)：结论是现有外壳已经满足"免装 JDK、只跑一个进程、

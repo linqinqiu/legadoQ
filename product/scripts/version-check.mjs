@@ -64,6 +64,30 @@ function readmeVersion(rel) {
   return found ? { file, version: found } : null
 }
 
+/** BUILD_NUMBER：build 号的真源，和 VERSION 同级。 */
+function buildNumber(rel) {
+  const file = path.join(ROOT, rel)
+  if (!fs.existsSync(file)) return null
+  const found = fs.readFileSync(file, 'utf8').trim().match(/^\d+$/)?.[0]
+  return found ? { file, build: Number(found) } : null
+}
+
+/**
+ * `docs/STATUS.md` 的「版本 **x.y.z / build N**」。
+ *
+ * 这一处曾经漂了整整两个版本（0.2.41 发布时它还写着 0.2.40 / build 53），因为没人跑
+ * 这个脚本、它也不在覆盖范围里。STATUS 是读者判断"现在是什么版本"的地方，
+ * 与 README 顶部那句话同类，所以一并钉住 —— 发版时忘记改，CI 直接红。
+ */
+function statusClaim(rel) {
+  const file = path.join(ROOT, rel)
+  if (!fs.existsSync(file)) return null
+  const m = fs.readFileSync(file, 'utf8').match(/版本\s*\*\*(\d+\.\d+\.\d+)\s*\/\s*build\s*(\d+)\*\*/)
+  return m ? { file, version: m[1], build: Number(m[2]) } : null
+}
+
+const status = statusClaim('../docs/STATUS.md')
+
 const sources = [
   gradleVersion(),
   packageVersion('package.json'),
@@ -73,25 +97,41 @@ const sources = [
   plainVersion('../VERSION'),
   jsonFieldVersion('app/src/main/resources/agent-api.json', 'version'),
   readmeVersion('../README.md'),
+  status,
 ].filter(Boolean)
+
+/** build 号：真源 `BUILD_NUMBER`，STATUS 里那份是抄本。 */
+const buildSources = [buildNumber('../BUILD_NUMBER'), status].filter(Boolean)
 
 const expected = sources[0].version
 const mismatched = sources.filter(s => s.version !== expected)
+const expectedBuild = buildSources[0]?.build
+const buildMismatched = expectedBuild == null
+  ? []
+  : buildSources.filter(s => s.build !== expectedBuild)
 const rel = p => path.relative(ROOT, p).replaceAll('\\', '/')
 
 if (json) {
   console.log(JSON.stringify({
     expected,
-    ok: mismatched.length === 0,
+    expectedBuild,
+    ok: mismatched.length === 0 && buildMismatched.length === 0,
     sources: sources.map(s => ({ file: rel(s.file), version: s.version, ok: s.version === expected })),
+    builds: buildSources.map(s => ({ file: rel(s.file), build: s.build, ok: s.build === expectedBuild })),
   }, null, 2))
-} else if (mismatched.length === 0) {
-  console.log(`[version-check] OK：${sources.length} 处版本一致，都是 ${expected}`)
+} else if (mismatched.length === 0 && buildMismatched.length === 0) {
+  console.log(`[version-check] OK：${sources.length} 处版本一致，都是 ${expected}；build ${expectedBuild}`)
   for (const s of sources) console.log(`  ${expected}  ${rel(s.file)}`)
 } else {
-  console.error(`[version-check] 版本不一致（真源 ${rel(sources[0].file)} = ${expected}）：`)
-  for (const s of mismatched) console.error(`  ${s.version}  ${rel(s.file)}  ← 应为 ${expected}`)
-  console.error('  改法：以 app/build.gradle 为准，把其余几处抄成同一个号。')
+  if (mismatched.length > 0) {
+    console.error(`[version-check] 版本不一致（真源 ${rel(sources[0].file)} = ${expected}）：`)
+    for (const s of mismatched) console.error(`  ${s.version}  ${rel(s.file)}  ← 应为 ${expected}`)
+  }
+  if (buildMismatched.length > 0) {
+    console.error(`[version-check] build 号不一致（真源 BUILD_NUMBER = ${expectedBuild}）：`)
+    for (const s of buildMismatched) console.error(`  build ${s.build}  ${rel(s.file)}  ← 应为 ${expectedBuild}`)
+  }
+  console.error('  改法：以 app/build.gradle + BUILD_NUMBER 为准，把其余几处抄成同一个号。')
 }
 
-process.exit(mismatched.length === 0 ? 0 : 1)
+process.exit(mismatched.length === 0 && buildMismatched.length === 0 ? 0 : 1)
