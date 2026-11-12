@@ -204,7 +204,14 @@ internal fun decodeDataUrlText(url: String): String? {
     }.getOrNull()
 }
 
-class JsSandbox(private val runner: RuleRunner? = null) {
+/**
+ * @param hostByteBudget 单次执行可累计分配的宿主字节上限（见 [BoundedJs.chargeHostBytes]）。
+ *   生产路径走 `AppConfig.jsHostBytes`；判据传 1MB 这类小值，不必真的分配大内存。
+ */
+class JsSandbox(
+    private val runner: RuleRunner? = null,
+    private val hostByteBudget: Long = AppConfig.jsHostBytes,
+) {
     private companion object {
         /** 诊断里的阶段名：脚本求值一格（与 RuleRunner 的 search/details/toc/content 并列）。 */
         const val STAGE_JS = "js"
@@ -290,7 +297,7 @@ class JsSandbox(private val runner: RuleRunner? = null) {
 
         // 必须显式传超时：`enter()` 的缺省是 30s 常量，不读环境变量。
         // 漏传不会报错，只会让设了 LEGADO_JS_TIMEOUT_MS 的用户静默失效 —— 所以宁可写长。
-        val cx = BoundedJs.enter(AppConfig.jsTimeoutMs)
+        val cx = BoundedJs.enter(AppConfig.jsTimeoutMs, hostByteBudget)
         try {
             cx.optimizationLevel = -1
             cx.setClassShutter(ClassShutter { false }) // Sandbox: block all Java reflection

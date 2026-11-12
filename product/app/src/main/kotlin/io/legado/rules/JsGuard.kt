@@ -29,6 +29,18 @@ private class BoundedContext : Context() {
     /** 本次执行的墙钟上限，仅用于报错文案；语义由 [deadlineMs] 承载。 */
     @Volatile var timeoutMs: Long = BoundedJs.DEFAULT_TIMEOUT_MS
 
+    /**
+     * 本次执行的**宿主侧累计分配字节**上限。`Long.MAX_VALUE` = 不设限（默认）。
+     *
+     * 单次上限（`MAX_HOST_ALLOC_BYTES`）挡不住"多次小额、脚本保留"：一次 8MB 的 `copyOf`
+     * 完全合法，脚本把结果塞进 JS 数组保留，几十次就是数百 MB —— 而 Rhino 的指令观察器
+     * 对这条路径全程失明（不耗指令、不阻塞）。这条预算就是那个缺口的闸。
+     */
+    @Volatile var hostByteBudget: Long = Long.MAX_VALUE
+
+    /** 本次执行已记账的宿主分配字节。不设限时也照记，供观测与判据读取。 */
+    @Volatile var hostBytes: Long = 0
+
     override fun observeInstructionCount(instructionCount: Int) {
         if (System.currentTimeMillis() > deadlineMs) {
             throw EvaluatorException("书源 JS 执行超过 ${timeoutMs}ms 上限，已中断（疑似死循环）")
@@ -88,14 +100,51 @@ object BoundedJs {
      *
      * @param timeoutMs 本次执行的墙钟上限。生产路径传 `AppConfig.jsTimeoutMs`；
      *   判据会传一个很小的值（如 120ms），这样「死循环必须被中断」能在秒级内验完。
+     * @param hostByteBudget 本次执行的宿主侧累计分配字节上限，`Long.MAX_VALUE` = 不设限。
+     *   生产路径传 `AppConfig.jsHostBytes`；判据传 1MB 这类小值，不必真的分配大内存。
      */
-    fun enter(timeoutMs: Long = DEFAULT_TIMEOUT_MS): Context =
+    fun enter(
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        hostByteBudget: Long = Long.MAX_VALUE,
+    ): Context =
         (BoundedContextFactory.enter() as BoundedContext).apply {
             this.timeoutMs = timeoutMs
-            deadlineMs = System.currentTimeMillis() + timeoutMs
+            this.deadlineMs = System.currentTimeMillis() + timeoutMs
+            this.hostByteBudget = hostByteBudget
+            this.hostBytes = 0
         }
 
     fun exit() { Context.exit() }
+
+    /**
+     * 记一笔宿主侧分配（字节）。
+     *
+     * 由**分配闸口**调用，不由每个桥入口调用：真正的放大都收敛在
+     * `requireAllowedLength` / `requireStringBuilderWithinLimit` / `GzipLimits` 三处，
+     * 在 106 个入口逐个记账是"漏记一处等于没有"，和手写白名单同一个失效模式。
+     *
+     * 没有 [BoundedContext] 时（Kotlin 直接调 `GzipLimits`、判据直调）**静默忽略** ——
+     * 这条路径本来就不在脚本控制下。
+     *
+     * @throws IllegalArgumentException 累计超过本次执行的预算。抛 `Exception` 而不是 `Error`，
+     *   是为了让脚本层的 `runCatching` 能兜住并降级，而不是把整条工作线程打掉。
+     */
+    fun chargeHostBytes(bytes: Long) {
+        if (bytes <= 0) return
+        val ctx = Context.getCurrentContext() as? BoundedContext ?: return
+        val spent = ctx.hostBytes + bytes
+        ctx.hostBytes = spent
+        if (ctx.hostByteBudget != Long.MAX_VALUE && spent > ctx.hostByteBudget) {
+            throw IllegalArgumentException(
+                "本次书源 JS 已累计分配宿主内存 ${spent / (1024 * 1024)}MB，" +
+                    "超过 ${ctx.hostByteBudget / (1024 * 1024)}MB 上限，已拒绝（疑似脚本放大攻击）。" +
+                    "确实需要更大的量可用 LEGADO_JS_HOST_BYTES 调整（0 = 不设限）",
+            )
+        }
+    }
+
+    /** 本次执行已记账的宿主分配字节；不在 [enter] 的上下文里时返回 0。供诊断与判据用。 */
+    fun hostBytesSpent(): Long = (Context.getCurrentContext() as? BoundedContext)?.hostBytes ?: 0
 
     /**
      * 当前线程上这次执行的墙钟截止时刻（`System.currentTimeMillis()` 口径）。

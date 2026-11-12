@@ -291,12 +291,13 @@ internal class JavaPackages(
             }
             method("append") { a ->
                 val value = a.getOrNull(0)
+                val before = sb.length
                 if (value is Number) sb.append(value.toInt()) else if (value is Boolean) sb.append(value) else sb.append(textOf(value))
                 // 累计长度上限。只卡 setLength 是**假的防护**：`append` 完全绕过它。
                 // 实测 `for (i=0;i<200;i++) sb.append('a'.repeat(1000000))` 只有几千条 Rhino 指令
                 //（远低于 2 万条的检查间隔），宿主侧却已累计 200MB+；叠几次就是 GB 级，
                 // 而且每一步都是宿主 char 数组增长，墙钟守卫零回调。
-                requireStringBuilderWithinLimit(sb.length)
+                requireStringBuilderWithinLimit(before, sb.length)
                 box
             }
             method("toString") { sb.toString() }
@@ -304,8 +305,9 @@ internal class JavaPackages(
             method("reverse") { sb.reverse(); box }
             method("insert") { a ->
                 val index = (a.getOrNull(0) as? Number)?.toInt() ?: 0
+                val before = sb.length
                 sb.insert(index.coerceIn(0, sb.length), textOf(a.getOrNull(1)))
-                requireStringBuilderWithinLimit(sb.length) // 同 append：insert 也是增长路径
+                requireStringBuilderWithinLimit(before, sb.length) // 同 append：insert 也是增长路径
                 box
             }
             method("deleteCharAt") { a ->
@@ -599,8 +601,19 @@ internal class JavaPackages(
             "toString" to { a -> textOf(a.firstOrNull()) },
         ))
         "cn.hutool.core.util.ZipUtil" -> jsClass(full, statics = mapOf(
-            "gzip" to { a -> bytesArray(GzipLimits.gzipBounded(bytesOf(a.firstOrNull()))) },
-            "unGzip" to { a -> bytesArray(runCatching { GzipLimits.unzipBounded(bytesOf(a.firstOrNull())) }.getOrDefault(ByteArray(0))) },
+            "gzip" to { a ->
+                val out = GzipLimits.gzipBounded(bytesOf(a.firstOrNull()))
+                BoundedJs.chargeHostBytes(out.size.toLong())
+                bytesArray(out)
+            },
+            "unGzip" to { a ->
+                // 记账在 `runCatching` **外面**：放里面会被它吞掉，累计超限就永远抛不出来。
+                // 只记结果大小（不记流式中间量）—— 单次 16MB 上限已经把峰值夹住了，
+                // 累计预算要拦的是"反复解压"。
+                val out = runCatching { GzipLimits.unzipBounded(bytesOf(a.firstOrNull())) }.getOrNull()
+                if (out != null) BoundedJs.chargeHostBytes(out.size.toLong())
+                bytesArray(out ?: ByteArray(0))
+            },
         ))
         "cn.hutool.crypto.digest.DigestUtil" -> jsClass(full, statics = mapOf(
             "md5Hex" to { a -> digestHex(textOf(a.firstOrNull()), "MD5") },
@@ -762,15 +775,21 @@ internal class JavaPackages(
                 "$what ${length} 超过 ${MAX_HOST_ALLOC_BYTES / (1024 * 1024)}M 上限，已拒绝（疑似脚本放大攻击）",
             )
         }
+        // 单次没超，但**累计**可能超：一次 8MB 完全合法，脚本保留结果再循环几十次就是数百 MB。
+        // 记账点放这里而不是每个桥入口，见 `BoundedJs.chargeHostBytes` 的注释。
+        BoundedJs.chargeHostBytes(length.toLong())
     }
 
     /** `StringBuilder` 的增长路径（`append`/`insert`）共用 `setLength` 的那个上限。 */
-    private fun requireStringBuilderWithinLimit(length: Int) {
-        if (length > MAX_STRING_BUILDER_LENGTH) {
+    private fun requireStringBuilderWithinLimit(before: Int, after: Int) {
+        if (after > MAX_STRING_BUILDER_LENGTH) {
             throw IllegalArgumentException(
-                "StringBuilder 长度 ${length} 超过 ${MAX_STRING_BUILDER_LENGTH} 上限，已拒绝（疑似脚本放大攻击）",
+                "StringBuilder 长度 $after 超过 $MAX_STRING_BUILDER_LENGTH 上限，已拒绝（疑似脚本放大攻击）",
             )
         }
+        // 只记**增量**：append 循环里 `sb.length` 是累计值，按累计值记账会把一次 1MB 的
+        // 正常拼接记成 N×1MB，误伤真实源。
+        if (after > before) BoundedJs.chargeHostBytes((after - before).toLong())
     }
 
     /**

@@ -5,15 +5,46 @@ package io.legado
  * 所以不设任何 env 时行为与现在完全一致；只有显式设置才改变。目的：把散落的
  * 魔数变成使用者可自定义的旋钮（开源「支持自定义」），不必改源码重编译。
  *
- * 全部项见 .env.example / app/README.md 的配置表。
+ * 全部项见 `product/.env.example`（唯一的用户可读清单；`product/app/README.md` 那张表只讲
+ * `ServerConfig` 的绑定项，不含这里的旋钮）。新增键必须同时写进 `.env.example`，
+ * `AppConfigEnvWiringTest` 会查。
  */
 object AppConfig {
     private val env: Map<String, String> = System.getenv()
 
-    private fun int(key: String, default: Int): Int = env[key]?.trim()?.toIntOrNull() ?: default
-    private fun long(key: String, default: Long): Long = env[key]?.trim()?.toLongOrNull() ?: default
+    /**
+     * 解析时记账：`key → 该键解析出来的生效值`（字符串形状，与字段的 `toString()` 对齐）。
+     *
+     * 存在的理由只有一个：**「字段真的读这个键」这件事没法从字段值反推**。`System.getenv()`
+     * 进程级只读，判据既不能改 env，也不能为每个取值起一个新进程；env 全未设时，一个读错键、
+     * 或键名少写一个字母的字段，值与默认值完全一样，静态看毫无差别。有了这本账，判据才能
+     * 断言「`LEGADO_JS_HOST_BYTES` 被读过，且读出来的就是 `jsHostBytes` 的值」。
+     *
+     * 记账点是解析函数与**带 `coerceIn` 的字段**两处：字段上的记账后写，覆盖掉夹取前的原值，
+     * 所以账本里存的始终是字段最终生效值。
+     */
+    private val envReads = LinkedHashMap<String, String>()
+
+    private fun record(key: String, value: String): String = value.also { envReads[key] = it }
+
+    /** 某个环境变量本次进程内的生效值；从没被读过则为 null。供判据验证接线。 */
+    internal fun effectiveValue(key: String): String? = envReads[key]
+
+    /** 本次进程内真正被读过的全部环境变量名。 */
+    internal fun readKeys(): Set<String> = envReads.keys.toSet()
+
+    private fun int(key: String, default: Int): Int =
+        record(key, (env[key]?.trim()?.toIntOrNull() ?: default).toString()).toInt()
+
+    private fun long(key: String, default: Long): Long =
+        record(key, (env[key]?.trim()?.toLongOrNull() ?: default).toString()).toLong()
+
     private fun str(key: String, default: String): String =
-        env[key]?.trim()?.takeIf { it.isNotEmpty() } ?: default
+        record(key, env[key]?.trim()?.takeIf { it.isNotEmpty() } ?: default)
+
+    /** 带上下限的整数项。夹取后重新记账，账本里存的是字段最终生效值而不是夹取前的原值。 */
+    private fun intIn(key: String, default: Int, range: IntRange): Int =
+        record(key, int(key, default).coerceIn(range).toString()).toInt()
 
     /** Ktor CIO 引擎处理请求与写响应的分组线程数。 */
     val callGroupSize: Int = int("LEGADO_CALL_GROUP_SIZE", 64)
@@ -47,20 +78,20 @@ object AppConfig {
      * 而是为了**能改小**：接的模型很笨时会反复调同一个工具，把一次对话拖成十几次外呼；
      * 那时要能把它压到 2~3 轮，不必重新编译。
      */
-    val aiMaxToolRounds: Int = int("LEGADO_AI_MAX_TOOL_ROUNDS", 6).coerceIn(1, 20)
+    val aiMaxToolRounds: Int = intIn("LEGADO_AI_MAX_TOOL_ROUNDS", 6, 1..20)
 
     /** 单次工具结果塞回模型上下文的字符上限。默认 4000（约 2 KB 中文）。 */
-    val aiMaxToolData: Int = int("LEGADO_AI_MAX_TOOL_DATA", 4000).coerceIn(500, 20000)
+    val aiMaxToolData: Int = intIn("LEGADO_AI_MAX_TOOL_DATA", 4000, 500..20000)
 
     /**
      * 整轮对话的字符预算（默认 24000，约 1.2 万汉字）。超过后从**最旧的整轮**开始丢，
      * system 段与最后一条用户消息永远保留。按字符而不是 token：这层不引分词器，
      * 中英混排下字符数已经足够稳定，且这个值只用来"别把整本书塞进去"。
      */
-    val aiMaxContextChars: Int = int("LEGADO_AI_MAX_CONTEXT_CHARS", 24000).coerceIn(4000, 200000)
+    val aiMaxContextChars: Int = intIn("LEGADO_AI_MAX_CONTEXT_CHARS", 24000, 4000..200000)
 
     /** 提示词预设每轮最多注入多少字符（默认 6000）。超出预算的预设整条不注入，不截半句。 */
-    val aiMaxPromptChars: Int = int("LEGADO_AI_MAX_PROMPT_CHARS", 6000).coerceIn(0, 40000)
+    val aiMaxPromptChars: Int = intIn("LEGADO_AI_MAX_PROMPT_CHARS", 6000, 0..40000)
 
     /** 整书离线缓存的分片并发数。 */
     val cacheConcurrency: Int = int("LEGADO_CACHE_CONCURRENCY", 4)
@@ -72,7 +103,7 @@ object AppConfig {
      * 启动时给库做文件级快照（`VACUUM INTO`）保留几份，落在 `<库同目录>/backups/`。
      * 默认 5 份；`0` 关闭自动快照。大库每次启动都整库拷贝代价真实，所以下面用间隔再收一道。
      */
-    val dbSnapshotKeep: Int = int("LEGADO_DB_SNAPSHOT_KEEP", 5).coerceIn(0, 50)
+    val dbSnapshotKeep: Int = intIn("LEGADO_DB_SNAPSHOT_KEEP", 5, 0..50)
 
     /**
      * 两次自动快照的最小间隔（毫秒，默认 12 小时）。距上次快照不足这个点就跳过本次启动，
@@ -102,6 +133,37 @@ object AppConfig {
      * 一条 `while(true)` 会占死一条工作线程；合法规则都是毫秒级，这个宽上限只砍失控循环。
      */
     val jsTimeoutMs: Long = long("LEGADO_JS_TIMEOUT_MS", 30_000L)
+
+    /** 默认 64MB。抽成常量是为了判据能引用同一个数，而不是再抄一遍 `64 * 1024 * 1024`。 */
+    internal const val DEFAULT_JS_HOST_BYTES = 64L * 1024 * 1024
+
+    /**
+     * 单次书源 JS 执行**累计**可分配的宿主字节数（默 64MB）。
+     *
+     * 单次上限（8MB / 16MB）挡不住"多次小额、脚本保留"：合法的一次 `copyOf` 乘以循环次数
+     * 就是数百 MB，而这类开销不耗 Rhino 指令，墙钟守卫看不见。这条预算只记账在三个分配闸口
+     * （`requireAllowedLength` / `requireStringBuilderWithinLimit` / `GzipLimits`），
+     * 网络响应体不计入 —— 所以 64MB 对真实源是很宽的量。
+     * 设 `0` 表示不设限（排障时可临时关掉）。
+     */
+    val jsHostBytes: Long = resolveJsHostBytes(env["LEGADO_JS_HOST_BYTES"])
+        .also { record("LEGADO_JS_HOST_BYTES", it.toString()) }
+
+    /**
+     * `LEGADO_JS_HOST_BYTES` 的映射规则。
+     *
+     * 独立成纯函数才可判据：`System.getenv()` 在 JVM 里进程级只读，改不了 env 去驱动
+     * [jsHostBytes] 的静态初始化，只能在类初始化前起新进程 —— 那不是一个单测该付的代价。
+     *
+     * - 未设 / 空白 / 非数字 → [default]（64MB）
+     * - 正数 → 原值
+     * - `0` 与负数 → [Long.MAX_VALUE]，即不设限。负数没有别的合理含义：若按"上限 -5 字节"
+     *   去理解，第一条脚本就会被拒，等于把一次手误变成整个 JS 规则面不可用。
+     */
+    internal fun resolveJsHostBytes(raw: String?, default: Long = DEFAULT_JS_HOST_BYTES): Long {
+        val parsed = raw?.trim()?.toLongOrNull() ?: default
+        return if (parsed > 0) parsed else Long.MAX_VALUE
+    }
 
     /** 目录 / 正文分页抓取的最大页数。 */
     val maxTocPages: Int = int("LEGADO_MAX_TOC_PAGES", 40)
@@ -191,9 +253,12 @@ object AppConfig {
     val aiNeverDowngradeProtocol: Boolean
         get() = flag("LEGADO_AI_NEVER_DOWNGRADE_PROTOCOL")
 
-    private fun flag(key: String): Boolean =
-        when (env[key]?.trim()?.lowercase()) {
+    private fun flag(key: String): Boolean {
+        val on = when (env[key]?.trim()?.lowercase()) {
             "1", "true", "yes", "on" -> true
             else -> false
         }
+        record(key, on.toString())
+        return on
+    }
 }
