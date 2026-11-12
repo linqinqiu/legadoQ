@@ -193,7 +193,7 @@ object SourceCodec {
             key != "enabled" && review.string(key)?.isNotBlank() == true
         }
         if (hasReviewRule) {
-            warnings += "检测到段评规则（ruleReview）：服务端不执行段评，这些字段存得下但不会产出段评内容。"
+            warnings += "检测到段评规则（ruleReview）：详情列表已只读支持（需配 detailListRule，阅读器可看段评）；统计徽章、子评论与发帖/点赞/删除等写操作服务端不执行。"
         }
 
         if (obj.string("searchUrl").isNullOrBlank() && obj.string("exploreUrl").isNullOrBlank()) {
