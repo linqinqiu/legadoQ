@@ -368,6 +368,26 @@ export type RssArticleContent = {
   content: string
 }
 
+/** 段评内容协议（S0/C-03，对齐 gedoor detailContentRule 的键）。 */
+export type ReviewContent = {
+  text: string
+  img?: string
+  audio?: string
+  time?: string
+  likeCount: number
+  replyCount: number
+  replyToName?: string
+}
+
+/** 段评详情层的一条只读段评（统计徽章/子评论不在第一刀范围）。 */
+export type ChapterReview = {
+  id: string
+  avatar?: string
+  name?: string
+  badge?: string
+  content: ReviewContent
+}
+
 export type BookGroup = {
   id: number
   name: string

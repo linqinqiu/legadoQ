@@ -5,6 +5,7 @@ import type {
   BookDetails,
   BookSearchHit,
   Chapter,
+  ChapterReview,
   ExploreTab,
   RssArticle,
   RssArticleContent,
@@ -135,6 +136,13 @@ export const book = {
     }>('/api/books/content-refresh', {
       method: 'POST',
       body: JSON.stringify({ sourceId, bookUrl, chapterUrls }),
+    }),
+  /** 段评详情列表（S0/C-03，只读）。书源须配 ruleReview.detailListRule。 */
+  reviews: (sourceId: string, url: string, page = 1, signal?: AbortSignal) =>
+    request<ChapterReview[]>('/api/books/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ sourceId, url, page }),
+      signal,
     }),
 }
 
