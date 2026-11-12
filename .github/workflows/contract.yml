@@ -8,6 +8,9 @@
 #   文档第三锁 —— scripts/gen-api-reference.mjs --check（agent-api.json ↔ docs/API-REFERENCE.md）
 #   日志第四锁 —— scripts/changelog.mjs --check（有 feat/fix 提交却没进日志就红）
 #   结构第五锁 —— tools/verify/depth-check.mjs（域包平铺、前端限深）
+#   版本第六锁 —— scripts/version-check.mjs（8 处版本抄本 + build 号；此前**没有任何 workflow
+#                跑过它**，所以 docs/STATUS.md 能整整落后两个版本还没人发现。它与第三锁同属
+#                "抄本一致性"，放在同一个 job 里：两者失败的原因和改法都是"以真源为准抄一遍"）
 #
 # 2026-10-26 重建：重组时这 7 个文件被压成一行（0 换行 + BOM），GitHub 解析不了，
 # CI 自重组起从未真的跑过。重写时把路径挪到 product/ 下、JDK 统一 17，
@@ -100,7 +103,7 @@ jobs:
           ./gradlew :app:verifyFramework --no-daemon --console=plain
 
   doc-gate:
-    name: 文档契约（API-REFERENCE 与 agent-api.json 不漂）
+    name: 文档与版本契约（抄本一致）
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -109,6 +112,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: product/.nvmrc
+
+      # 版本号 / build 号的 8 处抄本。此前没有任何 workflow 跑过这条脚本，
+      # 于是 docs/STATUS.md 整整落后两个版本（0.2.41 发布时它还写着 0.2.40 / build 53）
+      # 而 CI 一无所知 —— 纯文档提交最容易漏，这条只读文件，秒级。
+      - name: 核对版本号与 build 号的抄本一致
+        run: node scripts/version-check.mjs
 
       # ApiCatalog.test.ts 钉「代码路由 ↔ JSON」，这里钉「JSON ↔ 人读的文档」。
       # 少了这一步，改了端点忘了重跑生成器，文档就静默说一套、接口做一套。

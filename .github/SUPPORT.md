@@ -5,7 +5,7 @@
 ### 1. **Documentation** (First Stop)
 - [Main README](../README.md) - Quick start and overview
 - [Architecture Guide](../docs/ARCHITECTURE.md) - System design
-- [API Reference](../docs/API-REFERENCE.md) - All 161 endpoints
+- [API Reference](../docs/API-REFERENCE.md) - All 165 endpoints
 - [AI Agent Guide](../product/docs/agent-api.md) - AI integration
 - [Plugin Development](../product/docs/plugin-development-guide.md) - Historical only (plugin system removed)
 
