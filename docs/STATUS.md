@@ -65,9 +65,9 @@
 
 契约由 `resources/agent-api.json` 描述，`FrameworkContractTest`、`web/test/ApiCatalog.test.ts` 与源码双向核对；`npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 一致。
 
-### 2.3 数据层（SQLite，代码建 20 张表）
+### 2.3 数据层（SQLite，代码建 21 张表）
 
-`source` `source_login_state` `cookie` `book_shelf` `book_group` `reading_progress` `reading_log` `book_note` `book_content_cache` `book_content_process` `book_cache_status` `book_toc_cache` `cover_cache` `replace_rule` `source_subscription` `rss_source` `log_entry` `source_health` `script_cache` `app_meta`
+`source` `source_login_state` `cookie` `book_shelf` `book_shelf_tombstone` `book_group` `reading_progress` `reading_log` `book_note` `book_content_cache` `book_content_process` `book_cache_status` `book_toc_cache` `cover_cache` `replace_rule` `source_subscription` `rss_source` `log_entry` `source_health` `script_cache` `app_meta`
 
 （分章规则不是独立表：`book_shelf.toc_rule` 记住这本书用哪条规则切的章。AI 连接、会话与技能走文件存储，不进库。**代码建的表 ≠ 磁盘上的表**：2026-11-09 实测这台机器 24 张 = 代码建 20 + 遗留 `book_mark`（0.6.12 移除书签后没删表）+ `sqlite_sequence` / `sqlite_stat1` / `sqlite_stat4` 三张内部表。数表数量要用 `sqlite_master` 实测。）
 

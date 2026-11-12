@@ -35,7 +35,7 @@ flowchart LR
             OPS["ops<br/>日志落库 / 更新检查"]
         end
 
-        DB[("SQLite<br/>data/legado.sqlite · WAL<br/>代码建 20 张表")]
+        DB[("SQLite<br/>data/legado.sqlite · WAL<br/>代码建 21 张表")]
         NETSEC["出站闸门<br/>http/NetworkSecurity.kt<br/>拒内网 / 链路本地 / 保留段"]
     end
 
@@ -293,7 +293,7 @@ flowchart TB
 └──────────────────────────────────────────────────────────────┘
         │                        │
         ▼                        ▼
-  SQLite（WAL，代码建 20 张表）  文件：封面 / 本地书 / 日志 / 浏览器 profile
+  SQLite（WAL，代码建 21 张表）  文件：封面 / 本地书 / 日志 / 浏览器 profile
         │
         ▼ 出站（NetworkSecurity 闸门）
   书源站点 / RSS / TTS / 外部模型
@@ -445,12 +445,12 @@ close()       = 关写连接 + 清空池 + 关掉所有曾创建的连接（Wind
 
 **为什么单写**：SQLite 同一时刻只允许一个写者；本项目有「流式搜索（长读）+ 阅读进度写入（频繁写）+ 缓存任务（批量写）」三条并发路径，放开多写必然撞 `SQLITE_BUSY`。用一个 `ReentrantLock` 把写串行化，配合 `busy_timeout` 兜住跨进程/其它连接的瞬时竞争。
 
-### 5.2 20 张表（按用途分组）
+### 5.2 21 张表（按用途分组）
 
 | 组 | 表 |
 |---|---|
 | 书源 | `source`（payload 存整份 JSON）、`source_login_state`、`cookie`、`source_health`（体检结论，搜索按它排序） |
-| 书架与阅读 | `book_shelf`（含 `toc_rule`、`group_id`）、`book_group`、`reading_progress`、`reading_log`、`book_note` |
+| 书架与阅读 | `book_shelf`（含 `toc_rule`、`group_id`）、`book_shelf_tombstone`（用户删过这本书，备份导入据此不复活）、`book_group`、`reading_progress`、`reading_log`、`book_note` |
 | 内容缓存 | `book_content_cache`（正文，含 `chapter_index`）、`book_content_process`（AI 覆盖正文）、`book_cache_status`（缓存状态机）、`book_toc_cache`（目录 JSON）、`cover_cache` |
 | 规则 | `replace_rule`、`script_cache` |
 | 订阅 | `source_subscription`、`rss_source` |
@@ -726,10 +726,10 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 ## 3. 数据模型
 
-库文件默认 `$LEGADO_DATA_DIR/legado.sqlite`（WAL，所以同级还有 `-wal` / `-shm`）。代码会建 20 张表，按归属分六组：
+库文件默认 `$LEGADO_DATA_DIR/legado.sqlite`（WAL，所以同级还有 `-wal` / `-shm`）。代码会建 21 张表，按归属分六组：
 
 - **书源与凭据**：`source`（整份书源 JSON 存 `payload`）、`source_login_state`、`cookie`、`source_health`（体检结论）。
-- **书架与进度**：`book_shelf`、`book_group`、`reading_progress`、`reading_log`。
+- **书架与进度**：`book_shelf`、`book_shelf_tombstone`（用户删过这本书，备份导入据此不复活）、`book_group`、`reading_progress`、`reading_log`。
 - **阅读标记**：`book_note`（划线 / 备注）。
 - **缓存**：`book_toc_cache`、`book_content_cache`、`book_content_process`（AI 覆盖正文）、`book_cache_status`；封面字节走 `cover_cache` + 磁盘文件。
 - **内容与规则**：`replace_rule`、`script_cache`、`source_subscription`、`rss_source`。
@@ -738,7 +738,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 > 注意"代码建的表"与"磁盘上的表"不是一回事：`data/db/Schema.kt` 只建不删，早年版留下又已停用的表
 > （如书签功能 0.6.12 移除后遗留的 `book_mark`）仍会躺在老库里。数表数量要用
 > `sqlite_master` 查实际库，别按本文当断言；代码里的权威清单是 `data/db/Schema.kt` 的
-> `create table if not exists`（当前 20 条）。
+> `create table if not exists`（当前 21 条）。
 
 **不在库里的两类东西**：TXT 分章规则是"随包 `app/src/main/resources/assets/txtTocRule.json` ∪ 本机覆盖文件"；
 备份包里"原样收下"的条目只是文件（`data/backup_kept/`），不给它们建表。
