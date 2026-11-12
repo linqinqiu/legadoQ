@@ -1148,9 +1148,17 @@ internal class JavaPackages(
             }
         }
         ScriptableObject.putProperty(box, "build", fn { _ ->
+            // 这里**不放** `RequestData` 实例。曾经是 `"_request" to request.copy(...)`，
+            // 于是沙箱里出现了一个真实 Java 对象：当下不可利用（Rhino 把它包成 NativeJavaObject、
+            // 成员访问被 `ClassShutter { false }` 拦下），但它打破了「沙箱里不出现 Java 引用」
+            // 这条不变量 —— 安全性就全押在 shutter 一个开关上。改成挂四个原生值，
+            // `newCall` 侧按同一套字段还原，语义等价而引用消失。
             obj(
                 "url" to fn { request.url },
-                "_request" to request.copy(headers = LinkedHashMap(request.headers)),
+                "_url" to request.url,
+                "_method" to request.method,
+                "_body" to (request.body ?: Context.getUndefinedValue()),
+                "_headers" to obj(*request.headers.map { (key, value) -> key to value }.toTypedArray()),
             )
         })
         return box
@@ -1176,7 +1184,7 @@ internal class JavaPackages(
     private fun okHttpClientBox(): NativeObject = obj(
         "newCall" to fn { args ->
             val request = args.firstOrNull() as? NativeObject
-            val data = request?.let { ScriptableObject.getProperty(it, "_request") as? RequestData } ?: RequestData()
+            val data = requestDataOf(request)
             obj(
                 "execute" to fn { _ -> okHttpResponse(executeRequest(data)) },
                 "isExecuted" to fn { false },
@@ -1184,6 +1192,33 @@ internal class JavaPackages(
             )
         },
     )
+
+    /**
+     * 从 `build()` 产出的对象上还原请求参数。字段是**原生值**，不是 `RequestData` 实例 ——
+     * 沙箱里不出现 Java 引用，见 `requestBuilderBox` 里 `build` 的注释。
+     */
+    private fun requestDataOf(box: NativeObject?): RequestData {
+        if (box == null) return RequestData()
+        val headers = linkedMapOf<String, String>()
+        val table = ScriptableObject.getProperty(box, "_headers") as? NativeObject
+        table?.ids?.forEach { id ->
+            val key = id?.toString() ?: return@forEach
+            headers[key] = textOf(ScriptableObject.getProperty(table, key))
+        }
+        val body = ScriptableObject.getProperty(box, "_body")
+        return RequestData(
+            url = textOr(box, "_url", ""),
+            method = textOr(box, "_method", "GET"),
+            headers = headers,
+            body = if (body === Scriptable.NOT_FOUND || body === Context.getUndefinedValue()) null else textOf(body),
+        )
+    }
+
+    private fun textOr(box: NativeObject, key: String, fallback: String): String {
+        val value = ScriptableObject.getProperty(box, key)
+        if (value === Scriptable.NOT_FOUND || value === Context.getUndefinedValue()) return fallback
+        return textOf(value).takeIf { it.isNotEmpty() } ?: fallback
+    }
 
     private fun executeRequest(data: RequestData): RuleRunner.Fetched {
         if (data.url.isBlank()) return RuleRunner.Fetched("", "", 0, emptyMap())

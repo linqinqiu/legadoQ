@@ -79,9 +79,9 @@ legadoQ 执行用户导入的「书源」里的 JavaScript，那是**不可信�
 | B | `Base64` 编解码无输入上限 | 中 | **已修**：在唯一收口 `decodeBase64Text` 判输入长度（三套口径都走它）；同时把无条件 `filterNot` 全串复制改成「确实含空白才复制」 |
 | C | `StrUtil.format` 的 O(参数数 × 模板长度) | 中 | **已修**：提成顶层纯函数 `StrUtilFormat.render`，单遍扫描 O(n + 参数总长)；同时限模板长度与参数个数。语义按原 `replaceFirst` 口径保持（参数用尽后 `{}` 原样保留），判据 `StrUtilFormatTest` 11 例 |
 | D | okhttp3 `execute()` 宿主阻塞，单次最坏 ~100s，超出 30s 守卫 | 中 | **已修**：`BoundedJs.deadlineOrNull()` 把这次 JS 执行的截止时刻传进 `fetchResponse(deadlineMs=…)`，每跳超时压到 `min(20s, 剩余预算)`，过期即中止。**默认 `null` 时行为与改动前完全一致**——这条路径被所有抓取共用 |
-| E | 宿主侧调用**没有统一预算**（时间/分配字节累计） | 架构级 | **未修**。这是第 3 层盲区的通用解（`BoundedJs` 挂 `hostBudget`，每个入口记账），但「漏记一处等于没有」—— 和手写白名单是同一个失效模式，只是换了一层。做它之前应先加一条**枚举式判据**（列出全部 `JavaPackages` 公开入口，断言每一个都记了账），否则预算本身就会变成新的漏洞面 |
+| E | 宿主侧调用**没有统一预算**（时间/分配字节累计） | 架构级 | **未修**（2026-11-12 复核仍维持）。这是第 3 层盲区的通用解（`BoundedJs` 挂 `hostBudget`，每个入口记账），但「漏记一处等于没有」—— 和手写白名单是同一个失效模式，只是换了一层。做它之前应先加一条**枚举式判据**（列出全部 `JavaPackages` 公开入口，断言每一个都记了账），否则预算本身就会变成新的漏洞面。**本轮没做这条前置判据**：预算层不存在时，把 106 个入口名抄进基线没有防守对象（谁都没记账，基线全绿）；等真要做预算时，先落基线再落记账，两步同一笔提交 |
 | F | `System.getProperty("java.version")` 返回真实 JVM 版本 | 低 | **刻意保留**。仅是指纹；改常量会变成假值（更糟），改空串有极小概率影响「探测 JDK 版本」的源。收益接近零，风险非零 |
-| G | `_request` 把一个真实 Java `data class` 实例放进沙箱 | 低 | **未修**。当前不可利用 —— Rhino 把它包成 `NativeJavaObject`，成员访问被 `ClassShutter { false }` 拦下。但它打破了「沙箱里不出现 Java 引用」这条不变量，安全完全押在 shutter 上。修法是把 `_request` 移进宿侧表 |
+| G | `_request` 把一个真实 Java `data class` 实例放进沙箱 | 低 | **已修**（2026-11-12）：`requestBuilderBox().build()` 改成挂 `_url` / `_method` / `_headers` / `_body` 四个**原生值**，`newCall` 侧由 `requestDataOf` 还原，沙箱里不再出现 `RequestData` 实例。语义等价由既有 `JsCachePackagesBridgeTest` 的 okhttp 用例继续钉着（方法/头/正文/URL 都真的到了抓取层），形状由 `JsSandboxRequestShapeTest` 钉住（`_request` 必须 `undefined`、属性表必须正好那五个） |
 
 ## 4. 判据在哪
 
@@ -91,6 +91,7 @@ legadoQ 执行用户导入的「书源」里的 JavaScript，那是**不可信�
 | `JsGuardLimitsTest` | `GzipLimits` 的行为 + **墙钟守卫真的会中断死循环** |
 | `JsSandboxHostAmplificationTest` | 「长度由脚本给、开销在宿主」这一整个模式 |
 | `StrUtilFormatTest` | `StrUtil.format` 的**语义等价**（参数用尽后 `{}` 原样保留）+ 复杂度没有退化成平方 |
+| `JsSandboxRequestShapeTest` | 沙箱里不出现 Java 引用：`okhttp3.Request.Builder().build()` 的产物只有原生值，`_request` 槽位必须不存在 |
 
 三个文件都遵守同一条判据纪律：**既断言「被拦住」，也断言「沙箱随后仍可用」** ——
 只证明抛了错不够，还要证明线程没被打掉。
