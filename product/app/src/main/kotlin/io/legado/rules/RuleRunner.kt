@@ -65,7 +65,9 @@ import io.legado.port.SourceUrlProbe
 import io.legado.model.BookDetails
 import io.legado.model.Chapter
 import io.legado.model.ChapterContent
+import io.legado.model.ChapterReview
 import io.legado.model.ExploreTab
+import io.legado.model.ReviewContent
 import io.legado.model.RssArticle
 import io.legado.model.SearchResult
 
@@ -382,6 +384,72 @@ class RuleRunner(
             }
             if (reverse) items.asReversed() else items
         }
+    }
+
+    /**
+     * 段评详情列表（S0/C-03 第一刀，**只读**）。对齐原版 gedoor 详情层：
+     * `reviewDetailUrl` 取页 → `detailListRule` 取节点 → 逐项 id/avatar/name/badge/content。
+     * URL 解析链逐字镜像 [rssArticles]；`detailContentRule` 是内容协议（见 [parseReviewContent]）。
+     * content 既无文本也无图的条目丢掉；avatar 按页地址归一；`-` 前缀＝倒序（同目录/RSS）。
+     * 统计层徽章、回复层子评论、翻页与一切写操作不在本刀范围
+     * （设计见 `docs/research/研究-C03-段评只读设计-2026-11-12.md`）。
+     */
+    fun reviews(sourceJson: String, urlTemplate: String, page: Int = 1): List<ChapterReview> {
+        val source = sourceJson.objectValue()
+        val sourceUrl = source.string("bookSourceUrl") ?: throw RuleExecutionException("书源缺少 bookSourceUrl")
+        val review = source.objectValue("ruleReview")
+        val rawListRule = review?.string("detailListRule")?.trim()
+        if (rawListRule.isNullOrBlank()) {
+            throw RuleExecutionException("该书源未配置 ruleReview.detailListRule，服务端无法解析段评列表")
+        }
+        return jsSandbox.withSourceContext(sourceContext(source, sourceUrl)) {
+            val resolved = if (isJsRule(urlTemplate)) evalRuleJs(urlTemplate, mapOf("baseUrl" to sourceUrl, "sourceId" to sourceUrl, "key" to "", "keyword" to "", "page" to page)) ?: urlTemplate else urlTemplate
+            val analyzed = applyUrlScripts(resolved, "", page, sourceUrl)
+            val (path, options) = splitUrlOptions(analyzed)
+            val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
+            val pageUrl = renderUrl(path, "", sourceUrl, page, expandScripts = false).absolute(sourceUrl)
+            val body = fetchUrl(pageUrl, mergedOptions, null, sourceUrl, database)
+            val reverse = rawListRule.startsWith("-")
+            val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
+            val nodes = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
+            val items = nodes.mapNotNull { item ->
+                val content = parseReviewContent(item.value(review.string("detailContentRule"), jsSandbox, body, pageUrl))
+                if (content.text.isBlank() && content.img == null) return@mapNotNull null
+                ChapterReview(
+                    id = item.value(review.string("detailIdRule"), jsSandbox, body, pageUrl)?.trim().orEmpty(),
+                    avatar = item.value(review.string("detailAvatarRule"), jsSandbox, body, pageUrl)?.trim()?.absolute(pageUrl)?.takeIf { it.isNotEmpty() },
+                    name = item.value(review.string("detailNameRule"), jsSandbox, body, pageUrl)?.trim()?.takeIf { it.isNotEmpty() },
+                    badge = item.value(review.string("detailBadgeRule"), jsSandbox, body, pageUrl)?.trim()?.takeIf { it.isNotEmpty() },
+                    content = content,
+                )
+            }
+            if (reverse) items.asReversed() else items
+        }
+    }
+
+    /**
+     * 段评内容协议：`detailContentRule` 求值结果按 JSON 对象解析出
+     * text/img/audio/time/likeCount/replyCount/replyToName（键与书源编辑器 hint 一致）；
+     * 不是 JSON 对象时整段回落为纯文本 [ReviewContent.text]，兼容只写文本规则的源。
+     */
+    private fun parseReviewContent(raw: String?): ReviewContent {
+        val text = raw?.trim().orEmpty()
+        if (text.isEmpty()) return ReviewContent()
+        if (text.startsWith("{")) {
+            val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
+            if (obj != null) {
+                return ReviewContent(
+                    text = obj.string("text").orEmpty(),
+                    img = obj.string("img")?.takeIf { it.isNotEmpty() },
+                    audio = obj.string("audio")?.takeIf { it.isNotEmpty() },
+                    time = obj.string("time")?.takeIf { it.isNotEmpty() },
+                    likeCount = obj.string("likeCount")?.toIntOrNull() ?: 0,
+                    replyCount = obj.string("replyCount")?.toIntOrNull() ?: 0,
+                    replyToName = obj.string("replyToName")?.takeIf { it.isNotEmpty() },
+                )
+            }
+        }
+        return ReviewContent(text = text)
     }
 
     /**
