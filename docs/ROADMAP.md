@@ -190,6 +190,26 @@ CSS（Jsoup）、XPath（`@xpath:`）、JSONPath / `@Json:`、`||` 备选、`<js
 | MD3 comic 包本地 OCR/擦字等 | 依赖 Android 侧运行时与分包策略；无对等客观基础 |
 | 完整段评发帖社区 | 超出「只读展示」最小目标；依赖 C-03 之后再评估 |
 
+### 4.4 六大源仓库借鉴映射（Web 栈可移植性甄别，2026-11-12）
+
+> 这六个仓库是借鉴仓 HapeLee/legado-with-MD3 的 README 致谢清单；本节往源头再挖一层。
+> **硬约束**：legadoQ 是 Web 栈（React/Vite + Kotlin/Ktor），非 Android/Compose——
+> 移植的是**算法思想与 UX 范式**，不是 Compose/View 代码。研究经隔离子代理核实源码级细节。
+
+| 仓库 | 提供什么 | Web 可移植性 / 落点 | 优先级·状态 |
+|------|----------|---------------------|-------------|
+| **gedoor/legado** | 书源鼻祖：规则方言（@css:/@json:/@XPath:/@js:、&&\|\|%%、@put/@get、{{}}、##净化）、UrlOption、java.* 桥、nextTocUrl/nextContentUrl 翻页、ruleReview 段评、loginCheckJs/coverDecodeJs/jsLib；翻页/缓存/换源/简繁 UX | 服务端兼容基线，C-01/C-02/C-03 正在对齐。⚠️原仓因侵权案已清空仅存公告，取证用 gitee 镜像与教程 | 持续对齐基线（S0） |
+| **Luoyacheng/legado-E**（阅读Sigma） | ⚠️**兼容增量**：`[newpage]` 正文分页、副文规则、`@webjs:`、eventListener+customButton、`java.refreshBookInfo/refreshBookToc/refreshContent/reLoginView/showBrowser`(半屏段评)`/showPhoto`、`chapter.update()`、`cache.get(onlyDisk)`、并发 skipRateLimit、登录检查规则、简介 HTML/MD/button、图片 click 键 | 书源会用、服务端不支持即报错。需逐项核实我们 JsSandbox 已支持哪些，再定缺口 | **兼容 backlog 待评估**（C-05+ 候选，先评估再决定是否插队 S0） |
+| **komikku-app/komikku** | 漫画阅读器 UX：隐藏分类、批量收藏/多条目合并/范围选择迁移、**封面自动取色主题**、宽幅封面、更新错误屏+条目迁移、智能更新预览、更新分组、保存搜索芯片、源推荐 Feed；阅读器 tap zones（L形/电纸书/边缘）、webtoon 长条、宽页分割、双击缩放、跳过已读 | Compose 控件不可移植，取 UX 范式。tap zones 我们已有（`reader/interaction/tapZones`） | L2/L3 UX backlog |
+| **FoedusProgramme/Gramophone** | 封面取色：确证**非 Palette API**，而是 Material `DynamicColorsOptions.setContentBasedSource(封面bitmap)` + `ColorUtils` HSL 派生背景/抬升/弱对比色，播放页 300ms 换色 | Web 等价：Canvas `getImageData` 量化选种子 + CSS transition。落点：阅读器/书详封面动态主题 | 封面主题链·组件①（S2 候选） |
+| **jordond/MaterialKolor** | Material Color Utilities 的 KMP 移植：种子色→HCT→6 组 tonal palette→亮/暗 scheme（默认 TonalSpot，可调 contrast） | 官方 JS 移植 `@material/material-color-utilities`：`themeFromImage`/`themeFromSourceColor`/`applyTheme` 直接写 `--md-sys-color-*`，与我们现有 M3 令牌无缝对接 | 封面主题链·组件②（S2 候选） |
+| **Calvin-LL/Reorderable** | 拖动排序：长按/即拖 handle、`onMove(from,to)`、`animateItem` 让位动画、边缘变速自动滚动、稳定 key | ✅**已有等价实现** `lib/dragSort.ts`（长按 250ms/移动阈值/边缘滚动/指针落点，书架与书源共用）；仅可选补让位动画 | 已对齐，勿重造 |
+
+**综合判断（最高 ROI 新切片）**：Gramophone + MaterialKolor 合成「**书封面 → 种子色 → M3 动态主题**」链，
+官方 `themeFromImage` + `applyTheme` 一个库即覆盖两者能力，且 komikku 也印证此范式。
+落点齐全（7 套 theme-* 令牌 + `WallpaperLayer` + per-book `themeColor`）。注意：远程封面需 CORS（复用现有封面代理）、
+量化前缩图、按书缓存。**排为 S2 候选，S0 收口后再开**；当前活动切片仍是 C-03。
+
 ---
 
 ## 5. 长期任务框架（结构性）
