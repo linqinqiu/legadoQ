@@ -27,6 +27,7 @@ import io.legado.model.BookshelfSourceSwitchRequest
 import io.legado.model.BookshelfStatusRequest
 import io.legado.model.BookshelfWriteRequest
 import io.legado.model.ContentRequest
+import io.legado.model.ReviewsRequest
 import io.legado.model.GlobalCookieListResponse
 import io.legado.model.ImportRequest
 import io.legado.model.ImportResponse
@@ -443,6 +444,20 @@ class ApiRoutesHttpTest {
                 setBody(ContentRequest(sourceId = "https://nonexistent.com", chapterUrl = "https://nonexistent.com/c1"))
             }
             assertEquals(HttpStatusCode.NotFound, notFoundContentResp.status)
+
+            // 4b. 段评只读路由（S0/C-03）：空参 400、书源不存在 404。
+            // 200 解析路径由 ChapterReviewTest 用替身抓取覆盖，这里不打真网络。
+            val invalidReviewsResp = client.post("/api/books/reviews") {
+                contentType(ContentType.Application.Json)
+                setBody(ReviewsRequest(sourceId = "", url = ""))
+            }
+            assertEquals(HttpStatusCode.BadRequest, invalidReviewsResp.status)
+
+            val notFoundReviewsResp = client.post("/api/books/reviews") {
+                contentType(ContentType.Application.Json)
+                setBody(ReviewsRequest(sourceId = "https://nonexistent.com", url = "https://nonexistent.com/reviews"))
+            }
+            assertEquals(HttpStatusCode.NotFound, notFoundReviewsResp.status)
 
             // 5. Covers endpoint (non-existent key -> 404)
             val coverNotFoundResp = client.get("/api/covers/nonexistent-key-1234")

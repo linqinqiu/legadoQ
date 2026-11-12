@@ -183,7 +183,8 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 2026-11-07：按任务选模型，新增 GET/POST /api/agent/task-models（AI 自定义接入组，后一条过写门）→ 155 → 157。
   // 2026-11-08：AI MCP 客户端，新增 GET/POST /api/agent/mcp、POST /api/agent/mcp/refresh、
   //             DELETE /api/agent/mcp/{id}（AI 自定义接入组，后三条过写门）→ 157 → 161。
-  assert.equal(catalog.endpoints.length, 161, `端点总数必须为 161，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-11-12：S0/C-03 段评详情层只读，新增 POST /api/books/reviews（阅读组，写门）→ 161 → 162。
+  assert.equal(catalog.endpoints.length, 162, `端点总数必须为 162，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')
   assert.equal(systemGroup.length, 8, `系统组必须为 8 条（含 /api/diagnostics），现在是 ${systemGroup.length}`)

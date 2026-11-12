@@ -403,7 +403,7 @@ data class SourceLoginStateRecord(
     val badge: String? = null,
     val content: ReviewContent = ReviewContent(),
 )
-@Serializable data class ReviewsRequest(val bookSourceUrl: String, val url: String, val page: Int = 1)
+@Serializable data class ReviewsRequest(val sourceId: String, val url: String, val page: Int = 1)
 @Serializable data class SearchStreamEvent(
     val type: String,
     val totalSources: Int = 0,

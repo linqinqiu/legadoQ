@@ -829,6 +829,19 @@
       "response": "[{index,title,url,isVolume}]；本地书没有目录 404"
     },
     {
+      "method": "POST",
+      "path": "/api/books/reviews",
+      "write": true,
+      "group": "阅读",
+      "purpose": "取某章/某段的段评详情列表（只读；书源须配 ruleReview.detailListRule，统计徽章/子评论/发帖不在此端点）",
+      "body": {
+        "sourceId": "书源地址",
+        "url": "段评详情地址（reviewDetailUrl 解析后的地址）",
+        "page": "可选，页码，默认 1"
+      },
+      "response": "[{id,avatar,name,badge,content:{text,img,audio,time,likeCount,replyCount,replyToName}}]；缺 detailListRule 报规则错、书源不存在 404"
+    },
+    {
       "method": "GET",
       "path": "/api/replace-rules",
       "write": false,
@@ -1825,5 +1838,5 @@
       "response": "{deleted}；没登记过这台 404 not_found"
     }
   ],
-  "count": 161
+  "count": 162
 }

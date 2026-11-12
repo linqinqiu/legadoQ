@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.39 · 端点数：161 · 生成时间：2026-11-11
+> 版本：0.2.39 · 端点数：162 · 生成时间：2026-11-12
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -25,7 +25,7 @@
 | 书源订阅 | 5 |
 | 备份 | 5 |
 | RSS | 7 |
-| 阅读 | 6 |
+| 阅读 | 7 |
 | 净化规则 | 10 |
 | 书架 | 14 |
 | 分章规则 | 7 |
@@ -34,7 +34,7 @@
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
 | AI 自定义接入 | 22 |
-| **合计** | **161** |
+| **合计** | **162** |
 
 ## 目录（1）
 
@@ -161,12 +161,13 @@
 | POST | `/api/rss/articles` | 是 | 取某一栏某一页的文章列表；请求体：sourceUrl=哪家，url=栏目地址，page=默认 1 |
 | POST | `/api/rss/content` | 是 | 取一篇文章的正文；请求体：sourceUrl=哪家，link=文章地址 |
 
-## 阅读（6）
+## 阅读（7）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
 | POST | `/api/books/details` | 是 | 取一本书的详情（顺带把封面异步抓进缓存）；请求体：sourceId=书源地址，bookUrl=书页地址 |
 | POST | `/api/books/chapters` | 是 | 取这本书的目录（有缓存先给缓存；在线书挂了可能回落到按正文切章）；请求体：sourceId=书源地址，bookUrl=书页地址 |
+| POST | `/api/books/reviews` | 是 | 取某章/某段的段评详情列表（只读；书源须配 ruleReview.detailListRule，统计徽章/子评论/发帖不在此端点）；请求体：sourceId=书源地址，url=段评详情地址（reviewDetailUrl 解析后的地址），page=可选，页码，默认 1 |
 | POST | `/api/books/content` | 是 | 取一章正文（净化规则已套上；离线缓存命中就直接给缓存；有 AI 覆盖就回覆盖版）；请求体：sourceId=书源地址，chapterUrl=章节地址，bookUrl=可选，用于查缓存与套书级净化规则，force=可选，true = 跳过缓存强制回源重取并覆盖（失败不回旧正文） |
 | POST | `/api/books/content-refresh` | 是 | 批量刷新正文：只回源列出的这些章并覆盖缓存（单次最多 60 章，并发 3）；请求体：sourceId=书源地址，bookUrl=书页地址，chapterUrls=["章节地址数组"] |
 | POST | `/api/books/content-process` | 是 | AI 闭环：落一份「AI 净化/润色覆盖正文」，下一次读这一章就回覆盖版（正文实时重载）；请求体：sourceId=哪本书，bookUrl=哪本书，chapterUrl=哪一章，kind=ai_clean（净化）/ ai_rewrite（润色），original=原始正文，processed=AI 处理后的正文 |

@@ -30,6 +30,7 @@ import io.legado.model.ContentRefreshFailure
 import io.legado.model.ContentRefreshRequest
 import io.legado.model.ContentRefreshResult
 import io.legado.model.ContentRequest
+import io.legado.model.ReviewsRequest
 import io.legado.rules.JsSandbox
 import io.legado.rules.RuleExecutionException
 import io.legado.rules.RuleRunner
@@ -72,6 +73,18 @@ fun Route.readingRoutes(
             }
             val source = database.getSource(request.sourceId) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
             call.respondCatching { withContext(Dispatchers.IO) { runner.details(source.json, request.bookUrl) } }
+        }
+        // 段评详情层只读列表（S0/C-03）。书源须配 ruleReview.detailListRule；
+        // 统计徽章/子评论/写操作不在范围。错误经 respondCatching 统一分类。
+        post("/books/reviews") {
+            if (!call.requireSameOriginWrite()) return@post
+            val request = call.receive<ReviewsRequest>()
+            if (request.sourceId.isBlank() || request.url.isBlank()) {
+                call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "缺少书源或段评地址"))
+                return@post
+            }
+            val source = database.getSource(request.sourceId) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+            call.respondCatching { withContext(Dispatchers.IO) { runner.reviews(source.json, request.url, request.page.coerceAtLeast(1)) } }
         }
         post("/books/chapters") {
             if (!call.requireSameOriginWrite()) return@post
