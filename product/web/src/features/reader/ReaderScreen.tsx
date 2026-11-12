@@ -3,11 +3,13 @@
 // `renderToStaticMarkup` 静态渲染才需要默认 React 在作用域里 —— 那件组件已拆进
 // `VirtualChapterList.tsx`，那条理由与它的默认导入一起搬过去了。）
 import React, { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { api, BookDetails, BookNote, BookSearchHit, Chapter, SearchResult, TocRuleOption } from '../../lib/api'
+import { api, BookDetails, BookNote, BookSearchHit, Chapter, SearchResult, SourceSummary, TocRuleOption } from '../../lib/api'
 import { getBrand } from '../../lib/brandStore'
 import { ContextMenuItem, showContextMenu } from '../../components/ContextMenu'
+import { matchBestChapter } from '../../components/SourceSwitchModal'
 import { Icon } from '../../icons'
 import { contentImageUrl, findFirstFullyVisibleParagraphIndex, isAtBottomBoundary, isAtTopBoundary, isInteractiveReaderTarget, isSameSiteAsset, isTapGesture, paginateWheelStep, swipeDirection, ViewportBounds } from './interaction/readerInteractions'
+import { contentRecoveryLabel, resolveContentRecovery } from '../../lib/shelfSourceFallback'
 import { readerImageSrc } from './content/readerImage'
 import { TapAction, zoneAt } from './interaction/tapZones'
 import { isMediaType } from '../../lib/bookType'
@@ -57,9 +59,15 @@ type ReaderScreenProps = {
   settings: ReaderSettings
   onSettingsChange: (next: ReaderSettings) => void
   onClose: () => void
+  /**
+   * 本机书源表，只用来回答"读不出来的时候有没有现成的备选可以一键换过去"。
+   * 缺省空数组：那样只会给"在已拥有的书源里找"（换源弹窗自己会去拉表），
+   * 所以不传也不会出现"点了没反应"。
+   */
+  sources?: SourceSummary[]
 }
 
-export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange, onClose }: ReaderScreenProps) {
+export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange, onClose, sources = [] }: ReaderScreenProps) {
   const [currentBook, setCurrentBook] = useState<OpenBook>(openBook)
   /**
    * 简繁转换（用户 2026-10-11 的 A–F 里 C 项）。词表 200KB 上下，只有开了才去拉 chunk，
@@ -1332,6 +1340,61 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     sessionStorage.setItem('legado-open-book-v1', JSON.stringify({ book: newOpenBook, index: chosen.targetChapterIndex }))
   }
 
+  /**
+   * 正文读不出来时的出路（用户 2026-11-12：「书籍加载正文失败没有书源」）。
+   *
+   * 复用换源链路而不是另写一套：`handleSwitchSource` 已经处理了详情补全、进度映射、
+   * 预载清空、朗读停播与 `sessionStorage` 回落 —— 那条路是打磨过的，重写一份只会漏掉其中几件。
+   * 这里只多做一步：把候选书源的目录取回来，并按章名在**新目录**里找同样的位置
+   * （`matchBestChapter` 与换源弹窗同一个口径，不自己发明一套匹配）。
+   */
+  const recovery = useMemo(
+    () => resolveContentRecovery(
+      {
+        sourceId: currentBook.details.sourceId,
+        bookUrl: currentBook.bookUrl,
+        alternateSources: currentBook.details.alternateSources,
+      },
+      sources,
+    ),
+    [currentBook.details.sourceId, currentBook.bookUrl, currentBook.details.alternateSources, sources],
+  )
+  const recoveryLabel = contentRecoveryLabel(recovery)
+
+  const handleRecover = useCallback(() => {
+    // 没有可用备选（或书源表还没到）就交给换源弹窗：它自己会拉书源表，也认得已知备选。
+    if (recovery.kind !== 'switch-alternate') { setShowSourceSwitch(true); return }
+    const candidate = recovery.candidate
+    void (async () => {
+      try {
+        const details = await api.details(candidate.sourceId, candidate.bookUrl)
+        const chapters = await api.chapters(details.sourceId, details.tocUrl)
+        if (!chapters.length) { toast.error('这个书源没取到目录，换一个试试'); return }
+        const matched = matchBestChapter(chapters, chapter?.title, chapterIndex)
+        await handleSwitchSource({ result: candidate, chapters, targetChapterIndex: matched.index })
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '换源失败')
+      }
+    })()
+  }, [recovery, chapter?.title, chapterIndex, handleSwitchSource])
+
+  /**
+   * 「等了很久还没出来」。
+   *
+   * 用户 2026-11-12：「当小说内容长时间没有加载出来的时候不能返回退出」——
+   * 骨架屏一铺，阅读器的返回控件在自动隐藏的外壳里，人就真的走不掉了。
+   * 计时只在**真的在等**时跑：`loading` 且屏上没有任何正文、也没有报错。
+   * 换章时上一章的字还挂着（`stale`）不算卡住，不该弹这句。
+   *
+   * 8 秒是"正常人会开始怀疑"的量级：本地源通常 1–3 秒回来，8 秒还在等基本是源站的问题。
+   */
+  const [slowLoad, setSlowLoad] = useState(false)
+  useEffect(() => {
+    if (!loading || content || message) { setSlowLoad(false); return }
+    const timer = window.setTimeout(() => setSlowLoad(true), 8000)
+    return () => window.clearTimeout(timer)
+  }, [loading, content, message])
+
 
   /**
    * 续接窗口：把锚点章之后的 1~2 章挂到下面（滚动与分页两种模式都要）。
@@ -2267,7 +2330,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         shownTitle: shownChapterTitle ?? '', incomingTitle: incomingChapterTitle,
         stale: isStaleContent, loading, hasContent: !!content,
         chapterLoaded: loadedChapterUrl === chapter?.url,
-        message, mediaSrc, sourceType, isMangaMode,
+        message, mediaSrc, sourceType, isMangaMode, slowLoad,
         paragraphs, shownParagraphs, chunked, renderLimit, nextChapterTitle,
         chapterProgress, shownChapterIndex, scrubIndex,
       }}
@@ -2279,6 +2342,9 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onScrub: setScrubIndex,
         onScrubCommit: () => { if (scrubIndex !== null && scrubIndex !== chapterIndex) changeChapter(scrubIndex); setScrubIndex(null) },
         onRetryChapter: reloadChapter,
+        onRecover: handleRecover,
+        recoveryLabel,
+        onExit: onClose,
       }}
     >
       {boundaryMessage && <p className="reader-boundary-message" role="status">{boundaryMessage}</p>}

@@ -651,6 +651,7 @@ function App() {
             settings={settings}
             onSettingsChange={setSettings}
             onClose={() => navigate(readerReturnPage)}
+            sources={sources}
           />
         </ErrorBoundary>
         {/* 全局 AI 悬浮球在阅读器里也要在：

@@ -6723,3 +6723,35 @@ html.theme-dynamic body {
   box-shadow: inset 3px 0 0 var(--danger);
 }
 .manage-action-row.manage-source-fallback .action-icon { color: var(--danger); }
+
+/* ---------------------------------------------------------------------------
+   阅读器的出路（2026-11-12）
+   ---------------------------------------------------------------------------
+   用户原话：「书籍加载正文失败没有书源」「内容长时间没有加载出来的时候不能返回退出」。
+   正文拉不回来时，原来只有一个「重新加载」；卡住时连出口都没有。
+   这里给两处补上动作行：报错处（重新加载 / 换源）、卡住处（换源 / 返回书架）。
+   按钮沿用 .reader-error-retry 的观感，只在语义上分色：换源是建议动作、不算错误。
+   --------------------------------------------------------------------------- */
+.reader-recovery-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: 10px; }
+.reader-error-recover {
+  padding: 2px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  vertical-align: baseline;
+}
+.reader-error-recover:hover { background: var(--accent); color: var(--on-accent); }
+.reader-slow-load {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: var(--t-sm);
+  text-align: center;
+}
+.reader-slow-load .reader-recovery-actions { margin-left: 0; }

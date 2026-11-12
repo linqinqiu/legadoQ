@@ -9,6 +9,8 @@ import {
   resolveShelfSourceFallback,
   shelfFallbackActionLabel,
   shelfFallbackTitle,
+  contentRecoveryLabel,
+  resolveContentRecovery,
 } from '../src/lib/shelfSourceFallback'
 import type { BookshelfItem, SearchResult, SourceSummary } from '../src/lib/api'
 
@@ -135,4 +137,69 @@ test('导入播报：跳过「已从书架删除」的书要单独念出来，�
   const all = shown.join('\n')
   assert.ok(all.includes('2 本你已从书架删除'), `跳过本数要报出来：${all}`)
   assert.ok(all.includes('按删除保留'), '要说明这 2 本没有被恢复，而不是偷偷跳过')
+})
+
+test('正文读不出来时的出路：有备选就一键换，没有才去已拥有书源里找', () => {
+  const sources = [
+    { id: 'alive', name: '可用源', enabled: true },
+    { id: 'off', name: '停用源', enabled: false },
+  ] as SourceSummary[]
+  const base = { sourceId: 'dead', bookUrl: 'https://a/book' }
+
+  // 备选指向现存且启用的源 → 一键换（与书架页同一个口径）
+  const oneClick = resolveContentRecovery({
+    ...base,
+    alternateSources: [
+      { sourceId: 'off', bookUrl: 'https://b/1', name: 'x' },
+      { sourceId: 'alive', bookUrl: 'https://b/2', name: 'x' },
+    ],
+  } as never, sources)
+  assert.equal(oneClick.kind, 'switch-alternate')
+  assert.equal(contentRecoveryLabel(oneClick), '改用「可用源」继续读')
+
+  // 备选全指向停用/不存在的源 → 退回换源弹窗那条路
+  const none = resolveContentRecovery({
+    ...base,
+    alternateSources: [{ sourceId: 'off', bookUrl: 'https://b/1', name: 'x' }],
+  } as never, sources)
+  assert.equal(none.kind, 'search-owned')
+  assert.equal(contentRecoveryLabel(none), '在已拥有的书源里找这本书')
+
+  // 反向对照：正文已经失败了，**任何**输入都必须给出可点的动作 ——
+  // 不许出现"没有出路"（这正是用户报的『加载正文失败没有书源』）。
+  for (const input of [
+    { ...base, alternateSources: [] },
+    { ...base, alternateSources: undefined },
+    { ...base, alternateSources: [{ sourceId: 'dead', bookUrl: 'https://a/book', name: 'self' }] },
+  ]) {
+    const recovery = resolveContentRecovery(input as never, sources)
+    assert.ok(contentRecoveryLabel(recovery).length > 0, '每个结局都要有能点的话')
+  }
+
+  // 书源表还没到（启动竞态）也必须有出路：换源弹窗自己会去拉表。
+  assert.equal(resolveContentRecovery({ ...base, alternateSources: [] } as never, []).kind, 'search-owned')
+})
+
+test('接线：阅读器的报错与卡住两处都真的给出了出路（不是只写了纯函数）', () => {
+  const read = (...parts: string[]) => fs.readFileSync(path.resolve(import.meta.dirname, '..', ...parts), 'utf8')
+  const readerScreen = read('src', 'features', 'reader', 'ReaderScreen.tsx')
+  const readerBody = read('src', 'features', 'reader', 'ReaderBody.tsx')
+  const main = read('src', 'main.tsx')
+
+  // 阅读器要拿到书源表，否则永远只能给"去书源里找"，一键换源那条路等于是死的
+  assert.match(readerScreen, /sources\?: SourceSummary\[\]/, '阅读器要能收到书源表')
+  assert.match(main, /sources=\{sources\}/, '外壳要真的把书源表传下去')
+
+  // 报错处与卡住处都要有出路按钮
+  assert.match(readerBody, /renderRecovery\('error'\)/, '报错处要有出路')
+  assert.match(readerBody, /renderRecovery\('slow'\)/, '长时间拉不回来时要有出路')
+  assert.match(readerBody, /返回书架/, '卡住时必须能走得掉（用户报的"退不出去"）')
+
+  // 「等了很久」要由阅读器计时，且只在真的在等的时候计时
+  assert.match(readerScreen, /setSlowLoad\(true\), 8000\)|setSlowLoad\(true\), SLOW_LOAD_MS\)/, '要有卡住计时')
+  assert.match(readerScreen, /if \(!loading \|\| content \|\| message\)/, '换章时上一章还在屏上，不算卡住')
+
+  // 换源走既有链路，不另造一套
+  assert.match(readerScreen, /await handleSwitchSource\(\{ result: candidate/, '一键换源要复用 handleSwitchSource')
+  assert.match(readerScreen, /matchBestChapter\(chapters, chapter\?\.title, chapterIndex\)/, '按章名在新目录里找位置，与换源弹窗同口径')
 })

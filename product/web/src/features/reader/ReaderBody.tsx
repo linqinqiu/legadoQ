@@ -73,6 +73,11 @@ export interface ReaderBodyProps {
     isMangaMode: boolean
     paragraphs: string[]
     shownParagraphs: string[]
+    /**
+     * 「等了很久还没出来」。由阅读器计时（8s）而不是这里：展示层不该持有计时器，
+     * 而这条要跨两种渲染形态（分页轨道与滚动续接）保持一致。
+     */
+    slowLoad: boolean
     chunked: boolean
     renderLimit: number
     nextChapterTitle: string
@@ -92,6 +97,14 @@ export interface ReaderBodyProps {
     onScrubCommit: () => void
     /** 正文加载失败时"重新加载"：重拉当前章（不是换章、不是刷新整页）。 */
     onRetryChapter: () => void
+    /**
+     * 读不出来时的"往哪走"。文案由 `recoveryLabel` 给（换用备选源 / 去已拥有书源里找），
+     * 具体做什么由阅读器决定 —— 展示层不知道书源表长什么样。
+     */
+    onRecover: () => void
+    recoveryLabel: string
+    /** 返回书架。加载卡住时这是最后一条出路，必须始终可点。 */
+    onExit: () => void
   }
 }
 
@@ -113,11 +126,34 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
     shownTitle, incomingTitle, stale, loading, hasContent, chapterLoaded, message,
     mediaSrc, sourceType, isMangaMode, paragraphs, shownParagraphs,
     chunked, renderLimit, nextChapterTitle, chapterProgress, shownChapterIndex, scrubIndex,
+    slowLoad,
   } = content
-  const { convert, splitBody, renderLine, renderManga, onMediaEnded, onNextChapter, onMore, onScrub, onScrubCommit, onRetryChapter } = actions
+  const { convert, splitBody, renderLine, renderManga, onMediaEnded, onNextChapter, onMore, onScrub, onScrubCommit, onRetryChapter, onRecover, recoveryLabel, onExit } = actions
   // 原始报错翻一句人话：内网被拦 / 要登录 / 站点挂了 三类修法完全不同，
   // 直接把 `message` 糊上去时用户只看到"书源执行失败"，不知道该改哪里。
   const loadError = describeLoadError(message)
+
+  /**
+   * 正文读不出来 / 迟迟不回来时的出路。两处渲染形态共用一份，理由同 `renderSections` 的注释：
+   * 分页轨道与滚动续接各写一份，迟早只改一处。
+   *
+   * 三条出路对应三种真实处境，缺一不可：
+   * - 「重新加载」：源站抽了一下，重拉就好；
+   * - 「换源」：这本书在这个源读到一半没了（下架／地址变了）——用户自己唯一的修法；
+   * - 「返回书架」：前两条都不管用，得让人走得掉（用户 2026-11-12：正文长时间拉不出来时
+   *   退不出去）。它只在**卡住**时出现：正常情况下阅读器有自己的返回控件。
+   */
+  const renderRecovery = (variant: 'error' | 'slow') => (
+    <span className="reader-recovery-actions">
+      {variant === 'error' && (
+        <button type="button" className="reader-error-retry" onClick={onRetryChapter}>重新加载</button>
+      )}
+      <button type="button" className="reader-error-recover" onClick={onRecover}>{recoveryLabel}</button>
+      {variant === 'slow' && (
+        <button type="button" className="reader-error-retry" onClick={onExit}>返回书架</button>
+      )}
+    </span>
+  )
 
   const renderSections = () => (
     <>
@@ -134,12 +170,21 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
       <section className="reader-page-chapter" data-chapter-index={chapter?.index ?? 0}>
         <h1>{convert(shownTitle ?? '')}</h1>
         {stale && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingTitle)}</p>}
+        {/* 出路排在骨架屏**上面**：骨架屏占满一屏，排在它下面等于"首屏之外"，
+            实测截图确认过（2026-11-13）——用户的抱怨本来就是"走不掉"，
+            把按钮摆到他看不见的地方等于没修。 */}
+        {loading && !hasContent && slowLoad && !message && (
+          <div className="reader-slow-load" role="status">
+            <span>正文还没拉回来。可以再等等，也可以换一个书源，或先回书架。</span>
+            {renderRecovery('slow')}
+          </div>
+        )}
         {loading && !hasContent && <ReaderContentSkeleton />}
         {message && (
           <p className="reader-error" role="alert">
             {loadError.headline}
             {loadError.hint && <span className="reader-error-hint">{loadError.hint}</span>}
-            <button type="button" className="reader-error-retry" onClick={onRetryChapter}>重新加载</button>
+            {renderRecovery('error')}
           </p>
         )}
         {mediaSrc
@@ -199,12 +244,18 @@ export function ReaderBody({ pageMode, uiV2, flowKey, refs, events, pagination, 
           <section ref={refs.anchor} className="reader-flow-chapter" data-chapter-index={chapter?.index ?? 0}>
             <h1>{convert(shownTitle ?? '')}</h1>
             {stale && <p className="reader-chapter-incoming" role="status">正在载入：{convert(incomingTitle)}</p>}
+            {loading && !hasContent && slowLoad && !message && (
+              <div className="reader-slow-load" role="status">
+                <span>正文还没拉回来。可以再等等，也可以换一个书源，或先回书架。</span>
+                {renderRecovery('slow')}
+              </div>
+            )}
             {loading && !hasContent && <ReaderContentSkeleton />}
             {message && (
           <p className="reader-error" role="alert">
             {loadError.headline}
             {loadError.hint && <span className="reader-error-hint">{loadError.hint}</span>}
-            <button type="button" className="reader-error-retry" onClick={onRetryChapter}>重新加载</button>
+            {renderRecovery('error')}
           </p>
         )}
             {mediaSrc
