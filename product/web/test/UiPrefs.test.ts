@@ -105,3 +105,11 @@ test('没有 window 时 hydrate 直接返回失败，不发请求也不抛', asy
   assert.equal(result.ok, false)
   assert.deepEqual(result.restored, [])
 })
+
+test('请求路径必须带 /api 前缀：少了不报错、只静默 404，然后"设置还是丢了"', () => {
+  // 这条是发版后真浏览器验收抓出来的真 bug：域文件照 brand.ts 写成 '/ui-prefs'，
+  // 而品牌是 StaticWeb 挂在根路径的特例。请求 404 → hydrate 静默失败 → 症状与没修一样。
+  const domain = readSrc('lib', 'api', 'domains', 'prefs.ts')
+  assert.match(domain, /const BASE = '\/api\/ui-prefs'/, '域端点必须落在 route("/api") 之下')
+  assert.doesNotMatch(domain, /request<[^>]*>\('\/ui-prefs'/, '不许再有裸 /ui-prefs 调用')
+})

@@ -3,6 +3,7 @@ import { existsSync, openSync, readFileSync, statSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { bundleAssetName, childEnvironment, declaredVersion, ensureDirectories, newestFatJar, readJarEntry, resolveRuntime } from './scripts/runtime.mjs';
+import { pickPort } from './scripts/port-select.mjs';
 
 /**
  * 启动 legadoQ：后台拉起服务，等端口真的能连上了再打开浏览器。
@@ -99,7 +100,8 @@ if (existsSync(distIndex)) {
   }
   if (distAsset) console.log(`界面指纹 ${distAsset}${jarAsset && jarAsset !== distAsset ? `（jar 内是 ${jarAsset}，靠 LEGADO_ALLOW_STALE_JAR 放行）` : ''}`);
 }
-const env = childEnvironment(runtime);
+// 用 let：端口在下面可能因“默认端口被别的程序占了”而改，环境变量要跟着重算一次。
+let env = childEnvironment(runtime);
 if (args.allowExternalBind) env.LEGADO_ALLOW_EXTERNAL_BIND = '1';
 
 /**
@@ -126,7 +128,7 @@ ensureDirectories(runtime);
 
 /** 浏览器地址：绑 0.0.0.0 时用回环地址访问自己。 */
 const browseHost = runtime.host === '0.0.0.0' || runtime.host === '::' ? '127.0.0.1' : runtime.host;
-const url = `http://${browseHost}:${runtime.port}`;
+let url = `http://${browseHost}:${runtime.port}`;
 
 /** 服务是否已经就绪（/healthz 能答）。端口 listen 不代表能服务：冷启动要十几秒。 */
 async function isReady(target) {
@@ -152,6 +154,15 @@ function openBrowser(target) {
     else if (process.platform === 'darwin') spawn('open', [target], { detached: true, stdio: 'ignore' }).unref();
     else spawn('xdg-open', [target], { detached: true, stdio: 'ignore' }).unref();
   } catch { /* 打不开就只打印地址，不是致命错误 */ }
+}
+
+/** 指定端口能不能绑：`pickPort` 的探测回调（绑上立刻放掉，不占端口）。 */
+function canListen(port, host) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, host, () => probe.close(() => resolve(true)));
+  });
 }
 
 /** 找一个空闲端口：后台重建 CDS 时用（刚起来的服务占着默认那个）。 */
@@ -287,6 +298,39 @@ if (await isReady(url)) {
   while (Date.now() < deadline && (await isReady(url))) {
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
+}
+
+/**
+ * 默认端口被**别的程序**占着时，自己往上找一个能用的（用户 2026-11-12：
+ * 「当前固定的 1234 是否不好，应该让其自己找合适的端口」）。
+ *
+ * 与上面那段的关系：上面处理的是「占端口的就是本项目的一个实例」——
+ * 那属于"已经开着了"，要嘛直接开界面、要嘛先停旧的。走到这里说明端口上
+ * 是我们不认识的东西（另一个阅读器、某个 dev server、系统服务），
+ * 硬失败会让用户以为 legadoQ 坏了。
+ *
+ * 找的时候**不写 port.txt**：那是"用户选的端口"，被一次临时占用改掉，
+ * 下次启动就再也回不到 1234 了。临时选中的端口只在本进程里有效，
+ * 并明确告诉用户怎么固定下来。
+ */
+if (!(await canListen(runtime.port, runtime.host))) {
+  const requested = runtime.port;
+  const fallback = await pickPort(requested, (port) => canListen(port, runtime.host), { limit: 20 });
+  if (!fallback) {
+    console.error(`端口 ${requested} 被占用，往后 20 个端口也都不可用。`);
+    console.error('先确认这台机器上是不是有别的程序在大量占端口，或显式指定一个空闲端口：');
+    console.error('  node start.mjs --port 1300');
+    process.exit(1);
+  }
+  runtime.port = fallback;
+  url = `http://${browseHost}:${runtime.port}`;
+  // env 里带着 LEGADO_PORT，必须跟着改，否则 Java 仍去绑那个被占的端口。
+  env = childEnvironment(runtime);
+  if (args.allowExternalBind) env.LEGADO_ALLOW_EXTERNAL_BIND = '1';
+  console.warn(`端口 ${requested} 被别的程序占用了 —— 这次改用 ${fallback}。`);
+  console.warn(`  地址：${url}`);
+  console.warn(`  想固定在这个端口：停掉后 node start.mjs --port ${fallback}` +
+    `（或在界面「设置 → 服务端口」里改成它，会写进 port.txt）。`);
 }
 
 const probe = net.createServer();
