@@ -6636,3 +6636,49 @@ html[data-wallpaper="on"][data-wallpaper-reader="on"] .reader-main { background-
 .logs-diagnostics-table th, .logs-diagnostics-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; }
 .logs-diagnostics-table th { color: var(--muted); font-weight: 600; }
 .logs-diagnostics-table td:not(:first-child), .logs-diagnostics-table th:not(:first-child) { text-align: right; }
+
+
+/* ==========================================================================
+   ui/ 设计内核（2026-11-12）
+   --------------------------------------------------------------------------
+   这里只放**地基**，不放任何具体组件观感：弹簧动效令牌、动态主题覆盖层的兜底、
+   以及「减少动态效果」的全局降级。组件级材质见 src/ui/material/glass.css。
+
+   为什么弹簧要先在 CSS 里写一份：运行时 src/ui/theme/apply.ts 会用
+   `linear(<采样点>)` 覆盖它们（真弹簧有回弹，cubic-bezier 表达不了）。
+   但 JS 没跑起来（SSR/首帧前/脚本被挡）时也得有个能用的过渡曲线 ——
+   于是这里放 cubic-bezier 兜底，语义与那五档同名同用途。
+   ========================================================================== */
+:root {
+  --spring-responsive: cubic-bezier(.2, 0, 0, 1);
+  --spring-gentle: cubic-bezier(.25, 0, .1, 1);
+  --spring-snappy: cubic-bezier(.3, 0, 0, 1);
+  --spring-bouncy: cubic-bezier(.34, 1.4, .64, 1);
+  --spring-page-turn: cubic-bezier(.25, 0, .2, 1);
+}
+
+/* 动态主题覆盖层：颜色跳变会显得"闪一下"，给它一个短过渡。
+   只过渡颜色属性，不过渡 transform/layout —— 避免和翻页动画抢同一帧。 */
+html.theme-dynamic,
+html.theme-dynamic body {
+  transition: background-color .28s ease, color .28s ease;
+}
+
+/* 系统要求减少动态效果时：一切过渡/动画压到最短，但**不移除**（移除会让
+   某些依赖 transitionend 的交互卡住）。这是 rimvoid 模板文档里
+   「减少动态效果时停装饰动画」在 Web 侧的通用落法。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --spring-responsive: linear(0, 1);
+    --spring-gentle: linear(0, 1);
+    --spring-snappy: linear(0, 1);
+    --spring-bouncy: linear(0, 1);
+    --spring-page-turn: linear(0, 1);
+  }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

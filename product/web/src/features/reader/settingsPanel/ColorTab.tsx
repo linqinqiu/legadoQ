@@ -70,6 +70,13 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
       </div>
     </SettingGroup>
 
+    <SettingGroup title="封面取色" hint="打开后，阅读时按这本书的封面算一套配色覆盖皮肤（Material 3 动态色）；封面是纯白/纯黑/灰图时保持皮肤原样。关掉即完全回到你选的皮肤。">
+      <div className="page-modes">
+        <button className={settings.coverTheme ? 'selected' : ''} onClick={() => update({ coverTheme: true })}>开</button>
+        <button className={!settings.coverTheme ? 'selected' : ''} onClick={() => update({ coverTheme: false })}>关</button>
+      </div>
+    </SettingGroup>
+
     <SettingGroup title="阅读背景" hint="颜色与背景图只铺在阅读区；压暗用于维持对比度，都不设时跟随主题。">
       <div className="bg-row">
         <input

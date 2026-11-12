@@ -213,6 +213,21 @@ CSS（Jsoup）、XPath（`@xpath:`）、JSONPath / `@Json:`、`||` 备选、`<js
 
 ---
 
+### 4.5 已落地：前端设计内核（2026-11-12，S2「主题」提前开的一刀）
+
+> 依据：`docs/research/研究-十二仓借鉴-2026-11-12.md`（12 仓证据台账，[核实] 58 条）。本节只记**已实现**的部分。
+
+| 借鉴源 | 落成了什么 | 判据 |
+|---|---|---|
+| Gramophone（封面取色）+ MaterialKolor（seed→scheme）+ komikku（阅读器按封面换色） | `web/src/ui/color/`：封面像素 → seed → 38 个 M3 角色 → **翻译回现有 16 个皮肤令牌**；阅读时按当前书的封面生成 `html.theme-dynamic` 覆盖层，关书回皮肤 | `DesignColorScheme` (11) / `DesignColorSeed` (9) / `DesignKernelTheme` (9) |
+| mochi-compose（软、弹、跟手）+ COUI / miuix（跟手动效参数） | `web/src/ui/motion/spring.ts`：五档弹簧解析解 → CSS `linear()`；`styles.css` 留同名 cubic-bezier 兜底 + `prefers-reduced-motion` 全局降级 | `DesignMotionSpring` (13) |
+| AndroidLiquidGlass | `web/src/ui/material/`：两层 blur + 混色 + 轮廓光；无 `backdrop-filter` 与「减少透明度」降级为不透明面 | `DesignGlassMaterial` (12) |
+| Calvin-LL/Reorderable | 已有等价实现（`lib/dragSort.ts`），本轮只把曲线换成可复用弹簧令牌 | — |
+
+**明确未做**（写在这里避免被当成"顺带完成"）：玻璃材质尚未挂到任何真实浮层上（只有库与 CSS 就位）；
+书架多布局、虚拟分组、主题导入导出仍是 S2 backlog；rimvoid 的阅读页面模板只在研究文档里，
+未动 `features/reader/`。
+
 ## 5. 长期任务框架（结构性）
 
 ### 5.1 四层结构

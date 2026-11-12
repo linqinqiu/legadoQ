@@ -141,6 +141,10 @@ const BASELINE: Record<string, number> = {
   'src/plugins/reading-log/ReadingLogModal.tsx': 1,
   'src/plugins/reading-log/ReadingLogPage.tsx': 2,
   'src/styles.css': 19,
+  // 2026-11-12 追加（+1，总数 256→257）：`ui/motion/spring.ts` 的**纯函数门禁**读自身源码，
+  // 断言「不碰 DOM、不 import 任何模块」。这条没法用行为判据代替——跑得通只证明"当前这次没炸"，
+  // 证明不了"以后也不会引浏览器 API"。文件写在 `ui/` 地基层，一旦被污染是全站动效一起坏。
+  'src/ui/motion/spring.ts': 1,
 }
 
 test('SourceTextReads 扫描面哨兵：扫不到足够用例时「无新增」不可信', () => {

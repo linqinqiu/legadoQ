@@ -117,6 +117,11 @@ export type ReaderSettings = {
   mangaSpread: boolean
   /** 双页顺序：`ltr` 前一张在左（国漫），`rtl` 前一张在右（日漫）。单页模式看不出区别。 */
   mangaDirection: MangaDirection
+  /**
+   * 封面取色：阅读时按当前这本文档的封面算一版 M3 配色覆盖皮肤（见 `src/ui/README.md`）。
+   * 只有封面能被算出"够鲜艳"的种子色时才真的覆盖，纯白/纯黑/灰图一律保持皮肤原样。
+   */
+  coverTheme: boolean
   ttsEngine: TtsEngineType
   ttsVoice: string
   ttsSpeed: number
@@ -198,6 +203,7 @@ export const defaultReaderSettings: ReaderSettings = {
   mangaSinglePage: true,
   mangaSpread: false,
   mangaDirection: 'ltr',
+  coverTheme: true,
   ttsEngine: 'edge',
   ttsVoice: 'zh-CN-XiaoxiaoNeural',
   ttsSpeed: 1.0,
@@ -514,6 +520,32 @@ export function themeClassNames(settings: ReaderSettings): string[] {
 }
 
 /**
+ * 深色系内置皮肤。动态主题要按这个取深色角色表 —— 不能问 `prefers-color-scheme`：
+ * 皮肤是用户显式选的七选一，跟着系统走会出现"系统深浅色与所选皮肤打架"。
+ */
+export const DARK_SKIN_IDS: readonly BuiltinSkinId[] = ['dark', 'shimo']
+
+/**
+ * 当前这套皮肤是不是深色。
+ *
+ * 内置的两套直接查表；**自定义皮肤**没有 metadata，所以从它自己写的 `--canvas` 算亮度
+ * （没写 `--canvas` 就落回 styles.css 最前面那份中性浅色基线 → 判为浅色）。
+ * 之所以不读 `getComputedStyle`：动态主题覆盖层挂上去之后，算出来的 `--canvas` 已经是
+ * 被覆盖后的值，再用它判断会自我强化（深色皮肤一旦被判过一次就再也回不到浅色）。
+ */
+export function isDarkSkin(settings: ReaderSettings): boolean {
+  const id = resolveTheme(settings)
+  if (DARK_SKIN_IDS.some(dark => dark === id)) return true
+  const css = activeSkin(settings)?.css ?? ''
+  const match = /--canvass*:s*#([0-9a-f]{6})/i.exec(css)
+  if (!match) return false
+  const r = parseInt(match[1].slice(0, 2), 16) / 255
+  const g = parseInt(match[1].slice(2, 4), 16) / 255
+  const b = parseInt(match[1].slice(4, 6), 16) / 255
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 0.45
+}
+
+/**
  * 读一套内置皮肤在样式表里**当前**的出厂规则（皮肤编辑器用它预填）。
  * 遍历所有可访问的 styleSheet：跨域表读 `cssRules` 会抛，按没有处理。
  * 返回的是 CSSOM 序列化后的文本（颜色可能变成 rgb()），保存后效果不变。
@@ -655,6 +687,7 @@ export function loadReaderSettings(): ReaderSettings {
       mangaSinglePage: typeof saved.mangaSinglePage === 'boolean' ? saved.mangaSinglePage : defaultReaderSettings.mangaSinglePage,
       mangaSpread: typeof saved.mangaSpread === 'boolean' ? saved.mangaSpread : defaultReaderSettings.mangaSpread,
       mangaDirection: saved.mangaDirection === 'rtl' ? 'rtl' : 'ltr',
+      coverTheme: typeof saved.coverTheme === 'boolean' ? saved.coverTheme : defaultReaderSettings.coverTheme,
       ttsEngine: parseTtsEngine(saved.ttsEngine),
       ttsVoice: typeof saved.ttsVoice === 'string' && saved.ttsVoice.trim() ? saved.ttsVoice : defaultReaderSettings.ttsVoice,
       ttsSpeed: clampNumber(saved.ttsSpeed, 0.5, 3.0, defaultReaderSettings.ttsSpeed),

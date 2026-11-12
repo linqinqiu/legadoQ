@@ -1,0 +1,182 @@
+/*
+ * Liquid Glass 材质层（与 ui/material/glass.ts 同源参数）。
+ *
+ * 用法：
+ *   <div class="lg-glass lg-glass--thick">
+ *     <span class="lg-sheen" aria-hidden="true"></span>
+ *     …内容…
+ *   </div>
+ *
+ * 设计要点：
+ * 1. **参数全部走自定义属性**，三档只覆盖变量、不重复写整段 background/backdrop-filter。
+ *    加一档 = 加一个 `.lg-glass--xxx` 块，不必复制六份样式。
+ * 2. **每个 var() 都带回落**。ui/ 可能被渲染在没有挂任何皮肤类的容器里（预览、导出、脏状态），
+ *    那时 --accent / --surface / --line 不存在；没有回落就会出现"整条 background 声明作废"，
+ *    玻璃直接变成透明洞。回落值与 glass.ts 一致。
+ * 3. 两层 blur：先柔化（--lg-blur-soft）再主模糊（--lg-blur）。单层大半径会把背后的形状
+ *    糊成均匀灰块，失去"隔着玻璃"的层次。
+ * 4. 不支持 backdrop-filter 的浏览器（@supports 分支）与「减少透明度」系统偏好
+ *    （prefers-reduced-transparency）都降级成**不透明面**——可读性优先于材质。
+ *    这条不是可选装饰：玻璃面板上的文字在无模糊时对比度会掉到 2:1 以下。
+ */
+
+.lg-glass {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--lg-radius, 18px);
+  color: var(--lg-ink, var(--ink, #202522));
+
+  /* 先给一层纯色底，color-mix 不支持时也不会透明（后一条声明有效时自然覆盖它）。 */
+  background: var(--lg-surface-fallback, rgb(255 255 255 / 0.45));
+  background:
+    radial-gradient(120% 82% at 18% 0%,
+      color-mix(in srgb, #ffffff var(--lg-sheen-alpha, 38%), transparent) 0%,
+      rgb(255 255 255 / 0) 58%),
+    linear-gradient(152deg,
+      color-mix(in srgb, #ffffff var(--lg-fill-top, 30%), transparent) 0%,
+      color-mix(in srgb, #ffffff var(--lg-fill-mid, 14%), transparent) 36%,
+      color-mix(in srgb,
+        var(--lg-tint, var(--accent, #247a58)) var(--lg-tint-alpha, 9%),
+        color-mix(in srgb, #ffffff var(--lg-fill-low, 8%), transparent)) 100%);
+
+  -webkit-backdrop-filter: blur(var(--lg-blur-soft, 7px)) blur(var(--lg-blur, 20px))
+    saturate(var(--lg-saturate, 162%)) brightness(var(--lg-brightness, 1.03))
+    contrast(var(--lg-contrast, 104%));
+  backdrop-filter: blur(var(--lg-blur-soft, 7px)) blur(var(--lg-blur, 20px))
+    saturate(var(--lg-saturate, 162%)) brightness(var(--lg-brightness, 1.03))
+    contrast(var(--lg-contrast, 104%));
+
+  /* 1px 亮线描边：内侧高光放不进 border，交给 box-shadow 的 inset（见下）。 */
+  border: 1px solid
+    color-mix(in srgb,
+      var(--lg-tint, var(--accent, #247a58)) var(--lg-border-tint, 9%),
+      color-mix(in srgb, #ffffff var(--lg-border-alpha, 44%), transparent));
+
+  box-shadow:
+    0 var(--lg-shadow-lift, 18px) var(--lg-shadow-blur, 48px)
+      calc(-1 * var(--lg-shadow-lift, 18px) * 0.6) rgb(0 0 0 / var(--lg-shadow-alpha, 0.34)),
+    0 2px 6px rgb(0 0 0 / var(--lg-shadow-near, 0.153)),
+    inset 0 1px 0 color-mix(in srgb, #ffffff var(--lg-inset-top, 58%), transparent),
+    inset 0 -1px 0 color-mix(in srgb, #ffffff var(--lg-inset-bottom, 10%), transparent);
+}
+
+/* 三档：thin 更透（背后轮廓仍可辨）→ regular → thick（背后只剩色块）。数值与 glass.ts 对齐。 */
+.lg-glass--thin {
+  --lg-blur: 12px;
+  --lg-blur-soft: 4px;
+  --lg-saturate: 138%;
+  --lg-brightness: 1.06;
+  --lg-contrast: 102%;
+  --lg-fill-top: 22%;
+  --lg-fill-mid: 10%;
+  --lg-fill-low: 6%;
+  --lg-tint-alpha: 5%;
+  --lg-border-tint: 6%;
+  --lg-border-alpha: 32%;
+  --lg-shadow-alpha: 0.22;
+  --lg-shadow-lift: 14px;
+  --lg-shadow-blur: 40px;
+  --lg-shadow-near: 0.099;
+  --lg-inset-top: 48%;
+  --lg-inset-bottom: 8%;
+  --lg-sheen-alpha: 30%;
+}
+
+.lg-glass--regular {
+  --lg-blur: 20px;
+  --lg-blur-soft: 7px;
+  --lg-saturate: 162%;
+  --lg-brightness: 1.03;
+  --lg-contrast: 104%;
+  --lg-fill-top: 30%;
+  --lg-fill-mid: 14%;
+  --lg-fill-low: 8%;
+  --lg-tint-alpha: 9%;
+  --lg-border-tint: 9%;
+  --lg-border-alpha: 44%;
+  --lg-shadow-alpha: 0.34;
+  --lg-shadow-lift: 18px;
+  --lg-shadow-blur: 48px;
+  --lg-shadow-near: 0.153;
+  --lg-inset-top: 58%;
+  --lg-inset-bottom: 10%;
+  --lg-sheen-alpha: 38%;
+}
+
+.lg-glass--thick {
+  --lg-blur: 30px;
+  --lg-blur-soft: 10px;
+  --lg-saturate: 182%;
+  --lg-brightness: 1;
+  --lg-contrast: 106%;
+  --lg-fill-top: 38%;
+  --lg-fill-mid: 19%;
+  --lg-fill-low: 11%;
+  --lg-tint-alpha: 13%;
+  --lg-border-tint: 12%;
+  --lg-border-alpha: 56%;
+  --lg-shadow-alpha: 0.42;
+  --lg-shadow-lift: 22px;
+  --lg-shadow-blur: 56px;
+  --lg-shadow-near: 0.189;
+  --lg-inset-top: 64%;
+  --lg-inset-bottom: 12%;
+  --lg-sheen-alpha: 44%;
+}
+
+/* 顶缘镜面高光：单独一层，方便不动背景就调亮度。圆角继承父级，所以父元素不用 overflow:hidden。 */
+.lg-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, #ffffff var(--lg-sheen-alpha, 38%), transparent) 0%,
+    color-mix(in srgb, #ffffff var(--lg-sheen-mid, 14%), transparent) 14%,
+    rgb(255 255 255 / 0) 48%);
+  mix-blend-mode: screen;
+  opacity: var(--lg-sheen-opacity, 0.9);
+}
+
+/*
+ * 回落一：没有 backdrop-filter（老 Firefox / 部分 WebView）。
+ * 玻璃变不透明面 —— 不做假模糊（filter: blur 会把内容一起糊掉）。
+ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lg-glass {
+    background: var(--lg-fallback-surface, #f7f9f7);
+    background: color-mix(in srgb,
+      var(--surface, #ffffff) 94%,
+      var(--lg-tint, var(--accent, #247a58)) 6%);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: var(--lg-fallback-border, #e4e8e4);
+    border-color: color-mix(in srgb, var(--line, #e7eae6) 82%, transparent);
+  }
+
+  .lg-sheen {
+    display: none;
+  }
+}
+
+/*
+ * 回落二：系统「减少透明效果」（macOS/iOS 辅助功能，Chromium 也认）。
+ * 这类用户明确要求降低透视，模糊即使是性能允许的也不该上。
+ */
+@media (prefers-reduced-transparency: reduce) {
+  .lg-glass {
+    background: var(--lg-fallback-surface, #f7f9f7);
+    background: color-mix(in srgb,
+      var(--surface, #ffffff) 96%,
+      var(--lg-tint, var(--accent, #247a58)) 4%);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: var(--lg-fallback-border, #e4e8e4);
+    border-color: color-mix(in srgb, var(--line, #e7eae6) 88%, transparent);
+  }
+
+  .lg-sheen {
+    display: none;
+  }
+}

@@ -243,7 +243,7 @@ flowchart TB
 | `product/app/src/main/kotlin/io/legado/ops/` | 日志与更新检查 | `LogService.kt`、`UpdateCheck.kt` |
 | `product/app/src/main/kotlin/io/legado/data/` | 建表、迁移、连接池 + 各数据面 | `Database.kt` 装配点 + 13 个 `<面>Dao.kt`（同包扩展函数）+ `SourceRepository.kt` |
 | `product/app/src/main/kotlin/io/legado/model/` | 请求 / 响应体 | `Models.kt` |
-| `product/web/src/` | 内置 UI | `main.tsx` · `app/`（`AppHeader.tsx`、`pages.tsx`）· `features/`（reader/bookshelf/explore/source-editor/settings/ai/rss）· `plugins/`（about/backup/changelog/reading-log/source-health）· `components/` · `lib/`（`api/`、`nav.ts`、`pageMeta.ts`、`offlineStorage.ts` 等）· `i18n/` |
+| `product/web/src/` | 内置 UI | `main.tsx` · `app/`（`AppHeader.tsx`、`pages.tsx`）· `features/`（reader/bookshelf/explore/source-editor/settings/ai/rss）· `plugins/`（about/backup/changelog/reading-log/source-health）· `components/` · `lib/`（`api/`、`nav.ts`、`pageMeta.ts`、`offlineStorage.ts` 等）· `ui/`（设计内核：`color/` `motion/` `material/` `theme/`）· `i18n/` |
 
 ## 8. 接口分组
 
@@ -528,6 +528,32 @@ paginationCache（IndexedDB `legado-reader` / store `pagination_cache`）
 
 ---
 
+### 6.6 设计内核（`web/src/ui/`，2026-11-12）
+
+配色、动效与材质原先只存在于 `styles.css`（6,600 行）里的字面值。`ui/` 把它们提成**可计算、
+可测试、可替换**的一层，与 `lib/` `components/` 同属 shared：
+
+| 组 | 文件 | 职责 |
+|---|---|---|
+| `color/` | `scheme.ts` `legacy.ts` `seed.ts` `seed.dom.ts` | seed → 38 个 M3 角色（`@material/material-color-utilities`，tonalSpot）；角色 → **现有 16 个皮肤令牌**（`--canvas`…`--shadow`）；封面像素 → seed（量化 + 过滤灰阶） |
+| `motion/` | `spring.ts` | 五档弹簧解析解（k/ζ/m）→ CSS `linear()` 采样；同一套函数喂 CSS 与 JS，避免两套曲线 |
+| `material/` | `glass.ts` `glass.css` | Liquid Glass 参数化：两层 blur + 混色 + 轮廓光；无 `backdrop-filter` 与「减少透明度」都降级成不透明面 |
+| `theme/` | `store.ts` `apply.ts` | 状态（external store，照 `brandStore` 形状）与 DOM 落地：一个 `<style id="legado-dynamic-theme">` 幂等改写 |
+
+**三条硬规则**：
+
+1. **不新增第 17 个令牌**。颜色只翻译回旧 16 个，`styles.css` 一行不用改就能跟着封面换色 ——
+   否则 6,600 行里的每个 `var(--accent)` 都要一次性改，风险与收益不成比例。
+2. **覆盖层选择器写死 `html.theme-dynamic`（0,1,1）**，不是 `.theme-dynamic`（0,1,0）。
+   后者与内置七套 `.theme-*` 平手，胜负取决于样式表先后 —— 而用户自定义皮肤是运行时追加的，
+   同一份代码会在「先开阅读器」与「先改皮肤」两种顺序下配出不同颜色。
+3. **`ui/**` 不许 import `features/` `components/` `app/` `plugins/` `lib/`**。地基一旦依赖业务，
+   就无法单独替换或删除。判据：`DesignKernelTheme.test.ts`（门面导出 / 状态机 / 分层 / DOM 缺席时静默）。
+
+浏览器 API 只允许出现在 `seed.dom.ts` 与 `apply.ts`；其余全是纯函数，裸 node 里能跑。
+
+---
+
 ## 7. AI 网关（进程内）
 
 `ai/Agent.kt` 是**网关实现**，`AgentConnection` 是句柄，`AgentRoutes` 只是薄收口（解析 HTTP → 委派 → 包响应）。它不开端口、不注册路由，与 `/api/agent/*` 是一对一映射。
@@ -631,7 +657,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 **一条被反复使用的纪律：反向对照**。写判据时要问「把被测实现改坏，这条会红吗」——例如「把搜索改成只搜标题必须被逮住」「撤掉路由修复必须报 404」。没有反向验证过的判据不算数。
 
-当前（2026-11-11）：后端 **1,103** 项、Web **1,056** 项，全绿。
+当前（2026-11-12）：后端 **1,103** 项、Web **1,126** 项，全绿。
 
 ---
 
@@ -646,6 +672,9 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 新 AI 工具 | `ai/BuiltinTools.kt` 或宿主 `ToolRegistry.register()` | 工具要带 `origin` 与 `writes` 标记 |
 | 新前端页面 | `web/src/features/<域>/` + `app/pages.tsx` | 路由与导航：`lib/nav.ts` + `app/pages.tsx` |
 | 新排版参数 | `web/src/features/reader/typeset/typesetParams.ts` | 会进分页缓存 key，改动即缓存失效 |
+| 新颜色 / 新主题来源 | `web/src/ui/color/` + `web/src/ui/theme/apply.ts` | 输出**只喂现有 16 个皮肤令牌**（`--canvas`…`--shadow`），不新增第 17 个；`ui/index.ts` 门面同步 |
+| 新动效曲线 | `web/src/ui/motion/spring.ts` 的 `SPRINGS` | `styles.css` 末尾那份 `--spring-*` 兜底要同名同步；`DesignMotionSpring.test.ts` 钉住 |
+| 新玻璃/材质 | `web/src/ui/material/glass.css`（参数走 `--lg-*`） | 每个 `var()` 必须带回落；`@supports` 与 `prefers-reduced-transparency` 两条降级不许删 |
 
 ---
 

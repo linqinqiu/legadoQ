@@ -7,7 +7,10 @@ import { ContextMenuLayer } from './components/ContextMenu'
 import { ReaderScreen } from './features/reader/ReaderScreen'
 import type { OpenBook } from './lib/openBook'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { activeSkin, loadReaderSettings, ReaderSettings, saveReaderSettings, themeClassNames } from './features/reader/settingsPanel/readerSettings'
+import { activeSkin, isDarkSkin, loadReaderSettings, ReaderSettings, saveReaderSettings, themeClassNames } from './features/reader/settingsPanel/readerSettings'
+import { applyDynamicTheme, applySpringVars, isSeedWorthApplying, removeDynamicTheme } from './ui/theme/apply'
+import { clearDynamicTheme, getDynamicTheme, setDynamicTheme, subscribeDynamicTheme } from './ui/theme/store'
+import { seedFromImageUrl } from './ui/color/seed.dom'
 import { AppHeader } from './app/AppHeader'
 import { FirstRunAgreement } from './components/FirstRunAgreement'
 import { SkinModal } from './features/reader/settingsPanel/SkinModal'
@@ -47,6 +50,7 @@ import { toast, ToastContainer } from './components/Toast'
 import { WallpaperLayer } from './components/WallpaperLayer'
 import { CookieModal } from './features/settings/CookieSection'
 import './styles.css'
+import './ui/material/glass.css'
 import { AppModal, Page, PageDialogKind } from './lib/nav'
 import { BookDetailModal } from './components/BookDetailModal'
 import { pageFromHash } from './lib/pageMeta'
@@ -167,6 +171,58 @@ function App() {
       return null
     }
   })
+
+  /**
+   * 设计内核接线之一：**封面取色 → M3 配色 → 覆盖皮肤**（`src/ui/README.md`）。
+   *
+   * 三个效果各自只做一件事，顺序即因果：
+   * 1. 弹簧令牌：常量，挂一次就够（`--spring-*` 供 CSS 与 `lib/dragSort` 之外的新动效读）；
+   * 2. 覆盖层：状态/皮肤深浅变了就重写 style，非 active 时摘掉 —— 幂等，重复调用不抖；
+   * 3. 算种子：只在**换书或开关变化**时解码封面；同一本书已经算过就不重复解码（封面代理是网络请求）。
+   *
+   * 为什么要 `isSeedWorthApplying` 这道闸：大量书源封面是纯色占位图，算出来是一片灰，
+   * 挂上去不像"呼应封面"而像"配色坏了"。宁可保持皮肤原样。
+   */
+  const dynamicTheme = useSyncExternalStore(subscribeDynamicTheme, getDynamicTheme, getDynamicTheme)
+  const darkSkin = isDarkSkin(settings)
+
+  useEffect(() => { applySpringVars() }, [])
+
+  useEffect(() => {
+    if (!dynamicTheme.active) {
+      removeDynamicTheme()
+      return
+    }
+    applyDynamicTheme(dynamicTheme, { dark: darkSkin })
+  }, [dynamicTheme, darkSkin])
+
+  useEffect(() => {
+    if (!settings.coverTheme) {
+      clearDynamicTheme()
+      return
+    }
+    const details = reader?.book.details
+    const bookId = reader?.book.bookUrl ?? null
+    if (!details || !bookId) {
+      clearDynamicTheme()
+      return
+    }
+    const current = getDynamicTheme()
+    if (current.active && current.bookId === bookId) return
+    const coverUrl = details.coverUrl ? api.coverProxy(details.coverUrl, details.tocUrl) : ''
+    if (!coverUrl) {
+      clearDynamicTheme()
+      return
+    }
+    let cancelled = false
+    void seedFromImageUrl(coverUrl)
+      .then(seed => {
+        if (cancelled || !isSeedWorthApplying(seed)) return
+        setDynamicTheme({ seed, label: details.name, origin: 'cover', bookId })
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [settings.coverTheme, reader?.book.bookUrl, reader?.book.details.coverUrl, reader?.book.details.tocUrl])
   const [pageDialog, setPageDialog] = useState<PageDialogKind | null>(dialogFromHash())
   /**
    * 当前开着的那个「单例弹窗」。
