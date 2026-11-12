@@ -22,7 +22,7 @@ import { fetchImportUrl, fileNameFromUrl } from '../../lib/importFromUrl'
 const RESTORED_SECTIONS: [string, string][] = [
   ['书源', '同名书源按 ID 覆盖规则内容；**已存在的书源保留你本机的启用/停用选择**'],
   ['替换净化规则', '按规则标识覆盖'],
-  ['书架与阅读进度', '书架按书合并，进度只在更新时间较新时覆盖'],
+  ['书架与阅读进度', '书架按书合并，进度只在更新时间较新时覆盖；**你从书架删过的书不会被备份复活**'],
   ['RSS 订阅源', '「订阅」页那一栏，按 sourceUrl 合并'],
   ['分组', '包里的组号会换成本机组号（同名只留一个）'],
 ]
@@ -52,6 +52,10 @@ export function reportImportSummary(summary: BackupImportSummary) {
     `${rss ? `，RSS 订阅源 ${rss}` : ''}${summary.bookGroups ? `，分组 ${summary.bookGroups}` : ''}` +
     `${summary.cookies ? `，登录凭据 ${summary.cookies} 条` : ''}`,
   )
+  // 备份里当然还留着删之前的书：跳过多少本必须说出来，否则用户以为导入把删除决定盖掉了
+  if (summary.booksSkippedDeleted) {
+    toast.info(`备份里另有 ${summary.booksSkippedDeleted} 本你已从书架删除，按删除保留、没有恢复`)
+  }
   // 凭据只是"这一节没做成"，不是导入失败：单独一句，别和"不承接"混在一起
   if (summary.cookiesNote) toast.warning(summary.cookiesNote)
   if (kept.length) toast.info(`另外原样收下 ${kept.length} 类条目：${kept.map(item => item.label).join('、')}`)

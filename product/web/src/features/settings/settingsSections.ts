@@ -29,6 +29,11 @@ export type SettingsSection = { title: string; rows: SettingsRow[] }
  * 一半格子空着。四条标题按"管什么"分：阅读（读的时候用）、外观（长什么样）、
  * 数据与凭据（存了什么）、服务与接入（这台机器怎么跑）。
  *
+ * 2026-11-12 拆出第五档「AI」：用户原话"ai是ai，服务是服务，不能混放在服务与接入一起"。
+ * 判断依据是这一档**管什么**：AI 管"谁替我读/查/改"，服务与接入管"这台机器怎么跑"。
+ * 顺带纠正一处命名——「AI 书源校验」既不调模型也不管服务，它是书源数据的合法性检查，
+ * 改叫「书源 JSON 校验」并归「数据与凭据」。
+ *
  * 一条纪律：**这里不建第二套编辑器**（AGENTS「设置要长在它服务的动作旁边」那条的延伸）。
  * 每一行的 `action` 都指回原来那个入口 —— 同一个实现、两个入口；两处都能改，迟早两处不一样。
  * 也只列"这里点得动"的项：阅读排版、朗读引擎这些的编辑面在阅读器里，
@@ -105,7 +110,7 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
       rows: [
         {
           title: '皮肤',
-          hint: '预设配色可以改名、换样式、隐藏或恢复；也可以新建自己的皮肤。',
+          hint: '预设配色可以改名、换样式、隐藏或恢复，也可以新建自己的皮肤。开了封面/壁纸取色时配色由图片自动算，皮肤是没开时的兜底。',
           action: '管理皮肤',
           onClick: actions.openSkins,
         },
@@ -140,6 +145,58 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
           action: '打开备份',
           onClick: actions.openBackup,
         },
+        {
+          // 2026-11-12：这一项原先挂在「服务与接入」的 AI 堆里叫「AI 书源校验」——
+          // 它既不是 AI 能力（不调模型、不花钱），也不属于"服务怎么跑"。
+          // 它是**书源数据的合法性检查**，归「数据与凭据」才名实相符。
+          title: '书源 JSON 校验',
+          hint: '粘贴一份书源 JSON 看结构合不合法，只检查、不写入。',
+          action: '去校验',
+          onClick: actions.openAiSourceCheck,
+        },
+      ],
+    },
+    {
+      // AI 是自己的一个分区：它管的既不是"数据存了什么"，也不是"这台服务怎么跑"。
+      // 混在「服务与接入」里时，用户找一个端口要越过六个 AI 入口，找一个 AI 入口要先读端口。
+      title: 'AI',
+      rows: [
+        {
+          title: '对话助手',
+          hint: '跟模型说话；它会自己调用下面几项里开启的工具去查、去改。',
+          action: '开始对话',
+          onClick: actions.openAiChat,
+        },
+        {
+          title: '模型连接',
+          hint: '登记可用的模型、设为默认，并实测此刻通不通。',
+          action: '管理连接',
+          onClick: actions.openAiConnections,
+        },
+        {
+          title: '工具开关',
+          hint: '勾选模型能调用哪几组能力；关掉的组它连看都看不到。',
+          action: '选择工具',
+          onClick: actions.openAiTools,
+        },
+        {
+          title: '外部工具（MCP）',
+          hint: '接上本机跑的 MCP 服务，它的工具就会进「工具开关」的「外部工具」一档。',
+          action: '管理 MCP',
+          onClick: actions.openAiMcp,
+        },
+        {
+          title: '技能',
+          hint: '「这类任务怎么做」的方法说明，命中关键词才注入，一次最多 3 条。',
+          action: '管理技能',
+          onClick: actions.openAiSkills,
+        },
+        {
+          title: '提示词',
+          hint: '「怎么说话」的要求，启用的每次对话都带上，可排序可停用。',
+          action: '管理提示词',
+          onClick: actions.openAiPrompts,
+        },
       ],
     },
     {
@@ -150,49 +207,6 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
           hint: 'legadoQ 跑在哪个端口；改完要重启才生效。',
           action: '改端口',
           onClick: actions.openServerPort,
-        },
-        {
-          // AI 按能力各一档：以前六块挤在一屏里滚不到底，找一个开关要先越过连接表单。
-          title: 'AI 对话助手',
-          hint: '跟模型说话；它会自己调用下面的工具去查、去改。',
-          action: '开始对话',
-          onClick: actions.openAiChat,
-        },
-        {
-          title: 'AI 模型连接',
-          hint: '登记可用的模型、设为默认，并实测此刻通不通。',
-          action: '管理连接',
-          onClick: actions.openAiConnections,
-        },
-        {
-          title: 'AI 工具',
-          hint: '勾选模型能调用哪几组能力；关掉的组它连看都看不到。',
-          action: '选择工具',
-          onClick: actions.openAiTools,
-        },
-        {
-          title: 'AI 外部工具（MCP）',
-          hint: '接上本机跑的 MCP 服务，它的工具就会进「AI 工具」的「外部工具」一档。',
-          action: '管理 MCP',
-          onClick: actions.openAiMcp,
-        },
-        {
-          title: 'AI 技能',
-          hint: '「这类任务怎么做」的方法说明，命中关键词才注入，一次最多 3 条。',
-          action: '管理技能',
-          onClick: actions.openAiSkills,
-        },
-        {
-          title: 'AI 提示词',
-          hint: '「怎么说话」的要求，启用的每次对话都带上，可排序可停用。',
-          action: '管理提示词',
-          onClick: actions.openAiPrompts,
-        },
-        {
-          title: '书源校验',
-          hint: '粘贴一份书源 JSON 看结构合不合法，只检查、不写入。',
-          action: '去校验',
-          onClick: actions.openAiSourceCheck,
         },
         {
           title: '运行日志',

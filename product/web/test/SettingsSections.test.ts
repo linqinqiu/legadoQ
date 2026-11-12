@@ -53,8 +53,8 @@ const allRows = (sections: SettingsSection[]) => sections.flatMap(s => s.rows)
 test('产出非空，且分组顺序稳定（用户靠位置记东西）', () => {
   const { actions } = fakeActions()
   const sections = buildSettingsSections(actions)
-  // 2026-10-28 收成四档：原来九档里有五档只有一行，两栏版式一半格子空着。
-  assert.deepEqual(sections.map(s => s.title), ['阅读', '外观', '数据与凭据', '服务与接入'])
+  // 2026-10-28 收成四档；2026-11-12 拆出第五档「AI」（用户：ai是ai，服务是服务）。
+  assert.deepEqual(sections.map(s => s.title), ['阅读', '外观', '数据与凭据', 'AI', '服务与接入'])
   // 分组标题不许重复（重复意味着有人顺手加了一组同名的）
   const titles = sections.map(s => s.title)
   assert.equal(new Set(titles).size, titles.length, `分组标题重复：${titles}`)
@@ -89,24 +89,31 @@ test('每一行的 onClick 真的调到对应回调（不是死按钮）', () =>
   assert.equal(new Set(called).size, totalActions, `应有 ${totalActions} 个不同动作被触发，实际 ${new Set(called).size}：${[...new Set(called)]}`)
 })
 
-test('服务与接入分组：AI 按能力拆成独立入口，插件架构已移除', () => {
+test('AI 是独立分区，服务与接入只剩「这台机器怎么跑」', () => {
   const { actions, called } = fakeActions()
   const sections = buildSettingsSections(actions)
-  const rows = sections.find(section => section.title === '服务与接入')?.rows ?? []
-  const titles = rows.map(r => r.title)
-  // 2026-11-03：原来一栏「AI 接入」打开是一屏六块，现在按能力各一档、都在这一个分区里。
-  // 2026-11-08：外部工具（MCP）自成第七档 —— 它管的是"接哪些外部进程"，与模型连接无关。
-  for (const want of ['AI 对话助手', 'AI 模型连接', 'AI 工具', 'AI 外部工具（MCP）', 'AI 技能', 'AI 提示词', '书源校验']) {
-    assert.ok(titles.includes(want), `「服务与接入」里应有「${want}」，实际 ${titles}`)
-  }
-  assert.ok(!titles.includes('插件'), `不该再有「插件」一行，实际 ${titles}`)
-  assert.ok(!titles.includes('AI 接入'), `不该再有一栏混装六块的「AI 接入」，实际 ${titles}`)
-  // 每一栏都要真的指向自己的浮层，不能都指向同一个
-  for (const row of rows.filter(r => r.title.startsWith('AI ') || r.title === '书源校验')) {
-    row.onClick()
-  }
-  const opened = called.filter(c => c.startsWith('openAi') || c === 'openAiSourceCheck')
-  assert.equal(new Set(opened).size, 7, `七个 AI 入口要各开各的，实际 ${[...new Set(opened)]}`)
+  const aiRows = sections.find(section => section.title === 'AI')?.rows ?? []
+  const serviceRows = sections.find(section => section.title === '服务与接入')?.rows ?? []
+
+  // AI 六件套各开各的浮层（一个入口都没少，只是换了分区）
+  assert.deepEqual(
+    aiRows.map(r => r.title),
+    ['对话助手', '模型连接', '工具开关', '外部工具（MCP）', '技能', '提示词'],
+  )
+  for (const row of aiRows) row.onClick()
+  const opened = called.filter(c => c.startsWith('openAi'))
+  assert.equal(new Set(opened).size, 6, `六个 AI 入口要各开各的，实际 ${[...new Set(opened)]}`)
+
+  // 反向对照：服务与接入里出现任何 AI 行 —— 用户报的就是这个"混放"，必须红
+  assert.deepEqual(serviceRows.map(r => r.title), ['服务端口', '运行日志'])
+
+  // 书源校验从 AI 堆里挪走并改名：它在「数据与凭据」里，且不叫「AI …」
+  const dataRows = sections.find(section => section.title === '数据与凭据')?.rows ?? []
+  const check = dataRows.find(row => row.title === '书源 JSON 校验')
+  assert.ok(check, `「数据与凭据」里应有「书源 JSON 校验」，实际 ${dataRows.map(r => r.title)}`)
+  check.onClick()
+  assert.ok(called.includes('openAiSourceCheck'), '书源校验仍是原来那个动作，只是换了个入口')
+  assert.ok(!aiRows.some(r => r.title.includes('书源')), 'AI 分区里不该再有书源校验')
 })
 
 test('页内搜索：命中留整档，不命中收整档，空查询原样返回', () => {

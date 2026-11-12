@@ -70,10 +70,20 @@ export function ColorTab({ settings, onChange }: { settings: ReaderSettings; onC
       </div>
     </SettingGroup>
 
-    <SettingGroup title="封面取色" hint="打开后，阅读时按这本书的封面算一套配色覆盖皮肤（Material 3 动态色）；封面是纯白/纯黑/灰图时保持皮肤原样。关掉即完全回到你选的皮肤。">
-      <div className="page-modes">
-        <button className={settings.coverTheme ? 'selected' : ''} onClick={() => update({ coverTheme: true })}>开</button>
-        <button className={!settings.coverTheme ? 'selected' : ''} onClick={() => update({ coverTheme: false })}>关</button>
+    <SettingGroup title="取色（封面 / 壁纸）" hint="按图自动算一套配色（Material 3 动态色），与下面的皮肤不是叠加而是替换：读书时用这本书的封面，平时用壁纸。图是纯白/纯黑/灰图时不覆盖，保持皮肤原样。">
+      <div className="setting-choice" role="group" aria-label="封面取色">
+        <span>读书时按封面取色</span>
+        <div className="page-modes">
+          <button className={settings.coverTheme ? 'selected' : ''} onClick={() => update({ coverTheme: true })}>开</button>
+          <button className={!settings.coverTheme ? 'selected' : ''} onClick={() => update({ coverTheme: false })}>关</button>
+        </div>
+      </div>
+      <div className="setting-choice" role="group" aria-label="壁纸取色">
+        <span>平时按壁纸取色</span>
+        <div className="page-modes">
+          <button className={settings.wallpaperTheme ? 'selected' : ''} onClick={() => update({ wallpaperTheme: true })}>开</button>
+          <button className={!settings.wallpaperTheme ? 'selected' : ''} onClick={() => update({ wallpaperTheme: false })}>关</button>
+        </div>
       </div>
     </SettingGroup>
 

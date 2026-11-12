@@ -15,6 +15,8 @@ import { sanitizeImageUrl } from '../lib/sourceImport'
 import { scrollPosition } from '../lib/scrollProgress'
 import { toast } from './Toast'
 import { SourceChoiceList } from './SourceChoiceList'
+import { SourceSwitchModal } from './SourceSwitchModal'
+import { resolveShelfSourceFallback, shelfFallbackActionLabel, shelfFallbackTitle } from '../lib/shelfSourceFallback'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { useFocusTrap } from '../lib/useFocusTrap'
 
@@ -47,6 +49,17 @@ export function BookDetailModal({
   const [shelfBusy, setShelfBusy] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const cancelInspectRef = useRef(false)
+
+  /** 书源没了/停用的兜底：先用详情里已有的备选源，没有才开换源弹窗（不每次开书都全网搜）。 */
+  const sourceFallback = useMemo(
+    () => resolveShelfSourceFallback(
+      { sourceId: book.details.sourceId, bookUrl: book.bookUrl, alternateSources: book.details.alternateSources },
+      sources,
+    ),
+    [book.details.sourceId, book.bookUrl, book.details.alternateSources, sources],
+  )
+  const sourceFallbackTitle = shelfFallbackTitle(sourceFallback)
+  const [ownedSourceSearch, setOwnedSourceSearch] = useState(false)
 
   const latestChapter = book.chapters.at(-1)
   const availableSources = choices.length
@@ -303,6 +316,32 @@ export function BookDetailModal({
         </header>
 
         <div className="book-detail-modal-body">
+          {/* 用户 2026-11-12：「书源不存在的时候，直接标出来书源不存在，却不是在拥有的书源寻找适配的书源」。
+              这一条只做两件已有数据能做的事：先给手里备选源的一键换源，没有才开换源弹窗去找。 */}
+          {sourceFallbackTitle && (
+            <div className="book-detail-section book-source-fallback" role="status">
+              <div className="book-detail-section-title">
+                <span><Icon name="info" /> {sourceFallbackTitle}</span>
+                <small>{sourceFallback.kind === 'switch-alternate' ? '书架里已有可用备选' : '本机还有别的书源可找'}</small>
+              </div>
+              <p>这本书原来的书源已经不可用，不用重新搜一遍：</p>
+              {sourceFallback.kind === 'switch-alternate' && (
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => handleSelectChoice({ result: sourceFallback.candidate, status: 'idle' })}
+                >
+                  {shelfFallbackActionLabel(sourceFallback)}
+                </button>
+              )}
+              {sourceFallback.kind === 'search-owned' && (
+                <button type="button" className="primary-button" onClick={() => setOwnedSourceSearch(true)}>
+                  {shelfFallbackActionLabel(sourceFallback)}
+                </button>
+              )}
+            </div>
+          )}
+
           {choices.length > 1 && (
             <div className="book-detail-section">
               <SourceChoiceList
@@ -345,6 +384,21 @@ export function BookDetailModal({
           </div>
         </div>
       </div>
+      {ownedSourceSearch && (
+        <SourceSwitchModal
+          bookName={book.details.name}
+          author={book.details.author}
+          currentSourceId={book.details.sourceId}
+          currentBookUrl={book.bookUrl}
+          knownAlternateSources={book.details.alternateSources}
+          sources={sources}
+          onSwitch={async chosen => {
+            setOwnedSourceSearch(false)
+            onChooseSource({ result: chosen.result, status: 'idle' })
+          }}
+          onClose={() => setOwnedSourceSearch(false)}
+        />
+      )}
       {coverZoom && coverSrc && (
         /* 与阅读器正文配图同一套看图层（.overlay-backdrop.is-viewer） */
         <div

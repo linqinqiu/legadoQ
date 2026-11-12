@@ -17,6 +17,7 @@ import io.legado.data.queryLogs
 import io.legado.localbook.TocRules
 import io.legado.model.ApiError
 import io.legado.ops.NetworkSecurity
+import io.legado.ops.UiPrefsStore
 import io.legado.port.LogLevel
 import io.legado.port.logSystem
 import io.legado.rules.RuleExecutionException
@@ -66,6 +67,9 @@ fun Route.apiRoutes(
     // 规则表的本机改动（手机备份套进来的启用选择与自定义规则）落在 data 下一个文件里，不建表：
     // 这张表只在切目录时被读一次，建表反而让"改了没生效"变成要查数据库的事。
     TocRules.useStore(localBooksDirectory.resolveSibling("txt_toc_rules.json"))
+    // 界面偏好（壁纸 / 阅读设置 / 免责声明确认）落在数据目录，换端口不丢 ——
+    // 它们原先在 localStorage，而 localStorage 按 origin 隔离，改端口等于换了个站点。
+    val uiPrefs = UiPrefsStore(localBooksDirectory.resolveSibling(UiPrefsStore.FILE_NAME))
     // 真浏览器登录：profile 放在数据目录下（与 local_books 同级），登录态跨次启动保留。
     val externalLogin = ExternalBrowserLogin(database, localBooksDirectory.resolveSibling("external-browser-profile"))
     val debugger = SourceDebugger(runner)
@@ -81,6 +85,7 @@ fun Route.apiRoutes(
         replaceRulesRoutes(database, runner)
         shelfRoutes(database, bookCache, coverCache, localBooksDirectory)
         tocRulesRoutes(database, backupKeep, localBooksDirectory)
+        prefsRoutes(uiPrefs)
         mediaRoutes(database, coverCache, localBooksDirectory, runner)
         readerRoutes(database)
         ttsRoutes(edgeTts, ttsSessions)

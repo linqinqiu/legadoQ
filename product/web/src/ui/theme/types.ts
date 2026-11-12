@@ -4,7 +4,7 @@
  */
 
 /** 动态主题从哪来：封面算出来的 / 品牌色 / 用户手填。只有前两种会随书变。 */
-export type DynamicThemeOrigin = 'cover' | 'brand' | 'manual' | 'none'
+export type DynamicThemeOrigin = 'cover' | 'wallpaper' | 'brand' | 'manual' | 'none'
 
 export interface DynamicThemeState {
   /** false = 没有覆盖层，界面完全由皮肤决定。 */

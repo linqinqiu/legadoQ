@@ -60,6 +60,13 @@ object Schema {
                 );
                 create index if not exists book_shelf_last_read_idx on book_shelf(last_read_at desc);
 
+                -- 用户主动删书的墓碑：备份导入是"合并"，合并不能盖掉"我已经删了它"这个决定。
+                -- 记 (source_id, book_url) + 时间；重新手动加回同一本书时由 saveBookshelf/switchBookshelf 清掉。
+                create table if not exists book_shelf_tombstone (
+                  source_id text not null, book_url text not null, deleted_at integer not null,
+                  primary key (source_id, book_url)
+                );
+
                 create table if not exists book_group (
                   group_id integer primary key, name text not null, sort_order integer not null default 0, created_at integer not null
                 );

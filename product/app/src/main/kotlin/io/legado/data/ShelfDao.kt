@@ -23,6 +23,8 @@ fun Database.saveBookshelf(request: BookshelfWriteRequest, cover: CachedCover?):
     val now = System.currentTimeMillis()
     db.autoCommit = false
     try {
+        // 用户主动加回一本删过的书 = 比旧备份更新的意图：清墓碑，别让下一次导入继续跳过它。
+        clearShelfTombstone(db, request.sourceId, request.bookUrl)
         cover?.let { value -> db.prepareStatement("insert into cover_cache(cache_key,content_type) values(?,?) on conflict(cache_key) do update set content_type=excluded.content_type").use { it.setString(1, value.key); it.setString(2, value.contentType); it.executeUpdate() } }
         val altJson = request.alternateSources?.let { Json.encodeToString(it) }
         db.prepareStatement("""insert into book_shelf(source_id,book_url,name,author,toc_url,cover_url,cover_key,last_read_at,alternate_sources) values(?,?,?,?,?,?,?,?,?)
@@ -193,7 +195,9 @@ fun Database.removeBookshelf(sourceId: String, bookUrl: String): String? = write
     db.autoCommit = false
     try {
         val key = db.prepareStatement("select cover_key from book_shelf where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null } }
-        db.prepareStatement("delete from book_shelf where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeUpdate() }
+        val removed = db.prepareStatement("delete from book_shelf where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeUpdate() }
+        // 只有真的删掉了才立墓碑：删一本不在架上的书不该顺手记成"用户不要它"。
+        if (removed > 0) recordShelfTombstone(db, sourceId, bookUrl)
         db.prepareStatement("delete from reading_progress where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeUpdate() }
         db.prepareStatement("delete from book_note where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeUpdate() }
         db.prepareStatement("delete from book_content_cache where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeUpdate() }
@@ -213,9 +217,11 @@ fun Database.batchRemoveBookshelf(books: List<BookIdentifier>): Int = write { db
     try {
         for (book in books) {
             if (book.sourceId.isBlank() || book.bookUrl.isBlank()) continue
-            db.prepareStatement("delete from book_shelf where source_id=? and book_url=?").use { 
+            val removed = db.prepareStatement("delete from book_shelf where source_id=? and book_url=?").use { 
                 it.setString(1, book.sourceId); it.setString(2, book.bookUrl); it.executeUpdate() 
             }
+            // 批量删除也是"用户删了它"，同样立墓碑，下次导入备份不许复活。
+            if (removed > 0) recordShelfTombstone(db, book.sourceId, book.bookUrl)
             db.prepareStatement("delete from reading_progress where source_id=? and book_url=?").use { 
                 it.setString(1, book.sourceId); it.setString(2, book.bookUrl); it.executeUpdate() 
             }
@@ -293,6 +299,8 @@ fun Database.switchBookshelf(oldSourceId: String, oldBookUrl: String, request: B
         db.prepareStatement("delete from book_toc_cache where source_id=? and (toc_url=? or instr(toc_url, ?) > 0)").use { it.setString(1, oldSourceId); it.setString(2, oldBookUrl); it.setString(3, oldBookUrl); it.executeUpdate() }
         cover?.let { value -> db.prepareStatement("insert into cover_cache(cache_key,content_type) values(?,?) on conflict(cache_key) do update set content_type=excluded.content_type").use { it.setString(1, value.key); it.setString(2, value.contentType); it.executeUpdate() } }
         val newCoverKey = cover?.key ?: oldCover
+        // 换源落到的这本是用户主动选择的（不是被备份塞回来的），同样清墓碑。
+        clearShelfTombstone(db, request.sourceId, request.bookUrl)
         db.prepareStatement("""insert into book_shelf(source_id,book_url,name,author,toc_url,cover_url,cover_key,last_read_at,alternate_sources) values(?,?,?,?,?,?,?,?,?)
             on conflict(source_id,book_url) do update set name=excluded.name,author=excluded.author,toc_url=excluded.toc_url,cover_url=coalesce(excluded.cover_url,book_shelf.cover_url),cover_key=coalesce(excluded.cover_key,book_shelf.cover_key),last_read_at=excluded.last_read_at,alternate_sources=excluded.alternate_sources""").use {
             it.setString(1, request.sourceId); it.setString(2, request.bookUrl); it.setString(3, request.name); it.setString(4, request.author); it.setString(5, request.tocUrl); it.setString(6, request.coverUrl); it.setString(7, newCoverKey); it.setLong(8, now); it.setString(9, altJson); it.executeUpdate()
@@ -301,6 +309,21 @@ fun Database.switchBookshelf(oldSourceId: String, oldBookUrl: String, request: B
         orphan?.let { value -> db.prepareStatement("delete from cover_cache where cache_key=?").use { it.setString(1, value); it.executeUpdate() } }
         db.commit(); getBookshelf(db, request.sourceId, request.bookUrl)!! to orphan
     } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+}
+
+/** 记一条「用户主动删了这本书」的墓碑（备份导入据此别再把它复活）。 */
+private fun recordShelfTombstone(db: java.sql.Connection, sourceId: String, bookUrl: String) {
+    db.prepareStatement("insert into book_shelf_tombstone(source_id,book_url,deleted_at) values(?,?,?) " +
+        "on conflict(source_id,book_url) do update set deleted_at=excluded.deleted_at").use {
+        it.setString(1, sourceId); it.setString(2, bookUrl); it.setLong(3, System.currentTimeMillis()); it.executeUpdate()
+    }
+}
+
+/** 用户主动把书加回书架时清墓碑：手加 = 比旧备份更新的意图。 */
+private fun clearShelfTombstone(db: java.sql.Connection, sourceId: String, bookUrl: String) {
+    db.prepareStatement("delete from book_shelf_tombstone where source_id=? and book_url=?").use {
+        it.setString(1, sourceId); it.setString(2, bookUrl); it.executeUpdate()
+    }
 }
 
 fun Database.coverContentType(key: String): String? = connect { db -> db.prepareStatement("select content_type from cover_cache where cache_key=?").use { it.setString(1, key); it.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null } } }

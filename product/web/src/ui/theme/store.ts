@@ -36,7 +36,9 @@ function readStorage(): DynamicThemeState {
     if (parsed.active !== true || typeof parsed.seed !== 'string' || !/^#[0-9a-f]{6}$/i.test(parsed.seed)) {
       return EMPTY_DYNAMIC_THEME
     }
-    const origin = parsed.origin === 'cover' || parsed.origin === 'brand' || parsed.origin === 'manual' ? parsed.origin : 'manual'
+    const origin = parsed.origin === 'cover' || parsed.origin === 'wallpaper' || parsed.origin === 'brand' || parsed.origin === 'manual'
+      ? parsed.origin
+      : 'manual'
     return {
       active: true,
       seed: parsed.seed.toLowerCase(),

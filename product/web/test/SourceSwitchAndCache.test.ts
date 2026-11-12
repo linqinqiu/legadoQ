@@ -52,6 +52,10 @@ test('SourceSwitch - matchBestChapter - clamping when target index exceeds chapt
 })
 
 test('Toast - pub/sub event lifecycle and id generation', () => {
+  // 清掉前面用例留下的提示：这是模块级单例，run-all 是同一进程串跑，不清就会把
+  // 「4 条」断言撑成 5、6 条（单独跑这个文件永远是绿的，正是最难查的那种假红）。
+  const initial = (toast as unknown as { toasts: Array<{ id: string }> }).toasts
+  initial.slice().forEach(item => toast.dismiss(item.id))
   let currentList: any[] = []
   const unsubscribe = toast.subscribe(toasts => {
     currentList = toasts

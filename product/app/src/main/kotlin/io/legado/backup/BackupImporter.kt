@@ -238,6 +238,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             rulesUpdated = ruleResult.updated,
             books = library.imported,
             booksUpdated = library.updated,
+            booksSkippedDeleted = library.skippedDeleted,
             progress = library.progress,
             cookies = cookieOutcome.applied,
             cookiesNote = cookieOutcome.note,

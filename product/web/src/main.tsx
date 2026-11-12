@@ -11,6 +11,8 @@ import { activeSkin, isDarkSkin, loadReaderSettings, ReaderSettings, saveReaderS
 import { applyDynamicTheme, applySpringVars, isSeedWorthApplying, removeDynamicTheme } from './ui/theme/apply'
 import { clearDynamicTheme, getDynamicTheme, setDynamicTheme, subscribeDynamicTheme } from './ui/theme/store'
 import { seedFromImageUrl } from './ui/color/seed.dom'
+import { getWallpaperSnapshot, resolveWallpaperImageUrl, subscribeWallpaper } from './lib/wallpaper'
+import { hydrateUiPrefs } from './lib/uiPrefs'
 import { AppHeader } from './app/AppHeader'
 import { FirstRunAgreement } from './components/FirstRunAgreement'
 import { SkinModal } from './features/reader/settingsPanel/SkinModal'
@@ -197,23 +199,18 @@ function App() {
   }, [dynamicTheme, darkSkin])
 
   useEffect(() => {
-    if (!settings.coverTheme) {
-      clearDynamicTheme()
-      return
-    }
     const details = reader?.book.details
     const bookId = reader?.book.bookUrl ?? null
-    if (!details || !bookId) {
-      clearDynamicTheme()
+    // 只撤"自己挂上去的那一层"：以前这里无条件 clear，会把壁纸取色那层一起扫掉，
+    // 于是"读书→退出"之后壁纸配色再也不回来（两个 effect 抢同一份状态）。
+    if (!settings.coverTheme || !details || !bookId) {
+      if (getDynamicTheme().origin === 'cover') clearDynamicTheme()
       return
     }
     const current = getDynamicTheme()
-    if (current.active && current.bookId === bookId) return
+    if (current.active && current.origin === 'cover' && current.bookId === bookId) return
     const coverUrl = details.coverUrl ? api.coverProxy(details.coverUrl, details.tocUrl) : ''
-    if (!coverUrl) {
-      clearDynamicTheme()
-      return
-    }
+    if (!coverUrl) return
     let cancelled = false
     void seedFromImageUrl(coverUrl)
       .then(seed => {
@@ -223,6 +220,55 @@ function App() {
       .catch(() => undefined)
     return () => { cancelled = true }
   }, [settings.coverTheme, reader?.book.bookUrl, reader?.book.details.coverUrl, reader?.book.details.tocUrl])
+
+  /**
+   * 设计内核接线之二：**壁纸取色**。
+   *
+   * 用户的意思很明确：「皮肤和壁纸应该融合在一起，设置了壁纸皮肤自行取色（可设置），弱化皮肤功能」。
+   * 于是种子有两个来源、同一套落法：
+   * - 读书时 → 封面（"我正在看的这本书是什么颜色"）；
+   * - 平时 → 壁纸（"我这台机器是什么颜色"）。
+   * 两者都由 `ui/` 算成同一份 M3 角色表，再翻译回那 16 个皮肤令牌 —— 皮肤退化成"没开取色时的兜底"。
+   *
+   * 为什么用 `label` 装指纹：同一张壁纸重复取色是纯浪费（解码 + 量化 200ms 级），
+   * 而换图时 `imageVersion` 会 +1，指纹随之变化，正好当"要不要重算"的判据。
+   */
+  const wallpaper = useSyncExternalStore(subscribeWallpaper, getWallpaperSnapshot, getWallpaperSnapshot)
+
+  useEffect(() => {
+    // 阅读中这一层让给封面：两条链同时写会互相覆盖，谁后跑谁赢 —— 就是"颜色乱跳"。
+    if (reader) return
+    if (!settings.wallpaperTheme) {
+      if (getDynamicTheme().origin === 'wallpaper') clearDynamicTheme()
+      return
+    }
+    const settingsOfWallpaper = wallpaper.settings
+    if (!settingsOfWallpaper.enabled) {
+      if (getDynamicTheme().origin === 'wallpaper') clearDynamicTheme()
+      return
+    }
+    const fingerprint = `${settingsOfWallpaper.source}:${settingsOfWallpaper.url}:${wallpaper.imageVersion}`
+    const current = getDynamicTheme()
+    if (current.active && current.origin === 'wallpaper' && current.label === fingerprint) return
+    let cancelled = false
+    let objectUrl: string | null = null
+    void (async () => {
+      const url = await resolveWallpaperImageUrl()
+      if (!url || cancelled) return
+      if (url.startsWith('blob:')) objectUrl = url
+      const seed = await seedFromImageUrl(url)
+      if (cancelled) return
+      if (!isSeedWorthApplying(seed)) {
+        if (getDynamicTheme().origin === 'wallpaper') clearDynamicTheme()
+        return
+      }
+      setDynamicTheme({ seed, label: fingerprint, origin: 'wallpaper', bookId: null })
+    })().catch(() => undefined)
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [reader, settings.wallpaperTheme, wallpaper.settings.enabled, wallpaper.settings.source, wallpaper.settings.url, wallpaper.imageVersion])
   const [pageDialog, setPageDialog] = useState<PageDialogKind | null>(dialogFromHash())
   /**
    * 当前开着的那个「单例弹窗」。
@@ -781,9 +827,21 @@ void loadAllFonts().catch(() => undefined)
 // 初始化性能监控系统
 performanceMonitor.init()
 
-// 根上这一层是最后兜底：连页面外壳自己抛错时，也不能剩一片白屏让人以为程序没了
-createRoot(document.getElementById('root')!).render(
-  <ErrorBoundary region="页面">
-    <App />
-  </ErrorBoundary>,
-)
+/**
+ * 启动顺序：**先补回服务端存的那几项界面偏好，再渲染**。
+ *
+ * 为什么要等：壁纸、阅读设置、首启免责声明都是从 localStorage 同步读的。
+ * 换端口后 localStorage 是空的（origin 变了），若先渲染再补：
+ * ① 会先按默认外观画一帧再跳成用户设置（闪动）；② 免责声明会先弹一下再消失（用户最恼的"又弹了"）。
+ * `hydrateUiPrefs` 自带超时且**永不 reject**，服务没起来也只是照常渲染，不会白屏。
+ */
+async function bootstrap() {
+  await hydrateUiPrefs()
+  // 根上这一层是最后兜底：连页面外壳自己抛错时，也不能剩一片白屏让人以为程序没了
+  createRoot(document.getElementById('root')!).render(
+    <ErrorBoundary region="页面">
+      <App />
+    </ErrorBoundary>,
+  )
+}
+void bootstrap()

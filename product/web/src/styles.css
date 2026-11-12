@@ -6682,3 +6682,44 @@ html.theme-dynamic body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   书源缺失兜底（2026-11-12）
+   ---------------------------------------------------------------------------
+   用户原话：「书源不存在时候，直接标出来书源不存在，却不是在拥有的书源寻找适配的书源」。
+   三类界面元素共用一套语义色（--danger 只用在"这个源真的没了"这件事上，
+   但**边框与底色很淡**）：它是提示 + 出路，不是报错弹窗，不能把整张卡片染红。
+   --------------------------------------------------------------------------- */
+.shelf-meta-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--danger);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.shelf-meta-warning svg { flex: none; }
+
+.book-source-fallback {
+  border-left: 3px solid var(--danger);
+  background: var(--surface-muted);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.book-source-fallback .book-detail-section-title span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger);
+}
+.book-source-fallback p { margin: 6px 0 8px; color: var(--muted); font-size: var(--t-xs); }
+
+.manage-action-row.manage-source-fallback {
+  border-color: var(--line);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.manage-action-row.manage-source-fallback .action-icon { color: var(--danger); }

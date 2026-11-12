@@ -33,3 +33,20 @@
 *.jpg binary
 *.jpeg binary
 *.gif binary
+
+# ---------------------------------------------------------------------------
+# 仓库主页语言构成（2026-11-12）
+#
+# 用户原话：「注意主要编程语言是什么，不要主次不分」。
+# legadoQ 是 **Kotlin 服务 + 内置 Web UI**：GitHub 的语言条回答的是"这是个什么项目"，
+# 不是"哪个目录的字节最多"。内置 UI 的 38k 行 TS 在面积上盖过后端时，
+# 主页会显示成"一个 TypeScript 项目"，而它实际是一个 Kotlin 服务。
+# 所以前端源码不计入语言统计（它仍完整存在于仓库里、仍参与全部门禁）。
+# ---------------------------------------------------------------------------
+product/web/** linguist-detectable=false
+
+# AI 工具的规则/代理目录：不是产品代码，也不是文档 —— 不该出现在语言条与发布归档里。
+# 要让它彻底不出现在仓库文件列表，只能删除目录（会破坏 CodeBuddy 的 agent 自动发现），
+# 这一步留给用户决定；这里先做到"不计入统计、不进发布包"。
+.codebuddy/** linguist-documentation linguist-detectable=false export-ignore
+.cursorrules linguist-documentation linguist-detectable=false

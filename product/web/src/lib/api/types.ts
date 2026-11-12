@@ -601,6 +601,8 @@ export type BackupImportSummary = {
   rulesUpdated: number
   books: number
   booksUpdated: number
+  /** 备份里有、但用户在本机删过而被跳过（不复活）的书数 */
+  booksSkippedDeleted?: number
   progress: number
   /** 从包内 cookies.json 恢复并合并进书源的登录凭据条数 */
   cookies?: number

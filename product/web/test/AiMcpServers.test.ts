@@ -41,7 +41,9 @@ test('入口接全：AppModal、设置页一行、浮层渲染', () => {
   assert.match(main, /openModal === 'ai-mcp' && <AiMcpModal/, '浮层要真的渲染出来')
   const sections = read('../src/features/settings/settingsSections.ts')
   assert.match(sections, /openAiMcp: \(\) => void/, '动作类型要有这一项')
-  assert.match(sections, /AI 外部工具（MCP）/, '设置页要有一行，且用中文名')
+  // 2026-11-12：AI 入口整体搬进独立的「AI」分区，标题去掉了重复的「AI 」前缀
+  // （分区名已经是 AI，行名再带一次只是噪音）。这里跟着改，断言意图不变：设置页要有一行、用中文名。
+  assert.match(sections, /外部工具（MCP）/, '设置页要有一行，且用中文名')
 })
 
 test('界面不显示请求头的值，密码输入框兜住', () => {

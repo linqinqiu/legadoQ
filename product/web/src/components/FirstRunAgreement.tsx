@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../lib/agreement'
+import { pushUiPref } from '../lib/uiPrefs'
 
 /**
  * 首次打开的「用户协议与免责声明」全屏层（用户 2026-10-10，参照 legado-with-MD3 的首启免责声明）：
@@ -57,6 +58,8 @@ export function FirstRunAgreement() {
   if (!visible) return null
   const agree = () => {
     try { window.localStorage.setItem(STORAGE_KEY, new Date().toISOString()) } catch { /* 存不进就每次都看一遍 */ }
+    // 同步到服务端：localStorage 按 origin 隔离，换端口就当作"没同意过"再弹一次（用户报过）。
+    pushUiPref('agreement')
     setVisible(false)
   }
 

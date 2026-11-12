@@ -1,3 +1,4 @@
+import { pushUiPref } from '../../../lib/uiPrefs'
 import { DEFAULT_MAPS, looksLikeGrid, migrateGrid, sanitizeMap, type TapMap } from '../interaction/tapZones'
 import { DEFAULT_READER_MENU, parseReaderMenu, type ReaderMenuAction } from '../interaction/readerMenu'
 import { parseScriptMode, type ScriptMode } from '../content/scriptConvert'
@@ -122,6 +123,12 @@ export type ReaderSettings = {
    * 只有封面能被算出"够鲜艳"的种子色时才真的覆盖，纯白/纯黑/灰图一律保持皮肤原样。
    */
   coverTheme: boolean
+  /**
+   * 壁纸取色：壁纸开着且不在读书时，按壁纸主色生成一版配色。
+   * 与 `coverTheme` 是**同一条链的两端**（都是 seed → M3 → 覆盖皮肤），
+   * 区别只在种子从哪来：读书时用封面，平时用壁纸。两个都关 = 完全听皮肤。
+   */
+  wallpaperTheme: boolean
   ttsEngine: TtsEngineType
   ttsVoice: string
   ttsSpeed: number
@@ -204,6 +211,7 @@ export const defaultReaderSettings: ReaderSettings = {
   mangaSpread: false,
   mangaDirection: 'ltr',
   coverTheme: true,
+  wallpaperTheme: true,
   ttsEngine: 'edge',
   ttsVoice: 'zh-CN-XiaoxiaoNeural',
   ttsSpeed: 1.0,
@@ -688,6 +696,7 @@ export function loadReaderSettings(): ReaderSettings {
       mangaSpread: typeof saved.mangaSpread === 'boolean' ? saved.mangaSpread : defaultReaderSettings.mangaSpread,
       mangaDirection: saved.mangaDirection === 'rtl' ? 'rtl' : 'ltr',
       coverTheme: typeof saved.coverTheme === 'boolean' ? saved.coverTheme : defaultReaderSettings.coverTheme,
+      wallpaperTheme: typeof saved.wallpaperTheme === 'boolean' ? saved.wallpaperTheme : defaultReaderSettings.wallpaperTheme,
       ttsEngine: parseTtsEngine(saved.ttsEngine),
       ttsVoice: typeof saved.ttsVoice === 'string' && saved.ttsVoice.trim() ? saved.ttsVoice : defaultReaderSettings.ttsVoice,
       ttsSpeed: clampNumber(saved.ttsSpeed, 0.5, 3.0, defaultReaderSettings.ttsSpeed),
@@ -749,6 +758,8 @@ export function effectiveReaderFontFamily(settings: ReaderSettings): string {
 export function saveReaderSettings(settings: ReaderSettings): void {
   try {
     window.localStorage.setItem(storageKey, JSON.stringify(settings))
+    // 存一份到服务端：localStorage 按 origin 隔离，换端口后整份设置会"回到出厂"。
+    pushUiPref('reader-settings')
   } catch {
     // 隐私模式/配额满：保存失败不该在 App 的 effect 里把整棵树炸掉（load 路径有守卫，save 原来没有）
   }

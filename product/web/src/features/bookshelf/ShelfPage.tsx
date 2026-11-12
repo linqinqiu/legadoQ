@@ -17,6 +17,7 @@ import { toast } from '../../components/Toast'
 import { openSourceMenu } from '../../components/SourceChoiceList'
 import { BookDetailModal } from '../../components/BookDetailModal'
 import { BookManageModal } from './BookManageModal'
+import { resolveShelfSourceFallback, shelfFallbackActionLabel, shelfFallbackTitle } from '../../lib/shelfSourceFallback'
 
 export function ShelfPage({
   onOpen,
@@ -311,6 +312,43 @@ export function ShelfPage({
   const groupNameOf = (item: BookshelfItem) => groupOf(item)?.name ?? ''
   /** 悬停「来源」要显示书源的中文名而非裸 host：用全局 sources 建 id→name 映射，取不到再退回 host。 */
   const sourceNameById = useMemo(() => new Map(sources.map(s => [s.id, s.name])), [sources])
+
+  /**
+   * 书源没了的那几本：先用书架里已有的 `alternateSources` 找能一键换过去的源，
+   * 没有才退回现成的换源弹窗（见 shelfSourceFallback.ts 的口径，不做全网搜索）。
+   */
+  const switchToFallbackAlternate = async (item: BookshelfItem, candidate: SearchResult) => {
+    try {
+      const details = await api.details(candidate.sourceId, candidate.bookUrl)
+      const fallbackCover = details.coverUrl?.trim() ||
+        candidate.coverUrl?.trim() ||
+        item.alternateSources?.find(s => s.coverUrl?.trim())?.coverUrl?.trim()
+      await api.switchBookshelfSource({
+        oldSourceId: item.sourceId,
+        oldBookUrl: item.bookUrl,
+        book: {
+          sourceId: details.sourceId,
+          bookUrl: candidate.bookUrl,
+          name: cleanTitle(details.name?.trim() || candidate.name || item.name) || item.name,
+          author: cleanAuthor(details.author?.trim() || candidate.author || item.author) || item.author,
+          tocUrl: details.tocUrl,
+          coverUrl: fallbackCover || undefined,
+        },
+        alternateSources: item.alternateSources,
+      })
+      setManagingItem(null)
+      toast.success(`《${item.name}》已改用「${sourceNameById.get(candidate.sourceId) || '备选书源'}」继续读`)
+      await load()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '换源失败')
+    }
+  }
+
+  /** 没有可用备选：复用书架自己的换源弹窗（里面有"全部书源/分组/指定源"，不新造搜索）。 */
+  const searchInOwnedSources = (item: BookshelfItem) => {
+    setManagingItem(null)
+    setSwitchingItem(item)
+  }
 
   const visibleItems = useMemo(() => {
     const byStatus = view === 'all' ? items : items.filter(item => view === 'completed' ? item.completed : !item.completed)
@@ -693,6 +731,8 @@ export function ShelfPage({
             const isCaching = item.cacheState === 'caching'
             const isLocal = item.sourceId === 'loc_book'
             const percent = Math.min(100, Math.round((item.cachedChapters / Math.max(1, item.totalChapters || 1)) * 100))
+            const fallback = resolveShelfSourceFallback(item, sources)
+            const fallbackTitle = shelfFallbackTitle(fallback)
 
             return (
               <article
@@ -706,7 +746,9 @@ export function ShelfPage({
                   const hasMore = !showAllGroups
 
                   showContextMenu(event, [
-                    { label: item.completed ? '重新阅读' : '继续阅读', icon: 'book', onSelect: () => onOpen(item) },
+                    fallbackTitle
+                      ? { label: '处理书源问题', icon: 'info' as const, onSelect: () => setManagingItem(item) }
+                      : { label: item.completed ? '重新阅读' : '继续阅读', icon: 'book' as const, onSelect: () => onOpen(item) },
                     { label: '书籍管理', icon: 'settings', onSelect: () => setManagingItem(item) },
                     { label: '换源', icon: 'refresh', disabled: isLocal, onSelect: () => setSwitchingItem(item) },
                     { label: isCaching ? '取消缓存' : '缓存全本', icon: isCaching ? 'close' : 'download', onSelect: () => void (isCaching ? cancelCache(item) : cache(item)) },
@@ -749,14 +791,17 @@ export function ShelfPage({
                 */}
                 <div
                   className="shelf-card-cover"
-                  onClick={() => { if (batchMode) toggleBookSelection(item.sourceId, item.bookUrl); else onOpen(item) }}
+                  // 书源没了就别放进阅读器再报错：直接开「书籍管理」，那里有一键改用备选源 / 找源的动作。
+                  onClick={() => { if (batchMode) toggleBookSelection(item.sourceId, item.bookUrl); else if (fallbackTitle) setManagingItem(item); else onOpen(item) }}
                   role="button"
                   tabIndex={0}
-                  aria-label={batchMode ? `${isBookSelected(item.sourceId, item.bookUrl) ? '取消选择' : '选择'} ${item.name}` : `继续阅读 ${item.name}`}
+                  aria-label={batchMode ? `${isBookSelected(item.sourceId, item.bookUrl) ? '取消选择' : '选择'} ${item.name}` : fallbackTitle ? `处理《${item.name}》的书源问题：${fallbackTitle}` : `继续阅读 ${item.name}`}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      if (batchMode) toggleBookSelection(item.sourceId, item.bookUrl); else onOpen(item)
+                      if (batchMode) toggleBookSelection(item.sourceId, item.bookUrl)
+                      else if (fallbackTitle) setManagingItem(item)
+                      else onOpen(item)
                     }
                   }}
                 >
@@ -782,7 +827,7 @@ export function ShelfPage({
                       <div><dt>上次</dt><dd>{new Date(item.lastReadAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</dd></div>
                       {(item.tocUpdatedAt ?? 0) > 0 && <div><dt>更新</dt><dd>{new Date(item.tocUpdatedAt!).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</dd></div>}
                       {/* 来源：本地书直说；在线书给书源显示名（sources 传入后建 id→name 映射），取不到再退回 host */}
-                      <div><dt>来源</dt><dd>{isLocal ? '本地导入' : (sourceNameById.get(item.sourceId) || sourceHostOf(item.sourceId))}</dd></div>
+                      <div><dt>来源</dt><dd>{isLocal ? '本地导入' : (fallbackTitle ?? sourceNameById.get(item.sourceId) ?? sourceHostOf(item.sourceId))}</dd></div>
                       {!isLocal && !!item.alternateSources?.length && <div><dt>换源</dt><dd>{item.alternateSources.length} 个源</dd></div>}
                       {!!groupNameOf(item) && <div><dt>分组</dt><dd>{groupNameOf(item)}</dd></div>}
                       {!!item.author && <div><dt>作者</dt><dd>{item.author}</dd></div>}
@@ -809,6 +854,11 @@ export function ShelfPage({
                       {item.completed ? '已读完' : item.chapterIndex === undefined ? '刚加入书架' : `第 ${item.chapterIndex + 1} 章`}
                     </span>
                     {item.totalChapters > 0 && <span className="shelf-meta-percent">{Math.min(100, Math.round((((item.chapterIndex ?? 0) + 1) / item.totalChapters) * 100))}%</span>}
+                    {fallbackTitle && (
+                      <span className="shelf-meta-warning" title={shelfFallbackActionLabel(fallback) ?? fallbackTitle}>
+                        <Icon name="info" />{fallbackTitle}
+                      </span>
+                    )}
                     <time className="shelf-meta-when" dateTime={new Date(item.lastReadAt).toISOString()}>
                       {new Date(item.lastReadAt).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
                     </time>
@@ -833,6 +883,9 @@ export function ShelfPage({
       {managingItem && (
         <BookManageModal
           item={managingItem}
+          sourceFallback={resolveShelfSourceFallback(managingItem, sources)}
+          onSwitchAlternate={candidate => void switchToFallbackAlternate(managingItem, candidate)}
+          onSearchInOwnedSources={() => searchInOwnedSources(managingItem)}
           onClose={() => setManagingItem(null)}
           onSwitchSource={() => {
             const target = managingItem

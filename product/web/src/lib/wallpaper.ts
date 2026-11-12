@@ -13,6 +13,8 @@
  * 只有"写入这张图片"失败才抛给界面提示 —— 那是用户刚做的动作，不能悄悄吞掉。
  */
 
+import { pushUiPref } from './uiPrefs'
+
 /** 填充方式：`cover` 铺满并裁剪，`contain` 完整显示并留白。 */
 export type WallpaperFill = 'cover' | 'contain'
 
@@ -129,6 +131,9 @@ export function saveWallpaperSettings(settings: WallpaperSettings): void {
   } catch {
     // 存储写不进去：本次会话照常生效，刷新后回到上一次成功保存的值
   }
+  // 同步一份到服务端：localStorage 按 origin 隔离，换端口就整份丢（用户报过"改端口壁纸回默认"）。
+  // 去抖与失败静默都在 `lib/uiPrefs.ts` 里，这里只管"我改了"。
+  pushUiPref('wallpaper')
 }
 
 /**
@@ -192,6 +197,26 @@ export function updateWallpaperSettings(patch: Partial<WallpaperSettings>): Wall
   saveWallpaperSettings(settings)
   notify()
   return settings
+}
+
+/**
+ * 当前壁纸的**可用图片地址**，给「按壁纸取色」读像素用。
+ *
+ * - 地址图：直接返回它（跨域能否读像素由 `seedFromImageUrl` 的 crossOrigin 与失败回落兜底）；
+ * - 本地上传：从 IndexedDB 读 blob 再 `createObjectURL` —— objectURL 是同源的，
+ *   画进 canvas 不会污染画布。
+ *
+ * 调用方负责 `URL.revokeObjectURL`（只在返回 `blob:` 开头时才需要）。
+ * 壁纸没开 / 没有图时返回 `null`，调用方按"没有可取的色"处理。
+ */
+export async function resolveWallpaperImageUrl(): Promise<string | null> {
+  const settings = snapshot.settings
+  if (!settings.enabled) return null
+  if (settings.source === 'url') return settings.url.trim() || null
+  const record = await loadWallpaper().catch(() => null)
+  if (!record) return null
+  if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return null
+  return URL.createObjectURL(record.blob)
 }
 
 /** 图片换了（上传 / 清除）：版本号 +1，订阅者据此重读 IndexedDB 里的二进制。 */

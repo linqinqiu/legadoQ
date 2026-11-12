@@ -1071,6 +1071,8 @@ data class BackupImportSummary(
     val rulesUpdated: Int,
     val books: Int,
     val booksUpdated: Int,
+    /** 备份里有、但用户在本机删过而跳过的书数：导入是合并，不把删除决定盖掉。 */
+    val booksSkippedDeleted: Int = 0,
     val progress: Int,
     /** 从包内 `cookies.json` 恢复并合并进书源的凭据条数（按 书源×域名 计）。 */
     val cookies: Int = 0,
@@ -1118,8 +1120,13 @@ data class BackupShelfEntry(
     val groupId: Long = 0,
 )
 
-/** 书架与阅读进度导入统计。 */
-data class LibraryImportResult(val imported: Int, val updated: Int, val progress: Int)
+/**
+ * 书架与阅读进度导入统计。
+ *
+ * [skippedDeleted] 是从备份里**跳过**的条目数：这些书用户在本机删过（见 `book_shelf_tombstone`），
+ * 导入是合并、不复活它们。以前这个数混在 imported 里，界面读起来像"新增"，用户会以为删除没生效。
+ */
+data class LibraryImportResult(val imported: Int, val updated: Int, val progress: Int, val skippedDeleted: Int = 0)
 
 
 /** 本地图书导入批量响应 */

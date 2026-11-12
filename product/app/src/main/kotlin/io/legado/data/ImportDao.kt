@@ -97,16 +97,29 @@ fun Database.importBookGroups(groups: List<Pair<Long, String>>): Map<Long, Long>
 /**
  * 备份导入：批量写入书架条目，并写入阅读进度（仅当备份时间不早于库中进度时覆盖，避免进度回退）。
  * 备份包只带章节序号与字符偏移，因此 [BackupShelfEntry.chapterIndex] 之外的定位信息不落库。
+ *
+ * **导入是合并，但不能盖掉用户已经做过的删除。** 备份里当然还留着删之前的书；以前这里
+ * 只按 (sourceId, bookUrl) upsert，于是用户删掉的书会被一份旧备份悄悄复活 —— 用户看到的
+ * 就是「删了还在书架上」。现在删除会立墓碑（`book_shelf_tombstone`，见 `removeBookshelf`），
+ * 这里对墓碑内的条目直接跳过、单独计数（[LibraryImportResult.skippedDeleted]），由导入结果
+ * 如实报给界面；用户主动加回同一本书时由 `saveBookshelf`/`switchBookshelf` 清墓碑。
  */
 fun Database.importLibrary(entries: List<BackupShelfEntry>): LibraryImportResult {
     if (entries.isEmpty()) return LibraryImportResult(0, 0, 0)
     val now = System.currentTimeMillis()
     var imported = 0
     var updated = 0
+    var skippedDeleted = 0
     var progressApplied = 0
     write { db ->
         db.autoCommit = false
         try {
+            // 墓碑在同一个写事务里读：导入与删除不会交错出"刚删的书又被这次导入插回去"。
+            val tombstoned = db.prepareStatement("select source_id, book_url from book_shelf_tombstone").use { query ->
+                query.executeQuery().use { rs ->
+                    buildSet { while (rs.next()) add(rs.getString(1) to rs.getString(2)) }
+                }
+            }
             db.prepareStatement("select 1 from book_shelf where source_id = ? and book_url = ?").use { existing ->
                 db.prepareStatement("""
                     insert into book_shelf(source_id,book_url,name,author,toc_url,cover_url,cover_key,last_read_at,completed,alternate_sources,group_id)
@@ -117,6 +130,8 @@ fun Database.importLibrary(entries: List<BackupShelfEntry>): LibraryImportResult
                       last_read_at=excluded.last_read_at, completed=excluded.completed
                 """.trimIndent()).use { save ->
                     entries.forEach { entry ->
+                        // 用户删过的书：跳过落架，也不恢复它的进度（下面的 progressed 同样排除）。
+                        if ((entry.sourceId to entry.bookUrl) in tombstoned) { skippedDeleted++; return@forEach }
                         existing.setString(1, entry.sourceId); existing.setString(2, entry.bookUrl)
                         if (existing.executeQuery().use { it.next() }) updated++ else imported++
                         save.setString(1, entry.sourceId); save.setString(2, entry.bookUrl); save.setString(3, entry.name)
@@ -131,7 +146,7 @@ fun Database.importLibrary(entries: List<BackupShelfEntry>): LibraryImportResult
                     save.executeBatch()
                 }
             }
-            val progressed = entries.filter { it.chapterIndex > 0 }
+            val progressed = entries.filter { it.chapterIndex > 0 && (it.sourceId to it.bookUrl) !in tombstoned }
             if (progressed.isNotEmpty()) {
                 db.prepareStatement("""
                     insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,updated_at)
@@ -151,5 +166,5 @@ fun Database.importLibrary(entries: List<BackupShelfEntry>): LibraryImportResult
             db.commit()
         } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
     }
-    return LibraryImportResult(imported, updated, progressApplied)
+    return LibraryImportResult(imported, updated, progressApplied, skippedDeleted)
 }

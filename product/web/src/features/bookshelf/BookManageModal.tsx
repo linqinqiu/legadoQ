@@ -5,12 +5,13 @@
 import { useState } from 'react'
 import { zh } from '../../i18n/zh'
 import { BookCover } from '../../components/Cover'
-import { BookGroup, BookshelfItem } from '../../lib/api'
+import { BookGroup, BookshelfItem, SearchResult } from '../../lib/api'
 import { Icon } from '../../icons'
 import { Select } from '../../components/Select'
 import { bookTypeMeta } from '../../lib/bookType'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { BookInfoEditModal } from './BookInfoEditModal'
+import { ShelfSourceFallback, shelfFallbackActionLabel, shelfFallbackTitle } from '../../lib/shelfSourceFallback'
 
 export function BookManageModal({
   item,
@@ -23,6 +24,9 @@ export function BookManageModal({
   onRemove,
   groups,
   onAssignGroup,
+  sourceFallback,
+  onSwitchAlternate,
+  onSearchInOwnedSources,
 }: {
   item: BookshelfItem
   onClose: () => void
@@ -34,6 +38,10 @@ export function BookManageModal({
   onRemove: () => void
   groups: BookGroup[]
   onAssignGroup: (groupId: number) => void
+  /** 书源不见了/停用时的兜底动作（口径见 shelfSourceFallback.ts）；available/unknown 时没有提示。 */
+  sourceFallback?: ShelfSourceFallback
+  onSwitchAlternate: (candidate: SearchResult) => void
+  onSearchInOwnedSources: () => void
 }) {
   const [editingInfo, setEditingInfo] = useState(false)
   useEscapeClose(onClose, editingInfo ? '.book-info-edit-modal' : undefined)
@@ -61,6 +69,36 @@ export function BookManageModal({
         </header>
 
         <div className="manage-sheet-actions">
+          {(() => {
+            const title = sourceFallback ? shelfFallbackTitle(sourceFallback) : null
+            if (!title || !sourceFallback) return null
+            if (sourceFallback.kind === 'switch-alternate') {
+              return (
+                <button className="manage-action-row manage-source-fallback" onClick={() => onSwitchAlternate(sourceFallback.candidate)}>
+                  <div className="action-icon"><Icon name="info" /></div>
+                  <div className="action-text">
+                    <strong>{title}：{shelfFallbackActionLabel(sourceFallback)}</strong>
+                    <small>用书架里已记录的备选书源一键换过去，不用重新全网搜</small>
+                  </div>
+                  <Icon name="arrowRight" />
+                </button>
+              )
+            }
+            if (sourceFallback.kind === 'search-owned') {
+              return (
+                <button className="manage-action-row manage-source-fallback" onClick={onSearchInOwnedSources}>
+                  <div className="action-icon"><Icon name="info" /></div>
+                  <div className="action-text">
+                    <strong>{title}：{shelfFallbackActionLabel(sourceFallback)}</strong>
+                    <small>只在你已拥有的书源里找同名书，找到后无缝替换</small>
+                  </div>
+                  <Icon name="arrowRight" />
+                </button>
+              )
+            }
+            return null
+          })()}
+
           <button className="manage-action-row" onClick={() => setEditingInfo(true)}>
             <div className="action-icon"><Icon name="edit" /></div>
             <div className="action-text">

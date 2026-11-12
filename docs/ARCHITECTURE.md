@@ -19,7 +19,7 @@ flowchart LR
 
     subgraph PROC["单个 JVM 进程 · Ktor CIO 3.4.3 · 默认 127.0.0.1:1234"]
         GUARD["同源写门<br/>http/Guard.kt<br/>只拦跨站写"]
-        ROUTE["路由层<br/>http/Routes.kt 装配点 + 14 个组文件<br/>161 个端点 / 19 组<br/>WS /api/search/stream"]
+        ROUTE["路由层<br/>http/Routes.kt 装配点 + 14 个组文件<br/>165 个端点 / 19 组<br/>WS /api/search/stream"]
         STATIC["静态资源<br/>StaticWeb.kt<br/>SPA 壳 + /next 挂载点"]
 
         subgraph DOMAIN["业务模块"]
@@ -175,11 +175,12 @@ flowchart LR
 
 | 位置 | 内容 | 是否入库 |
 |---|---|---|
-| `product/data/legado.sqlite` | 书源、书架、进度、缓存索引、日志等（代码建 20 张表；老库里可能还有已停用的旧表） | 否 |
+| `product/data/legado.sqlite` | 书源、书架、进度、缓存索引、日志等（代码建 **21** 张表；2026-11-12 新增 `book_shelf_tombstone` 记录"用户删过这本书"，备份导入据此不再复活。老库里可能还有已停用的旧表） | 否 |
 | `product/data/covers/` | 封面文件 | 否 |
 | `product/data/external-browser-profile/` | 内置浏览器登录态 | 否 |
 | `product/data/local_books/` | 导入的 TXT / EPUB | 否 |
 | `product/data/backup_kept/` | 备份包里没有原生归宿的条目 | 否 |
+| `product/data/ui-prefs.json` | 界面偏好（免责声明同意标记 / 壁纸设置 / 阅读设置）。**放在服务端才能跨 origin 赎回**：localStorage 按协议+主机+端口隔离，改端口就整份丢 | 否 |
 | `product/logs/`、`product/server.log` | 运行日志 | 否 |
 
 ## 5. 启动与进程
@@ -247,16 +248,16 @@ flowchart TB
 
 ## 8. 接口分组
 
-`/api/catalog` 当前返回 161 条，按 19 组分布（2026-11-10 快照）：
+`/api/catalog` 当前返回 165 条，按 19 组分布（2026-11-12 快照）：
 
 | 分组 | 条数 | 分组 | 条数 |
 |---|---:|---|---:|
 | AI 自定义接入 | 22 | 内置浏览器 | 17 |
 | 登录与凭据 | 15 | 书架 | 14 |
-| 书源 | 12 | 净化规则 | 10 |
-| 进度与笔记 | 9 | 朗读 | 9 |
-| 系统 | 8 | 分章规则 | 7 |
-| RSS | 7 | 阅读 | 6 |
+| 书源 | 12 | 系统 | 11 |
+| 净化规则 | 10 | 进度与笔记 | 9 |
+| 朗读 | 9 | 分章规则 | 7 |
+| RSS | 7 | 阅读 | 7 |
 | 图片与媒体 | 6 | 书源订阅 | 5 |
 | 备份 | 5 | 发现页 | 3 |
 | 离线缓存 | 3 | 搜索 | 2 |
@@ -281,7 +282,7 @@ flowchart TB
 │                                                              │
 │  SameOriginWriteGate（全局插件，拦跨站写）                    │
 │  ─────────────────────────────────────────────────────────  │
-│  Routes.kt 装配点 + 14 个域路由文件（161 端点 / 19 组）        │
+│  Routes.kt 装配点 + 14 个域路由文件（165 端点 / 19 组）        │
 │  ─────────────────────────────────────────────────────────  │
 │  领域层：source · rules · content · localbook · cache ·       │
 │          tts · subscription · backup · ops · ai · reading    │
@@ -402,7 +403,7 @@ Ktor Call
 
 ### 3.3 端点契约与门禁
 
-- 契约文件：`product/app/src/main/resources/agent-api.json`（161 条 / 19 组）。
+- 契约文件：`product/app/src/main/resources/agent-api.json`（165 条 / 19 组）。
 - `web/test/ApiCatalog.test.ts` 双向核对：源码里多一条 / 目录里少一条都红。
 - `npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 与契约一致。
 - ⚠️ 目录是**扫源码文本**得出的，不是运行时路由表 —— 曾经因此漏过「路由写进别的 handler 里、启动后 404」的缺陷。现在有 `RouteCatalogTest` 真起服务打一发的判据兜底。

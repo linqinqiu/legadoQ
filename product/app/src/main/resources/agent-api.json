@@ -1836,7 +1836,32 @@
       "group": "AI 自定义接入",
       "purpose": "删除一台 MCP 服务，并把它注册过的工具一起摘掉 —— 留着等于给模型一个永远调不通的能力。",
       "response": "{deleted}；没登记过这台 404 not_found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui-prefs",
+      "write": false,
+      "group": "系统",
+      "purpose": "读回服务端保存的全部界面偏好（壁纸、阅读设置、首启免责声明确认等）。偏好按数据目录存、不按浏览器 origin 存，所以界面里改端口不会丢。",
+      "response": "{prefs:{<key>:<任意 JSON>}}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/ui-prefs/{key}",
+      "write": true,
+      "group": "系统",
+      "purpose": "保存一个界面偏好（覆盖同名 key）。请求体就是该 key 的 JSON 值本身，不是 { value: … } 包装对象：对象、数组、字符串、数字、布尔都原样保存。",
+      "body": "该 key 的 JSON 值本身，序列化后 ≤ 32KB；key 仅小写字母/数字/连字符/下划线/点，1~64 位",
+      "response": "204 无正文；key 非法 400 invalid_prefs_key；值不是合法 JSON 400 invalid_prefs_value；单值 > 32KB 或整表 > 256KB 413 prefs_too_large"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/ui-prefs/{key}",
+      "write": true,
+      "group": "系统",
+      "purpose": "删掉一个界面偏好（界面「恢复默认」用）。幂等：key 本来不存在也回 204。",
+      "response": "204；key 非法 400 invalid_prefs_key"
     }
   ],
-  "count": 162
+  "count": 165
 }
