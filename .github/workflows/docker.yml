@@ -16,8 +16,14 @@ on:
       - 'product/app/**'
       - 'product/web/**'
       - 'product/gradle/**'
+      # gradle.properties 是 server-build 的构建输入（Dockerfile 里与 settings/build.gradle 一起 COPY），
+      # 但它不在 product/gradle/ 目录下，`product/gradle/**` 匹配不到。
+      - 'product/gradle.properties'
       - 'product/build.gradle'
       - 'product/settings.gradle'
+      # 功能说明被 `?raw` 打进前端（FeatureGuide.tsx），Dockerfile 也单独 COPY 了它：
+      # 只改这份文档时镜像不会重建，容器里的说明会停在旧版。
+      - 'product/docs/功能说明.md'
       - 'product/Dockerfile'
       - 'product/compose.yml'
       - '.github/workflows/docker.yml'
