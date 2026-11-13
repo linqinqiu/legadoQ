@@ -163,9 +163,9 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 文档归拢 | 8 份研究 + 14 份会话记录（另各自 README）已迁入 `docs/research/` / `docs/sessions/`，`docs/README.md` 是唯一索引；77 份 Markdown、116 条相对链接全部可达（2026-11-10 脚本核查） |
 | 复跑 | 文档改完后后端 `:app:test` **1,103 通过 / 0 失败**、前端 `npm --prefix product/web test` **1,041 通过 / 0 失败**；`check`、`check:test`、`vite build` 与 version/docs:api/changelog 三条门禁均通过 |
 
-> **本机跑后端全量必须设 `LEGADO_TEST_TMP`**：系统临时目录（`E:\Apps\Cache\tmp`）里的 sqlite
+> **本机跑后端全量必须设 `LEGADO_TEST_TMP`**：系统临时目录（`<系统临时目录>`）里的 sqlite
 > 会被杀软扫到锁住，`E2EScenariosTest` 在清理阶段报"另一个程序正在使用此文件"的假失败。
-> 用 `LEGADO_TEST_TMP='E:\legado\product\build\testtmp'`；那条测试的清理也已统一走重试助手。
+> 用 `LEGADO_TEST_TMP='<仓库>/product/build/testtmp'`；那条测试的清理也已统一走重试助手。
 
 ---
 
