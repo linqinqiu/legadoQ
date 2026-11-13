@@ -166,6 +166,7 @@ CSS（Jsoup）、XPath（`@xpath:`）、JSONPath / `@Json:`、`||` 备选、`<js
 | C-02 | URL 分页 `<1,2,3>` | ✅ 已收口（0.2.39）：与上游语义一致，撤销误导告警 | 与上游语义兼容（可与 `{{page}}` 共存） | rules/RuleRunner |
 | C-03 | ruleReview 段评 | 🔶 详情层只读后端已支持（0.2.40 待发）；阅读器浮层接入中 | 至少只读展示 | rules + reading + Web |
 | C-04 | WebView 依赖源 | needs_webview 分档 | 保持诚实分档；可选外部引擎属扩展层 | source 体检 |
+| C-05 | 宿主 API / 规则字段执行缺口 | 🔶 2026-11-13 实测：`java.t2s`/`s2t` 未实现（30 / 7 条源，11 条正文级）；`globalThis.environment` 缺失（1 条）；`preUpdateJs` 36 / `formatJs` 6 / `concurrentRate` 42 / `webJs` 8 条零执行（校验已告警） | 按库内使用量补齐：先 `t2s`、`environment`，其余先告警 | `rules/JsSandbox` + `rules/RuleRunner` |
 
 ### 4.2 主路径与体验差距（功能说明 + MD3 公开特性对照）
 

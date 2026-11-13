@@ -79,6 +79,49 @@ class SourceValidateWarningsTest {
     }
 
     @Test
+    fun `preUpdateJs 有值会告警服务端不执行`() {
+        // 本机库非空 36 条，其中 32 条只想调 java.refreshTocUrl / reGetBook。
+        val r = validate(
+            """{"bookSourceUrl":"https://d","searchUrl":"https://d/s",
+               "ruleToc":{"chapterList":"$.c","chapterName":"$.t","chapterUrl":"$.u","preUpdateJs":"java.refreshTocUrl()"},
+               "ruleContent":{"content":"$.content"}}"""
+        )
+        assertTrue(r.valid)
+        assertTrue("要说明是「不执行」，不是「解析失败」", r.warnings.any { it.contains("preUpdateJs") && it.contains("不执行") })
+    }
+
+    @Test
+    fun `formatJs 有值会告警服务端不执行`() {
+        val r = validate(
+            """{"bookSourceUrl":"https://d","searchUrl":"https://d/s",
+               "ruleToc":{"chapterList":"$.c","chapterName":"$.t","chapterUrl":"$.u","formatJs":"result"},
+               "ruleContent":{"content":"$.content"}}"""
+        )
+        assertTrue(r.valid)
+        assertTrue(r.warnings.any { it.contains("formatJs") })
+    }
+
+    @Test
+    fun `concurrentRate 有值会告警不生效`() {
+        val r = validate(
+            """{"bookSourceUrl":"https://d","searchUrl":"https://d/s","concurrentRate":"2/1000",
+               "ruleSearch":{"bookList":"$.d","name":"$.t","bookUrl":"$.u"},"ruleContent":{"content":"$.c"}}"""
+        )
+        assertTrue(r.valid)
+        assertTrue(r.warnings.any { it.contains("concurrentRate") })
+    }
+
+    @Test
+    fun `webJs 有值会告警没有 WebView`() {
+        val r = validate(
+            """{"bookSourceUrl":"https://d","searchUrl":"https://d/s",
+               "ruleContent":{"content":"$.content","webJs":"document.body.innerText"}}"""
+        )
+        assertTrue(r.valid)
+        assertTrue(r.warnings.any { it.contains("webJs") })
+    }
+
+    @Test
     fun `非法书源仍返回 valid=false 且不带告警噪音`() {
         val r = validate("""{"bookSourceName":"缺地址的源"}""")
         assertFalse(r.valid)

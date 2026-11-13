@@ -411,6 +411,13 @@ class JsSandbox(
             ScriptableObject.putProperty(scope, "book", createBookBridge(scope, context))
             // chapter 对象：正文规则会引用 chapter.index / chapter.title
             ScriptableObject.putProperty(scope, "chapter", createChapterBridge(scope, context))
+            // legado-E / Sigma 生态的宿主探测位：脚本写 `globalThis.environment.IS_LEGADO_SIGMA`
+            // 决定 [newpage] 是自己替换还是留给阅读器分页（蓝批小说即如此）。没有这个全局时，
+            // 取属性就抛 TypeError，而正文规则那条路径不包 runCatching（RuleRunner.kt:959），
+            // 表现为整章正文取不到。我们是 Web 阅读器、不做 Sigma 的分页契约，固定 false。
+            ScriptableObject.putProperty(scope, "environment", NativeObject().also {
+                ScriptableObject.putProperty(it, "IS_LEGADO_SIGMA", false)
+            })
 
             // 先求值书源脚本库；顶层 `function`/`let` 声明落成全局属性，动作里的 this.xxx 才解析得到。
             if (library != null) evalLibrary(scope, cx, library, context)

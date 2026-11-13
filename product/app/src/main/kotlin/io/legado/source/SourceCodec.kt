@@ -193,7 +193,7 @@ object SourceCodec {
             key != "enabled" && review.string(key)?.isNotBlank() == true
         }
         if (hasReviewRule) {
-            warnings += "检测到段评规则（ruleReview）：详情列表服务端已只读支持（需配 detailListRule，经 API 可取；阅读器浮层接入中）；统计徽章、子评论与发帖/点赞/删除等写操作服务端不执行。"
+            warnings += "检测到段评规则（ruleReview）：详情列表服务端已只读支持（需配 detailListRule，经 API 可取；阅读器尚无段评浮层）；统计徽章、子评论与发帖/点赞/删除等写操作服务端不执行。"
         }
 
         if (obj.string("searchUrl").isNullOrBlank() && obj.string("exploreUrl").isNullOrBlank()) {
@@ -213,6 +213,27 @@ object SourceCodec {
 
         if (obj.boolean("webView") == true) {
             warnings += "标记了 webView：服务端没有 Android WebView，需要真浏览器过 JS 挑战/风控的站点在这里跑不通（体检会记为 needs_webview，不算坏）。"
+        }
+
+        /*
+         * 存得下、可编辑、导入不报错，但后端根本没有执行点的字段。
+         * 本机库实测（2026-11-13）：preUpdateJs 非空 36 条、formatJs 6 条、concurrentRate 42 条、
+         * webJs 8 条。静默会让用户以为「源坏了」或「服务端解析不了」，所以逐项说明。
+         */
+        val tocRule = obj["ruleToc"] as? JsonObject
+        if (!tocRule?.string("preUpdateJs").isNullOrBlank()) {
+            warnings += "配置了 ruleToc.preUpdateJs：本服务端不执行「更新目录前」的脚本。" +
+                "依赖它刷新目录地址（java.refreshTocUrl / java.reGetBook）的源，目录可能取不到或停在旧地址。"
+        }
+        if (!tocRule?.string("formatJs").isNullOrBlank()) {
+            warnings += "配置了 ruleToc.formatJs：本服务端不执行目录二次加工脚本，章名与章址按规则原样取。"
+        }
+        if (!obj.string("concurrentRate").isNullOrBlank()) {
+            warnings += "配置了 concurrentRate：本服务端只有全局并发限制，书源自带的并发/间隔不会生效。"
+        }
+        val contentRule = obj["ruleContent"] as? JsonObject
+        if (!contentRule?.string("webJs").isNullOrBlank()) {
+            warnings += "配置了 ruleContent.webJs：那是 Android WebView 取正文的入口，本服务端没有 WebView，该字段不执行。"
         }
 
         return warnings
