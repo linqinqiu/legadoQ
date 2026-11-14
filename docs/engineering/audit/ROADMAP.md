@@ -82,3 +82,4 @@
 - **P1-6 可关闭**：Models.kt 拆分 WIP 已以 `6a19f28` 提交（model/ 现存 7 个域文件，无 Models.kt），不再是「进行中」。
 - 目录/文档/脚本卫生线的整改计划在 `directory/08-RECOMMENDED-STRUCTURE.md`（阶段 A-D），与本路线图代码整改线并行。
 - **P0-3 已交付**（2026-11-14，`data/db/SchemaVersion.kt`）：`pragma user_version` + 有序迁移注册表 + 迁移与版本号同事务 + 失败阻启；现有库视为 v0、基线迁移回填 v1。判据 `SchemaVersionTest` 8 项（五类库 + 版本超前拒启 + 基线形状）。执行记录见 `PHASE2_PREFLIGHT_REPORT.md` §10.6。第二阶段剩余未开工项只有「第 5 项 沙箱与网络边界补测」。
+- **第 5 项（沙箱与网络边界补测）已交付**（2026-11-14，只补判据、未改行为）：① 审计 E 项收口 —— 宿主累计预算已在实现里（`BoundedJs.chargeHostBytes` + `JsSandbox(hostByteBudget)`），本轮补上审计要求的**前置枚举基线**（`JavaPackagesEntryBaselineTest`，反射枚举 43 类 / 98 入口 / 13 个仅构造类）；② `HttpSurfaceNegativeTest` 10 项负向判据覆盖 S-1（Cookie 例外只有一条路径宽）、S-2（备份条目名/快照恢复名/封面 key/内嵌资源名四类穿越）、S-3（错误响应不吐堆栈与绝对路径）。执行记录见 `PHASE2_PREFLIGHT_REPORT.md` §10.7。**第二阶段全部完成**。

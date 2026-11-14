@@ -407,3 +407,16 @@ Database.transaction { db -> ... }   // 深度计数：只有最外层设 autoCo
 | 测试 | 定向：`SchemaVersionTest` 8 + `MigrationTest` 9 + `DatabaseTest` 24 全绿；**全量回归 1,202 项 / 158 suite / 0 失败 / 0 跳过（4m44s）**，较上一轮 1,194 / 157 正好多出新增的 8 项 |
 | 文档 | `docs/ARCHITECTURE.md` 迁移策略段整段重写（原「没有 schema 版本号」已失效）、`docs/STATUS.md` 的 `data/db/` 组成补 `SchemaVersion` |
 | 遗留 | ① 旧字段一律不删（只标废弃），等后续版本再单开一步迁移；② 多进程同时升级不在支持范围（沿用单实例探测）；③ 「用户手改库把某列删了但版本号仍是 1」这类自伤不在兜底范围 —— 版本号说了算 |
+
+### 10.7 第 5 项 沙箱与网络边界补测 —— 已完成（只补判据，生产代码零改动）
+
+| 子项 | 内容 |
+| --- | --- |
+| P1-5 沙箱 E 项 | 预算层（`BoundedJs.chargeHostBytes` 累计 + `JsSandbox(hostByteBudget)` 单次）已在实现里并有 `JsSandboxHostBudgetTest`；**本轮补上审计要求的枚举式前置基线**：新增 `rules/JavaPackagesEntryBaselineTest`，反射构造 `JavaPackages` → 读 `CLASS_NAMES` → 逐类 `resolve()` → 枚举真实属性表，实测 **43 个类 / 98 个静态入口 / 13 个只能 new 的类**，与基线精确比对（增删都红）；另钉一份「带记账的入口名字必须还在」（改名导致记账静默丢失是最现实的死法） |
+| S-1 Cookie 例外 | 新增 `HttpSurfaceNegativeTest`：`POST /api/sources/{id}/login-cookie` 带非本书源 Origin → 403（`origin_not_allowed`）；兄弟路由 `DELETE /api/sources/{id}/login-header` 跨站仍 403（`cross_origin`，没被例外顺带放行）；`/login-cookie/` 带尾斜杠不得 2xx |
+| S-2 路径穿越 | 四类客户端给的「名字」逐个穿：备份保留条目名（`..%2F` / `%2E%2E%2F` / `....//`）、快照恢复名（`../legado.sqlite` 等三种）、封面 key（非 64 hex）、本地书内嵌资源（非法 bookId + `../` 路径）。另加两条单元级：`BackupStore.read/keep` 与 `CoverCache.file` 在「目录外真实存在一个文件」的前提下也必须拿不到 |
+| S-3 错误响应 | 抽验坏 JSON、未知端点、缺参数、上述各类拒绝路径的响应体：不含 `Exception` / `at io.legado` / `.kt:` / 绝对路径 / `SQLITE_` |
+| 判据有效性（变异验证） | 临时删掉 `BackupStore.read` 的路径剥离 → 对应用例红；临时删掉 `CoverCache.file` 的 64 位 hex 校验 → 对应用例红；两处均改回后复绿。**证明这些判据不是摆设** |
+| 测试 | 新增 15 项（`HttpSurfaceNegativeTest` 11 + `JavaPackagesEntryBaselineTest` 4）；后端全量 **1,217 项 / 160 suite / 0 失败 / 0 跳过**（5m59s，较上轮 1,202/158 多出的正是这 15 项） |
+| 文档 | `product/docs/rules-sandbox-audit.md` §3 E 项改为已修（写明预算层 + 枚举基线）、§4 判据表补三行 |
+| 遗留 | ① 枚举基线钉的是「入口名字与类清单」，钉不住「实现里还在记账」的语义 —— 真正的语义判据要等预算层加上「每个入口必须声明记账点」的元数据；② 全量跑要 ~6 分钟且对内存敏感，本机并发跑别的 JVM 任务会 `insufficient memory` 打挂 test executor（本轮撞到一次，停服并降 `-Xmx1g --max-workers=2` 后复跑通过） |

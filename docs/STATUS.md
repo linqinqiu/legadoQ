@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,202 项全绿（158 个 suite，0 失败 0 跳过，P0-3 落地后重跑）**；前端 **1,157 项全绿（146 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
+> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,217 项全绿（160 个 suite，0 失败 0 跳过，第 5 项补测落地后重跑）**；前端 **1,157 项全绿（146 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -163,6 +163,14 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - **失败即阻启**：迁移动作与版本号在同一笔事务里，任一步抛错整步回滚、版本不变、启动失败并给出「停在 vN、已回滚、可重试」的错误；库版本高于程序支持的版本时直接拒绝启动（防程序降级后按旧代码解释新库）。
 - **判据**：`data/db/SchemaVersionTest.kt` 8 项，按五类库逐个钉（全新 / 已最新 / 旧库逐级 / 中途失败可重试 / 万级数据），另加「版本超前拒启」与「基线一步补齐六段形状」。`MigrationTest` 原 9 项零回归。
 - 详见 `docs/engineering/audit/PHASE2_PREFLIGHT_REPORT.md` §10.6；迁移策略段落已重写为现行实现（`docs/ARCHITECTURE.md` §5）。
+
+### 6.5 沙箱与网络边界补测（2026-11-14；仓库版本仍为 0.2.42 / build 55）
+
+- **只补判据，不改行为。** 第二阶段第 5 项的目标是「把已经防住的东西钉住」，所以这一轮生产代码一行没动。
+- **沙箱宿主预算收口（审计 E 项）**：累计预算与单次预算本来就在实现里（`BoundedJs.chargeHostBytes` / `JsSandbox(hostByteBudget=…)`），缺的是审计要求的前置判据 —— 现在用 `JavaPackagesEntryBaselineTest` 反射枚举出 `JavaPackages` 真正暴露的东西（43 个类 / 98 个静态入口 / 13 个只能 new 的类），与基线精确比对。以后加一个入口却忘了记账，判据会先红。
+- **网络边界负向判据**：`HttpSurfaceNegativeTest` 10 项 —— 书源登录 Cookie 同步的那个跨站口子必须只有一条路径宽（兄弟路由 `login-header` 跨站照样 403）；备份条目名 / 快照恢复名 / 封面 key / 本地书内嵌资源名这四类由客户端给的文件名都穿不出目录；错误响应里不许出现堆栈、异常类名与绝对路径。
+- 判据有效性做过**变异验证**：临时去掉 `BackupStore.read` 的路径剥离、去掉 `CoverCache.file` 的 64 位 hex 校验，对应用例各红一次，改回后复绿（说明它们不是摆设）。
+- 详见 `docs/engineering/audit/PHASE2_PREFLIGHT_REPORT.md` §10.7；判据清单见 `product/docs/rules-sandbox-audit.md` §4。
 
 ---
 
