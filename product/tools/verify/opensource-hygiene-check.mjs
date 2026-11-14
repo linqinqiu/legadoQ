@@ -14,29 +14,31 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { ROOT } from './env.mjs'
+import { ROOT, REPO_ROOT } from './env.mjs'
 
 const results = []
 // note=true 的行**只报不计红**：那是"等人拍板"的口径问题，不是代码坏了；
 // 但必须打印出来，否则下次没人记得它存在。
 const check = (name, ok, detail = '', note = false) => results.push({ name, ok: note ? null : !!ok, detail })
 
-const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT })
+// S-10：扫描面是**整个仓库**（此前 cwd=ROOT=product/ 只扫 product/ 子树，
+// 根 scripts/ 里的硬编码盘符死脚本永远漏检）。路径一律仓库根相对。
+const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: REPO_ROOT })
   .toString('utf8').split('\0').filter(Boolean)
   // 只看在盘的：删掉但还没 `git rm` 暂存的文件不该让扫描崩掉（那种"已删待提交"由下面单独一条断言管）
-  .filter(file => fs.existsSync(path.join(ROOT, file)))
+  .filter(file => fs.existsSync(path.join(REPO_ROOT, file)))
 
-/** 归档目录允许写历史，其余可分发面一律不许带这些形状。 */
-const ARCHIVE = /^(docs\/(sessions|acceptance|proposals|decisions)\/|CHANGELOG\.md$|AGENTS\.md$)/
+/** 过程记录/归档允许写历史（带日期快照），其余可分发面一律不许带这些形状。 */
+const ARCHIVE = /^(docs\/(sessions|research|archive|engineering|acceptance|proposals|decisions)\/|CHANGELOG\.md$|AGENTS\.md$|CLAUDE\.md$|GEMINI\.md$|\.cursorrules$|product\/docs\/(restructure\/|architecture-audit\.md|rules-sandbox-audit\.md|rule-processor-migration-plan\.md|待定功能\.md))/
 const isArchive = file => ARCHIVE.test(file)
-const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8')
+const read = file => fs.readFileSync(path.join(REPO_ROOT, file), 'utf8')
 
 const rules = [
   {
     name: '没有个人盘符路径（C:\\Users\\张三、E:\\Backup 这类真目录）',
     // `<用户>` / `%USERPROFILE%` 这种占位写法是**该用的**（解释 Windows 行为时绕不开），不算残留
     pattern: /[A-Za-z]:[\\/](Users|Backup|Projects|Apps|Downloads)[\\/](?![<%])[^\s"'`、）)]/,
-    exempt: ['scripts/runtime.mjs', 'start.mjs', 'stop.mjs'],
+    exempt: ['product/scripts/runtime.mjs', 'product/start.mjs', 'product/stop.mjs'],
     why: '示例位置要写成 `<数据目录>` 这类占位；别人的机器上没有你的目录树',
   },
   {
@@ -57,12 +59,12 @@ const rules = [
      */
     pattern: /\b(qinqiu|wfanan)\b/i,
     // 这份检测名单就写在门禁自己里，扫描时不跳过自身会自匹配成假红
-    exempt: ['tools/verify/opensource-hygiene-check.mjs'],
+    exempt: ['product/tools/verify/opensource-hygiene-check.mjs'],
   },
   {
     name: 'LICENSE 的版权持有者不许写成上游作者',
     pattern: /Copyright \(C\).*gedoor/,
-    only: /^LICENSE$/,
+    only: /^(product\/)?LICENSE$/,
   },
   {
     name: '没有个人镜像仓库 / 私有服务 ID 形状的字符串',
@@ -72,7 +74,7 @@ const rules = [
   {
     name: '可分发的"教程式"面不许提已删的认证（README / 配置 / 部署模板 / 脚本）',
     pattern: /ADMIN_PASSWORD|adminPassword|reset-password|LEGADO_SECURE_COOKIES|\/api\/auth|legado_session|X-CSRF-Token/i,
-    only: /^(README\.md|\.env\.example|compose\.yml|Dockerfile|\.github\/|computenest\/|scripts\/)/,
+    only: /^(product\/(README\.md|\.env\.example|compose\.yml|Dockerfile)|\.github\/|scripts\/|product\/scripts\/)/,
   },
   {
     name: '代码与配置里没有 WebDAV 残留（`/webdav`、`WebDav`、`webdav`）',
@@ -83,15 +85,15 @@ const rules = [
     // backup-page.test.ts 是 2026-10-01 这轮进来的：它断言的是"页面上不许再出现 WebDAV 字样"，
     // 于是它自己命中了这条扫描 —— 判据扫到的是**守卫的文本**，不是残留的功能（AGENTS §3：先问是判据旧了还是产品坏了）。
     exempt: [
-      'tools/verify/opensource-hygiene-check.mjs',
-      'tools/verify/backup-upload-check.mjs',
-      'tools/verify/backup-cookie-import-check.mjs',
-      'tools/verify/rss-check.mjs',
-      'tools/verify/source-editor-check.mjs',
-      'web/test/backup-page.test.ts',
+      'product/tools/verify/opensource-hygiene-check.mjs',
+      'product/tools/verify/backup-upload-check.mjs',
+      'product/tools/verify/backup-cookie-import-check.mjs',
+      'product/tools/verify/rss-check.mjs',
+      'product/tools/verify/source-editor-check.mjs',
+      'product/web/test/backup-page.test.ts',
       // 这条判据的职责就是"断言验收手册里不再出现已删功能的形状"，所以它的正则与注释里必须出现那些字面串。
       // 与上面几份负向测试同理（AGENTS：门禁扫到的是守卫的文本，那要进 exempt，不是把测试删掉）。
-      'web/test/AcceptanceFresh.test.ts',
+      'product/web/test/AcceptanceFresh.test.ts',
     ],
   },
   {
@@ -105,7 +107,7 @@ const rules = [
   {
     name: '根目录文档不引用 Android 端 `io.legado.app` 包路径（那是上游 App 的 API 文档形状）',
     pattern: /io\.legado\.app/,
-    only: /^[^/]+\.md$/,
+    only: /^(README\.md|product\/README\.md)$/,
   },
 ]
 
@@ -144,7 +146,7 @@ const walkKotlin = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e
 })
 const appSource = walkKotlin(kotlinRoot)
   .map(file => { try { return fs.readFileSync(file, 'utf8') } catch { return '' } }).join('\n')
-const readme = read('README.md')
+const readme = read('product/README.md')
 const declared = [...new Set([...readme.matchAll(/\/api\/[a-z0-9\-_/{}]+\w/gi)].map(m => m[0].replace(/\/$/, '')))]
 // 嵌套路由是**分段**写的：`route("agent") { get("/manifest") }` —— 源码里根本没有
 // 字符串 `"/agent/manifest"`。只找整串会把这些全判成悬空，等于让文档不敢写嵌套端点。
@@ -174,17 +176,17 @@ if (!declared.length) console.log('  NOTE README 里一条 /api/... 都没写 �
 
 
 // ── 许可证：文件要在，且不许把本项目版权记到别人名下 ──────────
-const licensePath = path.join(ROOT, 'LICENSE')
+const licensePath = path.join(REPO_ROOT, 'product/LICENSE')
 check('仓库根有 LICENSE', fs.existsSync(licensePath))
-const license = fs.existsSync(licensePath) ? read('LICENSE') : ''
+const license = fs.existsSync(licensePath) ? read('product/LICENSE') : ''
 // （版权持有者那条规则在上面按文件扫过，这里不再重复计一条）
-const pkg = JSON.parse(read('package.json'))
+const pkg = JSON.parse(read('product/package.json'))
 check('package.json 的 license 与 LICENSE 一致',
   /GPL-3/.test(String(pkg.license)) && /GNU GENERAL PUBLIC LICENSE/.test(license),
   `package.json=${pkg.license} · LICENSE 头=${license.split('\n')[0] ?? ''}`)
 
 // ── 版本号单一来源不许在部署面写死（Dockerfile 里钉死旧 jar 名会让构建直接坏）──
-const dockerfile = fs.existsSync(path.join(ROOT, 'Dockerfile')) ? read('Dockerfile') : ''
+const dockerfile = fs.existsSync(path.join(REPO_ROOT, 'product/Dockerfile')) ? read('product/Dockerfile') : ''
 check('Dockerfile 不写死带版本号的 jar 名', !/legado-\d+\.\d+\.\d+[^"]*\.jar/.test(dockerfile),
   (dockerfile.match(/legado-[^"\s]*jar/g) ?? []).join(' ') || '没有硬编码 jar 名')
 

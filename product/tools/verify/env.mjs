@@ -6,6 +6,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+/** 仓库根（product/ 的上一级）。卫生门禁等需要扫全仓的脚本用它，别只扫 product/ 子树。 */
+export const REPO_ROOT = path.resolve(ROOT, '..')
 export const OUT = process.env.LEGADO_VERIFY_OUT || path.join(ROOT, 'tools/verify/out')
 export const SHOTS = path.join(OUT, 'shots')
 export const TMP = process.env.LEGADO_VERIFY_TMP || fs.mkdtempSync(path.join(os.tmpdir(), 'legado-'))

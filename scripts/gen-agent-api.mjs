@@ -1,5 +1,7 @@
 // 脚本：gen-agent-api.mjs
 // 校验/补全 agent-api.json 契约文件的内部一致性。
+// **手动工具，非 CI 门禁**：门禁链是 version-check（版本）+ ApiCatalog.test.ts（契约↔路由双向）
+// + docs:api-check（文档生成）。加端点后用 --fix 补 count（docs:api 不改 count）。
 //
 // 职责（三重）：
 // 1. 补全 count 字段：agent-api.json 内的 endpoints 数量写入 count。
