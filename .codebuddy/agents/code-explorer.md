@@ -17,6 +17,7 @@ tools: Read, Grep, Glob, Bash
 3. **先 Grep/Glob 定位符号，再 Read 定向窗口**（offset/limit，≤150 行）。不要为了「了解」而广读。
 4. **先查 `AGENTS.md` 的 §8 速查表**——表里已列的位置直接引用，不要再探索。
 5. token 纪律优先于「全面」：宁可少给几个候选位置，也不要把全仓信息搬出去。
+6. **禁读区**：`docs/archive/**`、`product/data/**`（用户书库）、`**/build/**`、`node_modules/**`、`dist/**`、`*.jar`——只按关键词 grep 或列清单，绝不整读。
 
 ## 工作流程
 1. 拿到问题 → 先在 `AGENTS.md` §8 速查表里找（路径前缀：后端 `product/app/src/main/kotlin/io/legado/`、前端 `product/web/src/`）。找到就直接回，结束。
@@ -26,7 +27,7 @@ tools: Read, Grep, Glob, Bash
 5. 若事实不确定，明确写「未确认」并给 1–2 个待核实位置，不要编造。
 
 ## 反模式（绝不做）
-- 把 `ReaderScreen`(2402) / `RuleRunner`(2333) / `JsSandbox`(2066) 等整篇读出来贴给主代理。
+- 把 `ReaderScreen` / `RuleRunner` / `JsSandbox` 等大文件整篇读出来贴给主代理（行数会漂移，一律以符号定位）。
 - 长篇解释架构/流程。
 - 列出与问题无关的文件树。
 - 重复主代理已经知道的项目背景。

@@ -14,6 +14,24 @@ const check = process.argv.includes('--check');
 const template = readFileSync(templatePath, 'utf8');
 const drift = [];
 
+// 关键规则双向断言（S-2）：三份入口只钉「==模板」还不够——模板与 AGENTS.md 完整版
+// 之间也要防漂移。这里钉关键规则标记在两侧都存在；语义级一致仍靠改协议时人工对齐。
+const keyRules = [
+  ['禁读区', /docs\/archive/],
+  ['版本纪律', /BUILD_NUMBER/],
+  ['前端测试命令', /npm test|npm --prefix product\/web test/],
+  ['后端测试命令', /gradlew :app:test/],
+  ['AGENTS 指针', /AGENTS\.md/],
+];
+const agentsPath = join(root, 'AGENTS.md');
+let agents = '';
+try { agents = readFileSync(agentsPath, 'utf8'); } catch { /* 缺失算漂移 */ }
+const ruleDrift = [];
+for (const [label, re] of keyRules) {
+  if (!re.test(template)) ruleDrift.push(`模板缺「${label}」`);
+  if (!re.test(agents)) ruleDrift.push(`AGENTS.md 缺「${label}」`);
+}
+
 for (const name of targets) {
   const p = join(root, name);
   let cur = '';
@@ -28,7 +46,11 @@ if (check) {
     console.error(`[protocol] 漂移：${drift.join(', ')} 与 scripts/protocol-template.md 不一致。跑 \`npm run protocol:sync\``);
     process.exit(1);
   }
-  console.log('[protocol] OK：3 份入口与模板一致');
+  if (ruleDrift.length) {
+    console.error(`[protocol] 关键规则漂移：${ruleDrift.join('；')}。模板与 AGENTS.md 须同时包含这些规则。`);
+    process.exit(1);
+  }
+  console.log('[protocol] OK：3 份入口与模板一致，关键规则双向在位');
 } else {
   console.log('[protocol] 已同步 3 份入口');
 }
