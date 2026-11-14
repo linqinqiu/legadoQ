@@ -388,7 +388,7 @@ class BackupImportTest {
                         """[{"bookSourceUrl":"https://keep.example","bookSourceName":"本机筛过的源（备份里改了名）","enabled":true,"bookSourceGroup":"手机分组"},{"bookSourceUrl":"https://fresh.example","bookSourceName":"备份带来的新源","enabled":true}]""",
                     "bookGroup.json" to """[{"groupId":77,"groupName":"追更中"},{"groupId":88,"groupName":"完结"},{"groupId":0,"groupName":"默认分组"}]""",
                     "bookshelf.json" to
-                        """[{"name":"新书","author":"某作者","bookUrl":"https://keep.example/book/1","origin":"https://keep.example","tocUrl":"https://keep.example/book/1","groupId":77,"durChapterIndex":3,"durChapterTime":1782343455600},{"name":"没带组的书","bookUrl":"https://keep.example/book/2","origin":"https://keep.example","tocUrl":"https://keep.example/book/2"}]""",
+                        """[{"name":"新书","author":"某作者","bookUrl":"https://keep.example/book/1","origin":"https://keep.example","tocUrl":"https://keep.example/book/1","group":77,"durChapterIndex":3,"durChapterTime":1782343455600},{"name":"老格式书","bookUrl":"https://keep.example/book/3","origin":"https://keep.example","tocUrl":"https://keep.example/book/3","groupId":88,"durChapterIndex":2},{"name":"没带组的书","bookUrl":"https://keep.example/book/2","origin":"https://keep.example","tocUrl":"https://keep.example/book/2"}]""",
                 ),
             )
 
@@ -410,8 +410,37 @@ class BackupImportTest {
 
             val shelf = database.listBookshelf().first { it.name == "新书" }
             assertEquals(localGroup.id, shelf.groupId)
-            // 反向对照：备份里没带 groupId 的书必须落在「未分组」，不能被上一个条目的组号带跑
+            // 现行 Legado/MD3 写的是 group；老格式与部分兄弟包写 groupId，两个都要认
+            val finishGroup = groups.first { it.name == "完结" }
+            assertEquals(finishGroup.id, database.listBookshelf().first { it.name == "老格式书" }.groupId)
+            // 反向对照：备份里没带组号的书必须落在「未分组」，不能被上一个条目的组号带跑
             assertEquals(0L, database.listBookshelf().first { it.name == "没带组的书" }.groupId)
+        } finally {
+            database.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `backup import restores in-chapter position from durChapterPos`() {
+        val directory = Files.createTempDirectory("legado-backup-position")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        try {
+            database.initialize()
+            val archive = directory.resolve("backup.zip")
+            writeArchive(
+                archive,
+                mapOf(
+                    "bookshelf.json" to
+                        """[{"name":"有位置的书","bookUrl":"https://keep.example/book/9","origin":"https://keep.example","tocUrl":"https://keep.example/book/9","durChapterIndex":3,"durChapterPos":1234,"durChapterTime":1782343455600}]""",
+                ),
+            )
+            BackupImporter(database).import(archive)
+
+            val progress = database.getProgress("https://keep.example", "https://keep.example/book/9")
+            assertNotNull("备份带 durChapterPos 时必须落成章内位置", progress)
+            assertEquals(3, progress!!.chapterIndex)
+            assertEquals(1234, progress.charOffset ?: -1)
         } finally {
             database.close()
             directory.toFile().deleteRecursively()

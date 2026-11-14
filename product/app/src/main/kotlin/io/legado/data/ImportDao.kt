@@ -148,16 +148,21 @@ fun Database.importLibrary(entries: List<BackupShelfEntry>): LibraryImportResult
             }
             val progressed = entries.filter { it.chapterIndex > 0 && (it.sourceId to it.bookUrl) !in tombstoned }
             if (progressed.isNotEmpty()) {
+                // 备份只带章序号 + 章内字符偏移（durChapterPos），不带段落锚点与内容校验值。
+                // 备份进度更新时把这两个本机字段清空：留着旧锚点会指向旧内容，恢复后反而落错行。
                 db.prepareStatement("""
-                    insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,updated_at)
-                    values(?,?,?,?,0,?)
+                    insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,char_offset,updated_at)
+                    values(?,?,?,?,0,?,?)
                     on conflict(source_id,book_url) do update set
-                      chapter_url=excluded.chapter_url, chapter_index=excluded.chapter_index, updated_at=excluded.updated_at
+                      chapter_url=excluded.chapter_url, chapter_index=excluded.chapter_index,
+                      scroll_position=excluded.scroll_position, char_offset=excluded.char_offset,
+                      paragraph_anchor=null, position_checksum=null, updated_at=excluded.updated_at
                     where excluded.updated_at >= reading_progress.updated_at
                 """.trimIndent()).use { stmt ->
                     progressed.forEach { entry ->
                         stmt.setString(1, entry.sourceId); stmt.setString(2, entry.bookUrl); stmt.setString(3, "")
-                        stmt.setInt(4, entry.chapterIndex); stmt.setLong(5, if (entry.readAt > 0) entry.readAt else now)
+                        stmt.setInt(4, entry.chapterIndex); stmt.setInt(5, entry.chapterPos)
+                        stmt.setLong(6, if (entry.readAt > 0) entry.readAt else now)
                         stmt.addBatch()
                     }
                     progressApplied = stmt.executeBatch().sum()

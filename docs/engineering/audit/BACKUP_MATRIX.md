@@ -1,6 +1,6 @@
 # legadoQ 备份格式兼容矩阵（BACKUP_MATRIX）
 
-> 审计日期：2026-11-14 ｜ legadoQ：`main` @ `4291d30` + 当前未提交 WIP
+> 审计日期：2026-11-14 ｜ legadoQ：`main` @ `4291d30` + 后续整改提交
 > 性质：**只读兼容性审计**。未修改任何源码、配置或数据。
 > 对照基线：`LegadoTeam/legado` @ `330e606`（2026-11-01）、`HapeLee/legado-with-MD3` @ `97893ac`（2026-11-14）。
 > 方法：读上游 `help/storage/Backup.kt`、`Restore.kt` 与实体类，逐节逐字段对照 legadoQ 的 `BackupImporter.kt`、`BackupStore.kt`、`Schema.kt`。
@@ -10,8 +10,8 @@
 
 legadoQ 能**读进来** Legado 备份的六个核心节，但「读进来」不等于「恢复成可用数据」：
 
-1. **书架的 `group` 字段名读错**（读 `groupId`，上游写 `group`）——已用真实样本确认，**已在工作树修复，未提交**。原测试用了同一个错字段名，所以一直没发现。
-2. **章内阅读位置丢失**（`durChapterPos` 不读，`scroll_position` 固定写 0）——**已在工作树修复，未提交**。
+1. **书架的 `group` 字段名读错**（读 `groupId`，上游写 `group`）——已用真实样本确认，**已修复**（提交见本目录同批整改）。原测试用了同一个错字段名，所以一直没发现。
+2. **章内阅读位置丢失**（`durChapterPos` 不读，`scroll_position` 固定写 0）——**已修复**（提交见本目录同批整改）。
 3. **书签 / 高亮 / 阅读记录 / 搜索历史没有对应表**，只能原样留档，不能在 legadoQ 里使用。
 4. **没有导出**：兼容是单向的，用户离开 legadoQ 时无法带走数据。
 
@@ -73,10 +73,10 @@ MD3 在此基础上多写 8 个条目：`bookMarking.json`、`highlightTagRule.j
 | `coverUrl` / `customCoverUrl` | `cover_url`（后者作为回退） | ⚠️ 自定义封面被当成普通封面，原字段丢失 |
 | `origin` | 归一化成 `source_id` | ⚠️ 带注解的 origin 被合并 |
 | `originName` | 无 | ❌ |
-| **`group`** | **原读 `groupId`；现同时认 `group` 与 `groupId`** | ✅ 已修（未提交）：真实样本只有 `group`，无 `groupId` |
+| **`group`** | **原读 `groupId`；现同时认 `group` 与 `groupId`** | ✅ 已修：真实样本只有 `group`，无 `groupId` |
 | `durChapterIndex` | `chapter_index` | ✅ |
 | `durChapterTime` | `updated_at` / `last_read_at` | ✅ |
-| **`durChapterPos`** | **原不读；现映射到 `reading_progress.char_offset`** | ✅ 已修（未提交）：章内位置不再固定为 0 |
+| **`durChapterPos`** | **原不读；现映射到 `reading_progress.char_offset`** | ✅ 已修：章内位置不再固定为 0 |
 | `durChapterTitle` | 无 | ❌ 书架/进度不显示当前章名 |
 | `kind` | 只用来判「完结」 | ❌ 分类标签丢失 |
 | `customTag` | 无 | ❌ |
@@ -144,8 +144,8 @@ MD3 在此基础上多写 8 个条目：`bookMarking.json`、`highlightTagRule.j
 | 目标 | 现状 | 缺口 |
 | --- | --- | --- |
 | 书架书籍不丢 | ✅ 基本成立 | 同名同作者的书上游有唯一索引，legadoQ 按 `(source, bookUrl)`，可能多一条 |
-| 分组不丢 | ⚠️ 已修待提交 | `group` 已认；分组封面/排序/行为设置仍不导入 |
-| 阅读进度不丢 | ⚠️ 已修待提交 | 章序号与章内偏移都在；当前章名仍丢 |
+| 分组不丢 | ⚠️ 部分已修 | `group` 已认；分组封面/排序/行为设置仍不导入 |
+| 阅读进度不丢 | ⚠️ 部分已修 | 章序号与章内偏移都在；当前章名仍丢 |
 | 书源配置不丢 | ✅ | 排序丢 |
 | 替换规则不丢 | ⚠️ | `scopeSource` 丢 |
 | RSS 不丢 | ✅ | |
@@ -156,7 +156,7 @@ MD3 在此基础上多写 8 个条目：`bookMarking.json`、`highlightTagRule.j
 
 ## 6. 建议的兼容层切口（不改代码，只定边界）
 
-1. **先修字段名与位置**（已完成，未提交）：`group` → `group_id` 映射、`durChapterPos` → `char_offset`。这两项决定「换过来能不能接着读」。
+1. **先修字段名与位置**（已完成）：`group` → `group_id` 映射、`durChapterPos` → `char_offset`。这两项决定「换过来能不能接着读」。
 2. **再补表**：书签/高亮/阅读记录/搜索历史各自建表或并入现有表，否则永远是「留档不能用」。
 3. **最后做适配器**：现在 `BackupImporter` 是「解析 → 直接写 DAO」，没有中间模型。要支持 MD3/兄弟包的多套字段，需要 `BackupDocument` 中间层 + 每包一个 adapter；否则每加一个包就改一次 `shelfOf`。
 4. **导出与导入同时设计**：没有导出，兼容就是单向漏斗；适配器的字段映射应当双向复用。

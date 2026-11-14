@@ -459,7 +459,10 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             coverUrl = (book.text("coverUrl") ?: book.text("customCoverUrl"))?.takeIf { it.isNotBlank() },
             completed = book.text("kind")?.contains("完结") == true,
             chapterIndex = book.number("durChapterIndex")?.toInt() ?: 0,
-            phoneGroupId = book.number("groupId") ?: 0L,
+            chapterPos = book.number("durChapterPos")?.toInt()?.coerceAtLeast(0) ?: 0,
+            // 现行 Legado/MD3 的书架条目把组号写在 `group`（Book.group）；`groupId` 只出现在
+            // 早期兄弟包与老格式转换里。两个都认，否则真实备份导进来会全部落在「未分组」。
+            phoneGroupId = book.number("group") ?: book.number("groupId") ?: 0L,
             readAt = book.number("durChapterTime") ?: 0L,
         )
     }
