@@ -18,17 +18,20 @@ import java.util.zip.ZipFile
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import io.legado.data.Database
-import io.legado.data.importBookGroups
-import io.legado.data.importLibrary
-import io.legado.data.importReplaceRules
-import io.legado.data.importRssSources
-import io.legado.data.importSources
+import io.legado.data.importBookGroupsOn
+import io.legado.data.importLibraryOn
+import io.legado.data.importReplaceRulesOn
+import io.legado.data.importRssSourcesOn
+import io.legado.data.importSourcesOn
 import io.legado.data.setCookieForUrl
 import io.legado.decodeTextAuto
 import io.legado.model.BackupImportSummary
 import io.legado.model.BackupShelfEntry
+import io.legado.model.ImportResponse
 import io.legado.model.KeptBackupEntry
+import io.legado.model.LibraryImportResult
 import io.legado.model.ReplaceRule
+import io.legado.model.ReplaceRuleImportResponse
 import io.legado.source.SourceCodec
 
 /**
@@ -79,6 +82,12 @@ internal object BackupAes {
 class BackupImporter(private val database: Database, private val keep: BackupStore? = null) {
 
     /**
+     * 测试用失败注入：按步骤名在落库前抛错，用来验证「六步里任何一步失败，六个域全部回滚」。
+     * 只给测试看，默认 null；不做成运行时开关（安全边界不靠配置）。
+     */
+    internal var stepHook: ((String) -> Unit)? = null
+
+    /**
      * 认两种容器：手机导出的 zip，以及兄弟项目/分享链接常见的**裸 JSON**
      * （书源数组、`{bookSource:[…],bookshelf:[…]}` 这类合并导出）。
      *
@@ -120,7 +129,9 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
          * 兄弟项目（MD3 / Max / Night-Reader…）正是在这些个性化条目上各有各的扩充，
          * 只要名字在 [BackupStore.KEEP_NAMES] 里就原样收下，不因为多了几节就整包拒收。
          */
-        val kept = LinkedHashMap<String, KeptBackupEntry>()
+        // 个性化条目先只登记、不落盘：等整批事务提交成功再写文件。
+        // 以前在解析阶段就 keep.keep()，数据库回滚了文件却已经在数据目录里 —— 半套状态。
+        val pendingKeeps = mutableListOf<Pair<String, String>>()
         if (keep != null) {
             val handled = (SOURCE_NAMES + RULE_NAMES + SHELF_NAMES + COOKIE_NAMES + GROUP_NAMES + RSS_NAMES)
                 .map { it.lowercase() }.toSet()
@@ -129,12 +140,11 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
                 val lower = name.lowercase()
                 if (lower in handled || lower in KEEP_EXCLUDED) continue
                 val text = runCatching { readEntry(zip, entry) }.getOrNull() ?: continue
-                if (!keep.keep(name, text)) continue
-                kept[lower] = keptEntry(name, text)
+                pendingKeeps += name to text
             }
         }
 
-        commit(sources, rules, shelf, groups, rss, present, kept) {
+        commit(sources, rules, shelf, groups, rss, present, pendingKeeps) {
             // 书源先落库，凭据再进全局桶
             importCookies(zip, entries, password)
         }
@@ -163,7 +173,8 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         val groups = mutableListOf<Pair<Long, String>>()
         val rss = mutableListOf<String>()
         val cookieRows = mutableListOf<CookieRow>()
-        val kept = LinkedHashMap<String, KeptBackupEntry>()
+        // 同 importZip：只登记，事务提交成功后才落盘。
+        val pendingKeeps = mutableListOf<Pair<String, String>>()
 
         for (entry in elements) {
             val obj = entry.value as? JsonObject ?: continue
@@ -183,8 +194,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
                     } ?: continue
                     if (keep == null) continue
                     val raw = entry.value.toString()
-                    if (!keep.keep(keepName, raw)) continue
-                    kept[keepName.lowercase()] = keptEntry(keepName, raw)
+                    pendingKeeps += keepName to raw
                 }
             }
         }
@@ -196,15 +206,15 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             if (groups.isNotEmpty()) add("bookgroup.json")
             if (rss.isNotEmpty()) add("rsssources.json")
             if (cookieRows.isNotEmpty()) add("cookies.json")
-            addAll(kept.keys)
+            addAll(pendingKeeps.map { it.first.lowercase() })
         }
         require(sources.isNotEmpty() || rules.isNotEmpty() || shelf.isNotEmpty() || groups.isNotEmpty() ||
-            rss.isNotEmpty() || cookieRows.isNotEmpty() || kept.isNotEmpty()) {
+            rss.isNotEmpty() || cookieRows.isNotEmpty() || pendingKeeps.isNotEmpty()) {
             "不是可识别的 Legado 备份：JSON 里没有书源 / 替换规则 / 书架 / RSS 订阅源 / 分组 / 登录凭据，" +
                 "也没有能收下的个性化条目"
         }
 
-        return commit(sources, rules, shelf, groups, rss, present, kept) {
+        return commit(sources, rules, shelf, groups, rss, present, pendingKeeps) {
             if (cookieRows.isEmpty()) CookieOutcome(0, null) else applyCookies(cookieRows)
         }
     }
@@ -212,6 +222,10 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
     /**
      * 所有落库与结果汇总只有这一份实现，zip 与裸 JSON 两条入口共用 ——
      * 以前兄弟备份只差几个条目名，没必要让两条路径各写一遍导入顺序。
+     *
+     * **落库是一整笔事务**：六步里任何一步抛错，六个域一起回到导入前，不会再出现
+     * 「书源进去了、书架没进去」。个性化条目（[BackupStore]）是磁盘副作用，只能在
+     * 事务提交成功之后写 —— 库回滚了文件却留着，等于给用户半套恢复结果。
      */
     private fun commit(
         sources: List<String>,
@@ -220,17 +234,37 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         groups: List<Pair<Long, String>>,
         rss: List<String>,
         present: Set<String>,
-        kept: Map<String, KeptBackupEntry>,
+        pendingKeeps: List<Pair<String, String>>,
         cookies: () -> CookieOutcome,
     ): BackupImportSummary {
-        val sourceResult = database.importSources(sources)
-        val ruleResult = database.importReplaceRules(rules)
-        // 分组必须先落库：书架条目上的 groupId 是手机那侧的号码，要经这张映射换成本机号，
-        // 否则会把本机同号的另一个组（往往是「本地」）当成目标，书就悄悄归错组了。
-        val groupMap = database.importBookGroups(groups)
-        val library = database.importLibrary(shelf.map { it.copy(groupId = groupMap[it.phoneGroupId] ?: 0L) })
-        val rssResult = database.importRssSources(rss)
-        val cookieOutcome = cookies()
+        var sourceResult = ImportResponse(0, 0, 0, emptyList())
+        var ruleResult = ReplaceRuleImportResponse(0, 0, 0, 0)
+        var groupMap: Map<Long, Long> = emptyMap()
+        var library = LibraryImportResult(0, 0, 0)
+        var rssResult = ImportResponse(0, 0, 0, emptyList())
+        var cookieOutcome = CookieOutcome(0, null)
+        database.transaction { db ->
+            stepHook?.invoke("sources")
+            sourceResult = database.importSourcesOn(db, sources)
+            stepHook?.invoke("rules")
+            ruleResult = database.importReplaceRulesOn(db, rules)
+            // 分组必须先落库：书架条目上的 groupId 是手机那侧的号码，要经这张映射换成本机号，
+            // 否则会把本机同号的另一个组（往往是「本地」）当成目标，书就悄悄归错组了。
+            stepHook?.invoke("groups")
+            groupMap = database.importBookGroupsOn(db, groups)
+            stepHook?.invoke("library")
+            library = database.importLibraryOn(db, shelf.map { it.copy(groupId = groupMap[it.phoneGroupId] ?: 0L) })
+            stepHook?.invoke("rss")
+            rssResult = database.importRssSourcesOn(db, rss)
+            stepHook?.invoke("cookies")
+            cookieOutcome = cookies()
+        }
+        // 缓存只在提交成功后失效：回滚时库里没变，清缓存纯属白做。
+        database.invalidateSourceCaches()
+        val kept = pendingKeeps.mapNotNull { (name, text) ->
+            if (keep?.keep(name, text) == true) keptEntry(name, text) else null
+        }
+        val keptNames = kept.map { it.name.lowercase() }.toSet()
         return BackupImportSummary(
             sources = sourceResult.imported,
             sourcesUpdated = sourceResult.updated,
@@ -245,8 +279,8 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             bookGroups = groupMap.size,
             rssSources = rssResult.imported,
             rssSourcesUpdated = rssResult.updated,
-            skippedSections = (KNOWN_BUT_UNSUPPORTED - kept.keys.toSet()).filter { it in present }.sorted(),
-            keptSections = kept.values.sortedBy { it.name.lowercase() },
+            skippedSections = (KNOWN_BUT_UNSUPPORTED - keptNames).filter { it in present }.sorted(),
+            keptSections = kept.sortedBy { it.name.lowercase() },
             errors = sourceResult.errors + rssResult.errors,
         )
     }
