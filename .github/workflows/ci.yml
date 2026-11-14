@@ -87,6 +87,7 @@ jobs:
       - name: Typecheck & Build
         run: |
           npm --prefix web run check
+          npm --prefix web run check:test
           npm --prefix web run build
 
       - name: Run Web Test Suite
@@ -94,20 +95,5 @@ jobs:
         # 否则 tsconfig 找不到、JSX 回落 classic 编译，报的是"React is not defined"这种假错。
         run: npm --prefix web test
 
-  # 版本号只有一个真源（app/build.gradle），其余全是抄本。历次漂移（README、VERSION、
-  # package.json 集体滞后）都发生在这里 —— 所以放 PR 阶段比，而不是等打 Tag 才发现发不出去。
-  version-consistency:
-    name: Version Single Source
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Check version consistency
-        run: node scripts/version-check.mjs
+  # 版本抄本一致性（scripts/version-check.mjs）由 contract.yml 的 doc-gate 负责
+  # （push main + 全分支 PR 都覆盖），这里不再重复跑（S-18 去重）。

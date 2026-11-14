@@ -1,9 +1,9 @@
 # 框架守门（契约多把锁）
 #
-# 钉死"框架只立稳固钩子、内容交外部"这条硬约束，四把锁各自盯一段：
-#   前端双锁 —— product/web/test/ApiCatalog.test.ts（端点总数与分组数的绝对计数断言，
-#                外加 AI 自定义接入 8 条）+ FrameworkHasNoContent.test.ts（内容→框架方向，
-#                容器不许反向依赖）
+# 钉死"框架只立稳固钩子、内容交外部"这条硬约束，各把锁分工：
+#   前端双锁 —— product/web/test/ApiCatalog.test.ts（端点契约 ↔ 代码路由双向核对）
+#                + ArchitectureBoundary.test.ts（依赖方向零基线 + 扫描器有效性守卫）。
+#                本子集入口 test/run-locks.ts；**全量套件在 ci.yml web-check**，不重复跑（S-18）。
 #   后端守门 —— :app:verifyFramework（plugin/ 容器不夹带具体功能 + 端点计数契约）
 #   文档第三锁 —— scripts/gen-api-reference.mjs --check（agent-api.json ↔ docs/API-REFERENCE.md）
 #   日志第四锁 —— scripts/changelog.mjs --check（有 feat/fix 提交却没进日志就红）
@@ -18,7 +18,7 @@
 # 文档抄一份就必然滞后（任何具体数字都是上一个抄本：权威值只看 ApiCatalog.test.ts 与 agent-api.json）。
 # 与本地一一对应：`npm --prefix product/web test`、`./gradlew :app:verifyFramework`、
 # `npm run docs:api-check`。
-name: 框架守门（契约双锁）
+name: 框架守门（契约六锁）
 
 on:
   push:
@@ -39,14 +39,13 @@ defaults:
 
 jobs:
   frontend-gate:
-    name: 前端双锁（计数断言 + 内容→框架方向）
+    name: 前端双锁（契约双向核对 + 依赖方向零基线）
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          # 全量历史：VersionTracks 那条判据要逐行复算 RELEASES.md 里的历史提交与 tag，
-          # 默认的 fetch-depth: 1 里那些对象根本不存在，会把整表判成"提交不存在"。
+          # 全量历史：ApiCatalog 的判据链可能复算历史提交；浅克隆省不了多少，保留全量。
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -60,8 +59,12 @@ jobs:
         # （这个 job 没有 JDK，必然红）。
         run: npm ci --prefix web --no-audit --no-fund
 
-      - name: 跑前端判据（含 ApiCatalog / FrameworkHasNoContent 双锁）
-        run: npm --prefix web test
+      - name: 跑双锁子集（ApiCatalog + ArchitectureBoundary）
+        # 全量套件在 ci.yml web-check，这里只跑契约级两把锁（S-18 去重）。
+        # cwd 必须是 web 包，否则 tsconfig 找不到。
+        run: |
+          cd web
+          npx tsx test/run-locks.ts
 
   changelog-gate:
     name: 更新日志不漏记（feat/fix 必须有用户可见条目）
