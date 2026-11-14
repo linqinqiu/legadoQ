@@ -22,7 +22,11 @@
 
 ## Windows 桌面程序
 
-桌面程序这一档**当前不在 Releases 上**（Releases 上现在只有 `legado.jar`、`legado-dist.zip` 与按版本号打的整合包 `legadoq-<版本>.zip`）。要桌面版就自己打一次：
+桌面程序**在 Releases 上**：每次发版（`v*` tag）CI 自动打 `legadoq-desktop-<版本>.zip` 并随
+`legado.jar`、`legado-dist.zip`、`SHA256SUMS` 一起上传（`.github/workflows/build-jar.yml` 的
+`desktop` job 跑在 `windows-latest`，`release` job 依赖它——桌面包没出来就不发版）；
+main 分支的滚动构建也出同名资产，但标记为预发布（Continuous Build），不占 Latest。
+整合包 `legadoq-<版本>.zip` 不在 CI 产物里，需要时本机打。要自己打桌面包：
 
 ```bash
 node scripts/package-desktop.mjs   # 需要 JAVA_HOME 指向带 jpackage/jlink 的 JDK（Temurin 17 即可）
@@ -204,7 +208,7 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     ServerConfig.kt · AppConfig.kt   环境变量到默认值
     StaticWeb.kt            界面静态资源挂载（同端口的 `/` 与 `/next`）
     BuildInfo.kt · DesktopLauncher.kt  版本清单 · 桌面壳（探端口、开浏览器、托盘退出）
-    http/                   Guard.kt 写操作同源闸门 · NetworkSecurity.kt · Routes.kt 装配点 + 按面拆组的 <面>Routes.kt（REST 与 WebSocket）· RouteCatalog.kt 端点契约（与 /api/catalog 双向核对）
+    http/                   Guard.kt 写操作同源闸门 · Routes.kt 装配点 + 按面拆组的 <面>Routes.kt（REST 与 WebSocket）· RouteCatalog.kt 端点契约（与 /api/catalog 双向核对）
     rules/                  RuleRunner.kt 规则执行（Rhino + Jsoup + JsonPath + XPath）· JsSandbox.kt · JsGuard.kt · RuleSplit.kt · RuleValue.kt · RuleNodeSelection.kt · ResponseBody.kt
     data/                   Database.kt 连接与建表 · <面>Dao.kt 各数据面（同包扩展）· SourceRepository.kt 书源编排
     reading/                ReadingRepository.kt 进度 / 阅读记录 / 笔记划线书签 / 章节窗口
@@ -215,7 +219,7 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     tts/                    EdgeTtsService.kt · TtsSessionService.kt 会话级连续音频流
     backup/                 BackupImporter.kt · BackupStore.kt · LegacyBackup.kt
     subscription/           SubscriptionService.kt 订阅同步
-    ops/                    LogService.kt · UpdateCheck.kt
+    ops/                    NetworkSecurity.kt 出站 SSRF 闸门 · PinnedProxy.kt 连接级 IP 固定 · GuardedHttpClient.kt · ProxyHeaders.kt · ServerIdentity.kt · LogService.kt · UpdateCheck.kt · Metrics.kt · UiPrefsStore.kt
     port/                   规则内核需要的窄接口（PortBundle 等），把 rules → data 的横穿收成一组访问器
     model/                  纯请求 / 响应数据类型，按系统、书源、发现、阅读、书架、替换规则、备份分文件
     ai/                     进程内 AI 网关：Agent.kt · AgentConnection.kt 句柄 · AgentRoutes.kt 薄收口 · LlmProvider.kt / ToolRegistry.kt / ConnectionSelector.kt 扩展点 · Guardrails.kt · BuiltinTools.kt（55 个内置工具）· McpBridge.kt · AgentCatalog.kt 契约
@@ -240,14 +244,14 @@ Dockerfile           多阶段构建（前端 + 服务端）
 
 ## 文档
 
+> 完整文档索引（唯一入口）在 [`../docs/README.md`](../docs/README.md)；下表只是产品侧快捷方式。
+
 | 想知道什么 | 看哪份 |
 | :--- | :--- |
 | 我的书源能不能跑、哪些字段真被执行、和上游 App 差在哪 | [`docs/compatibility.md`](docs/compatibility.md) |
 | 整体架构与模块边界 | [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) |
 | 部署（jar / Docker / Compose / 桌面程序） | [`docs/deploy.md`](docs/deploy.md) |
-| 让 AI 或脚本接进来（管书源、批量整理、走登录） | [`docs/agent-api.md`](docs/agent-api.md) · 机器可读的那份是 `GET /api/catalog` |
-| **AI 具体能干什么、怎么接一个模型、怎么给它加能力** | [`docs/agent-api.md`](docs/agent-api.md) |
-| 自定义接入面 `/api/agent/*`（外接模型、书源新建/校验、阅读理解） | [`docs/agent-api.md`](docs/agent-api.md) |
+| AI 接入：能干什么、怎么接模型、自定义接入面 `/api/agent/*` | [`docs/agent-api.md`](docs/agent-api.md) · 机器可读目录是 `GET /api/catalog` |
 | 插件 / 前端扩展契约（**已废弃**，插件系统已移除，仅历史参考） | [docs/plugin-framework.md](docs/plugin-framework.md) |
 | 写一个插件（**已废弃**；加工具用 `ai/ToolRegistry`） | [docs/plugin-development-guide.md](docs/plugin-development-guide.md) |
 | **反代书源**（自有中转服务访问目标站） | [docs/reverse-proxy-source-guide.md](docs/reverse-proxy-source-guide.md) |

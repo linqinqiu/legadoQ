@@ -32,7 +32,7 @@
 
 | 包 | 职责 |
 |---|---|
-| `http/` | 路由与 HTTP 边界：15 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；系统域（目录/服务/日志/诊断/关于/更新日志）独立成 `http/system/SystemRoutes.kt`；`Guard.kt`（同源写门）、`NetworkSecurity.kt`（出站 SSRF）、`RouteCatalog.kt`（端点目录）、`ProxyHeaders.kt` |
+| `http/` | 路由与 HTTP 边界：15 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；系统域（目录/服务/日志/诊断/关于/更新日志）独立成 `http/system/SystemRoutes.kt`；`Guard.kt`（同源写门）、`RouteCatalog.kt`（端点目录） |
 | `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 只是组合根（连接池 / 建表 / 迁移 / Cookie 工具四件事拆在 `data/db/`：`ConnectionPool` `Schema` `Migration` `CookieUtil`） |
 | `reading/` | 阅读域收口 `ReadingRepository`：进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口 |
 | `ai/` | 进程内 AI 网关：三种协议（OpenAI 兼容 / Responses / Anthropic）、流式 SSE、工具循环、连接与预设、技能库、内置工具与参数 schema、MCP 客户端（外部工具接入） |
@@ -43,8 +43,8 @@
 | `content/` | 正文净化与标题处理 |
 | `subscription/` | 书源订阅、RSS |
 | `tts/` | Edge TTS 与朗读会话 |
-| `ops/` | 日志、更新检查、备份等运维面 |
-| `backup/` | 备份包导入导出（zip 与裸 JSON，兼容兄弟项目扩展条目） |
+| `ops/` | 运维与出站面：`NetworkSecurity.kt`（出站 SSRF 闸门）、`PinnedProxy.kt`（连接级 IP 固定）、`GuardedHttpClient.kt`、`ProxyHeaders.kt`（反代头）、`ServerIdentity.kt`、`LogService.kt`、`UpdateCheck.kt`、`Metrics.kt`、`UiPrefsStore.kt` |
+| `backup/` | 备份包导入（zip 与裸 JSON，兼容兄弟项目扩展条目）；导出尚未支持 |
 | `model/` | 纯请求 / 响应 DTO，按系统、书源、发现、阅读、书架、替换规则、备份拆分为七个同包文件；不依赖其他领域实现 |
 
 桌面壳 `DesktopLauncher.kt` 负责窗口、启动画面、托盘与安装目录解析。插件装载机制已整体移除（代码里没有 `plugin/` 包），保留的是工具 / 协议 / 连接选择策略三类**运行时注册表**扩展点。
@@ -164,7 +164,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 |---|---|---|
 | ReaderScreen 未拆完 | 已拆出 TTS、目录（`ReaderCatalog`）、设置（`settingsPanel/`）、缓存状态与章节加载、笔记状态（`useReaderNotes`）、划线高亮（`NoteHighlights`）、正文画布（`ReaderBody`）、分页测量（`usePaginationMeasurement`）与跳转原语（`useReaderPositionJump`）；`ReaderScreen.tsx` 仍有 **2,346 行**，剩下的是跨模块状态编排与交互接线（段落点击 / 划词 / 图片放大 / 翻页落点） | 剩下这块是交互核心，拆它要先补交互判据，否则改坏了静态测试看不见 |
 | 后端覆盖率偏低的大包 | 2026-11-09 覆盖率快照：整体行覆盖 **70.04%**；最薄的是 `http`（2,388 行 49.3%）、`ai`（3,987 行 65.8%）、`tts`（601 行 56.6%） | `tts` 与 `data.db` 的纯逻辑部分已补到 56.6% / 89.8%；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
-| 书源宿主 API 与字段缺口 | 2026-11-13 按本机 5,600 条源实测：`java.t2s`/`s2t` 未实现（30 / 7 条源用，11 条在 `ruleContent`，正文整章失败）；`globalThis.environment` 全局缺失（1 条源）；`preUpdateJs` 36 / `formatJs` 6 / `concurrentRate` 42 / `webJs` 8 条非空但零执行，现已在校验里逐项告警 | 受影响的是具体源，不是整条链路；排序与证据见 `docs/research/研究-书源JS与字段缺口实测-2026-11-13.md` |
+| 书源宿主 API 与字段缺口 | 2026-11-13 按本机 5,600 条源实测：`java.t2s`/`s2t` 未实现（30 / 7 条源用，11 条在 `ruleContent`，正文整章失败）；`preUpdateJs` 36 / `formatJs` 6 / `concurrentRate` 42 / `webJs` 8 条非空但零执行，现已在校验里逐项告警。（`globalThis.environment` 已实现，2cdf9d8） | 受影响的是具体源，不是整条链路；排序与证据见 `docs/research/研究-书源JS与字段缺口实测-2026-11-13.md` |
 | 图标小尺寸清晰度 | 512 插画细分多，16–24px 仍糊；ICO 尺寸声明已修（按档渲染 16/24/32/48/64/128/256） | 任务栏/托盘辨识度（要根治得换扁平标记，待定） |
 | 可观测性 | 解析/规则求值/出站抓取已有分阶段耗时与失败率（`GET /api/diagnostics` 的 `stages`，运行日志页可展开）；前端已接 `fetchWithMetrics` 与 `pagination_measure`，但只有控制台 `__legadoPerf.report()`，没有界面与持久化 | 界面卡顿能取到原始数据，但仍靠控制台手查，没形成产品化观测 |
 | 发布链路 | 有打包脚本与手动发布，未做签名 | 产物未签名 |

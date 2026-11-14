@@ -1,7 +1,7 @@
 # 架构示意
 
 > 依据当前源码整理，只画已经存在的部分。**版本号以 `/healthz` 为准，端点以 `/api/catalog` 为准**
-> （`docs/API-REFERENCE.md` 由契约生成）。本文里的端点数与表数是 **2026-11-10 快照**，
+> （`docs/API-REFERENCE.md` 由契约生成）。本文里的端点数与表数最近核对于 **2026-11-14**，
 > 发版后可能变化；以 `product/docs/restructure/facts.md` 与 `docs:api-check` 的当次输出为准。
 > 接口清单见 [`API-REFERENCE.md`](API-REFERENCE.md)，目录职责见 [`STRUCTURE.md`](STRUCTURE.md)。
 >
@@ -29,14 +29,14 @@ flowchart LR
             LOCAL["localbook<br/>TXT / EPUB 解析与分章"]
             CACHE["cache<br/>整书缓存 / 封面代理"]
             TTS["tts<br/>Edge TTS 会话流"]
-            BACKUP["backup<br/>备份包导入导出"]
+            BACKUP["backup<br/>备份包导入"]
             SUB["subscription<br/>书源订阅 / RSS"]
             AGENT["ai<br/>Agent 工具与护栏"]
-            OPS["ops<br/>日志落库 / 更新检查"]
+            OPS["ops<br/>出站闸门 / 日志落库 / 更新检查"]
         end
 
         DB[("SQLite<br/>data/legado.sqlite · WAL<br/>代码建 21 张表")]
-        NETSEC["出站闸门<br/>http/NetworkSecurity.kt<br/>拒内网 / 链路本地 / 保留段"]
+        NETSEC["出站闸门<br/>ops/NetworkSecurity.kt + PinnedProxy.kt<br/>拒内网 / 链路本地 / 保留段 · 连接级 IP 固定"]
     end
 
     NET["外部站点<br/>书源 / RSS / TTS 接口"]
@@ -87,11 +87,11 @@ flowchart TB
         A4["StaticWeb.kt<br/>内置 SPA"]
     end
 
-    subgraph L2["HTTP 层"]
+    subgraph L2["HTTP 边界与出站闸门"]
         B1["Routes.kt 装配点<br/>+ 15 个 <组>Routes.kt<br/>全部 /api/* 与 WebSocket"]
         B2["Guard.kt<br/>同源写门"]
-        B3["NetworkSecurity.kt<br/>出站 SSRF 闸门"]
-        B4["ProxyHeaders.kt<br/>反代头"]
+        B3["ops/NetworkSecurity.kt<br/>出站 SSRF 闸门 + PinnedProxy"]
+        B4["ops/ProxyHeaders.kt<br/>反代头"]
         B5["RouteCatalog.kt<br/>/api/catalog 生成"]
     end
 
@@ -233,7 +233,7 @@ flowchart TB
 | 目录 | 职责 | 关键文件 |
 |---|---|---|
 | `product/app/src/main/kotlin/io/legado/` | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`AppConfig.kt`、`StaticWeb.kt`、`BuildInfo.kt`、`DesktopLauncher.kt` |
-| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、出站闸门、目录生成 | `Routes.kt` 装配点 + 15 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`PrefsRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`）、`Guard.kt`、`NetworkSecurity.kt`、`RouteCatalog.kt` |
+| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、目录生成 | `Routes.kt` 装配点 + 15 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`PrefsRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`）、`Guard.kt`、`RouteCatalog.kt` |
 | `product/app/src/main/kotlin/io/legado/rules/` | 规则解析与求值 | `RuleRunner.kt`、`RuleSplit.kt`、`RuleValue.kt`、`RuleNodeSelection.kt`、`ResponseBody.kt`、`JsSandbox.kt`、`JavaPackages.kt` |
 | `product/app/src/main/kotlin/io/legado/source/` | 书源、登录、体检、调试 | `SourceCodec.kt`、`SourceHealth.kt`、`SourceDebugger.kt`、`WebViewProxy.kt`、`ExternalBrowserLogin.kt` |
 | `product/app/src/main/kotlin/io/legado/content/` | 正文净化 | `ContentPipeline.kt`、`ContentProcessor.kt`、`LooseJson.kt` |
@@ -245,7 +245,7 @@ flowchart TB
 | `product/app/src/main/kotlin/io/legado/reading/` | 阅读域收口 | `ReadingRepository.kt`（进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口） |
 | `product/app/src/main/kotlin/io/legado/ai/` | 进程内 AI 网关 | `Agent.kt` 实现 · `AgentConnection.kt` 句柄 · `AgentRoutes.kt` 薄收口 · `LlmProvider.kt` / `ToolRegistry.kt` / `ConnectionSelector.kt` 扩展点 · `Guardrails.kt` · `BuiltinTools.kt` · `McpBridge.kt` · `AgentCatalog.kt` 契约 |
 | `product/app/src/main/kotlin/io/legado/port/` | 规则内核窄接口 | `PortBundle.kt`、`StorePorts.kt`（`rules/` 不直接依赖 `data/`） |
-| `product/app/src/main/kotlin/io/legado/ops/` | 日志与更新检查 | `LogService.kt`、`UpdateCheck.kt` |
+| `product/app/src/main/kotlin/io/legado/ops/` | 出站闸门与运维面 | `NetworkSecurity.kt`、`PinnedProxy.kt`、`GuardedHttpClient.kt`、`ProxyHeaders.kt`、`ServerIdentity.kt`、`LogService.kt`、`UpdateCheck.kt`、`Metrics.kt`、`UiPrefsStore.kt` |
 | `product/app/src/main/kotlin/io/legado/data/` | 建表、迁移、连接池 + 各数据面 | `Database.kt` 装配点 + 13 个 `<面>Dao.kt`（同包扩展函数）+ `SourceRepository.kt` |
 | `product/app/src/main/kotlin/io/legado/model/` | 纯请求 / 响应数据类型；按系统、书源、发现、阅读、书架、替换规则、备份分文件，同属 `io.legado.model` 包 | `SystemModels.kt`、`SourceModels.kt`、`DiscoveryModels.kt`、`ReadingModels.kt`、`BookshelfModels.kt`、`ReplaceRuleModels.kt`、`BackupModels.kt` |
 | `product/web/src/` | 内置 UI | `main.tsx` · `app/`（`AppHeader.tsx`、`pages.tsx`）· `features/`（reader/bookshelf/explore/source-editor/settings/ai/rss）· `plugins/`（about/backup/changelog/reading-log/source-health）· `components/` · `lib/`（`api/`、`nav.ts`、`pageMeta.ts`、`offlineStorage.ts` 等）· `ui/`（设计内核：`color/` `motion/` `material/` `theme/`）· `i18n/` |
@@ -606,9 +606,9 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 > 历史遗留：84 处路由里仍留着 `requireSameOriginWrite()` 的二次检查。它是幂等的、无害，但已经不是防线本身 —— 新路由**不需要**再调它。
 
-### 8.2 出站 SSRF 闸门（`http/NetworkSecurity.kt`）
+### 8.2 出站 SSRF 闸门（`ops/NetworkSecurity.kt`）
 
-`resolveAndValidateSafeHttpTarget(uri)`：协议必须是 http(s) → 解析域名（带 5 分钟 DNS 缓存）→ 逐个 IP 判：
+受控出站经 `ops/PinnedProxy.kt` 回环代理：解析一次 → 校验 → 连接同一个已校验地址（连接级 IP 固定，关闭 DNS 重绑定 TOCTOU 窗口，P0-2）。`resolveAndValidateSafeHttpTarget(uri)`：协议必须是 http(s) → 解析域名（带 5 分钟 DNS 缓存）→ 逐个 IP 判：
 
 - JDK 内建：anyLocal / loopback / linkLocal / siteLocal / `169.254.169.254`
 - 补洞：`0/8`、`100.64/10`（CGNAT）、`198.18/15`、`224/4` 组播、`240/4` 保留、IPv6 `fc00::/7` ULA、`ff00::/8`、`2001:db8::/32`

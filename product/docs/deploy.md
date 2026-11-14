@@ -1,5 +1,7 @@
 # 部署与运维
 
+> 最后核对：0.2.42 / 2026-11-14（发行资产口径以 `.github/workflows/build-jar.yml` 为准）
+
 这份文档说"怎么把它跑起来、怎么升级、跑坏了先看哪儿"。功能面看 [`../README.md`](../README.md)，
 内部结构看 [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)。
 
@@ -13,8 +15,9 @@
 | Docker | `docker build -f Dockerfile -t legadoq .` | 三段构建：node 打前端 → gradle 打服务端 → `eclipse-temurin:17-jre` | 容器内 `8080`，`LEGADO_HOST=0.0.0.0` | 有 NAS / 服务器的人 |
 | 源码 | `cd web && npm install && npm run dev` + `./gradlew :app:run` | 本机 JDK | dev server 5174 代理到 1234（可用 `LEGADO_PROXY_TARGET` 换） | 改代码的人 |
 
-**当前 Releases 上有的**：`latest`（流水线连续构建）给 `legado.jar` + `legado-dist.zip`；
-按版本号打的 tag 给 `legadoq-<版本>.zip` 与桌面版 `legadoq-desktop-<版本>.zip`。
+**当前 Releases 上有的**：正式版（`v*` tag）与滚动预发布（main 连续构建，不占 Latest）都给
+`legado.jar` + `legado-dist.zip` + `legadoq-desktop-<版本>.zip` + `SHA256SUMS` 四件。
+整合包 `legadoq-<版本>.zip` 不在 CI 产物里，是本机 `node scripts/package.mjs` 的产物。
 桌面包**在 CI 里打**：`.github/workflows/build-jar.yml` 的 `desktop` job 跑在 `windows-latest` 上，
 用 jlink + jpackage 出 `legadoq-desktop-<版本>.zip`，`release` job 依赖它 —— 桌面包没出来就不发版。
 本机要单独打时用 `node scripts/package-desktop.mjs`，产物落在 `dist/`。

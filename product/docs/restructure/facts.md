@@ -181,3 +181,22 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 **纪律**：不要把旧文档里的数字逐项改成新数字——那会让它们变成永远追不上 HEAD 的第二事实源。
 正确做法是在文档头加一行"写于 `<commit>`，规模数字已过期，以 `facts.md` 为准"。
+
+---
+
+## 7. 2026-11-14 采集（目录与文件资产审计轮）
+
+> 采集时点 HEAD `91aa457`（其后为文档整改提交，代码未动）。旧节数字不回改，现行数字以本节为准。
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| 对外版本 / 构建号 | 0.2.42 / 55 | `cat VERSION BUILD_NUMBER`；真源 `product/app/build.gradle` |
+| HTTP 端点 | 165 条 / 19 组 | `node -e "console.log(require('./product/app/src/main/resources/agent-api.json').count)"` |
+| 代码建表 | 21 张 | `grep -c 'create table if not exists' product/app/src/main/kotlin/io/legado/data/db/Schema.kt` |
+| Dao 文件 | **13 个**（data/ 顶层 19 文件含 Database/2 Repository/SessionCookies/DbSnapshot/StoreAdapters） | `ls product/app/src/main/kotlin/io/legado/data/*Dao*.kt \| wc -l`；「13→19 漂移」系误判，见 `docs/engineering/audit/directory/03-DOCUMENTATION-AUDIT.md` D-1 |
+| 后端测试 | 1,194 项 / 157 suite / 0 失败 | `product/app/build/test-results/test/*.xml` 求和（最新 2026-11-14T06:33Z，P0-2 交付时点 d503cf6） |
+| 前端测试 | 1,157 项 / 0 失败（约 24s） | `npm --prefix product/web test` 实跑（2026-11-14，6892d03 时点） |
+| 被跟踪文件 | 989 | `git ls-files \| wc -l`（含本轮新增审计 11 份） |
+| ops/ 包 | 9 文件（NetworkSecurity/PinnedProxy/GuardedHttpClient/ProxyHeaders/ServerIdentity/LogService/UpdateCheck/Metrics/UiPrefsStore） | `ls product/app/src/main/kotlin/io/legado/ops/` |
+
+本轮整改交付（代码侧，详见 `docs/engineering/audit/PHASE2_PREFLIGHT_REPORT.md` §10）：P0-4 AI 写闸（e534d8c）、P0-1 备份导入原子性（36140b5/9b6902d/772ade2）、P0-2 出站连接级 IP 固定（d503cf6）、备份 group/durChapterPos 字段修复（dfa1313）。P0-3 schema version 未开始。

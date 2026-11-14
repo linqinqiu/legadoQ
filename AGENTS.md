@@ -18,7 +18,7 @@
 
 ## 2. 常用命令（别乱试，跑这些）
 - 启动：`npm start`（→ `product/start.mjs`，端口 1234）
-- 前端测试（**node:test 自研 runner，不是 vitest**）：`npm --prefix product/web test`（全量约 1,056 项，~17s）。别用 `npx vitest`（扫不到 `web/test/**`）。
+- 前端测试（**node:test 自研 runner，不是 vitest**）：`npm --prefix product/web test`（全量约 20–40s，项数随源文件浮动，以当次实跑为准，数字真源 `product/docs/restructure/facts.md`）。别用 `npx vitest`（扫不到 `web/test/**`）。
 - 前端类型：`npm --prefix product/web run check`（`tsc -b`）
 - 覆盖率真源：`npm --prefix product run coverage`
 - 后端测试：`cd product && ./gradlew :app:test --no-daemon`（偶发 worker 崩溃：`./gradlew --stop` 后重跑；别与前端测试并发跑）
@@ -132,9 +132,9 @@
 | 入口 | `main.tsx`(733) |
 
 ### 8.6 测试（改完先跑对应门禁）
-- 后端：`app/src/test/kotlin/io/legado/`（142 个）——`RuleRunnerTest`(1439) · `ApiRoutesHttpTest`(756) · `E2EScenariosTest`(607) · `DatabaseTest` · `BackupImportTest` · `SourceLoginTest`
-- 前端：`web/test/`（134 个，node:test runner）——`ReleaseNotes`/`HealthTagVocabulary`/`VersionTracks`/`ArchitectureBoundary`
-- 跑法见 §2，勿逐文件试。
+- 后端：`app/src/test/kotlin/io/legado/`——`RuleRunnerTest` · `ApiRoutesHttpTest` · `E2EScenariosTest` · `DatabaseTest` · `BackupImportTest` · `SourceLoginTest`
+- 前端：`web/test/`（node:test runner）——`ReleaseNotes`/`HealthTagVocabulary`/`VersionTracks`/`ArchitectureBoundary`
+- 文件数/项数不抄这里（会漂移），以当次实跑与 `product/docs/restructure/facts.md` 为准。跑法见 §2，勿逐文件试。
 
 ## 9. 探索纪律（防止「疯狂读文件撑爆上下文」，工具无关）
 > 本仓库同时被多种 AI 工具使用（CodeBuddy / Qoder / Codex·Claude / Cursor / Gemini）。协议在 `CLAUDE.md`·`.cursorrules`·`GEMINI.md` 各放一份自包含精简版，加上本完整版（AGENTS.md），无论哪个工具加载都会先读到「别乱读」这条铁律。**三份精简版由 `scripts/protocol-template.md` 生成：改协议只改模板，再 `npm run protocol:sync`；`npm run protocol:check`（CI 已接）防三份漂移。** 下面是对所有工具通用的纪律：

@@ -1,6 +1,6 @@
 # 架构审计：三份外部重构报告的核对与"钉住现状"的六条纪律
 
-> 状态：**已落地**。本文记录的是对三份外部架构建议（Kototoro 规则内核端口化、ifc-lite 声明式 Widget 扩展、legado-with-MD3 Feature-first + convention plugin 等）逐条**拿仓库真实代码核对**后的结论，以及据此刻意保留、并由 `ArchitectureBoundaryTest` 钉住的六条边界。
+> 状态：**已落地**（写于 2026-11-11，commit `4a98ba1` 时点的快照）。本文记录的是对三份外部架构建议（Kototoro 规则内核端口化、ifc-lite 声明式 Widget 扩展、legado-with-MD3 Feature-first + convention plugin 等）逐条**拿仓库真实代码核对**后的结论，以及据此刻意保留、并由 `ArchitectureBoundaryTest` 钉住的六条边界。
 >
 > 判据文件：`app/src/test/kotlin/io/legado/ArchitectureBoundaryTest.kt`（零依赖，JUnit 4，单模块 `:app`）。取证方式：文件系统 + 实跑命令，非文档转述。
 >

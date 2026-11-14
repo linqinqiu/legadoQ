@@ -10,11 +10,12 @@
 | 形式 | `X.Y.Z` | 非负整数 |
 | 真源 | `product/app/build.gradle` 的 `version` | 仓库根 `BUILD_NUMBER` |
 | 谁看 | 用户、`/healthz`、关于页、发行 tag | 排查「同一版本、哪个包」 |
-| 何时变 | 对外发布前 | 每完成一项改动 |
+| 何时变 | 对外发布前 | 对外发布时（随 RELEASES 记账，日常提交不动） |
 
 对外版本只有一处真源。`scripts/version.mjs set-external` 会把 `app/build.gradle` 的号同步到 6 处抄本
 （三份 `package.json`、根 `VERSION`、`agent-api.json`、README 顶部），改完必须跑
-`npm --prefix product run version:check` 确认 7 处一致。
+`npm --prefix product run version:check` 确认 **8 处**一致——第 8 处是 `docs/STATUS.md` 的版本行，
+`set-external` 不写它，需手改。
 
 内部构建号不参与版本比较。`BUILD_NUMBER` 由 Gradle 的 `generateBuildInfo` 写进
 `meta/build-info.properties`，服务端从 classpath 读出后经 `/healthz` 与 `/api/about` 报给界面；
@@ -109,7 +110,7 @@ npm run release:dry
 npm run release
 ```
 
-它会依次：校验 7 处版本一致 → 校验 CHANGELOG 有 `## [0.2.11]` → 校验 tag 未存在、RELEASES 未记过
+它会依次：校验 8 处版本一致 → 校验 CHANGELOG 有 `## [0.2.11]` → 校验 tag 未存在、RELEASES 未记过
 → 向 `RELEASES.md` 追加一行「版本 | 构建号 | 当前 HEAD」 → 提交这条记录 → 在该提交上打
 `v0.2.11` 注释 tag → 推送分支与 tag。
 
@@ -165,7 +166,7 @@ curl -X POST -H "Authorization: token $TOKEN" \
 ## 5. 发布后核对
 
 ```bash
-node stop.mjs && node start.mjs --no-open
+npm run stop && npm start -- --no-open
 curl -s http://127.0.0.1:1234/healthz
 ```
 
@@ -175,7 +176,7 @@ curl -s http://127.0.0.1:1234/healthz
 ## 6. 发布清单
 
 - [ ] `BUILD_NUMBER` 已递增，且大于上一版记录的构建号
-- [ ] `version-check` 7 处一致
+- [ ] `version-check` 8 处一致（含手改的 STATUS.md 版本行）
 - [ ] CHANGELOG 有当前版本小节，小节顺序正确
 - [ ] 接口/兼容性/功能说明已同步
 - [ ] 前端 `check` 与全量判据通过

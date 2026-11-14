@@ -25,7 +25,8 @@
 | **图片与媒体** | 漫画逐图、音频、视频、文件直链 |
 | **朗读** | Edge TTS、自定义 HTTP 音频接口、浏览器语音；跨章连播、定时 |
 | **RSS** | 订阅源与文章读取 |
-| **备份** | Legado 备份包导入与导出 |
+| **备份** | Legado 备份包导入（含 AES 凭据解密）；导出尚未支持 |
+| **AI** | 模型连接（OpenAI 兼容 / Responses / Anthropic）、流式对话、内置工具、技能与提示词、MCP 外部工具 |
 | **系统** | 服务端口、运行日志等 |
 | **PWA** | 可安装到桌面，支持离线壳 |
 
@@ -52,6 +53,7 @@
 | `source.bookSourceComment` 中的脚本 | 支持 | 原文注入，可用 `eval` 执行 |
 | `Packages.*`、`JavaImporter`、`importPackage` | 支持（白名单） | 加解密、Base64、Hash、UUID、okhttp3 等；Java 反射禁用 |
 | `java.ajax`、`java.ajaxAll`、`cache`、`cookie()`、`jsLib` | 支持 | 远端 `jsLib` 会下载后求值；`ajaxAll` 按入参顺序返回 |
+| `java.t2s` / `java.s2t`（繁简转换） | 不支持 | 零实现，脚本调用直接失败（详见兼容性说明 §6） |
 | `ruleContent.imageDecode` | 支持 | 可返回 Base64 或 data URL |
 | 图片、音频、视频、文件源（`bookSourceType` 1–4） | 支持 | 按媒体类型展示与播放 |
 | 登录（`loginUrl`、`loginUi`、填表、Cookie） | 支持 | 五种入口；纯前端登录页需手动粘贴 Cookie |
@@ -85,7 +87,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 
 ## API
 
-- 端点总数：**165**（19 组），分组与逐条说明见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)。
+- 端点清单（分组与逐条说明）见 [`docs/API-REFERENCE.md`](docs/API-REFERENCE.md)，数量以契约为准。
 - 机器可读目录：`GET http://127.0.0.1:1234/api/catalog`。
 - 接入说明：[`product/docs/agent-api.md`](product/docs/agent-api.md)。
 

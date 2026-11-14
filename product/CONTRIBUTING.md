@@ -1,6 +1,6 @@
 # 贡献指南（指向权威版）
 
-> 权威版（英文，GitHub「Contribute」页展示）在仓库根 [`../.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md)。
+> 权威版（GitHub「Contribute」页展示）在仓库根 [`../.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md)。
 > 本文件只保留中文读者需要的**本地操作要点**，政策口径以权威版为准，避免双份维护。
 
 ## 环境要求
