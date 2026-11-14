@@ -36,11 +36,10 @@
 - [compatibility.md](../product/docs/compatibility.md) — 书源与格式兼容性
 - [reverse-proxy-source-guide.md](../product/docs/reverse-proxy-source-guide.md) — 反代书源操作手册
 
-**AI 与插件扩展**
+**AI 与扩展**
 
-- [plugin-framework.md](../product/docs/plugin-framework.md) — 插件框架（已废弃，仅历史参考）
-- [plugin-development-guide.md](../product/docs/plugin-development-guide.md) — 写一个插件（已废弃，仅历史参考）
-- [../product/docs/agent-api.md](../product/docs/agent-api.md) — `/api/agent/*` 自定义接入面
+- [../product/docs/agent-api.md](../product/docs/agent-api.md) — `/api/agent/*` 自定义接入面（**现行**扩展方式：内置工具 / LLM 协议 / 连接选择策略都在 `ai/` 注册）
+- 插件系统已移除（2026-10-26）：`plugin-framework.md` 与 `plugin-development-guide.md` 已归到 [`archive/plugins/`](archive/plugins/)，两份开头都有逐项核对表，说明文中路径与端点数为什么不能照着用
 
 **开发与验证**
 

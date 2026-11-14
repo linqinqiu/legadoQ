@@ -3,6 +3,19 @@
 > ⚠️ **已废弃（2026-10-26）**：插件系统已从 legadoQ 移除（用户决定「不再做插件」）。
 > 本文仅作历史资料保留；工具 / 钩子 / LLM 协议仍由 `ai/` 内置提供，但不再加载任何外部插件。
 
+> **2026-11-14 归档时逐项核对（结果写在这里，正文不回改）**：
+>
+> | 文中说的 | 现在的实际情况 |
+> |---|---|
+> | 后端插件目录 `app/src/main/kotlin/io/legado/plugin/`（`Plugin` / `PluginManager` / `EventBus` / `AppEvents`） | **整个包已不存在**。扩展点仍在，但住在 `ai/`：`ToolRegistry.kt`、`LlmProvider.kt` + `providerRegistry`、`ConnectionSelector.kt`、`ToolHooks.kt`；`Guardrails.kt` 管写操作闸门 |
+> | 前端契约目录 `web/src/extensions/registry.ts` | **该路径不存在**。当前的槽位宿主在 `web/src/plugins/`：`extensionRegistry.ts` / `slotRegistry.ts` / `attachmentStore.ts` + `ExtensionSlot.tsx`（`ReaderChrome` 挂了一个 `reader.toolbar.right` 槽）；**已无任何登记方**，槽位渲染为空 |
+> | 「插件不注册 HTTP 路由，`/api/catalog` 恒为 142 条端点」 | 端点数早改了：现为 **165 条 / 19 组**（`agent-api.json` 的 `count` 是唯一真源） |
+> | `PluginFrameworkHasNoContentTest` 钉住 `plugin/` 不 import 业务包 | 该判据随包一起消失；**边界判据仍在**：`FrameworkContractTest`（`@Tag("framework-contract")`）跑在 Gradle `verifyFramework`，并由 `check.dependsOn verifyFramework` 每次构建执行 |
+>
+> **仍然没变的两条**：① 现在要加能力（给 AI 加工具 / 接别家 LLM 协议 / 换连接选择策略）仍然**不注册 HTTP 路由**，走 `ai/` 的注册表；② 「承诺一个渲染不出来的能力」这个批评依旧成立 —— 前端槽位至今没有登记方，属未决策项（见 `docs/engineering/audit/directory/08-RECOMMENDED-STRUCTURE.md` 阶段 D「插件遗留」）。
+>
+> 现行扩展方式：`product/docs/agent-api.md`（`/api/agent/*`）+ `ai/` 三个注册表。
+
 > 本文件描述**框架本身**，不含任何具体插件。
 > 框架的定位：只提供"插件长什么样、怎么被发现、怎么被装进进程、怎么介绍自己"，
 > 装什么、做什么，完全由插件作者决定。

@@ -252,8 +252,7 @@ Dockerfile           多阶段构建（前端 + 服务端）
 | 整体架构与模块边界 | [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) |
 | 部署（jar / Docker / Compose / 桌面程序） | [`docs/deploy.md`](docs/deploy.md) |
 | AI 接入：能干什么、怎么接模型、自定义接入面 `/api/agent/*` | [`docs/agent-api.md`](docs/agent-api.md) · 机器可读目录是 `GET /api/catalog` |
-| 插件 / 前端扩展契约（**已废弃**，插件系统已移除，仅历史参考） | [docs/plugin-framework.md](docs/plugin-framework.md) |
-| 写一个插件（**已废弃**；加工具用 `ai/ToolRegistry`） | [docs/plugin-development-guide.md](docs/plugin-development-guide.md) |
+| 插件系统长什么样（**已移除**，仅历史参考） | [`../docs/archive/plugins/`](../docs/archive/plugins/)（两份文档开头都有逐项核对表：`io.legado.plugin.*` 已删，示例照抄编译不过；加能力走 `ai/ToolRegistry`） |
 | **反代书源**（自有中转服务访问目标站） | [docs/reverse-proxy-source-guide.md](docs/reverse-proxy-source-guide.md) |
 | 前端命名与文件组织规范 | [docs/frontend-conventions.md](docs/frontend-conventions.md) |
 | 门禁怎么跑、CI 里跑哪些 | [docs/gates-guide.md](docs/gates-guide.md) |

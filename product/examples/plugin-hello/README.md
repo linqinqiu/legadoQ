@@ -1,5 +1,14 @@
 # 示例插件：hello-plugin
 
+> ⚠️ **已废弃（2026-11-14）：这个示例现在编译不过，也装不进去。**
+> 插件装载机制已在 2026-10-26 整体移除，它引用的 `io.legado.plugin.Plugin` / `PluginManager`
+> 等类在主代码里一个都没有了 —— 拿到 `compileOnly files(frameworkJar())` 这一步就会失败。
+> 本文保留是因为里面那几条**踩坑经验**（Kotlin 版本要一致、依赖必须 `compileOnly`、
+> `io.legado.data` 是扩展函数要显式 import、jar 占用删不掉）对现在写 `ai/ToolRegistry` 工具
+> 依然成立，只是「插件」这个词要换成「内置工具」。
+> 现行做法见 `product/docs/agent-api.md`；本目录与 `plugins/` 空目录的去留是未决项
+> （`docs/engineering/audit/directory/07-DUPLICATES-AND-ORPHANS.md` O-1）。
+
 一个**真的能编译、能装载、能被 AI 调用**的最小插件。不是示意代码。
 
 它演示第一个插件最该先跑通的三件事：

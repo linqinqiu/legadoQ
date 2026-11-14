@@ -35,7 +35,7 @@
 也就是说：`<ExtensionSlot name="reader.toolbar.right" />` 这条链路
 「注册表 → 挂载 → 渲染」中间断在**注册**这一环。这不是 bug，是 2026-10-26
 「不再做插件」那次拆除的遗留物——契约被留下了，注册方全被删了
-（见 `product/docs/plugin-framework.md:3` 的废弃声明）。
+（见 `docs/archive/plugins/plugin-framework.md:3` 的废弃声明）。
 
 **复活外部装载的难点不在槽位**（槽位、挂载、订阅这套 97 行已经能跑），
 **而在槽位之外的四件事：发现、生命周期、失败隔离、可信边界。** 详见 §3.4。
@@ -292,12 +292,12 @@
 1. **6 个「内容」文件没有一个是插件。** 它们是 `pages/` 页面到浮层的**适配器**
    （`plugins/backup/BackupModal.tsx:1-4` 一个 import + 一个 `<BackupPage/>`），
    在 `main.tsx:16-21` 被静态 import。旧文档称它们「可独立卸载：
-   从 `plugins/index.ts` 的清单里删一行」（`product/docs/plugin-framework.md:250`），
+   从 `plugins/index.ts` 的清单里删一行」（`docs/archive/plugins/plugin-framework.md:250`），
    但**那个 `plugins/index.ts` 清单文件今天已不存在**（`ls plugins/*.ts` 只有 3 个契约文件）。
    所谓「删一行即可卸载」现在是**删一个 import + 一个 JSX 分支**（两处）。
 2. **存在一条方向违规**：`plugins/source-health/SourceHealthModalEntry.tsx:2`
    import `../../features/source-editor/SourceHealthModal`。
-   按旧教义（`plugin-framework.md:23-29`「依赖方向必须是内容 → 框架，
+   按旧教义（`docs/archive/plugins/plugin-framework.md:23-29`「依赖方向必须是内容 → 框架，
    `extensions/` 里出现任何 `import '../plugins/...'` 都是夹带」）的反向，
    框架侧 `plugins/` 不应 import 内容侧 `features/`。今天它确实这么做了。
    把 4 个契约搬进 `shell/extensions/` 后（§2.4 G 步），这条违规自动消解。
@@ -457,7 +457,7 @@ grep，命中 23 处，**全部**分布在 `plugins/` 4 个文件自身、`Reade
 **缺口 1：发现（Discovery）—— 谁把扩展摆到宿主面前**
 
 现状：**零**。没有 manifest 类型、没有清单文件、没有加载器。
-旧文档设想的入口 `web/src/extensions/registry.ts`（`plugin-framework.md:17`）
+旧文档设想的入口 `web/src/extensions/registry.ts`（`docs/archive/plugins/plugin-framework.md:17`）
 与清单 `plugins/index.ts`（`:250`）**两者都已不存在**。
 
 | 最小接口 | 建议落点 | 形状 |
@@ -617,10 +617,10 @@ manifest 声明它编译时针对的 `apiVersion`。**不做范围匹配**——
 > 任何能让宿主加载一个扩展的人，都能在**用户浏览器里、与 API 同源的上下文**中
 > 执行任意 JavaScript。
 
-这条与后端文档 `product/docs/plugin-framework.md:154-175`（§1.3a「`discoverFrom`
+这条与后端文档 `docs/archive/plugins/plugin-framework.md:154-175`（§1.3a「`discoverFrom`
 从目录加载 jar = 执行任意代码」）是**同一个形状，但前端的后果更重**。
 前提说明：**后端那套机制也已移除**——`product/app/src/main/kotlin/io/legado/plugin/`
-目录今天已不存在（`plugin-framework.md:3` 的废弃声明，`product/AGENTS.md` 亦确认
+目录今天已不存在（`docs/archive/plugins/plugin-framework.md:3` 的废弃声明，`product/AGENTS.md` 亦确认
 「插件装载已移除，代码里已无 `plugin/` 包」）。所以下表的左列是**历史形态**，
 它的价值在于：那套机制已经踩过的坑，前端装载器会**原样再踩一遍**。
 
@@ -813,7 +813,7 @@ export class HttpAudioTtsEngine implements ITtsEngine { ... }                // 
 先 `.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "")` **剥注释**，
 再 `trimStart()` 后**只保留以 `import ` 开头的行**（`:117-118`）。
 注释 `:105` 解释了为什么：「`import` 顶格才计，注释里的示例不误伤」。
-这一步是必要的——本仓库注释里大量出现 `import` 示例（如 `plugin-framework.md` 里的代码块、
+这一步是必要的——本仓库注释里大量出现 `import` 示例（如 `docs/archive/plugins/plugin-framework.md` 里的代码块、
 `ReaderScreen.tsx` 里的说明）。
 
 **前端要照搬的是这套形状，不是这套代码**。
@@ -1012,9 +1012,9 @@ test('styles.css 的 7 套 .theme-* 每套都必须定义全部 16 个令牌', (
 | 扩展契约 · 挂载表 | `product/web/src/plugins/attachmentStore.ts:14-19,25,27,46,58,67,72,77,87` |
 | 扩展契约 · 渲染 | `product/web/src/plugins/ExtensionSlot.tsx:16-22,24,26,38-40,43,45` |
 | 唯一槽位渲染点 | `product/web/src/features/reader/ReaderScreen.tsx:24,2479-2481` |
-| 插件框架废弃声明 | `product/docs/plugin-framework.md:3` |
-| 旧契约路径（已不存在） | `product/docs/plugin-framework.md:17,23-29,250` |
-| 后端任意代码警告 | `product/docs/plugin-framework.md:154-175` |
+| 插件框架废弃声明 | `docs/archive/plugins/plugin-framework.md:3` |
+| 旧契约路径（已不存在） | `docs/archive/plugins/plugin-framework.md:17,23-29,250` |
+| 后端任意代码警告 | `docs/archive/plugins/plugin-framework.md:154-175` |
 | 路由唯一来源 | `product/web/src/lib/pageMeta.ts:24-32,40-42`（原 `app/pageMeta.ts`，本轮移入 shared） |
 | 页面渲染分派 | `product/web/src/app/pages.tsx:2-11,23-41,43-83` |
 | 浮层状态机 | `product/web/src/lib/nav.ts:3,5,12-48`；`product/web/src/main.tsx:164-194,642-692` |

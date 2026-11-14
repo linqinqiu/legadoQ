@@ -114,7 +114,7 @@ curl -s -X POST http://127.0.0.1:1234/api/agent/sources \
 > （`options.default=1|true`，界面上「AI 模型连接」里的「设为默认」就是写这个标记），没有才退回文件里的第一条。
 > 无论选中哪一条，它不可达就直接报错，**不会自动顺延到下一个连接**（不做 failover 是刻意的）。
 > 想要按健康度挑选，实现一个 `ConnectionSelector` 注册进 `selectorRegistry` 并 `setDefault(...)`——
-> 注意是在代码里注册（插件装载机制已移除，`docs/plugin-framework.md` 描述的是历史机制）。
+> 注意是在代码里注册（插件装载机制已移除，`docs/archive/plugins/plugin-framework.md` 描述的是历史机制）。
 
 返回示例（外部命中）：
 ```json
@@ -843,7 +843,7 @@ class MyProvider : LlmProvider {
 ```
 
 注册入口是 `LlmProviderRegistry.register(...)`（`agent-api.json` 之外的运行时扩展点，不改框架源码）。
-`docs/plugin-framework.md` 写的是**已移除的插件装载机制**，只当历史设计看，别按它找"插件目录"。
+`docs/archive/plugins/plugin-framework.md` 写的是**已移除的插件装载机制**，只当历史设计看，别按它找"插件目录"。
 
 ### 4.3 加一个连接选择策略
 
@@ -891,4 +891,4 @@ val handle = agentConnection.hooks.before { meta, args ->
 | 自定义接入面细节 | `AGENTS.md` |
 | AI 框架内部结构 | `AGENTS.md` |
 | 协议 / 选择器 / 工具怎么扩展 | 直接看 `ai/LlmProvider.kt`、`ai/ConnectionSelector.kt`、`ai/ToolRegistry.kt` 的注册表 |
-| 插件装载（**已移除**） | `docs/plugin-framework.md`（历史设计文档，代码里已无 `plugin/` 包） |
+| 插件装载（**已移除**） | `docs/archive/plugins/plugin-framework.md`（历史设计文档，代码里已无 `plugin/` 包） |

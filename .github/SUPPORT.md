@@ -7,7 +7,7 @@
 - [Architecture Guide](../docs/ARCHITECTURE.md) - System design
 - [API Reference](../docs/API-REFERENCE.md) - All 165 endpoints
 - [AI Agent Guide](../product/docs/agent-api.md) - AI integration
-- [Plugin Development](../product/docs/plugin-development-guide.md) - Historical only (plugin system removed)
+- [Plugin system (archived)](../docs/archive/plugins/plugin-development-guide.md) - Historical only: the plugin system was removed; extend via `ai/ToolRegistry` instead
 
 ### 2. **Common Issues**
 

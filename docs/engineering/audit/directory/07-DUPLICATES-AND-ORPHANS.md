@@ -13,6 +13,13 @@
 | O-4 | `product/scripts/build-portable.mjs` | 全仓无调用方；产物路径漂进仓内 + rmSync；职责被 package.mjs/package-desktop.mjs 取代（S-11） | 退役 | 低 |
 | O-5 | typeset 分页簇：`web/src/features/reader/typeset/`（3 文件）+ `content/paginationCache.ts` + LayoutEngine.test.ts + PaginationCache.test.ts | 引用仅在簇内与两份测试；fontLibrary.ts:45 仅注释提及；ARCHITECTURE.md:494-497 自认「待决不是已交付」（核对报告 N-1） | **决策项**：接入生产或整簇删除。先量 ReaderScreen DOM 测量分页的性能缺口再定，不顺手删 | 中；删错会丢掉未来排版引擎的设计基础，决策须留记录 |
 
+**处置记录（2026-11-14，第三阶段「废弃插件文档清理」）**
+
+| # | 处置 | 证据 |
+|---|---|---|
+| O-1 | **已挂废弃横幅**（未出库，出库仍待属主拍板）：`product/plugins/README.md` 重写为「已废弃 + 现行两条加能力路径（`ai/ToolRegistry` / `LlmProvider` / `ConnectionSelector`）」；`product/examples/plugin-hello/README.md` 顶部加横幅说明「编译不过、装不进去」，但保留其中四条踩坑经验（Kotlin 版本 / `compileOnly` / 扩展函数要 import / jar 占用）。两份设计文档 `plugin-framework.md`、`plugin-development-guide.md` 已 `git mv` 到 `docs/archive/plugins/`，各加一张逐项核对表 | 核对：`io/legado/plugin/` 整包不存在；`registerExtension(` 全仓零调用；端点 165/19 而非文中的 142 |
+| 连带 | `docs/STATUS.md` 安全模型里那条 `LEGADO_PLUGIN_JAR_SCAN` 已改为「机制已移除、该变量不存在」；`docs/README.md`、`product/README.md`、`.github/SUPPORT.md`、`agent-api.md`、`restructure/frontend-host.md`、`restructure/root-split.md` 的引用全部改指归档位置 | `grep -rn "product/docs/plugin-"` 仅剩 `root-split.md:451` 的历史快照正文（该节已在其后追加收口注，正文按快照纪律不回改），其余零命中 |
+
 ## 2. 半死 / 职责重叠（保留但需收口）
 
 | # | 对象 | 证据 | 建议 |

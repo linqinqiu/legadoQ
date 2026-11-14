@@ -453,3 +453,14 @@ if (hits.length) { console.error('仍有迁移前路径引用：\n' + hits.join(
 3. `docs/STATUS.md` 仍文档化已从 Kotlin 源码中**完全移除**的 `LEGADO_PLUGIN_JAR_SCAN`，且写的版本是 0.2.14
    （外部真源是 `backend/build.gradle` 的 `version`）—— 已过时。
 4. `product/AGENTS.md` 含大段与实现不符的表述（如把 `plugins/` 描述为在用）。
+
+> **2026-11-14 收口（本节为历史快照，正文不回改）**：第 2、3 条的处置结果是「**不复活、按移除收口**」——
+> 插件装载机制没有回来，`io/legado/plugin/` 整包已删；`plugin-framework.md` 与
+> `plugin-development-guide.md` 已移到 `docs/archive/plugins/`（开头各加一张逐项核对表，写明
+> 文中路径与端点数为何不能照用），`docs/README.md`、`product/README.md`、`.github/SUPPORT.md`、
+> `agent-api.md` 与本文件里的引用同步改指归档位置。`docs/STATUS.md` 里那条
+> `LEGADO_PLUGIN_JAR_SCAN` 也已改为「机制已移除、该变量不存在」，不再作为可配置开关宣传。
+> 唯一仍未决策的是**前端槽位脚手架**（`web/src/plugins/extensionRegistry.ts` /
+> `slotRegistry.ts` / `attachmentStore.ts` / `ExtensionSlot.tsx`）：全仓已无任何 `registerExtension()`
+> 调用，`ReaderChrome` 挂的 `reader.toolbar.right` 槽渲染为空 —— 保留还是删除，见
+> `docs/engineering/audit/directory/08-RECOMMENDED-STRUCTURE.md` 阶段 D「插件遗留」。

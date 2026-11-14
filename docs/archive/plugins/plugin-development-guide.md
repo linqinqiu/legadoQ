@@ -3,6 +3,14 @@
 > ⚠️ **已废弃（2026-10-26）**：插件系统已从 legadoQ 移除，本文不再适用于当前版本。
 > 文中的端点计数等数字按写作时记录，不随代码回改；现行扩展方式见 `product/docs/agent-api.md`（`/api/agent/*`）与 `ai/` 内置工具。
 
+> **2026-11-14 归档时逐项核对（结果写在这里，正文不回改）**：
+>
+> - 文中 `import io.legado.plugin.*` / `class XxxPlugin : Plugin` / `PluginMetadata` 里的那些类型，**代码里已经一个都没有了**（`io/legado/plugin/` 整包已删）。照抄示例会直接编译不过 —— 这是本文最容易误导人的地方，所以单独写在这里。
+> - 想给 AI 加能力（本文 §2 那个「书架统计」例子）现在这么做：写一个 `Tool` 实现并注册进 `ai/ToolRegistry.kt`，用 `ToolMeta(id, group, description, writes = …)` 声明元数据（`writes = true` 的工具会自动过写操作确认闸）。接入面同 `/api/agent/*`，说明见 `product/docs/agent-api.md`。
+> - 想接别家 LLM 协议：实现 `ai/LlmProvider.kt` 的接口并注册进 `providerRegistry`；想换连接选择策略：实现 `ai/ConnectionSelector.kt` 的接口并注册。
+> - 「插件不注册 HTTP 路由 / 端点计数恒定」这句的历史值（142）已过期，现为 **165 条 / 19 组**。
+> - 前端那侧的 `plugins/index.ts` 装载清单同样不存在；现在的 `web/src/plugins/` 是**内置页面级浮层**（about / backup / changelog / reading-log / source-health），不是可外部装载的插件。
+
 > 目标：写一个 jar 丢进 `plugins/` 就能给 legadoQ 加能力 —— 不重编译主程序。
 > 本文所有代码都对着 `plugin/Plugin.kt` 的真实签名写，不是示意。
 

@@ -8,6 +8,8 @@
 - `研究-界面与AI借鉴.md` — 早期界面可塑性、悬浮层、MD3 与 AI 借鉴调研（原 6 份合并）
 - `RESEARCH-NOTES.md` — 研究纪要（架构速查、契约闸门、文档漂移对照）
 - `version-log-governance.md` — 版本与变更日志治理
+- `plugins/plugin-framework.md` — 已废弃的插件框架设计（2026-11-14 从 `product/docs/` 归档；开头有逐项核对表：文中路径与端点数全部过期，扩展点已搬进 `ai/`）
+- `plugins/plugin-development-guide.md` — 已废弃的插件开发教程（同上；示例代码里的 `io.legado.plugin.*` 类型已不存在，照抄编译不过）
 
 > 合并规则：同主题的历史快照按「原文拼接、H1 降级为分节」合并，内容不删只归类；每份开头标明「历史快照、数字以 facts.md 为准」。
 
