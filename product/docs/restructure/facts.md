@@ -200,3 +200,26 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | ops/ 包 | 9 文件（NetworkSecurity/PinnedProxy/GuardedHttpClient/ProxyHeaders/ServerIdentity/LogService/UpdateCheck/Metrics/UiPrefsStore） | `ls product/app/src/main/kotlin/io/legado/ops/` |
 
 本轮整改交付（代码侧，详见 `docs/engineering/audit/PHASE2_PREFLIGHT_REPORT.md` §10）：P0-4 AI 写闸（e534d8c）、P0-1 备份导入原子性（36140b5/9b6902d/772ade2）、P0-2 出站连接级 IP 固定（d503cf6）、备份 group/durChapterPos 字段修复（dfa1313）。P0-3 schema version 未开始。
+
+---
+
+## 8. 2026-11-14 21:10 复跑（卫生线阶段 C 收口后，HEAD `3a3d5d9`，工作树干净）
+
+> 上一节采集于 `91aa457`；本节是当前 HEAD 的实测，旧节不回改。**现行数字以本节为准。**
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| HEAD / rev | `3a3d5d9` / **324** | `git rev-parse --short HEAD`；`git rev-list --count HEAD` |
+| 对外版本 / 构建号 | 0.2.42 / 55 | `cat VERSION BUILD_NUMBER` |
+| 最近 tag | `v0.2.42` | `git tag --sort=-creatordate \| head -1` |
+| 后端源码 | **149 文件 / 36,704 行** | `find product/app/src/main/kotlin -name '*.kt'` + 行数求和（排除 build） |
+| 后端测试源码 | 157 文件 / 28,559 行 | `product/app/src/test/kotlin` |
+| 前端源码 | **217 文件 / 40,581 行** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \)` |
+| 前端测试文件 | 146 个（`web/test/*.test.ts`） | `ls product/web/test/*.test.ts \| wc -l` |
+| **后端测试实跑** | **1,194 项 / 157 suite / 0 失败 / 0 跳过** | `java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :app:test --no-daemon`，`BUILD SUCCESSFUL in 6m 22s`；`test-results/test/*.xml` 求和 |
+| **前端测试实跑** | **1,157 项 / 0 失败**（15.8s）+ `tsc -b` 通过 | `npm --prefix product/web test` |
+| HTTP 端点 | 165 条 / 19 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
+| 三条门禁 | `version:check`（8 处一致 0.2.42/55）、`docs:api-check`、`changelog:check` 全绿 | `npm --prefix product run …` |
+| 被跟踪文件 | 988 | `git ls-files \| wc -l` |
+
+**本机跑法提醒**：`./gradlew` 直接跑会 `ClassNotFoundException: org.gradle.wrapper.GradleWrapperMain`，必须走上面的 `java -classpath gradle/wrapper/gradle-wrapper.jar` 形式；后端全量必须设 `LEGADO_TEST_TMP=<仓库>/product/build/testtmp`。
