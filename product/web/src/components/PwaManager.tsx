@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Icon } from '../icons'
 import { Logo } from './Logo'
 import { registerServiceWorkerOnce } from '../lib/swRegistration'
+import { pushUiPref } from '../lib/uiPrefs'
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[]
@@ -176,6 +177,8 @@ export function PwaManager() {
     } catch {
       // ignore
     }
+    // 同步到服务端：localStorage 按 origin 隔离，换端口后这条提示会再弹一次。
+    pushUiPref('pwa-banner')
   }
 
   const showBanner = canInstall && !dismissedBanner && !isPwaStandalone() && !isDesktopShell()

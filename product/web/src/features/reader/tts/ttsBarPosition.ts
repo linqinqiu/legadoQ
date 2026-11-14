@@ -1,3 +1,4 @@
+import { pushUiPref } from '../../../lib/uiPrefs'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 
@@ -184,6 +185,8 @@ export function useTtsBarPosition(getElement: () => HTMLElement | null) {
           } catch {
             // 存不进去只是下次回到默认位置，不该打断正在读的书
           }
+          // 同步到服务端：localStorage 按 origin 隔离，换端口后朗读条会跳回默认位置。
+          pushUiPref('tts-bar-position')
         }
         return current
       })

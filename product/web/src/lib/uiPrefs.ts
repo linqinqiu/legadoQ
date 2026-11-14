@@ -17,19 +17,47 @@
 import { uiPrefs } from './api/domains/prefs'
 
 /** 需要跨 origin 赎回的键。新增一项就在这里加一条，并让对应模块在保存时调 `pushUiPref`。 */
-export type UiPrefKey = 'agreement' | 'wallpaper' | 'reader-settings'
+export type UiPrefKey =
+  | 'agreement'
+  | 'wallpaper'
+  | 'reader-settings'
+  /** 书架布局（网格 / 列表 / 紧凑） */
+  | 'shelf-layout'
+  /** 搜索结果的展示形态（三档同书架，但**各存各的**） */
+  | 'search-layout'
+  /** 书架卡片排序（用户拖出来的顺序） */
+  | 'shelf-sort'
+  /** 书源页左侧栏宽度 */
+  | 'sidebar-width'
+  /** 朗读条被拖到的位置 */
+  | 'tts-bar-position'
+  /** 书库搜索历史（最近 10 条） */
+  | 'search-history'
+  /** 「安装到桌面」提示条已被关掉 */
+  | 'pwa-banner'
 
 /**
  * 键 → 该模块自己的 localStorage key。
  *
  * 这些字符串**必须**与各模块里的那份逐字相同。它们是故意各自定义的：
  * 让 `wallpaper.ts` 反过来 import 本文件会形成环（它要调 `pushUiPref`）。
- * 判据 `UiPrefs.test.ts` 会读三个源文件核对这张表没漂。
+ * 判据 `UiPrefs.test.ts` 会读这些源文件核对表没漂。
+ *
+ * 收录口径：**用户在界面上改过、且换端口/换机器后应当还在**的东西。
+ * 不收录：离线的正文与书架快照、随书变化的动态主题（`ui/theme`）、AI 悬浮球与对话
+ * （那些是临时/设备态，或属于 AI 模块，单独演进）。
  */
 export const UI_PREF_STORAGE: Record<UiPrefKey, string> = {
   agreement: 'legadoq-agreement-v1',
   wallpaper: 'legado-wallpaper-v1',
   'reader-settings': 'legado-reader-settings-v2',
+  'shelf-layout': 'legado-shelf-layout-v2',
+  'search-layout': 'legado-search-layout-v1',
+  'shelf-sort': 'legado-shelf-sort-v1',
+  'sidebar-width': 'legado.sourceSidebarWidth',
+  'tts-bar-position': 'legado-tts-bar-pos',
+  'search-history': 'legado-search-history',
+  'pwa-banner': 'legado_pwa_banner_dismissed',
 }
 
 /** localStorage 里是字符串；服务端存的是 JSON 值。这两个函数把两端对齐，且可单测。 */

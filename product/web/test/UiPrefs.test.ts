@@ -88,15 +88,57 @@ test('服务端没有的键不动本地：不许把用户的设置"补"成空', 
   }
 })
 
-test('键表与三个模块里的 localStorage 常量逐字一致（改一处没跟 = 设置赎不回来）', () => {
+test('键表与各模块里的 localStorage 常量逐字一致（改一处没跟 = 设置赎不回来）', () => {
   assert.ok(readSrc('lib', 'wallpaper.ts').includes(`'${UI_PREF_STORAGE.wallpaper}'`),
     'wallpaper.ts 的 SETTINGS_KEY 与本表不一致')
   assert.ok(readSrc('features', 'reader', 'settingsPanel', 'readerSettings.ts').includes(`'${UI_PREF_STORAGE['reader-settings']}'`),
     'readerSettings.ts 的 storageKey 与本表不一致')
   assert.ok(readSrc('components', 'FirstRunAgreement.tsx').includes(`'${UI_PREF_STORAGE.agreement}'`),
     'FirstRunAgreement.tsx 的 STORAGE_KEY 与本表不一致')
-  // 三个键互不相同（同一份数据写进同一个键，后写的会把前一份挤掉）
+  // 2026-11-14 扩容的那几项：用户在界面上改过、换端口/换机器后应当还在
+  assert.ok(readSrc('lib', 'shelfLayout.ts').includes(`'${UI_PREF_STORAGE['shelf-layout']}'`),
+    'shelfLayout.ts 的书架布局 KEY 与本表不一致')
+  assert.ok(readSrc('lib', 'shelfLayout.ts').includes(`'${UI_PREF_STORAGE['search-layout']}'`),
+    'shelfLayout.ts 的搜索结果 KEY 与本表不一致')
+  assert.ok(readSrc('lib', 'shelfLayout.ts').includes(`'${UI_PREF_STORAGE['shelf-sort']}'`),
+    'shelfLayout.ts 的排序 KEY 与本表不一致')
+  assert.ok(readSrc('lib', 'sidebarWidth.ts').includes(`'${UI_PREF_STORAGE['sidebar-width']}'`),
+    'sidebarWidth.ts 的 SIDEBAR_WIDTH_KEY 与本表不一致')
+  assert.ok(readSrc('features', 'reader', 'tts', 'ttsBarPosition.ts').includes(`'${UI_PREF_STORAGE['tts-bar-position']}'`),
+    'ttsBarPosition.ts 的 STORAGE_KEY 与本表不一致')
+  assert.ok(readSrc('features', 'bookshelf', 'LibraryPage.tsx').includes(`'${UI_PREF_STORAGE['search-history']}'`),
+    'LibraryPage.tsx 的 SEARCH_HISTORY_KEY 与本表不一致')
+  assert.ok(readSrc('components', 'PwaManager.tsx').includes(`'${UI_PREF_STORAGE['pwa-banner']}'`),
+    'PwaManager.tsx 的提示条 key 与本表不一致')
+  // 所有键互不相同（同一份数据写进同一个键，后写的会把前一份挤掉）
   assert.equal(new Set(Object.values(UI_PREF_STORAGE)).size, Object.keys(UI_PREF_STORAGE).length)
+})
+
+/**
+ * 登记了却没人上行 = 等于没同步。
+ *
+ * 这是这条链最容易半途而废的地方：在表里加一行、忘了在保存处调 pushUiPref，
+ * 表面上"已支持跨端口"，实际永远只有默认值。所以逐个 key 反查它在哪个模块被 push。
+ */
+test('表里每个 key 都有人在保存时 push（只登记不上行 = 永远不会同步）', () => {
+  const pushers: Record<keyof typeof UI_PREF_STORAGE, string[]> = {
+    agreement: [['components', 'FirstRunAgreement.tsx']],
+    wallpaper: [['lib', 'wallpaper.ts']],
+    'reader-settings': [['features', 'reader', 'settingsPanel', 'readerSettings.ts']],
+    'shelf-layout': [['lib', 'shelfLayout.ts']],
+    'search-layout': [['lib', 'shelfLayout.ts']],
+    'shelf-sort': [['lib', 'shelfLayout.ts']],
+    'sidebar-width': [['lib', 'sidebarWidth.ts']],
+    'tts-bar-position': [['features', 'reader', 'tts', 'ttsBarPosition.ts']],
+    'search-history': [['features', 'bookshelf', 'LibraryPage.tsx']],
+    'pwa-banner': [['components', 'PwaManager.tsx']],
+  }
+  for (const key of Object.keys(UI_PREF_STORAGE) as Array<keyof typeof UI_PREF_STORAGE>) {
+    const sources = pushers[key]
+    assert.ok(sources && sources.length > 0, `${key} 没有登记上行点`)
+    const pushed = sources.some(parts => readSrc(...parts).includes(`pushUiPref('${key}')`))
+    assert.ok(pushed, `${key} 在表里但没有模块调 pushUiPref('${key}') —— 这个设置换端口照样丢`)
+  }
 })
 
 test('没有 window 时 hydrate 直接返回失败，不发请求也不抛', async () => {

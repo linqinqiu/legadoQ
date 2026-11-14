@@ -5,6 +5,8 @@
 // 浏览器窗口从 320 到 3440 都可能，实测同一档在桌面是 567x756 的巨图、在手机是 60x80 的邮票
 // （`tools/verify/shelf-layout-measure.mjs`）。所以网格用 `auto-fill` 让列数随窗口自己算，
 // 封面尺寸只留一档（用户 2026-09-29：「封面网格的大中小，只留下小的，其余不用了」）。
+import { pushUiPref } from './uiPrefs'
+
 export type ShelfMode = 'grid' | 'list' | 'compact'
 export type ShelfLayout = { mode: ShelfMode }
 
@@ -67,6 +69,8 @@ export function readShelfLayout(): ShelfLayout {
 
 export function writeShelfLayout(layout: ShelfLayout) {
   writeStoredLayout(KEY, layout)
+  // 同步到服务端：localStorage 按 origin 隔离，界面里改一次端口，书架就"回到网格"。
+  pushUiPref('shelf-layout')
   try {
     localStorage.removeItem(LEGACY_KEY)
   } catch {
@@ -88,6 +92,8 @@ export function readSearchLayout(): ShelfLayout {
 
 export function writeSearchLayout(layout: ShelfLayout) {
   writeStoredLayout(SEARCH_KEY, layout)
+  // 搜索结果形态与书架**各存各的**，所以是两个 pref 键，不能挤进同一个。
+  pushUiPref('search-layout')
 }
 
 /** 书架排序偏好（桌面端库管理）。默认按最后阅读时间倒序。 */
@@ -112,4 +118,5 @@ export function writeShelfSort(sort: ShelfSort) {
   } catch {
     // 隐私模式忽略
   }
+  pushUiPref('shelf-sort')
 }

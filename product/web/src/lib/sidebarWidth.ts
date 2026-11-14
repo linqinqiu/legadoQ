@@ -8,6 +8,8 @@
  * 上下限取 240 / 560：再窄装不下书名，再宽右栏编辑器就只剩一条缝（1280 屏上 560 已经是极限）。
  */
 
+import { pushUiPref } from './uiPrefs'
+
 /** 默认宽度。比原来的 280 宽一档，长书名不必再靠悬停看全名。 */
 export const SIDEBAR_WIDTH_DEFAULT = 320
 export const SIDEBAR_WIDTH_MIN = 240
@@ -40,4 +42,6 @@ export function storeSidebarWidth(width: number): void {
   } catch {
     /* 隐私模式 / 配额满：静默放弃持久化，宽度这一趟照样生效 */
   }
+  // 同时上行一份到服务端：localStorage 按 origin 隔离，改一次端口左栏就回 320。
+  pushUiPref('sidebar-width')
 }

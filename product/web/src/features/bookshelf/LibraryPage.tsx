@@ -7,6 +7,7 @@ import { Icon } from '../../icons'
 import type { OpenBook } from '../../lib/openBook'
 import { Select } from '../../components/Select'
 import { ShelfLayout, readSearchLayout, writeSearchLayout } from '../../lib/shelfLayout'
+import { pushUiPref } from '../../lib/uiPrefs'
 import { SortMode, cleanTitle, filterSearchGroups, isExactMatch, pickBlurb } from '../../lib/searchFilters'
 import { SourceSummary } from '../../lib/api'
 import { bookTypeMeta, commonBookType } from '../../lib/bookType'
@@ -65,6 +66,8 @@ export const writeSearchHistory = (list: string[]): void => {
   } catch {
     /* 隐私模式或配额满时静默忽略 */
   }
+  // 同步到服务端：localStorage 按 origin 隔离，换端口后搜索历史就空了。
+  pushUiPref('search-history')
 }
 
 export function LibraryPage({ sources, onSourcesChanged, onOpen }: { sources: SourceSummary[]; onSourcesChanged: () => void; onOpen: (book: OpenBook, index: number) => void }) {
