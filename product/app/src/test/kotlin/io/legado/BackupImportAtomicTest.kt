@@ -119,6 +119,36 @@ class BackupImportAtomicTest {
         }
     }
 
+    @Test
+    fun `没有 id 的老格式替换规则 重复导入不堆行`() {
+        val directory = Files.createTempDirectory("legado-backup-atomic-legacy-rule")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        val store = BackupStore(directory.resolve("kept"))
+        try {
+            database.initialize()
+            val archive = directory.resolve("backup.zip")
+            // 老格式：规则没有 id。以前每次导入都现生成「时间戳_uuid」，导两次就是两条重复规则。
+            writeArchive(
+                archive,
+                sections() + (
+                    "replaceRule.json" to
+                        """[{"name":"去广告","pattern":"广告.*","replacement":"","isRegex":true,"isEnabled":true,"order":1}]"""
+                    ),
+            )
+
+            val first = BackupImporter(database, store).import(archive, PASSWORD)
+            assertEquals(1, first.rules)
+            val second = BackupImporter(database, store).import(archive, PASSWORD)
+
+            assertEquals("同一份包第二次导入必须落在同一行", 1, database.listReplaceRules().size)
+            assertEquals("第二次是更新，不是新增", 0, second.rules)
+            assertEquals(1, second.rulesUpdated)
+        } finally {
+            database.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
     private fun counts(database: Database): Map<String, Int> = mapOf(
         "sources" to database.listSources(null).size,
         "rules" to database.listReplaceRules().size,

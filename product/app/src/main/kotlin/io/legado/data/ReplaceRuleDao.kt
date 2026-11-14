@@ -155,7 +155,7 @@ internal fun Database.importReplaceRulesOn(db: java.sql.Connection, rules: List<
             skipped++
             continue
         }
-        val ruleId = rule.id.ifBlank { System.currentTimeMillis().toString() + "_" + java.util.UUID.randomUUID().toString().take(6) }
+        val ruleId = rule.id.ifBlank { resolveLegacyRuleId(db, rule) }
         val existing = db.prepareStatement("select 1 from replace_rule where id = ?").use { stmt ->
             stmt.setString(1, ruleId)
             stmt.executeQuery().use { it.next() }
@@ -198,6 +198,33 @@ internal fun Database.importReplaceRulesOn(db: java.sql.Connection, rules: List<
         if (existing) updated++ else imported++
     }
     return ReplaceRuleImportResponse(imported, updated, skipped, rules.size)
+}
+
+/**
+ * 老格式备份里的替换规则经常没有 id（`id` 是空串）。以前每次导入都现生成
+ * `时间戳_uuid`，同一份包导两次就多出一份重复规则 —— 备份重试会把规则表越导越乱。
+ *
+ * 两步定身份：先按内容（pattern + 是否正则 + 作用域 + 分组）找已有行，命中就沿用它的 id
+ * （用户手建的规则也会被认出来，不会被顶成第二份）；没命中才用内容哈希派生稳定 id。
+ * 哈希而不是随机：同一份包再导一次落在同一行上，走 `on conflict` 更新。
+ */
+private fun resolveLegacyRuleId(db: java.sql.Connection, rule: ReplaceRule): String {
+    val existing = db.prepareStatement("""
+        select id from replace_rule
+        where pattern = ? and is_regex = ? and coalesce(scope, '') = ? and coalesce(group_name, '') = ?
+        order by created_at asc limit 1
+    """.trimIndent()).use { stmt ->
+        stmt.setString(1, rule.pattern)
+        stmt.setInt(2, if (rule.isRegex) 1 else 0)
+        stmt.setString(3, rule.scope.orEmpty())
+        stmt.setString(4, rule.group.orEmpty())
+        stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+    }
+    if (existing != null) return existing
+    val fingerprint = listOf(rule.pattern, rule.isRegex.toString(), rule.scope.orEmpty(), rule.group.orEmpty())
+        .joinToString("\u0000")
+    val digest = java.security.MessageDigest.getInstance("SHA-1").digest(fingerprint.toByteArray(Charsets.UTF_8))
+    return "legacy_" + digest.joinToString("") { "%02x".format(it) }.take(16)
 }
 
 fun Database.exportReplaceRules(ids: List<String>? = null): List<ReplaceRule> = connect { db ->
