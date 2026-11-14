@@ -769,7 +769,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 入口是 `product/web/src/main.tsx`（应用状态、hash 路由与全局快捷键；页面渲染在 `app/pages.tsx`）。
 
 - **外壳与导航**：一级目的地由 `lib/nav.ts` + `lib/pageMeta.ts` 的 `PAGES` 驱动，同时喂顶栏（`app/AppHeader.tsx`）、数字键、`Alt+←/→` 与 hash 解析；`app/pages.tsx` 只决定每页渲染什么。加一页改这两处，不再改 `main.tsx` 的三元链。规则 / 备份 / 更新日志 / 关于是悬浮层（`AppModal` / `PageDialog`），不占路由。
-- **阅读器**：`features/reader/ReaderScreen.tsx` 只做编排；几何与翻页算术在 `features/reader/content/readerFlow.ts`、手势在 `features/reader/interaction/readerInteractions.ts`、点击区域在 `features/reader/interaction/tapZones.ts` + `TapZoneEditor.tsx`。目录虚拟列表是 `features/reader/VirtualChapterList.tsx`，朗读集群是 `features/reader/tts/useReaderTts.ts`，图片预热与正文切段在 `features/reader/content/`，传书合同在 `lib/openBook.ts`。分页测量、章节加载、缓存状态、笔记、翻页动画、跳转原语各自是 `useReader*` hook。
+- **阅读器**：`features/reader/ReaderScreen.tsx` 只做编排；几何与翻页算术在 `features/reader/content/readerFlow.ts`、手势在 `features/reader/interaction/readerInteractions.ts`、点击区域在 `features/reader/interaction/tapZones.ts` + `TapZoneEditor.tsx`。目录虚拟列表是 `features/reader/VirtualChapterList.tsx`，朗读集群是 `features/reader/tts/useReaderTts.ts`，图片预热与正文切段在 `features/reader/content/`，传书合同在 `lib/openBook.ts`。段评浮层是 `features/reader/reviews/ChapterReviewsDialog.tsx`（只读详情层，地址从书源 `ruleReview` 读、数据走 `POST /api/books/reviews`）。分页测量、章节加载、缓存状态、笔记、翻页动画、跳转原语各自是 `useReader*` hook。
 - **设置与本机存储**：`features/reader/settingsPanel/readerSettings.ts`（唯一那份阅读偏好）、`lib/offlineStorage.ts`（IndexedDB：正文分片 + 书架快照 + 离线进度队列）。
 - **浮层**：所有弹窗共用 `.dialog-shell` + `.overlay-backdrop` + `.overlay-close` 一档几何；嵌套弹层的 Tab 由 `lib/useFocusTrap.ts` 的模块级栈按打开顺序接管。
 - **错误边界**：`components/ErrorBoundary.tsx` 包根与阅读器；某一块炸了不能把整棵树带走。

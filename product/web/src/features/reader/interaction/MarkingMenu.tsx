@@ -16,10 +16,12 @@ export type MarkingMenuProps = {
   onNote: () => void
   onCopy: () => void
   onAi: () => void
+  /** 段评（只读详情层）：打开这一章的段评浮层。 */
+  onReviews: () => void
   onDismiss: () => void
 }
 
-export function MarkingMenu({ x, y, onHighlight, onNote, onCopy, onAi, onDismiss }: MarkingMenuProps) {
+export function MarkingMenu({ x, y, onHighlight, onNote, onCopy, onAi, onReviews, onDismiss }: MarkingMenuProps) {
   return (
     <div
       className="reader-marking-menu"
@@ -38,6 +40,9 @@ export function MarkingMenu({ x, y, onHighlight, onNote, onCopy, onAi, onDismiss
       </button>
       <button type="button" className="reader-marking-btn" title="发给 AI 助手" aria-label="AI" onClick={onAi}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3l1.9 4.8L19 9.7l-5.1 1.9L12 16.4l-1.9-4.8L5 9.7l5.1-1.9L12 3Z" /><path d="M18.5 15.5l.9 2.2 2.1.8-2.1.8-.9 2.2-.9-2.2-2.1-.8 2.1-.8.9-2.2Z" /></svg>
+      </button>
+      <button type="button" className="reader-marking-btn" title="段评（这一章的读者评论）" aria-label="段评" onClick={onReviews}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.6 9.6 0 0 1-3.4-.6L4 21l1.7-4.3A8 8 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3A8.4 8.4 0 0 1 21 11.5Z" /><path d="M8.5 11.5h.01M12.5 11.5h.01M16.5 11.5h.01" /></svg>
       </button>
       <button type="button" className="reader-marking-btn" title="关闭" aria-label={zh.common.close} onClick={onDismiss}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>

@@ -634,6 +634,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }, [chapter?.url, chapter?.index, isMangaMode, mangaImages.length, mangaPageList, paragraphStarts, currentBook.progress])
   /** 本书正文检索弹窗（搜索本书 feature，只在已缓存章节正文里找）。 */
   const [bookSearchOpen, setBookSearchOpen] = useState(false)
+  /** 段评浮层（只读详情层，第三阶段第一刀）。地址取当前章节，选中文字只是入口。 */
+  const [reviewsOpen, setReviewsOpen] = useState(false)
   /** 刚跳过来的搜索命中：在正文里临时高亮几秒，过期自动清掉（见下面的 effect）。 */
   const [searchFlash, setSearchFlash] = useState<{ chapterIndex: number; offset: number; term: string } | null>(null)
   /** 阅读设置弹层里的顶层标签页：阅读（排版/颜色/行为）或其它（简繁/点击区域/工具栏/本地书目录/净化）。
@@ -2213,6 +2215,11 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           icon: 'sparkles',
           onSelect: () => { setSelectionFromDraft(built.selection); setAiChatOpen(true) },
         })
+        items.push({
+          label: '段评',
+          icon: 'comment',
+          onSelect: () => setReviewsOpen(true),
+        })
       }
     }
     items.push({ label: '章节目录', icon: 'list', onSelect: () => setActiveDrawer('toc') })
@@ -2376,6 +2383,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         bookSearch: bookSearchOpen,
         noteDraft: notesApi.noteDraft,
         noteEditor: notesApi.noteEditorOpen,
+        reviews: reviewsOpen,
       }}
       book={{ name: bookName, details: currentBook.details, bookUrl: currentBook.bookUrl, chapter, chapterIndex, chapters: currentBook.chapters }}
       reader={{ settings, sleepTimer, remainingSeconds, cachedChapterUrls }}
@@ -2399,7 +2407,9 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onNote: notesApi.openNoteEditor,
         onCopy: notesApi.copySelection,
         onAi: notesApi.sendSelectionToAi,
+        onReviews: () => { notesApi.dismissMarkingMenu(); setReviewsOpen(true) },
         onDismissMarking: notesApi.dismissMarkingMenu,
+        onCloseReviews: () => setReviewsOpen(false),
         onChangeNoteText: text => notesApi.setNoteDraft(current => (current ? { ...current, text } : current)),
         onSaveNote: () => void notesApi.saveNote(),
         onRemoveNote: () => void notesApi.removeNote(),

@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,217 项全绿（160 个 suite，0 失败 0 跳过，第 5 项补测落地后重跑）**；前端 **1,157 项全绿（146 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
+> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,217 项全绿（160 个 suite，0 失败 0 跳过，第 5 项补测落地后重跑）**；前端 **1,169 项全绿（147 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -172,6 +172,15 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - **网络边界负向判据**：`HttpSurfaceNegativeTest` 10 项 —— 书源登录 Cookie 同步的那个跨站口子必须只有一条路径宽（兄弟路由 `login-header` 跨站照样 403）；备份条目名 / 快照恢复名 / 封面 key / 本地书内嵌资源名这四类由客户端给的文件名都穿不出目录；错误响应里不许出现堆栈、异常类名与绝对路径。
 - 判据有效性做过**变异验证**：临时去掉 `BackupStore.read` 的路径剥离、去掉 `CoverCache.file` 的 64 位 hex 校验，对应用例各红一次，改回后复绿（说明它们不是摆设）。
 - 详见 `docs/engineering/audit/PHASE2_PREFLIGHT_REPORT.md` §10.7；判据清单见 `product/docs/rules-sandbox-audit.md` §4。
+
+### 6.6 段评浮层（第三阶段「半成品收口」第一刀，2026-11-14）
+
+- **阅读器里能看段评了（只读详情层）。** 入口两个：选中正文后浮层上的「段评」，以及正文右键菜单的「段评」；浮层列出这一章的段评条目（头像/昵称/徽章/正文/配图/音频/赞/回复数），取满一整页时给「再取一页」。
+- **地址取的是书源的段评规则**：`ruleReview.reviewDetailUrl`（只配了 `reviewSummaryUrl` 的源退用它），不是当前章节地址——段评页往往跟章节页不是一个 URL。没配规则的源平静提示「这个书源没有段评」，**不当报错**：那是没有这个能力。
+- **只做详情层**：统计层（段落徽章数）、回复层（子评论）与一切写操作（发帖/点赞/删除）明确不做，界面上也不摆对应按钮。
+- **判据**：`web/test/ChapterReviews.test.ts` 12 项——错因收成人话（不念类名/JSON/堆栈）、分页推进（第 1 页替换后续追加、只认「取满一整页才可能还有」、失败不清空已读）、四种形态渲染（加载/失败可重试/空态平静/有数据含图文音）、选中浮层仍是 5 个动作 + 关闭、取数走既有 `POST /api/books/reviews`。
+- 顺带把书源导入告警里那句「阅读器尚无段评浮层」改掉（`SourceCodec`），并同步 `product/docs/compatibility.md` 两处措辞。
+- 验证：前端 1,169 项全绿 + `tsc -b`；`npm run build` 出包后重启，`/healthz` 的 ui 指纹与 `web/dist/index.html` 一致（index-DExmuwcc.js）；后端 `SourceValidateWarningsTest` / `ChapterReviewTest` / `ApiRoutesHttpTest` 定向全绿。
 
 ---
 

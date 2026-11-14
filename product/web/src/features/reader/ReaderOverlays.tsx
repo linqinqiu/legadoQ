@@ -9,6 +9,7 @@ import { SourceSwitchModal } from '../../components/SourceSwitchModal'
 import { BookSearchDialog } from './dialogs/BookSearchDialog'
 import { RefreshChaptersModal } from './dialogs/RefreshChaptersModal'
 import { MarkingMenu } from './interaction/MarkingMenu'
+import { ChapterReviewsDialog } from './reviews/ChapterReviewsDialog'
 import { NoteToolbar, type NoteDraft } from './notes/NoteToolbar'
 import type { ReaderSettings } from './settingsPanel/readerSettings'
 import { ReaderTtsManager } from './tts/ReaderTtsManager'
@@ -27,6 +28,8 @@ export interface ReaderOverlaysProps {
     bookSearch: boolean
     noteDraft: NoteDraft | null
     noteEditor: boolean
+    /** 段评浮层（只读详情层）。 */
+    reviews: boolean
   }
   book: {
     name: string
@@ -62,7 +65,9 @@ export interface ReaderOverlaysProps {
     onNote: () => void
     onCopy: () => void
     onAi: () => void
+    onReviews: () => void
     onDismissMarking: () => void
+    onCloseReviews: () => void
     onChangeNoteText: (text: string) => void
     onSaveNote: () => void
     onRemoveNote: () => void
@@ -209,6 +214,7 @@ export function ReaderOverlays({ dialogs, book, reader, actions }: ReaderOverlay
           onNote={actions.onNote}
           onCopy={actions.onCopy}
           onAi={actions.onAi}
+          onReviews={actions.onReviews}
           onDismiss={actions.onDismissMarking}
         />
       )}
@@ -219,6 +225,14 @@ export function ReaderOverlays({ dialogs, book, reader, actions }: ReaderOverlay
           onSave={actions.onSaveNote}
           onRemove={actions.onRemoveNote}
           onDismiss={actions.onDismissNote}
+        />
+      )}
+      {dialogs.reviews && (
+        <ChapterReviewsDialog
+          bookName={bookName}
+          chapterTitle={chapter?.title ? chapter.title : '当前章节'}
+          sourceId={details.sourceId}
+          onClose={actions.onCloseReviews}
         />
       )}
     </>
