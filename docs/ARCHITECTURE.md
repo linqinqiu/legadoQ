@@ -460,7 +460,7 @@ close()       = 关写连接 + 清空池 + 关掉所有曾创建的连接（Wind
 | 订阅 | `source_subscription`、`rss_source` |
 | 运维 | `log_entry`、`app_meta` |
 
-**迁移策略**：没有 schema 版本号，靠 `pragma table_info` 判断「列在不在」，缺就 `ALTER TABLE ADD COLUMN`（`migrateReadingProgress` / `migrateBookshelf` / `migrateSourceTable` / `migrateBookNote` / `migrateBookContentCache`）。老库只加列、不改列、不删表（除已废弃的 `app_user` / `session`）。需要回填的迁移（如 `chapter_index`）在同一事务内按目录 JSON 回填一次。
+**迁移策略**：库版本号存在 `pragma user_version`，由 `data/db/SchemaVersion.kt` 统一管理。启动顺序固定为「`Schema.createTables`（幂等建表）→ 迁移前快照 → `SchemaVersion.migrate`（一笔事务）」。版本 0 是「建表 + 历史补列跑完之前的形状」，现有库与全新库都从 0 出发：基线迁移（v0 → v1）把历史上散落的六段补列（`migrateReadingProgress` / `migrateBookshelf` / `migrateSourceTable` / `migrateLegacyCookieJars` / `migrateBookNote` / `migrateBookContentCache`）各跑一遍，跑完把版本回填成 1。之后每加一步迁移就把 `SchemaVersion.TARGET` 加一并注册 `版本号 to 动作`，**迁移动作与版本号同事务落盘**：任一步抛错整步回滚、版本不变、启动失败（不允许带病运行）。库版本高于程序支持的版本时直接拒绝启动（防程序降级后按旧代码解释新库）。增量原则不变：老库只加列、不改列、不删表（除已废弃的 `app_user` / `session`）；需要回填的迁移（如 `chapter_index`）在同一事务内按目录 JSON 回填一次。判据见 `data/db/SchemaVersionTest.kt`（全新库 / 已最新 / 逐级升级 / 中途失败可重试 / 万级数据 / 版本超前拒启）。
 
 **缓存状态机**（`book_cache_status.state`）：`idle` → 缓存中 → `ready` / `failed`；`cached_chapters` / `total_chapters` 驱动界面进度条。
 

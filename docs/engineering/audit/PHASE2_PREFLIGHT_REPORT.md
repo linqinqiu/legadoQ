@@ -395,3 +395,15 @@ Database.transaction { db -> ... }   // 深度计数：只有最外层设 autoCo
 - §2.1 所列并行 WIP（模型拆分/网络层/导入冲突策略/发布完整性/文档刷新）已以 `6a19f28` 提交，正文「未提交」表述按快照纪律不回改，以本条为准。
 - 第一阶段 P1-3「ARCHITECTURE.md Dao 数字漂移」被证伪：`*Dao*.kt` 实测 13 个，文档正确，不得改数（勘误见 `ARCHITECTURE_MAP.md` §11、`ROADMAP.md` §6、`directory/03-DOCUMENTATION-AUDIT.md` D-1）。
 - 目录/文档/脚本卫生线整改计划：`directory/08-RECOMMENDED-STRUCTURE.md`（阶段 A-D）；其中 clean-local.sh 脏 worktree 保护（S-6）建议插队优先。
+
+### 10.6 P0-3 SQLite Schema Version —— 已完成
+
+| 项 | 内容 |
+| --- | --- |
+| 实现 | 新增 `data/db/SchemaVersion.kt`：版本号存 `pragma user_version`，`BASELINE = TARGET = 1`；注册表 `steps: Map<Int, (Connection) -> Unit>`（只增不改）；`migrate(db, target, plan)` 逐级升级，**每步动作与 `user_version` 同事务**，缺步骤或库版本超前均明确抛错 |
+| 接线 | `Database.initialize()` 顺序改为「`Schema.createTables` → `Migration.maybeSnapshot`（迁移前原样快照，VACUUM 不能进事务）→ `transaction { SchemaVersion.migrate(tx) }`」；迁移失败包成 `IllegalStateException` 并带上「停在 vN、已回滚、可重试」，启动直接失败 |
+| 基线语义 | 存量库与全新库都是 v0：基线迁移（v0 → v1）把六段历史补列（progress / shelf / source / legacyCookieJar / note / contentCache）各跑一遍，跑完回填 1。补列本身幂等，所以老库升级 = 一次普通启动 |
+| 判据 | 新增 `data/db/SchemaVersionTest.kt` **8 项**，按 §6.4 的「五类库」逐类钉住：全新库（v0→1、可重入、已最新不重跑）、已最新版（零动作、不偷偷补列）、旧库逐级（1→2→3、每级落版本）、中途失败（整批回滚、版本不变、原地重试成功）、万级数据（10,000 行不丢）；另加「库比程序新 → 拒绝启动」与「基线一步补齐六段形状」 |
+| 测试 | 定向：`SchemaVersionTest` 8 + `MigrationTest` 9 + `DatabaseTest` 24 全绿；**全量回归 1,202 项 / 158 suite / 0 失败 / 0 跳过（4m44s）**，较上一轮 1,194 / 157 正好多出新增的 8 项 |
+| 文档 | `docs/ARCHITECTURE.md` 迁移策略段整段重写（原「没有 schema 版本号」已失效）、`docs/STATUS.md` 的 `data/db/` 组成补 `SchemaVersion` |
+| 遗留 | ① 旧字段一律不删（只标废弃），等后续版本再单开一步迁移；② 多进程同时升级不在支持范围（沿用单实例探测）；③ 「用户手改库把某列删了但版本号仍是 1」这类自伤不在兜底范围 —— 版本号说了算 |

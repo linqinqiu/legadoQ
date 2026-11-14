@@ -212,14 +212,15 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | HEAD / rev | `3a3d5d9` / **324** | `git rev-parse --short HEAD`；`git rev-list --count HEAD` |
 | 对外版本 / 构建号 | 0.2.42 / 55 | `cat VERSION BUILD_NUMBER` |
 | 最近 tag | `v0.2.42` | `git tag --sort=-creatordate \| head -1` |
-| 后端源码 | **149 文件 / 36,704 行** | `find product/app/src/main/kotlin -name '*.kt'` + 行数求和（排除 build） |
-| 后端测试源码 | 157 文件 / 28,559 行 | `product/app/src/test/kotlin` |
+| 后端源码 | **150 文件 / 36,812 行** | `find product/app/src/main/kotlin -name '*.kt'` + 行数求和（排除 build） |
+| 后端测试源码 | 158 文件 / 28,851 行 | `product/app/src/test/kotlin` |
 | 前端源码 | **217 文件 / 40,581 行** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \)` |
 | 前端测试文件 | 146 个（`web/test/*.test.ts`） | `ls product/web/test/*.test.ts \| wc -l` |
-| **后端测试实跑** | **1,194 项 / 157 suite / 0 失败 / 0 跳过** | `java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :app:test --no-daemon`，`BUILD SUCCESSFUL in 6m 22s`；`test-results/test/*.xml` 求和 |
+| **后端测试实跑** | **1,202 项 / 158 suite / 0 失败 / 0 跳过** | `java -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :app:test --no-daemon`，`BUILD SUCCESSFUL in 4m 44s`（P0-3 落地后重跑）；`test-results/test/*.xml` 求和 |
 | **前端测试实跑** | **1,157 项 / 0 失败**（15.8s）+ `tsc -b` 通过 | `npm --prefix product/web test` |
 | HTTP 端点 | 165 条 / 19 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
 | 三条门禁 | `version:check`（8 处一致 0.2.42/55）、`docs:api-check`、`changelog:check` 全绿 | `npm --prefix product run …` |
+| 库版本号 | **`user_version = 1`**（基线），由 `data/db/SchemaVersion.kt` 管理 | `pragma user_version`；判据 `SchemaVersionTest` 8 项 |
 | 被跟踪文件 | 988 | `git ls-files \| wc -l` |
 
 **本机跑法提醒**：`./gradlew` 直接跑会 `ClassNotFoundException: org.gradle.wrapper.GradleWrapperMain`，必须走上面的 `java -classpath gradle/wrapper/gradle-wrapper.jar` 形式；后端全量必须设 `LEGADO_TEST_TMP=<仓库>/product/build/testtmp`。

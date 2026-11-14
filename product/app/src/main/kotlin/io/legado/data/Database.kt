@@ -22,6 +22,7 @@ import io.legado.content.ContentProcessor
 import io.legado.data.db.ConnectionPool
 import io.legado.data.db.Migration
 import io.legado.data.db.Schema
+import io.legado.data.db.SchemaVersion
 import io.legado.localbook.LocalBookParser
 import io.legado.localbook.ParsedBook
 import io.legado.model.BackupShelfEntry
@@ -160,15 +161,21 @@ class Database(private val path: String) : Closeable, AutoCloseable, PortBundle 
     }
 
     /** 首次启动：建表 + 迁移 + 快照。碎片回收不在这条同步路径里，见 [scheduleReclaimFragmentation]。 */
-    fun initialize() = write { db ->
+    fun initialize(): Unit = write { db ->
         Schema.createTables(db)
+        // 迁移前的原样快照：迁移失败时库里还留着升级前的完整副本（VACUUM 不能在事务里跑，
+        // 所以它必须排在事务之外）。
         Migration.maybeSnapshot(db, path)
-        Migration.migrateReadingProgress(db)
-        Migration.migrateBookshelf(db)
-        Migration.migrateSourceTable(db)
-        Migration.migrateLegacyCookieJars(db)
-        Migration.migrateBookNote(db)
-        Migration.migrateBookContentCache(db)
+        // 版本化迁移（P0-3）：整段在一笔事务里，任一步失败即回滚、版本不变、启动失败。
+        try {
+            transaction { tx -> SchemaVersion.migrate(tx) }
+        } catch (error: Throwable) {
+            throw IllegalStateException(
+                "数据库迁移失败（停在 v${runCatching { SchemaVersion.current(db) }.getOrDefault(-1)}，" +
+                    "已回滚到迁移前状态，可修复后重试）：${error.message}",
+                error,
+            )
+        }
     }
 
     /**

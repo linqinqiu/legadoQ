@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,194 项全绿（157 个 suite，0 失败 0 跳过，HEAD `3a3d5d9`）**；前端 **1,157 项全绿（146 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
+> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,202 项全绿（158 个 suite，0 失败 0 跳过，P0-3 落地后重跑）**；前端 **1,157 项全绿（146 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -33,7 +33,7 @@
 | 包 | 职责 |
 |---|---|
 | `http/` | 路由与 HTTP 边界：15 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；系统域（目录/服务/日志/诊断/关于/更新日志）独立成 `http/system/SystemRoutes.kt`；`Guard.kt`（同源写门）、`RouteCatalog.kt`（端点目录） |
-| `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 只是组合根（连接池 / 建表 / 迁移 / Cookie 工具四件事拆在 `data/db/`：`ConnectionPool` `Schema` `Migration` `CookieUtil`） |
+| `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 只是组合根（连接池 / 建表 / 迁移 / Cookie 工具四件事拆在 `data/db/`：`ConnectionPool` `Schema` `SchemaVersion` `Migration` `CookieUtil`） |
 | `reading/` | 阅读域收口 `ReadingRepository`：进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口 |
 | `ai/` | 进程内 AI 网关：三种协议（OpenAI 兼容 / Responses / Anthropic）、流式 SSE、工具循环、连接与预设、技能库、内置工具与参数 schema、MCP 客户端（外部工具接入） |
 | `rules/` | 书源规则引擎（Rhino 沙箱、正文/目录/搜索规则、loginUi V1/V2 渲染与动作）；`RuleProcessor` / `RuleContext` / `RuleDispatcher` 是**已接入的扩展点**（0.2.34：求值前先问处理器、没人认领再走内联），`rules/processor/demo/` 是两个可直接注册的示例 |
@@ -156,6 +156,14 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - 更新模型导航、架构索引、产品目录说明、研究索引与 AI 协作速查；三项依赖旧源码路径的前端测试已改为读取领域文件。
 - 本轮后端全量测试 1,165 项全绿（152 个 suite，0 失败 0 跳过）；前端 1,157 项全绿（146 个文件）；`tsc -b` 类型检查通过。此前一轮的 SQLite 临时文件占用与 Node `ENOMEM` 均为临时环境问题，复跑未再现。
 - 更早的阅读记录窗口、焦点陷阱、请求客户端、性能采集器与阅读器拆分等条目来自 0.2.37 时期工作树记录；因当前提交和版本归属未在本轮逐项核实，不再列作当前未发布交付。
+### 6.4 库版本号与有序迁移（2026-11-14；仓库版本仍为 0.2.42 / build 55）
+
+- **新增：库有了版本号。** 此前 21 张表靠 `create table if not exists` 加六段幂等补列凑出来，没有版本号就无法回答「这个库是哪一版」，也没法安全地加一步不可幂等的迁移。现在版本存 `pragma user_version`（`data/db/SchemaVersion.kt`），`BASELINE = TARGET = 1`。
+- **升级路径**：存量库与全新库都从 v0 出发 → 基线迁移把六段历史补列各跑一遍 → 回填 v1。老用户升级就是一次普通启动，不需要人工介入。
+- **失败即阻启**：迁移动作与版本号在同一笔事务里，任一步抛错整步回滚、版本不变、启动失败并给出「停在 vN、已回滚、可重试」的错误；库版本高于程序支持的版本时直接拒绝启动（防程序降级后按旧代码解释新库）。
+- **判据**：`data/db/SchemaVersionTest.kt` 8 项，按五类库逐个钉（全新 / 已最新 / 旧库逐级 / 中途失败可重试 / 万级数据），另加「版本超前拒启」与「基线一步补齐六段形状」。`MigrationTest` 原 9 项零回归。
+- 详见 `docs/engineering/audit/PHASE2_PREFLIGHT_REPORT.md` §10.6；迁移策略段落已重写为现行实现（`docs/ARCHITECTURE.md` §5）。
+
 ---
 
 ## 7. 已知缺口（按价值排）
