@@ -511,8 +511,10 @@ class BookCacheServiceTest {
     @Test
     fun `reports intermediate throttled cache progress while batch is still caching`() = runBlocking {
         val path = temporaryDatabase()
+        val database = Database(path)
+        var service: BookCacheService? = null
         try {
-            val database = Database(path); database.initialize()
+            database.initialize()
             val book = BookshelfWriteRequest("https://s1.test", "https://book/1", "进度测试", tocUrl = "https://book/1/toc")
             database.saveBookshelf(book, null)
 
@@ -529,7 +531,7 @@ class BookCacheServiceTest {
                 }
             }
 
-            val service = BookCacheService(database, runner, CoverCache(Files.createTempDirectory("cover-cache"))) {}
+            service = BookCacheService(database, runner, CoverCache(Files.createTempDirectory("cover-cache"))) {}
             service.enqueue(CachedBookRequest("https://s1.test", "https://book/1", "https://book/1/toc"))
 
             val intermediateSeen = waitForCondition(5_000) {
@@ -540,10 +542,11 @@ class BookCacheServiceTest {
             assertTrue("Cache progress should be written before the batch completes", intermediateSeen)
             waitForCondition(10_000) { database.listBookshelf().single().cacheState == "ready" }
             assertEquals(60, database.listBookshelf().single().cachedChapters)
-            service.stop()
-        runCatching { database.close() }
-        Unit
-        } finally { Files.deleteIfExists(java.nio.file.Path.of(path)) }
+        } finally {
+            service?.stop()
+            database.close()
+            Files.deleteIfExists(java.nio.file.Path.of(path))
+        }
     }
 
 

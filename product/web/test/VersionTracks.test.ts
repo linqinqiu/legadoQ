@@ -64,8 +64,8 @@ test('构建号写进 jar 资源，并从 /healthz 与 /api/about 报出来', ()
   assert.match(read('product/app/src/main/kotlin/io/legado/Application.kt'), /build = BuildInfo\.buildNumber/)
   // 0.2.14：系统域端点搬到 http/system/SystemRoutes.kt（Routes.kt 只留挂载调用）
   assert.match(read('product/app/src/main/kotlin/io/legado/http/system/SystemRoutes.kt'), /AboutInfo\([^)]*BuildInfo\.buildNumber\)/)
-  assert.match(read('product/app/src/main/kotlin/io/legado/model/Models.kt'), /data class HealthStatus[\s\S]*?val build: String/)
-  assert.match(read('product/app/src/main/kotlin/io/legado/model/Models.kt'), /data class AboutInfo[\s\S]*?val build: String/)
+  assert.match(read('product/app/src/main/kotlin/io/legado/model/SystemModels.kt'), /data class HealthStatus[\s\S]*?val build: String/)
+  assert.match(read('product/app/src/main/kotlin/io/legado/model/SystemModels.kt'), /data class AboutInfo[\s\S]*?val build: String/)
 })
 
 test('关于页只显示版本，不再显示构建号', () => {

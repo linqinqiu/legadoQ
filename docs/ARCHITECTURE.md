@@ -247,7 +247,7 @@ flowchart TB
 | `product/app/src/main/kotlin/io/legado/port/` | 规则内核窄接口 | `PortBundle.kt`、`StorePorts.kt`（`rules/` 不直接依赖 `data/`） |
 | `product/app/src/main/kotlin/io/legado/ops/` | 日志与更新检查 | `LogService.kt`、`UpdateCheck.kt` |
 | `product/app/src/main/kotlin/io/legado/data/` | 建表、迁移、连接池 + 各数据面 | `Database.kt` 装配点 + 13 个 `<面>Dao.kt`（同包扩展函数）+ `SourceRepository.kt` |
-| `product/app/src/main/kotlin/io/legado/model/` | 请求 / 响应体 | `Models.kt` |
+| `product/app/src/main/kotlin/io/legado/model/` | 纯请求 / 响应数据类型；按系统、书源、发现、阅读、书架、替换规则、备份分文件，同属 `io.legado.model` 包 | `SystemModels.kt`、`SourceModels.kt`、`DiscoveryModels.kt`、`ReadingModels.kt`、`BookshelfModels.kt`、`ReplaceRuleModels.kt`、`BackupModels.kt` |
 | `product/web/src/` | 内置 UI | `main.tsx` · `app/`（`AppHeader.tsx`、`pages.tsx`）· `features/`（reader/bookshelf/explore/source-editor/settings/ai/rss）· `plugins/`（about/backup/changelog/reading-log/source-health）· `components/` · `lib/`（`api/`、`nav.ts`、`pageMeta.ts`、`offlineStorage.ts` 等）· `ui/`（设计内核：`color/` `motion/` `material/` `theme/`）· `i18n/` |
 
 ## 8. 接口分组
@@ -662,7 +662,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 **一条被反复使用的纪律：反向对照**。写判据时要问「把被测实现改坏，这条会红吗」——例如「把搜索改成只搜标题必须被逮住」「撤掉路由修复必须报 404」。没有反向验证过的判据不算数。
 
-当前（2026-11-12）：后端 **1,103** 项、Web **1,126** 项，全绿。
+历史快照（2026-11-12）：后端 **1,103** 项、Web **1,126** 项，全绿。2026-11-13 模型拆分后的后端实跑为 **1,165 项全绿（152 个 suite）**，Web **1,157 项全绿（146 个文件）**，`tsc -b` 通过；详见 `docs/STATUS.md`。
 
 ---
 

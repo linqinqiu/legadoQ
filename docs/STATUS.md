@@ -1,10 +1,10 @@
 # 当前结构与成果
 
-> **规模数字采集于 2026-11-13 04:00（工作树干净）**（跑法见文末「数字口径」）；
+> 规模数字采集于 **2026-11-13 04:00**，是当时干净工作树的快照；本轮模型拆分后源码文件数已变化，测试状态见下方质量门禁。
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
-> 当前版本 / 构建号以 `VERSION` / `BUILD_NUMBER` 与 `/healthz` 为准（本文第 6 行由 `npm run version:check` 钉住）。
+> 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ Web **1,157** 项全绿；后端 **1,144** 项（0 跳过、0 失败；147 个 suite），详见 `facts.md` §2
+> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,165 项全绿（152 个 suite，0 失败 0 跳过）**；前端 **1,157 项全绿（146 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -20,7 +20,7 @@
 | `VERSION` / `package.json` | 安装根版本封条与 npm 入口（`npm start` → `product/start.mjs`） |
 | `E:\legado-out\legado-releases/`（仓库外） | 历史发行产物（2026-11-11 移出仓库，符合 STRUCTURE「产物出库」） |
 
-版本号真源是 `product/app/build.gradle`；`product/package.json`、`product/web/package.json`、根 `package.json`、根 `README.md`、根 `VERSION`、`agent-api.json` 六处是抄本，由 `npm run version:check`（7 处含真源）钉住一致。
+版本号真源是 `product/app/build.gradle`；其余版本抄本由 `cd product && npm run version:check` 钉住一致。
 
 ---
 
@@ -45,7 +45,7 @@
 | `tts/` | Edge TTS 与朗读会话 |
 | `ops/` | 日志、更新检查、备份等运维面 |
 | `backup/` | 备份包导入导出（zip 与裸 JSON，兼容兄弟项目扩展条目） |
-| `model/` | 跨层数据模型（`@Serializable`） |
+| `model/` | 纯请求 / 响应 DTO，按系统、书源、发现、阅读、书架、替换规则、备份拆分为七个同包文件；不依赖其他领域实现 |
 
 桌面壳 `DesktopLauncher.kt` 负责窗口、启动画面、托盘与安装目录解析。插件装载机制已整体移除（代码里没有 `plugin/` 包），保留的是工具 / 协议 / 连接选择策略三类**运行时注册表**扩展点。
 
@@ -117,16 +117,16 @@
 
 ## 5. 质量门禁
 
-| 门禁 | 命令 | 现状（最近一次全量实测，HEAD `1d9e4ea`） |
+| 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **1,144 项 / 0 失败**（0 跳过；147 个 suite；HEAD `1d9e4ea`）。满负载并发下曾出现 2 个 AI HTTP 类共 12 例 coroutine 1m 超时，减载后定向重跑通过 → 负载假红，不是缺陷 |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **1,165 项 / 0 失败 / 0 跳过**（152 个 suite；2026-11-13 本轮全量实测，含 `BookCacheServiceTest` 与 `NetworkSecurityTest` 新增用例） |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
-| Web 测试 | `web: npm test` | **1,143 项 / 0 失败** |
-| 类型检查 | `npm run check`（`tsc -b`） | 通过 |
+| Web 测试 | `web: npm test` | **1,157 项 / 0 失败**（146 个测试文件；2026-11-13 本轮全量实测） |
+| 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-13 本轮实测） |
 | 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 最近一次实测（2026-11-09）：后端行 **70.04%**，前端行 **63.51%**；重跑 `npm run coverage` 取当次值 |
-| 端点文档一致 | `npm run docs:api-check` | 165 条 / 19 组，一致 |
-| 更新日志 | `npm run changelog:check` | 无待记录（提交后钩子自动起草；`fix`/`feat` 必须进日志，否则红） |
-| 版本单一来源 | `npm run version:check` | 8 处版本 + build 号一致（含 `README.md` 顶部与本文第 6 行） |
+| 端点文档一致 | `cd product && npm run docs:api-check` | 通过：165 条端点、19 个分组与文档一致 |
+| 更新日志 | `cd product && npm run changelog:check` | 通过：无待记录改动（自查 1 条提交） |
+| 版本单一来源 | `cd product && npm run version:check` | 通过：8 处版本均为 0.2.42，build 55 |
 | 真浏览器门禁 | `product/tools/verify/*-check.mjs` | **47** 个 `*-check.mjs`（该目录下共 79 个 `.mjs`，约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
 
 CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约 / 文档 / 结构）、`build-jar.yml`（打包与发布）、`gates.yml`（真浏览器门禁）、`coverage.yml`、`docker.yml`。
@@ -135,14 +135,14 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 6. 近期交付
 
-### 6.1 0.2.37（2026-11-09）
+### 6.1 0.2.37（2026-11-09，历史交付）
 
 - **修：旧库的「需要登录」标记从来没被回填过。** `migrateSourceTable` 里的 `LIKE` 模式多写了反斜杠，
   SQLite 又不把 `\` 当转义符，三条分支一条都匹配不上 —— 只有「从旧版本升上来」的库受影响，
   新写入的源由 `saveSource` 直接算。模式改成 `%"loginUrl"%`。
 - 补判据：`MigrationTest` 9 项（四张表补列、旧 cookie_jar 折叠、正文缓存章号回填）、`CookieUtilTest` 6 项。
 
-### 6.2 0.2.36（2026-11-09）
+### 6.2 0.2.36（2026-11-09，历史交付）
 
 - **新增：`/healthz` 与顶栏「我的」菜单显示代码修订号 `rev-xxxxxxx`。** 没发版、只在本地改时
   版本号不动，光看 `0.2.36` 分不清跑的是推上去那版还是刚编的这版；现在一条 curl 就能定性。
@@ -150,23 +150,12 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - 删除 `http/HttpClients.kt`：零调用方，却写着「所有外部请求必须经过这里」。
 - 界面外壳门禁 `ui-shell-check.mjs` 的 `SkinModal` 路径跟着文件搬家修正（此前一直 ENOENT 假绿）。
 
-### 6.3 未发布（工作树已有，版本号仍 0.2.37）
+### 6.3 当前工作树整理（2026-11-13；仓库版本仍为 0.2.42 / build 55）
 
-- 阅读记录顶部可切「最近 30 / 90 / 365 天」，切了按新窗口重新取数，空态与汇总标签一起变。
-- 弹窗内按 Tab 不再跑到背后页面：焦点陷阱按打开顺序分层，只有最上层接管 Tab，关闭后焦点回到原处。
-- 前端网络请求收口到 `lib/api/client.ts`（`request` / `requestText` / `requestBlob` / `requestArrayBuffer`），裸 `fetch` 有静态判据挡着。
-- 修订号改为 `rev-<提交数>`（`git rev-list --count HEAD`），短 sha 另存 `sha` 字段；
-  版本号只在发版时动，日常改动只让 rev 递增。
-- 前端性能采集器真正接线：统一 API 客户端走 `fetchWithMetrics`，分页测量记
-  `pagination_measure`，控制台 `__legadoPerf.report()` 可查。
-- 离线缓存状态搬进 `useReaderCacheStatus`；章节正文加载与预取搬进 `useReaderChapterContent`；
-  阅读停留计时搬进 `useReadingLog`；翻页动画状态搬进 `useReaderPageTurn`；分页测量搬进
-  `usePaginationMeasurement`；分页轨道与滚动续接的正文画布搬进 `ReaderBody`；换源 / TTS / 规则 /
-  缓存等弹层搬进 `ReaderOverlays`，笔记状态与增删改搬进 `useReaderNotes`，划线高亮搬进纯函数 `NoteHighlights`（`ReaderScreen.tsx` 3,200 → 2,346 行）；
-  `RuleRunner` 的列表取值段搬进 `RuleNodeSelection`。
-- 顶栏「我的」菜单不再显示「构建」号（`BUILD_NUMBER`）：它只在发版时递增，日常区分版本看「修订」（`rev`）；
-  后端 `AboutInfo.build` 与 `/healthz`、`/api/about` 仍照常上报，只是界面不显。
-
+- 后端 DTO 从单一 `Models.kt` 按系统、书源、发现、阅读、书架、替换规则、备份拆为七个同包文件；133 个声明逐项对账，包名、类型名和调用接口保持不变。
+- 更新模型导航、架构索引、产品目录说明、研究索引与 AI 协作速查；三项依赖旧源码路径的前端测试已改为读取领域文件。
+- 本轮后端全量测试 1,165 项全绿（152 个 suite，0 失败 0 跳过）；前端 1,157 项全绿（146 个文件）；`tsc -b` 类型检查通过。此前一轮的 SQLite 临时文件占用与 Node `ENOMEM` 均为临时环境问题，复跑未再现。
+- 更早的阅读记录窗口、焦点陷阱、请求客户端、性能采集器与阅读器拆分等条目来自 0.2.37 时期工作树记录；因当前提交和版本归属未在本轮逐项核实，不再列作当前未发布交付。
 ---
 
 ## 7. 已知缺口（按价值排）
@@ -185,13 +174,12 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是「单进程 + 单写 SQLite + 19 组 HTTP 端点」的本地阅读服务，前端是自研排版引擎的 Web 阅读器。到 0.2.37，AI 侧已是「多协议 + 流式 + 技能 + 提示词预设 + 内置工具 + MCP 外部工具」的完整闭环，阅读侧有正文刷新、兄弟备份导入、登录界面本地解析与逻辑位置模型。质量靠 **2,159 项自动化测试**（1,103 后端 + 1,056 前端）、8 条命令门禁与 47 个 `product/tools/verify/*-check.mjs` 脚本守着；覆盖率以最近一次 `npm run coverage` 为准。当前最大的未完成项仍是**阅读器交互层的拆分**与**把内联解析搬进处理器（把 RuleRunner 拆薄）**。
+后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，端点契约由源码、测试与 API 文档共同校验。当前版本为 0.2.42 / build 55；本轮模型 DTO 已按业务域拆分并保持原包 API。历史规模和覆盖率数字以各自日期快照理解；最新测试遇到一个 Windows SQLite 文件释放失败，Web runner 与 TypeScript 构建信息文件也受当前 Node / 文件权限环境影响，不能据此宣称全量门禁通过。当前 ReaderScreen 交互编排仍较集中，详见已知缺口；`RuleRunner` 拆分状态应以当前源码核实后再列入行动项。
 
 ---
-
 ## 9. 数字口径
 
-本文的规模与测试数字都在 **2026-11-11 工作树**（含未提交改动）上复测：
+本文保留的规模、覆盖率和旧测试数字来自 **2026-11-11 工作树**（含未提交改动），并在 2026-11-13 04:00 状态快照中沿用。以下命令记录该历史统计口径；本轮 2026-11-13 模型拆分后的运行结果以 §5 门禁表与 `docs/sessions/2026-11-13-models-and-workspace.md` 为准，不与旧统计混用：
 
 ```bash
 # 后端源文件 / 行数

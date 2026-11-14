@@ -43,7 +43,7 @@ test('切片 - 多次命中都标出来；空词原样返回；没有命中只�
 test('接线 - 后端回偏移，结果片段与正文都按它高亮', () => {
   const dao = read('../../app/src/main/kotlin/io/legado/data/ReadingDao.kt')
   assert.match(dao, /idx\.coerceAtLeast\(0\)|BookSearchHit\(chapterUrl, chapterIndex, title, snippet, idx\)/, '命中偏移随结果一起回，没有偏移就只能跳章')
-  const model = read('../../app/src/main/kotlin/io/legado/model/Models.kt')
+  const model = read('../../app/src/main/kotlin/io/legado/model/ReadingModels.kt')
   assert.match(model, /val offset: Int/, '契约里要有 offset 字段')
   const dialog = read('../src/features/reader/dialogs/BookSearchDialog.tsx')
   assert.match(dialog, /onJump: \(hit: BookSearchHit, term: string\)/, '跳转要把关键词一起带出去')

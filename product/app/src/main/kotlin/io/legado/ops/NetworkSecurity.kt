@@ -40,8 +40,9 @@ object NetworkSecurity {
 
     /**
      * 受控出站 client 工厂：模块要发请求只能拿这里构造的实例，
-     * 每个请求在真正发包前都要过 [resolveAndValidateSafeHttpTarget]，并对解析后的 IP 复查私网/回环
-     * （防 DNS 重绑定）。[GuardedHttpClient] 负责在 send/sendAsync 前施加这道闸门。
+     * 每次发送前复查 DNS 所有应答的私网/回环策略。[GuardedHttpClient] 负责在 send/sendAsync
+     * 前施加校验；JDK HttpClient 不提供 pin DNS 到 socket 的 API，所以这项检查不能消除
+     * 校验后的 DNS TOCTOU。
      */
     fun newHttpClient(
         connectTimeout: Duration = Duration.ofSeconds(10),
@@ -58,7 +59,7 @@ object NetworkSecurity {
 
     /**
      * Resolves host IP addresses with in-memory caching and validates that the target
-     * is not a local/private network address (preventing SSRF).
+     * is not a local/private network address (an SSRF defense-in-depth check).
      *
      * @throws BlockedAddressException scheme 不对，或解析结果落在内网/本机/保留段
      * @throws UnreachableTargetException 域名解析不了 —— 那是"到不了"，不是"被拒绝"
@@ -90,6 +91,11 @@ object NetworkSecurity {
             dnsCache[host] = CachedDns(resolved, now + DNS_CACHE_TTL_MS)
             resolved
         }
+        validateResolvedAddresses(addresses, allowLoopback)
+    }
+
+    internal fun validateResolvedAddresses(addresses: Array<InetAddress>, allowLoopback: Boolean = false) {
+        if (addresses.isEmpty()) throw UnreachableTargetException("域名没有可用的 DNS 地址")
         for (address in addresses) {
             val loopback = address.isLoopbackAddress ||
                 (address.hostAddress?.startsWith("127.") == true)
@@ -127,6 +133,13 @@ object NetworkSecurity {
         if (address.hostAddress?.contains(':') != true) return false
         val bytes = address.address
         if (bytes.size != 16) return false
+        // Treat IPv4-mapped IPv6 as the IPv4 destination it represents. Some resolvers
+        // return these as Inet6Address while others normalize them to Inet4Address.
+        val mappedV4 = (0..9).all { bytes[it] == 0.toByte() } &&
+            bytes[10] == 0xff.toByte() && bytes[11] == 0xff.toByte()
+        if (mappedV4) {
+            return isSpecialV4(InetAddress.getByAddress(bytes.copyOfRange(12, 16)))
+        }
         val first = bytes[0].toInt() and 0xFF
         val second = bytes[1].toInt() and 0xFF
         // fc00::/7（ULA，fd00::/8 实际在用）、ff00::/8（组播）、2001:db8::/32（文档保留）

@@ -12,7 +12,7 @@
 | 想知道什么 | 看哪份 |
 | --- | --- |
 | 当前能做什么、还缺什么 | [STATUS.md](STATUS.md)（带日期的快照，数字口径以 [facts.md](../product/docs/restructure/facts.md) 为准） |
-| 长期要做什么、按什么顺序 | [ROADMAP.md](ROADMAP.md)（采纳的外部建议框架：L0→L3 分层、S0 兼容内核优先，带采纳状态） |
+| 长期要做什么、按什么顺序 | [ROADMAP.md](ROADMAP.md)（2026-11-11 至 12 历史决策框架；执行前对照 `STATUS.md` 与当前源码复核） |
 | 整体架构与模块边界 | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 接口完整清单（自动生成） | [API-REFERENCE.md](API-REFERENCE.md) |
 | 这一版对用户多了什么 | [product/CHANGELOG.md](../product/CHANGELOG.md) |
@@ -63,9 +63,8 @@
 
 ## 研究与决策（`docs/research/`）
 
-完整索引见 [research/README.md](research/README.md)。当前 frontier 是
-[研究-阅读器拆分续-下一步](research/研究-阅读器拆分续-下一步.md) 与
-[研究-0.2.37-成果核查与下一步](research/研究-0.2.37-成果核查与下一步.md)。
+完整索引见 [research/README.md](research/README.md)。最近研究记录与仍在推进的路线见研究索引；
+`研究-阅读器拆分续-下一步`、`研究-0.2.37-成果核查与下一步` 等旧文档是历史快照，不代表当前版本状态。
 
 > 研究文档是**当时快照**：数字、路径、结论都按写作时记，不随代码回改；引用现行数字时用 facts.md。
 
@@ -97,7 +96,7 @@
 
 | 问题 | 唯一来源 |
 | --- | --- |
-| 版本号 | `product/app/build.gradle` 的 `version`（`version:check` 钉住 7 处抄本） |
+| 版本号 | `product/app/build.gradle` 的 `version`（`version:check` 校验版本抄本） |
 | 端点数量与分组 | `GET /api/catalog`；[API-REFERENCE.md](API-REFERENCE.md) 由它生成 |
 | 代码规模、测试数、覆盖率 | [restructure/facts.md](../product/docs/restructure/facts.md)（必须带命令与时间戳） |
 | 用户可见变化 | [product/CHANGELOG.md](../product/CHANGELOG.md) |

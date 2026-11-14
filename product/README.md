@@ -217,9 +217,9 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     subscription/           SubscriptionService.kt 订阅同步
     ops/                    LogService.kt · UpdateCheck.kt
     port/                   规则内核需要的窄接口（PortBundle 等），把 rules → data 的横穿收成一组访问器
-    model/                  Models.kt 全部请求 / 响应体
+    model/                  纯请求 / 响应数据类型，按系统、书源、发现、阅读、书架、替换规则、备份分文件
     ai/                     进程内 AI 网关：Agent.kt · AgentConnection.kt 句柄 · AgentRoutes.kt 薄收口 · LlmProvider.kt / ToolRegistry.kt / ConnectionSelector.kt 扩展点 · Guardrails.kt · BuiltinTools.kt（55 个内置工具）· McpBridge.kt · AgentCatalog.kt 契约
-  src/main/resources/       agent-api.json（161 条端点契约）· assets/txtTocRule.json
+  src/main/resources/       agent-api.json（165 条端点契约）· assets/txtTocRule.json
 web/                        前端（React 19 + TS + Vite，构建产物进同一个 jar）
   src/main.tsx              应用外壳 + hash 路由 + 全局快捷键
   src/app/                  AppHeader.tsx 顶栏 · pages.tsx 页面注册表（导航项在 lib/nav.ts）

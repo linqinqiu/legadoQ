@@ -1,12 +1,10 @@
 # legadoQ 长期任务框架：研究、对照与建议
 
-> **采纳状态（2026-11-12）**：本文档由用户提供的外部建议（2026-11-11 生成）采纳为仓库长期路线图。
-> 当前阶段：**S0 兼容内核** —— C-01 RSS/Atom 直解、C-02 分页占位均已收口并随 **0.2.39（build 52）** 发版推送
-> （后端全量 1119 项过、DNS 双红为环境误报已定向复跑确认；判据见 compatibility.md §4.1 与对应测试）；
-> **C-03 段评只读**后端已收口（`RuleRunner.reviews` + `POST /api/books/reviews`，契约 162，引擎/路由/告警判据绿）；
-> 阅读器只读浮层为下一子切片（详情地址按章节解析 `reviewDetailUrl` 的方案已定，见研究文档 §8），完成后随 0.2.40 发版。
-> 执行纪律：垂直切片、先补判据、每片单独提交；长期任务经用户授权（2026-11-12）**全自主闭环**：
-> 实现→验证→提交→发版→推送自行抉择，不逐次请示，不怕破坏性代码删改（git 保历史）。阶段进展见各切片提交与 `docs/sessions/`。
+> 本路线图基于 2026-11-11 至 2026-11-12 的调查与决策记录。当前发布版本、已完成功能及测试状态以 `docs/STATUS.md` 和 `product/CHANGELOG.md` 为准；路线条目执行前须复核源码与版本。
+
+> **当前基线（2026-11-13）**：发布版为 0.2.42 / build 55，HTTP 契约为 165 条 / 19 组。C-01 RSS/Atom 无列表规则直解、C-02 `<1,2,3>` 翻页已随 0.2.39 发布；C-03 段评详情已有只读后端实现，阅读器 UI 尚未接入。测试与已知缺口见 `docs/STATUS.md`，用户可见交付以 `product/CHANGELOG.md` 为准。
+>
+> 本文后续借鉴材料和阶段建议采集于 2026-11-11 至 2026-11-12。它们是决策背景，不自动代表当前未完成项；开始工作前先核对 `product/docs/compatibility.md`、当前源码、更新日志和测试。
 
 > 文档性质：基于公开仓库与项目自有文档的客观整理，供开发决策使用。  
 > 生成日期：2026-11-11  
@@ -49,16 +47,16 @@
 
 ## 2. legadoQ 客观现状摘要
 
-### 2.1 产品定位（README）
+### 2.1 产品定位（README；基于 2026-11-11 文档快照）
 
 - **本地小说 / 漫画阅读服务**
 - 技术栈：Kotlin + Ktor 后端、SQLite、内置 Web UI（React）
 - 默认监听：`127.0.0.1:1234`
 - 数据只在本机；不内置任何书源、订阅源或作品内容
-- 当前文档记载版本示例：**0.2.38**（以运行时 `/healthz` 为准）
+- 写作时版本示例：**0.2.38**（当前版本以运行时 `/healthz` 为准）
 - 许可：根目录 MIT；`product/` 为 GPL-3.0
 
-### 2.2 功能面（README 功能表，客观罗列）
+### 2.2 功能面（README 功能表，基于 2026-11-11 快照）
 
 | 功能面 | 能力（文档原文归纳） |
 |--------|----------------------|
@@ -78,11 +76,11 @@
 | 系统 | 服务端口、运行日志等 |
 | PWA | 可安装到桌面，支持离线壳 |
 
-### 2.3 架构客观数字（ARCHITECTURE.md 快照说明）
+### 2.3 架构客观数字（2026-11-13 核验）
 
 | 项 | 数值或描述 | 备注 |
 |----|------------|------|
-| HTTP 端点 | **161** 条 | 19 组；以 `/api/catalog` 为准；文档注明为 2026-11-10 快照，发版后可能变化 |
+| HTTP 端点 | **165** 条 | 19 组；2026-11-13 `docs:api-check` 实测；以契约和 `/api/catalog` 为准 |
 | 路由组织 | Routes 装配点 + 多域 `*Routes.kt` | 领域含 source、rules、content、localbook、cache、tts、backup、subscription、ai、ops、reading 等 |
 | 数据库 | SQLite WAL；代码建表约 **20** 张 | 书源、书架、进度、笔记、缓存、规则、订阅、日志等 |
 | 安全 | 默认仅回环；写操作要求同源 Origin；出站拒内网/保留地址 | 无账号无 token；`LEGADO_HOST=0.0.0.0` 等于把写权限交给局域网 |
@@ -93,23 +91,26 @@
 **支持（文档标明支持）：**  
 CSS（Jsoup）、XPath（`@xpath:`）、JSONPath / `@Json:`、`||` 备选、`<js>` / `@js:`（Rhino，允许顶层 return）、`{{…}}` 表达式、`:正则` 列表与 `$1`、comment 脚本、Packages/JavaImporter 白名单、java.ajax / ajaxAll / cache / cookie / jsLib、imageDecode、媒体类型 1–4、登录多入口等。
 
-**明确不支持或行为不同：**
+**已知兼容边界（按当前 `product/docs/compatibility.md`）：**
 
 | 项 | 文档结论 |
 |----|----------|
-| 分页占位 `<1,2,3>` | **不支持**（上游写法）；请用 `{{page}}` 或自行拼接 |
-| `webView: true` / 依赖 WebView 过挑战 | **不支持**；体检标 `needs_webview` |
-| `ruleReview` 段评 | **不执行**（字段可存可备份，不产出段评） |
-| 标准 RSS/Atom 且未写 `ruleArticles` | **不列目**（必须有列表规则，否则只能开原页） |
+| 分页占位 `<1,2,3>` | **已支持**，与 `{{page}}` 等形式共存；具体语义见兼容说明 §4.1 |
+| 标准 RSS/Atom 且未写 `ruleArticles` | **已支持**标准 feed 直解；非标准 feed 需显式规则 |
+| `ruleReview` 段评 | **部分支持**：详情列表有只读后端实现；统计、回复、互动及阅读器 UI 接入情况按兼容说明复核 |
+| `webView: true` / 依赖 WebView 过挑战 | 不提供服务端 Android WebView；体检标记 `needs_webview` |
 
 **登录：** 文档写明五条路（填表 / 内置反代浏览器 / 真浏览器 / 粘贴 Cookie / 书签回传），与上游单一 WebView 登录不同。
 
 **备份加解密：** 文档写明按上游 BackupAES 口径（AES/ECB/PKCS5Padding，密钥派生方式与上游一致）。
 
-### 2.5 近期已落地、与「体验层」相关的客观变更（Changelog）
+### 2.5 已发布的体验层变更（Changelog）
 
 以下摘自 `product/CHANGELOG.md` 已发布条目（非规划）：
 
+- 2026-11-13 / 0.2.42：正文加载失败时提供换源或返回书架入口（阅读）
+- 2026-11-12 / 0.2.40：阅读配色跟随封面与壁纸；书源缺失时给出换源路径；AI 设置分区调整
+- 2026-11-12 / 0.2.39：RSS/Atom 无列表规则时直解标准 feed；撤销分页占位误报
 - 阅读记录：汇总卡片、按书统计、最近 30/90/365 天窗口（0.2.37）
 - 书架默认只铺前 120 本 + 加载更多（0.2.37）
 - 书签接回界面；与划线共用笔记表；按章+段落跳转（0.2.22，待定功能中已标记落地）
@@ -156,19 +157,25 @@ CSS（Jsoup）、XPath（`@xpath:`）、JSONPath / `@Json:`、`||` 备选、`<js
 
 ---
 
-## 4. 客观差距与优先级台账
+## 4. 历史差距与优先级台账（2026-11-12）
 
-### 4.1 兼容内核差距（来自 compatibility.md，最高优先级）
+本章保留原建议与当时的证据，不作为当前缺口清单。执行任何条目前，先核对顶部当前基线、`docs/STATUS.md`、`product/CHANGELOG.md` 与 `product/docs/compatibility.md`。
+
+### 4.1 兼容内核切片记录
 
 | ID | 差距 | legadoQ 现状 | 建议目标态 | 主要落点 |
 |----|------|--------------|------------|----------|
 | C-01 | 标准 RSS/Atom 无列表规则 | ✅ 已收口（0.2.39）：标准 feed 无规则直解列目 | 标准 feed 可直解列目 | subscription + Web RSS |
 | C-02 | URL 分页 `<1,2,3>` | ✅ 已收口（0.2.39）：与上游语义一致，撤销误导告警 | 与上游语义兼容（可与 `{{page}}` 共存） | rules/RuleRunner |
-| C-03 | ruleReview 段评 | 🔶 详情层只读后端已支持（0.2.40 待发）；阅读器浮层接入中 | 至少只读展示 | rules + reading + Web |
-| C-04 | WebView 依赖源 | needs_webview 分档 | 保持诚实分档；可选外部引擎属扩展层 | source 体检 |
+| C-03 | ruleReview 段评 | 🔶 详情层只读后端已支持；2026-11-13 核查阅读器 UI 尚未接入 | 当时建议：至少只读展示 | rules + reading + Web |
+| C-04 | WebView 依赖源 | 2026-11-12：按 `needs_webview` 分档 | 当时建议：保持明确分档；外部引擎属扩展层候选 | source 体检 |
 | C-05 | 宿主 API / 规则字段执行缺口 | 🔶 2026-11-13 实测：`java.t2s`/`s2t` 未实现（30 / 7 条源，11 条正文级）；`globalThis.environment` 缺失（1 条）；`preUpdateJs` 36 / `formatJs` 6 / `concurrentRate` 42 / `webJs` 8 条零执行（校验已告警） | 按库内使用量补齐：先 `t2s`、`environment`，其余先告警 | `rules/JsSandbox` + `rules/RuleRunner` |
 
-### 4.2 主路径与体验差距（功能说明 + MD3 公开特性对照）
+### 4.2 当时提出的主路径与体验建议（2026-11-12 历史快照）
+
+> 本表是调研时的候选差距，不是当前 backlog。阅读记录时间轴已在 0.2.37 发布，封面配色已在 0.2.40 发布；其它条目须逐项对照当前源码与 `product/CHANGELOG.md`，不要据此直接排期。
+
+以下均为 2026-11-12 的对照建议，不表示功能缺失。逐项执行前需按当前 UI、API、测试及 `product/CHANGELOG.md` 复核。
 
 | 主题 | legadoQ 已有客观基础 | MD3 公开可借鉴点 | 建议 |
 |------|----------------------|------------------|------|
@@ -192,7 +199,7 @@ CSS（Jsoup）、XPath（`@xpath:`）、JSONPath / `@Json:`、`||` 备选、`<js
 | MD3 comic 包本地 OCR/擦字等 | 依赖 Android 侧运行时与分包策略；无对等客观基础 |
 | 完整段评发帖社区 | 超出「只读展示」最小目标；依赖 C-03 之后再评估 |
 
-### 4.4 六大源仓库借鉴映射（Web 栈可移植性甄别，2026-11-12）
+### 4.4 六大源仓库借鉴映射（2026-11-12 历史评估）
 
 > 这六个仓库是借鉴仓 HapeLee/legado-with-MD3 的 README 致谢清单；本节往源头再挖一层。
 > **硬约束**：legadoQ 是 Web 栈（React/Vite + Kotlin/Ktor），非 Android/Compose——
@@ -200,21 +207,21 @@ CSS（Jsoup）、XPath（`@xpath:`）、JSONPath / `@Json:`、`||` 备选、`<js
 
 | 仓库 | 提供什么 | Web 可移植性 / 落点 | 优先级·状态 |
 |------|----------|---------------------|-------------|
-| **gedoor/legado** | 书源鼻祖：规则方言（@css:/@json:/@XPath:/@js:、&&\|\|%%、@put/@get、{{}}、##净化）、UrlOption、java.* 桥、nextTocUrl/nextContentUrl 翻页、ruleReview 段评、loginCheckJs/coverDecodeJs/jsLib；翻页/缓存/换源/简繁 UX | 服务端兼容基线，C-01/C-02/C-03 正在对齐。⚠️原仓因侵权案已清空仅存公告，取证用 gitee 镜像与教程 | 持续对齐基线（S0） |
+| **gedoor/legado** | 书源鼻祖：规则方言（@css:/@json:/@XPath:/@js:、&&\|\|%%、@put/@get、{{}}、##净化）、UrlOption、java.* 桥、nextTocUrl/nextContentUrl 翻页、ruleReview 段评、loginCheckJs/coverDecodeJs/jsLib；翻页/缓存/换源/简繁 UX | 服务端兼容基线；C-01/C-02 已交付，C-03 详情只读 API 已交付，阅读器 UI 未实现。⚠️原仓因侵权案已清空仅存公告，取证用 gitee 镜像与教程 | 持续对齐基线；具体缺口以兼容台账为准 |
 | **Luoyacheng/legado-E**（阅读Sigma） | ⚠️**兼容增量**：`[newpage]` 正文分页、副文规则、`@webjs:`、eventListener+customButton、`java.refreshBookInfo/refreshBookToc/refreshContent/reLoginView/showBrowser`(半屏段评)`/showPhoto`、`chapter.update()`、`cache.get(onlyDisk)`、并发 skipRateLimit、登录检查规则、简介 HTML/MD/button、图片 click 键 | 书源会用、服务端不支持即报错。需逐项核实我们 JsSandbox 已支持哪些，再定缺口 | **兼容 backlog 待评估**（C-05+ 候选，先评估再决定是否插队 S0） |
 | **komikku-app/komikku** | 漫画阅读器 UX：隐藏分类、批量收藏/多条目合并/范围选择迁移、**封面自动取色主题**、宽幅封面、更新错误屏+条目迁移、智能更新预览、更新分组、保存搜索芯片、源推荐 Feed；阅读器 tap zones（L形/电纸书/边缘）、webtoon 长条、宽页分割、双击缩放、跳过已读 | Compose 控件不可移植，取 UX 范式。tap zones 我们已有（`reader/interaction/tapZones`） | L2/L3 UX backlog |
 | **FoedusProgramme/Gramophone** | 封面取色：确证**非 Palette API**，而是 Material `DynamicColorsOptions.setContentBasedSource(封面bitmap)` + `ColorUtils` HSL 派生背景/抬升/弱对比色，播放页 300ms 换色 | Web 等价：Canvas `getImageData` 量化选种子 + CSS transition。落点：阅读器/书详封面动态主题 | 封面主题链·组件①（S2 候选） |
 | **jordond/MaterialKolor** | Material Color Utilities 的 KMP 移植：种子色→HCT→6 组 tonal palette→亮/暗 scheme（默认 TonalSpot，可调 contrast） | 官方 JS 移植 `@material/material-color-utilities`：`themeFromImage`/`themeFromSourceColor`/`applyTheme` 直接写 `--md-sys-color-*`，与我们现有 M3 令牌无缝对接 | 封面主题链·组件②（S2 候选） |
 | **Calvin-LL/Reorderable** | 拖动排序：长按/即拖 handle、`onMove(from,to)`、`animateItem` 让位动画、边缘变速自动滚动、稳定 key | ✅**已有等价实现** `lib/dragSort.ts`（长按 250ms/移动阈值/边缘滚动/指针落点，书架与书源共用）；仅可选补让位动画 | 已对齐，勿重造 |
 
-**综合判断（最高 ROI 新切片）**：Gramophone + MaterialKolor 合成「**书封面 → 种子色 → M3 动态主题**」链，
+**当时综合判断（2026-11-12）**：Gramophone + MaterialKolor 合成「**书封面 → 种子色 → M3 动态主题**」链，
 官方 `themeFromImage` + `applyTheme` 一个库即覆盖两者能力，且 komikku 也印证此范式。
 落点齐全（7 套 theme-* 令牌 + `WallpaperLayer` + per-book `themeColor`）。注意：远程封面需 CORS（复用现有封面代理）、
-量化前缩图、按书缓存。**排为 S2 候选，S0 收口后再开**；当前活动切片仍是 C-03。
+量化前缩图、按书缓存。**当时排为 S2 候选**。书籍封面主题能力已在 0.2.40 发布；其余方案仅作历史背景，当前状态以源码为准。
 
 ---
 
-### 4.5 已落地：前端设计内核（2026-11-12，S2「主题」提前开的一刀）
+### 4.5 前端设计内核记录（2026-11-12）
 
 > 依据：`docs/research/研究-十二仓借鉴-2026-11-12.md`（12 仓证据台账，[核实] 58 条）。本节只记**已实现**的部分。
 
@@ -242,12 +249,14 @@ L3  扩展与工程层 AI/可选引擎/同步/门禁/文档   → 差异化与�
 
 **依赖规则：** L2/L3 不得绕过 L0 的兼容结论；L3 不得破坏默认回环与同源写门。
 
-### 5.2 阶段（完成定义用客观产物，不绑死日历）
+### 5.2 阶段（2026-11-12 历史阶段框架；完成定义用客观产物，不绑死日历）
+
+> 阶段表保留原决策记录。S0 的 C-01/C-02 已完成，C-03 后端已实现、UI 尚缺；S1 的阅读记录时间轴已于 0.2.37 发布。其余工作项须先复核现状，再决定是否继续、重排或关闭。
 
 | 阶段 | 层级 | 主题 | 完成定义（可检查） |
 |------|------|------|-------------------|
-| S0 | L0 | C-01、C-02、C-03 | `compatibility.md` 对应行改写；各有可复现用例或测试 |
-| S1 | L1 | 阅读记录时间轴+章节维、缓存管理、换源说明 | 功能说明与 UI/API 一致 |
+| S0 | L0 | C-01、C-02、C-03 | C-01/C-02 已完成；C-03 段评详情只读 API 与规则执行已支持，阅读器 UI 未实现 |
+| S1 | L1 | 阅读记录时间轴+章节维、缓存管理、换源说明 | 时间轴已在 0.2.37 发布；其余条目执行前复核 |
 | S2 | L2 | 书架多布局、主题导入导出、书级备注、虚拟分组 | 窄屏/宽屏各一套验收 |
 | S3 | L2+L1 | 发现样式、漫画体验收口、设置搜索强化 | 不新增顶级主导航 |
 | S4 | L3 | 可选外部引擎、WebDAV（配置/进度）、AI 阅读快捷动作 | 默关或显式配置 |
@@ -302,15 +311,15 @@ L2 新能力只挂入上述分区，避免再增加顶级设置岛。
 
 ---
 
-## 6. 建议的近期唯一主线（可执行）
+## 6. 建议的近期唯一主线（2026-11-12 历史记录）
 
-在框架依赖下，**优先只推进 S0**：
+当时在框架依赖下，**优先推进 S0**：
 
 1. **C-01** 标准 RSS/Atom 无 `ruleArticles` 时直解列目  
 2. **C-02** URL 分页占位 `<1,2,3>` 与现有 `{{page}}` 共存  
 3. **C-03** `ruleReview` 段评只读展示  
 
-S0 完成后再开 S1 中与 MD3 最直接对应、且 Changelog 已有基础的 **阅读记录时间轴 + 章节维度**。
+RSS/Atom 直解与 `<1,2,3>` 分页随 0.2.39 发布；段评详情只读规则与 API 已实现，阅读器 UI 尚未实现，因此 S0 不能整体标为完成。阅读记录时间轴于 0.2.37 发布。此节保留当时的建议顺序，不代表当前待办；当前优先级应从 `docs/STATUS.md`、`product/docs/compatibility.md` 与最新 Changelog 重新确定。
 
 ---
 
@@ -319,7 +328,7 @@ S0 完成后再开 S1 中与 MD3 最直接对应、且 Changelog 已有基础的
 | 维度 | 结论（有文档支撑） |
 |------|-------------------|
 | legadoQ 定位 | 本地优先、书源规则兼容、无内置内容的本机阅读服务；架构与门禁已较完整 |
-| 最大客观短板 | compatibility 写明的 RSS 直解、分页占位、段评不执行；以及 WebView 源诚实分档 |
+| 最大客观短板 | 以当前 `product/docs/compatibility.md` 为准：段评仍缺阅读器 UI、统计徽章、回复与写操作；以及 WebView 源诚实分档 |
 | MD3 最值得借的公开点 | 阅读记录多维度、书架多布局与平板友好、书籍备注、智能伴生分组、主题管理分享、缓存管理、设置搜索 |
 | 不应借的 | Android/Compose 栈、默认 WebView、comic 本地推理包、内容与书源内置 |
 | 长期方法 | L0→L1→L2→L3 分层；垂直切片；兼容表与契约同步；完成定义可检查 |

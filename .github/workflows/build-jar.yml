@@ -228,26 +228,13 @@ jobs:
             echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "release_name=legadoQ ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
-            echo "tag_name=latest" >> "$GITHUB_OUTPUT"
-            echo "release_name=legadoQ Continuous Build (latest)" >> "$GITHUB_OUTPUT"
+            echo "tag_name=continuous-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            echo "release_name=legadoQ Continuous Build (${GITHUB_SHA:0:7})" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Recreate latest release & tag
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # 删除旧的 latest Release，确保新建时 GitHub 发布时间戳刷新为最新
-          gh release delete latest --yes || true
-          # 更新并强制推送 latest Git Tag 指向当前 Commit
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f latest "${{ github.sha }}"
-          git push --force origin refs/tags/latest:refs/tags/latest
 
       # 发布说明不能只有「本 Release 由 Actions 生成」——用户点进来要知道**这版改了什么**、
       # **怎么跑起来**。更新内容直接从 `product/CHANGELOG.md` 摘，避免第二份手写日志漂移；
-      # 滚动构建（latest）没有对应版本，退回文件里最新的一段并注明。
+      # 连续构建没有对应版本，退回文件里最新的一段并注明。
       #
       # 顺序是刻意的：先给"下载解压双击"（普通用户），再给"装了 Java 才用 jar"（开发者）。
       # 以前反过来，等于把零安装的便携包藏在第三个资产里。
@@ -317,8 +304,9 @@ jobs:
               "${GITHUB_SHA:0:7}" "$GITHUB_REPOSITORY" "$GITHUB_SHA" "${{ github.ref_name }}" "${{ steps.release_meta.outputs.build_time }}"
           } > product/release-body.md
 
-          echo "=== release-body.md ==="
-          head -40 product/release-body.md
+      - name: Generate release checksums
+        working-directory: product/artifacts
+        run: sha256sum legado.jar legado-dist.zip legadoq-desktop-*.zip > SHA256SUMS
 
       - name: Auto Publish / Update GitHub Release
         uses: softprops/action-gh-release@v2
@@ -330,7 +318,7 @@ jobs:
           # 路径相对 GITHUB_WORKSPACE（working-directory 只对 run 生效），所以带 product/。
           body_path: product/release-body.md
           draft: false
-          prerelease: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           # 只有版本 tag（v*）能当 “Latest”。滚动构建是 main 的连续产物，
           # 若它也置 true，每次推 main 都会把 Latest 从版本页抢走（2026-11-06 实测：
           # v0.2.19 发布后两次 docs 推送，Latest 徽章就落回了 Continuous Build）。
@@ -339,5 +327,6 @@ jobs:
             product/artifacts/legado.jar
             product/artifacts/legado-dist.zip
             product/artifacts/legadoq-desktop-*.zip
+            product/artifacts/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

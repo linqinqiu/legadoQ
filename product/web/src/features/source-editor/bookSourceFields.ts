@@ -1,6 +1,6 @@
 // 书源结构化编辑器的字段清单，逐条移植自上游 legado-team/modules/web 的
-// src/config/bookSourceEditConfig.ts（段评 ruleReview 一并保留：引擎目前不消费这些规则，
-// 但字段仍需在编辑时可见可存，否则导入的书源一改就丢配置）。
+// src/config/bookSourceEditConfig.ts（段评 ruleReview 一并保留：详情规则已有只读 API，
+// 统计、回复与写操作未实现；全部字段仍须可见可存，避免编辑时丢失配置）。
 export type SourceField = {
   id: string
   title: string

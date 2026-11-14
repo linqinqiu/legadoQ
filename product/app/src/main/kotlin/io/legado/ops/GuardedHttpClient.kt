@@ -18,8 +18,8 @@ import javax.net.ssl.SSLParameters
 /**
  * 出站 HTTP 只能由 [NetworkSecurity.newHttpClient] 签发：模块拿不到裸的 `HttpClient.newBuilder()`，
  * 想发请求就走受控实例，每个请求在真正发包前都要过 SSRF 闸门
- * （[NetworkSecurity.resolveAndValidateSafeHttpTarget]），并对解析后的 IP 复查私网/回环
- * （防 DNS 重绑定 —— 建连前那一下解析结果可能与构造 URL 时不同）。
+ * （[NetworkSecurity.resolveAndValidateSafeHttpTarget]），并在发送时重新检查 DNS 应答。
+ * JDK HttpClient 独立解析连接地址，因此这道检查不能消除校验之后的 DNS TOCTOU。
  *
  * 这是把"出站必过闸"从"每个调用点记得手调一次"变成"拿不到不过闸的 client"的机制化收口。
  */
@@ -67,23 +67,14 @@ internal class GuardedHttpClient(
     private fun guard(uri: URI) {
         // 1) 既有判定：scheme/host + 解析后 IP 的私网/回环/保留段。
         NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, uri.host ?: "目标", allowLoopback)
-        // 2) 防 DNS 重绑定：构造时解析过，建连前再解析一次并复查。
-        //    两次解析之间若被重绑到私网，这里兜底拦下。
+        // Re-resolve at send time and reject any private address in the complete answer set.
+        // The JDK transport resolves again when opening a socket, so this narrows but does
+        // not close the DNS TOCTOU window.
         val resolved = try {
             InetAddress.getAllByName(uri.host)
         } catch (e: Exception) {
             throw NetworkSecurity.UnreachableTargetException("无法解析目标域名: ${uri.host}（${e.message}）", e)
         }
-        for (addr in resolved) {
-            val loopback = addr.isLoopbackAddress || (addr.hostAddress?.startsWith("127.") == true)
-            // 放开回环时跳过它，但仍要挡私网/链路本地/保留段 —— 口子只开给本机模型，不开给整个内网。
-            if (loopback && allowLoopback) continue
-            if (addr.isAnyLocalAddress || addr.isLoopbackAddress || addr.isLinkLocalAddress ||
-                addr.isSiteLocalAddress || addr.hostAddress == "169.254.169.254" ||
-                NetworkSecurity.isSpecialV4(addr) || NetworkSecurity.isSpecialV6(addr)
-            ) {
-                throw NetworkSecurity.BlockedAddressException("拒绝访问内网或本机地址（DNS 解析结果）")
-            }
-        }
+        NetworkSecurity.validateResolvedAddresses(resolved, allowLoopback)
     }
 }
