@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { api, type SourceSummary } from '../../lib/api'
+import { api, type SourceHealthCheckItem, type SourceSummary } from '../../lib/api'
 import { buildGroupingPlan, HEALTH_TAGS, type HealthTier } from '../../lib/sourceGrouping'
 import { dropHealthResults, getHealthRun, startHealthRun, stopHealthRun, useHealthRun } from './sourceHealthRun'
 import { Icon } from '../../icons'
@@ -33,6 +33,32 @@ const isPending = (state: string) => PENDING_STATES.includes(state)
 const isUnconfigured = (state: string) => UNCONFIGURED_STATES.includes(state)
 
 type TabFilter = 'all' | 'valid' | 'slow' | 'pending' | 'unconfigured' | 'dead'
+
+/**
+ * 确认框里要念出来的名字：最多三个 + 「等共 N 个」。
+ *
+ * 批量停用/删除/启用都要先说清楚"你正要对谁动手"——只给个数字没人能判断，
+ * 全念出来又会把确认框撑成一面墙。导出是为了让判据直接验这条措辞。
+ */
+export function previewNames(names: string[]): string {
+  const head = names.slice(0, 3).join('、')
+  return names.length > 3 ? `${head} 等共 ${names.length} 个` : head
+}
+
+/**
+ * 「体检通过但当前停用」的那批 —— 批量启用只认这个集合。
+ *
+ * 三条边界都在这里定死（判据直接验这个函数，不验组件）：
+ * ① 只认 `ok`（valid / slow）；② 必须**当前停用**；③ 清单里查不到的 id 一律不算
+ * （列表还没刷新到位时不能猜它是停用的，猜错就是偷偷改用户的状态）。
+ */
+export function healthyDisabledOf(
+  results: SourceHealthCheckItem[],
+  sources: SourceSummary[],
+): SourceHealthCheckItem[] {
+  const enabledById = new Map(sources.map(source => [source.id, source.enabled]))
+  return results.filter(item => item.ok && enabledById.get(item.id) === false)
+}
 
 export function SourceHealthModal({
   sources,
@@ -81,8 +107,10 @@ export function SourceHealthModal({
       else if (isUnconfigured(r.statusCategory)) unconfigured++
       else pending++
     }
-    return { total: results.length, valid, slow, pending, unconfigured, dead }
-  }, [results])
+    // 「体检通过但当前停用」——批量启用那条只认这个数，别的档一个都不碰
+    const healthyDisabled = healthyDisabledOf(results, sources).length
+    return { total: results.length, valid, slow, pending, unconfigured, dead, healthyDisabled }
+  }, [results, sources])
 
   const filteredResults = useMemo(() => {
     return results.filter(item => {
@@ -179,10 +207,21 @@ export function SourceHealthModal({
     }
   }
 
+  /**
+   * 批量停用前先确认。
+   *
+   * 停用是可逆的，但**一次关掉几十上百个源**不是小动作：关完之后搜索面立刻变窄，
+   * 而人往往是点完才反应过来。所以这里把数量和前几个名字摆出来，跟删除那条同一套措辞
+   * （区别只在「可以再启用回来」）。删除那条本来就带确认，两条口径保持一致。
+   */
   const handleBatchDisableFailed = async () => {
     const failedItems = results.filter(r => isDead(r.statusCategory))
     if (failedItems.length === 0) {
       onToast('当前无失效书源需要停用', 'info')
+      return
+    }
+    const names = previewNames(failedItems.map(i => i.name))
+    if (!confirm(`确定停用以下 ${failedItems.length} 个失效书源吗？\n（${names}）\n停用只是不参与搜索，之后可以再启用。`)) {
       return
     }
     setBusyAction('disable_failed')
@@ -197,13 +236,44 @@ export function SourceHealthModal({
     }
   }
 
+  /**
+   * 批量启用：把「体检通过但当前是停用状态」的源一次打开。
+   *
+   * 这是「批量启停」里缺的那一半。 curation 的真实场景是「以前一刀切停了一批，体检完发现
+   * 大部分其实好好的」—— 没有这个按钮，人就只能一个个点回去。
+   *
+   * 只认**本轮体检通过**（valid / slow）且**当前停用**的源；别的档一个都不碰：
+   * 「待确认」「未配搜索」那些不是坏，但也不该被这条顺手打开。
+   */
+  const handleBatchEnableHealthy = async () => {
+    const healthyDisabled = healthyDisabledOf(results, sources)
+    if (healthyDisabled.length === 0) {
+      onToast('没有「体检通过但被停用」的书源', 'info')
+      return
+    }
+    const names = previewNames(healthyDisabled.map(i => i.name))
+    if (!confirm(`确定启用以下 ${healthyDisabled.length} 个体检通过的书源吗？\n（${names}）\n启用后会重新参与搜索。`)) {
+      return
+    }
+    setBusyAction('enable_healthy')
+    try {
+      const resp = await api.batchSources('enable', healthyDisabled.map(i => i.id))
+      onToast(resp.message || `已启用 ${resp.affected} 个书源`, 'success')
+      onSourcesChange()
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : '启用失败', 'error')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   const handleBatchDeleteFailed = async () => {
     const failedItems = results.filter(r => isDead(r.statusCategory))
     if (failedItems.length === 0) {
       onToast('当前无失效书源需要删除', 'info')
       return
     }
-    const names = failedItems.slice(0, 3).map(i => i.name).join('、') + (failedItems.length > 3 ? ` 等共 ${failedItems.length} 个` : '')
+    const names = previewNames(failedItems.map(i => i.name))
     if (!confirm(`确定要彻底删除以下 ${failedItems.length} 个失效书源吗？\n（${names}）\n删除后不可恢复！`)) {
       return
     }
@@ -461,24 +531,39 @@ export function SourceHealthModal({
               </button>
             )}
           </div>
-          {stats.dead > 0 && (
+          {(stats.dead > 0 || stats.healthyDisabled > 0) && (
             <div className="health-actions-right">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => void handleBatchDisableFailed()}
-                disabled={running || busyAction !== null}
-              >
-                <span>一键停用连不上的源 ({stats.dead})</span>
-              </button>
-              <button
-                type="button"
-                className="danger-button"
-                onClick={() => void handleBatchDeleteFailed()}
-                disabled={running || busyAction !== null}
-              >
-                <span>一键删除连不上的源 ({stats.dead})</span>
-              </button>
+              {stats.healthyDisabled > 0 && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void handleBatchEnableHealthy()}
+                  disabled={running || busyAction !== null}
+                  title="体检通过、但当前处于停用状态的书源；启用后会重新参与搜索"
+                >
+                  <span>一键启用体检通过的 ({stats.healthyDisabled})</span>
+                </button>
+              )}
+              {stats.dead > 0 && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => void handleBatchDisableFailed()}
+                  disabled={running || busyAction !== null}
+                >
+                  <span>一键停用连不上的源 ({stats.dead})</span>
+                </button>
+              )}
+              {stats.dead > 0 && (
+                <button
+                  type="button"
+                  className="danger-button"
+                  onClick={() => void handleBatchDeleteFailed()}
+                  disabled={running || busyAction !== null}
+                >
+                  <span>一键删除连不上的源 ({stats.dead})</span>
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -215,9 +215,9 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 后端源码 | **150 文件 / 36,812 行** | `find product/app/src/main/kotlin -name '*.kt'` + 行数求和（排除 build） |
 | 后端测试源码 | 160 文件 / 29,340 行 | `product/app/src/test/kotlin` |
 | 前端源码 | **218 文件 / 40,863 行** | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \)` |
-| 前端测试文件 | 147 个（`web/test/*.test.ts`） | `ls product/web/test/*.test.ts \| wc -l` |
+| 前端测试文件 | 148 个（`web/test/*.test.ts`） | `ls product/web/test/*.test.ts \| wc -l` |
 | **后端测试实跑** | **1,217 项 / 160 suite / 0 失败 / 0 跳过** | `java -Xmx1g -classpath gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 5m 59s`（第 5 项补测落地后重跑）；`test-results/test/*.xml` 求和 |
-| **前端测试实跑** | **1,169 项 / 0 失败**（约 16s）+ `tsc -b` 通过 | `npm --prefix product/web test`（段评浮层落地后） |
+| **前端测试实跑** | **1,172 项 / 0 失败**（约 16s）+ `tsc -b` 通过 | `npm --prefix product/web test`（段评浮层落地后） |
 | HTTP 端点 | 165 条 / 19 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
 | 三条门禁 | `version:check`（8 处一致 0.2.42/55）、`docs:api-check`、`changelog:check` 全绿 | `npm --prefix product run …` |
 | 库版本号 | **`user_version = 1`**（基线），由 `data/db/SchemaVersion.kt` 管理 | `pragma user_version`；判据 `SchemaVersionTest` 8 项 |

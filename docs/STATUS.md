@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,217 项全绿（160 个 suite，0 失败 0 跳过，第 5 项补测落地后重跑）**；前端 **1,169 项全绿（147 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
+> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,217 项全绿（160 个 suite，0 失败 0 跳过，第 5 项补测落地后重跑）**；前端 **1,172 项全绿（148 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -181,6 +181,14 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 - **判据**：`web/test/ChapterReviews.test.ts` 12 项——错因收成人话（不念类名/JSON/堆栈）、分页推进（第 1 页替换后续追加、只认「取满一整页才可能还有」、失败不清空已读）、四种形态渲染（加载/失败可重试/空态平静/有数据含图文音）、选中浮层仍是 5 个动作 + 关闭、取数走既有 `POST /api/books/reviews`。
 - 顺带把书源导入告警里那句「阅读器尚无段评浮层」改掉（`SourceCodec`），并同步 `product/docs/compatibility.md` 两处措辞。
 - 验证：前端 1,169 项全绿 + `tsc -b`；`npm run build` 出包后重启，`/healthz` 的 ui 指纹与 `web/dist/index.html` 一致（index-DExmuwcc.js）；后端 `SourceValidateWarningsTest` / `ChapterReviewTest` / `ApiRoutesHttpTest` 定向全绿。
+
+### 6.7 书源体检：补上「批量启停」里缺的「启」（第三阶段，2026-11-14）
+
+- 核对结果是：状态过滤（关键字 + 六个分档 tab）、分档、逐条详细错误（`statusCode` / 耗时 / 失败原因）**早就有了**；缺的是批量动作的另一半 —— 只能「一键停用/删除连不上的」，**没法把体检通过但被停用的源一次打开**。真实场景恰恰是「以前一刀切停过一批，体检完发现大半其实好好的」。
+- 新增「一键启用体检通过的 (N)」：只认 **`ok`（valid / slow）+ 当前停用 + 清单里查得到** 三条同时成立；待确认（零结果 / 受限 / 需登录 / 需渲染）与未配搜索那些一个都不碰，清单没刷新到位时也不猜。
+- **停用现在也要确认**：可逆不等于可以随手点 —— 一次关掉几十上百个源会立刻收窄搜索面，确认框里给出数量与前三个名字（与删除那条同一套措辞，只是把结论写成「停用只是不参与搜索，之后可以再启用」）。
+- 窄屏兜底：三个批量按钮在 `.health-actions-right` 里加了 `flex-wrap`，否则第三颗会被挤出可视区（看起来像没这功能）。
+- 判据：`web/test/SourceHealthBatch.test.ts` 3 项 —— `previewNames` 措辞（三个名字 + 等共 N 个）、`healthyDisabledOf` 的三条边界（通过/停用/清单可查，逐个反例都验）、三种极端输入不抛不乱认。
 
 ---
 

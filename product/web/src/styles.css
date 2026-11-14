@@ -4248,6 +4248,9 @@ body:has(.pwa-install-banner) .app-shell {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 批量动作现在有三个（启用通过的 / 停用连不上的 / 删除连不上的），窄屏要能折行，
+     否则第三颗会被挤出可视区，看起来像"没有这个功能"。 */
+  flex-wrap: wrap;
 }
 
 .health-results-list {
