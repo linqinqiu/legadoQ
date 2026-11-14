@@ -225,6 +225,14 @@ object ToolSchemas {
     /** 某个工具的参数声明；没登记就是空列表（schema 退化为宽松对象）。 */
     fun forTool(id: String): List<ToolParam> = table[id].orEmpty()
 
+    /**
+     * 写操作的确认参数：由 [ToolRegistry] 自动补进所有 `needsConfirm` 工具的参数表。
+     *
+     * 必须补进 schema，而不是只在执行期检查：有声明参数的工具 `additionalProperties=false`，
+     * 模型没有地方写 `confirm` 就永远过不了闸 —— 那等于把 26 个写工具全部焊死。
+     */
+    val confirmParam = p("confirm", "boolean", "写操作确认：会改动本机数据，必须显式传 true，否则拒绝执行")
+
     /** 已登记参数的工具数（自检/测试用）。 */
     fun size(): Int = table.size
 

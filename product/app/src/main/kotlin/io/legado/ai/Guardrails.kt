@@ -76,6 +76,25 @@ object Guardrails {
         )
     }
 
+    /**
+     * **写操作统一确认闸**：所有 `needsConfirm` 的工具，无论从哪条路进来，都必须过这里。
+     *
+     * 为什么放在 [Agent.runTool] 和 `tool.call` 都调用的地方，而不是各工具自己调：
+     * 从前只有 `source.batch` 自己带了闸，其余 25 个 `writes = true` 的工具（删源、改书源、
+     * 写进度、改分组……）都能被一句话直接调起来；模型还能用 `tool.call` 转弯绕过只加在
+     * `runTool` 上的检查。判据只有一份，才谈得上"统一"。
+     *
+     * 判定的是**目标工具**的 [ToolMeta.needsConfirm]，不是调用者自己的 —— `tool.call`
+     * 本身不写库，不能因为它 `writes = true` 就让所有只读转发也要确认。
+     *
+     * 放行条件交给 [GuardrailsPolicy]：默认策略要求入参里带 `confirm = true`；
+     * 嵌入方若实现自己的人机确认流程，替换策略即可，不必改这里。
+     */
+    fun confirmWrite(meta: ToolMeta, args: ToolArgs, policy: GuardrailsPolicy): AgentResult? {
+        if (!meta.needsConfirm) return null
+        return policy.confirm(args, "「${meta.id}」会改动本机数据")
+    }
+
     /** 把书源保存时的乐观锁冲突翻译成结构化错误（对应 HTTP 409 version_conflict）。 */
     inline fun <T> catchVersionConflict(block: () -> T): T {
         return try {

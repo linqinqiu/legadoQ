@@ -72,7 +72,7 @@ class AgentFrameworkTest {
             val (db, agent) = buildAgent(path)
             val payload = """[{"name":"测试规则","pattern":"abc","replacement":"xyz","isRegex":false}]"""
             runBlocking {
-                val import = agent.runTool("replace.import", mapOf("json" to payload))
+                val import = agent.runTool("replace.import", mapOf("json" to payload, "confirm" to true))
                 assertEquals("import 应 ok：${import.code}/${import.message}", "ok", import.status)
                 val res = agent.runTool("replace.list", mapOf("q" to "测试规则"))
                 assertEquals("ok", res.status)

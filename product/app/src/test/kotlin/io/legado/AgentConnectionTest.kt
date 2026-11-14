@@ -70,7 +70,7 @@ class AgentConnectionTest {
             val (db, conn) = connect(path)
             // 写：导入一条净化规则
             val payload = """[{"name":"连接测试规则","pattern":"x","replacement":"y","isRegex":false}]"""
-            val import = conn.call("replace.import", mapOf("json" to payload))
+            val import = conn.call("replace.import", mapOf("json" to payload, "confirm" to true))
             assertEquals("import 应 ok：${import.code}/${import.message}", "ok", import.status)
             // 读回：按 q 过滤
             val list = conn.call("replace.list", mapOf("q" to "连接测试规则"))
@@ -115,7 +115,10 @@ class AgentConnectionTest {
             // 第 2 步：写
             val import = conn.call(
                 "replace.import",
-                mapOf("json" to """[{"name":"闭环规则","pattern":"z","replacement":"w","isRegex":false}]"""),
+                mapOf(
+                    "json" to """[{"name":"闭环规则","pattern":"z","replacement":"w","isRegex":false}]""",
+                    "confirm" to true,
+                ),
             )
             assertEquals("ok", import.status)
             // 第 3 步：读回验证写已生效

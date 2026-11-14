@@ -61,7 +61,9 @@ class ReadingAiToolsTest {
     }
 
     private fun call(agent: Agent, id: String, args: Map<String, Any?> = emptyMap()): AgentResult =
-        runBlocking { agent.runTool(id, args) }
+        // 写工具统一要过确认闸；这里测的是"确认之后能真的落库"，所以默认带上 confirm。
+        // 不带 confirm 会被拦，负向断言见 AgentWriteConfirmTest。
+        runBlocking { agent.runTool(id, args + ("confirm" to true)) }
 
     // ===== 进度写入 =====
 

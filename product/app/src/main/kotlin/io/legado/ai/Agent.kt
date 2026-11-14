@@ -91,7 +91,13 @@ class Agent(
             return hooks.runAfter(meta, args, ctx.error("tool_disabled", "工具「${meta.id}」已被停用，没有执行"))
         }
 
-        // 1) before 链：任一钩子返回非 null 即拦截，工具不执行。
+        // 1) 写操作确认闸：`writes = true` 的工具必须显式带 confirm=true。
+        //    放在钩子之前，是因为它是**硬边界**（数据会不会被改），不该由 before 钩子的
+        //    返回值决定；被拦的结果同样走 after 链，审计照样看得见。
+        //    `tool.call` 不在这里判自己（needsConfirm=false），它转发时判目标工具（AgentModule）。
+        Guardrails.confirmWrite(meta, args, guardrailsPolicy)?.let { return hooks.runAfter(meta, args, it) }
+
+        // 2) before 链：任一钩子返回非 null 即拦截，工具不执行。
         val blocked = try {
             hooks.runBefore(meta, args)
         } catch (e: Throwable) {
@@ -100,7 +106,7 @@ class Agent(
         }
         if (blocked != null) return hooks.runAfter(meta, args, blocked)
 
-        // 2) 执行工具本体（异常统一兜底成 error 结果）。
+        // 3) 执行工具本体（异常统一兜底成 error 结果）。
         val raw: AgentResult = try {
             // 策略挂进协程上下文：`tool.call` 在工具内部再调一次工具时靠它读到同一份开关。
             withContext(ToolPolicyElement(policy)) { tool.invoke(ctx, args) }
@@ -117,7 +123,7 @@ class Agent(
             converted
         }
 
-        // 3) after 链：可改写结果。
+        // 4) after 链：可改写结果。
         return hooks.runAfter(meta, args, raw)
     }
 

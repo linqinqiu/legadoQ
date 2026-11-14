@@ -105,6 +105,16 @@ data class ToolMeta(
     val origin: String? = null,
     /** 参数声明；空 = 未声明（schema 退化为宽松对象）。 */
     val params: List<ToolParam> = emptyList(),
+    /**
+     * 执行前是否必须过「写操作确认闸」（见 [Guardrails.confirmWrite]）。默认跟随 [writes]：
+     * 所有会写库的工具一律要 `confirm=true`，不需要逐个工具记得去加。
+     *
+     * 只有两类工具显式设 false，且各有明确理由：
+     * - 转发型（`tool.call`）：它自己不写库，写的是目标工具，目标工具转发时各自过闸；
+     * - 外部 MCP 工具：参数表由远端 `inputSchema` 决定、本机改不了，闸加上去会让工具
+     *   直接不可用（模型没有地方放 `confirm`），而它写的是远端服务，不是本机数据。
+     */
+    val needsConfirm: Boolean = writes,
 ) {
     /** 是不是框架内置的。 */
     val isBuiltin: Boolean get() = origin == null

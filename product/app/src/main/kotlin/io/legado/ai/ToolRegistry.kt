@@ -50,12 +50,19 @@ class ToolRegistry(
      * 放在注册表而不是 `BuiltinTools.all()`：`tool.search` / `tool.call` 是
      * [AgentModule] 后注册的，插件工具更是随时进来；只有注册这一处能覆盖全部来源。
      * 工具自己带了 params 就不动它 —— 显式声明优先于集中表。
+     *
+     * 另一件必须在这里做的事：给所有要过写闸（[ToolMeta.needsConfirm]）的工具补上
+     * `confirm` 参数。有声明参数时 schema 是 `additionalProperties=false`，不补的话
+     * 模型连"确认"这个键都写不进去，写工具会全部变成调不通。
      */
     private fun enrichSchema(tool: Tool) {
         val meta = tool.meta
-        if (meta.id == "__unset__" || meta.params.isNotEmpty()) return
-        val params = ToolSchemas.forTool(meta.id)
-        if (params.isNotEmpty()) tool.meta = meta.copy(params = params)
+        if (meta.id == "__unset__") return
+        var params = meta.params.ifEmpty { ToolSchemas.forTool(meta.id) }
+        if (meta.needsConfirm && params.none { it.name == "confirm" }) {
+            params = params + ToolSchemas.confirmParam
+        }
+        if (params != meta.params) tool.meta = meta.copy(params = params)
     }
 
     /**

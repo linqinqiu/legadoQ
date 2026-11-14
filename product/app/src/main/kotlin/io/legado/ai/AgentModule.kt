@@ -98,7 +98,9 @@ object AgentModule {
         }
         if (registry.find("tool.call") == null) {
             registry.register(Tool(
-                ToolMeta("tool.call", "program", "调用任意已注册工具：args = { id, args }，id 用 tool.search 查。写操作照常过护栏。", writes = true),
+                // needsConfirm = false：它自己不写库，写的是目标工具 —— 闸在下面按**目标**判，
+                // 否则每个只读转发也要先 confirm 一次，等于把逃生口焊死。
+                ToolMeta("tool.call", "program", "调用任意已注册工具：args = { id, args }，id 用 tool.search 查。写操作照常过护栏。", writes = true, needsConfirm = false),
             ) { callCtx, args ->
                 val id = (args["id"] as? String)?.trim().orEmpty()
                 val target = registry.find(id) ?: return@Tool callCtx.error("not_found", "工具 $id 不存在，先用 tool.search 查")
@@ -108,6 +110,8 @@ object AgentModule {
                     return@Tool callCtx.error("tool_disabled", "工具「${target.meta.id}」已被停用，没有执行")
                 }
                 val inner = (args["args"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+                // 写闸按**目标工具**判：模型「先 search 再 call」这条弯路，必须和直接调一样过闸。
+                Guardrails.confirmWrite(target.meta, inner, guardrailsPolicy)?.let { return@Tool it }
                 target.handler(callCtx, inner)
             })
         }
@@ -136,6 +140,8 @@ object AgentModule {
             mapOf(
                 "json" to
                     """[{"name":"自检规则","pattern":"__self_test__","replacement":"ok","isRegex":false}]""",
+                // 写操作必须显式确认：自检也走同一条闸，不能给自己开后门。
+                "confirm" to true,
             ),
         )
         val after = conn.call("replace.list", mapOf("q" to "自检"))
@@ -149,7 +155,7 @@ object AgentModule {
                     else -> null
                 }
             }.orEmpty()
-            ids.forEach { id -> conn.call("replace.delete", mapOf("id" to id)) }
+            ids.forEach { id -> conn.call("replace.delete", mapOf("id" to id, "confirm" to true)) }
         }
         return buildString {
             appendLine("AI 内部连接自检：")

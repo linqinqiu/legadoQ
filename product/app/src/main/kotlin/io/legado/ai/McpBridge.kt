@@ -134,6 +134,9 @@ class McpBridge(
             writes = !tool.readOnly,
             origin = "mcp:${server.id}",
             params = paramsOf(tool.inputSchema),
+            // 不套本机写闸：参数表来自远端 inputSchema，本机补不进 `confirm`，
+            // 套上去等于把工具变成永远调不通；它写的是远端服务，不是本机库。
+            needsConfirm = false,
         )
         val registered = registry.register(
             Tool(meta) { _, args ->
