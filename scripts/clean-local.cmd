@@ -27,15 +27,17 @@ for %%D in (product\dist product\build product\app\build product\web\dist produc
 
 if "!DRY!"=="0" (
   if exist "product\web\tsconfig.tsbuildinfo" del /q "product\web\tsconfig.tsbuildinfo"
-  del /q product\hs_err_pid*.log product\replay_pid*.log product\app\hs_err_pid*.log product\app\replay_pid*.log product\server.log 2>nul
+  del /q product\hs_err_pid*.log product\replay_pid*.log product\app\hs_err_pid*.log product\app\replay_pid*.log product\server*.log 2>nul
 )
 
+REM worktree：cmd 版只 prune 失效注册，不删工作目录（保守）；
+REM 要清理干净的 worktree 目录用 sh 版（脏 worktree 默认跳过，--force 才强删）。
 if "!DRY!"=="0" (
   where git >nul 2>nul && git worktree prune
 )
 
 echo == 受保护（未触碰）==
-for %%P in (product\data legado-releases product\web\node_modules) do (
+for %%P in (product\data legado-releases product\web\node_modules node_modules) do (
   if exist "%%P" echo keep %%P
 )
 echo done.

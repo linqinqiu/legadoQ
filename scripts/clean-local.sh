@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # 安全清理本地「可再生产物」（全部已被 .gitignore 忽略）。
-# 用法：bash scripts/clean-local.sh [--dry-run]
+# 用法：bash scripts/clean-local.sh [--dry-run] [--force]
 #
 # 设计约束（对应 docs/STRUCTURE.md「禁止 git clean -fd」）：
 #   - 只删能由 `npm start` / gradle / CI 重建的产物；
 #   - 绝不碰用户数据：product/data（书库 DB）、legado-releases（含书库副本+发行包）、node_modules；
-#   - 过期 git worktree 只删工作目录，保留分支 ref（提交不丢）。
+#   - git worktree 只删工作目录，保留分支 ref（提交不丢）；**有未提交改动（含未跟踪文件）
+#     的 worktree 默认跳过**——并行 agent 的半成品不毁，除非显式 --force。
 set -euo pipefail
 cd "$(dirname "$0")/.."   # 仓库根
 
 DRY=0
-[ "${1:-}" = "--dry-run" ] && DRY=1
+FORCE=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY=1 ;;
+    --force) FORCE=1 ;;
+  esac
+done
 
 # 可再生、可安全删除（全部 gitignored）
 TARGETS=(
@@ -67,18 +74,24 @@ for f in "${FILES[@]}"; do
 done
 
 # JVM 崩溃转储与运行日志（散落在 product/ 与 product/app/）
-for f in product/hs_err_pid*.log product/replay_pid*.log product/app/hs_err_pid*.log product/app/replay_pid*.log product/server.log; do
+for f in product/hs_err_pid*.log product/replay_pid*.log product/app/hs_err_pid*.log product/app/replay_pid*.log product/server*.log; do
   [ -e "$f" ] || continue
   if [ "$DRY" = 1 ]; then echo "[dry] would remove $f"; else echo "remove $f"; rm -f -- "$f"; fi
 done
 
-# 移除「已注册但过期」的 git worktree 工作目录（保留分支 ref，提交不丢）
+# 移除「已注册且干净」的 git worktree 工作目录（保留分支 ref，提交不丢）。
+# 脏 worktree（有未提交改动或未跟踪文件）默认跳过：并行 agent 的半成品可能是未跟踪文件，
+# 分支 ref 保不住它们。--force 显式声明才强删。
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   first=1
   while IFS= read -r wt; do
     [ -z "$wt" ] && continue
     if [ "$first" = 1 ]; then first=0; continue; fi   # 跳过主工作树
     if [ -d "$wt" ]; then
+      if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ] && [ "$FORCE" != 1 ]; then
+        echo "skip worktree $wt（有未提交改动/未跟踪文件；要强删加 --force）"
+        continue
+      fi
       if [ "$DRY" = 1 ]; then
         echo "[dry] would remove worktree $wt"
       else
