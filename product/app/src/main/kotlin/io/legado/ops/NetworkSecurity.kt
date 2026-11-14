@@ -1,6 +1,8 @@
 package io.legado.ops
 
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ProxySelector
 import java.net.URI
 import java.net.http.HttpClient
 import java.time.Duration
@@ -39,23 +41,38 @@ object NetworkSecurity {
     fun cacheSize(): Int = dnsCache.size
 
     /**
-     * 受控出站 client 工厂：模块要发请求只能拿这里构造的实例，
-     * 每次发送前复查 DNS 所有应答的私网/回环策略。[GuardedHttpClient] 负责在 send/sendAsync
-     * 前施加校验；JDK HttpClient 不提供 pin DNS 到 socket 的 API，所以这项检查不能消除
-     * 校验后的 DNS TOCTOU。
+     * 受控出站 client 工厂：模块要发请求只能拿这里构造的实例。
+     *
+     * 两道闸叠在一起，互不依赖：
+     * 1. [GuardedHttpClient] 在 send/sendAsync 前做解析期校验（含私网/回环/保留段判定）；
+     * 2. 所有请求都经本进程的 [PinnedProxy]（只绑回环）—— 由代理**解析一次并连同一个地址**，
+     *    客户端不再自己解析目标域名，DNS TOCTOU 窗口因此关闭。
+     *
+     * 两个代理实例按 [allowLoopback] 区分：本机模型（Ollama / LM Studio）走放行回环的那个，
+     * 其余出站永远走严格那个。不能用全局开关——同一进程里两类调用会互相污染。
      */
     fun newHttpClient(
         connectTimeout: Duration = Duration.ofSeconds(10),
         followRedirects: HttpClient.Redirect = HttpClient.Redirect.NEVER,
         /** 仅 AI 外呼在 `LEGADO_AI_ALLOW_LOOPBACK_BASEURL=1` 时会传 true（本机模型）。 */
         allowLoopback: Boolean = false,
-    ): HttpClient = GuardedHttpClient(
-        HttpClient.newBuilder()
-            .connectTimeout(connectTimeout)
-            .followRedirects(followRedirects)
-            .build(),
-        allowLoopback,
-    )
+    ): HttpClient {
+        val proxy = if (allowLoopback) loopbackProxy else strictProxy
+        return GuardedHttpClient(
+            HttpClient.newBuilder()
+                .proxy(ProxySelector.of(InetSocketAddress(InetAddress.getLoopbackAddress(), proxy.port)))
+                .connectTimeout(connectTimeout)
+                .followRedirects(followRedirects)
+                .build(),
+            allowLoopback,
+        )
+    }
+
+    /** 严格代理：拒一切内网/回环/保留段。懒启动，随进程存活。 */
+    private val strictProxy: PinnedProxy by lazy { PinnedProxy(allowLoopback = false).start() }
+
+    /** 放行回环的代理：只给本机模型那条路径用。 */
+    private val loopbackProxy: PinnedProxy by lazy { PinnedProxy(allowLoopback = true).start() }
 
     /**
      * Resolves host IP addresses with in-memory caching and validates that the target

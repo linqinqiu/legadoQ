@@ -19,7 +19,9 @@ import javax.net.ssl.SSLParameters
  * 出站 HTTP 只能由 [NetworkSecurity.newHttpClient] 签发：模块拿不到裸的 `HttpClient.newBuilder()`，
  * 想发请求就走受控实例，每个请求在真正发包前都要过 SSRF 闸门
  * （[NetworkSecurity.resolveAndValidateSafeHttpTarget]），并在发送时重新检查 DNS 应答。
- * JDK HttpClient 独立解析连接地址，因此这道检查不能消除校验之后的 DNS TOCTOU。
+ *
+ * 连接级 TOCTOU 由 [PinnedProxy] 关闭：所有请求经本进程回环代理，由它解析一次、校验、连同一个
+ * `InetAddress`；JDK 只跟 127.0.0.1 建连，不再自己解析目标域名。这里的复查是纵深防御。
  *
  * 这是把"出站必过闸"从"每个调用点记得手调一次"变成"拿不到不过闸的 client"的机制化收口。
  */
@@ -37,12 +39,17 @@ internal class GuardedHttpClient(
 
     override fun <T> send(req: HttpRequest, responseBodyHandler: HttpResponse.BodyHandler<T>): HttpResponse<T> {
         guard(req.uri())
-        return delegate.send(req, responseBodyHandler)
+        val response = delegate.send(req, responseBodyHandler)
+        failIfProxyCouldNotConnect(req.uri(), response)
+        return response
     }
 
     override fun <T> sendAsync(req: HttpRequest, responseBodyHandler: HttpResponse.BodyHandler<T>): CompletableFuture<HttpResponse<T>> {
         guard(req.uri())
-        return delegate.sendAsync(req, responseBodyHandler)
+        return delegate.sendAsync(req, responseBodyHandler).thenApply { response ->
+            failIfProxyCouldNotConnect(req.uri(), response)
+            response
+        }
     }
 
     override fun <T> sendAsync(
@@ -51,7 +58,10 @@ internal class GuardedHttpClient(
         pushPromiseHandler: HttpResponse.PushPromiseHandler<T>,
     ): CompletableFuture<HttpResponse<T>> {
         guard(req.uri())
-        return delegate.sendAsync(req, responseBodyHandler, pushPromiseHandler)
+        return delegate.sendAsync(req, responseBodyHandler, pushPromiseHandler).thenApply { response ->
+            failIfProxyCouldNotConnect(req.uri(), response)
+            response
+        }
     }
 
     override fun cookieHandler(): Optional<CookieHandler> = delegate.cookieHandler()
@@ -67,14 +77,25 @@ internal class GuardedHttpClient(
     private fun guard(uri: URI) {
         // 1) 既有判定：scheme/host + 解析后 IP 的私网/回环/保留段。
         NetworkSecurity.resolveAndValidateSafeHttpTarget(uri, uri.host ?: "目标", allowLoopback)
-        // Re-resolve at send time and reject any private address in the complete answer set.
-        // The JDK transport resolves again when opening a socket, so this narrows but does
-        // not close the DNS TOCTOU window.
+        // 2) 发送前复查全部应答。真正堵住 TOCTOU 的是 [PinnedProxy]：它解析一次并连同一个地址，
+        //    客户端不再自己解析目标域名。这里的复查保留为纵深防御（缓存命中时几乎零成本）。
         val resolved = try {
             InetAddress.getAllByName(uri.host)
         } catch (e: Exception) {
             throw NetworkSecurity.UnreachableTargetException("无法解析目标域名: ${uri.host}（${e.message}）", e)
         }
         NetworkSecurity.validateResolvedAddresses(resolved, allowLoopback)
+    }
+
+    /**
+     * 代理建连失败时回的是 502 + [PinnedProxy.ERROR_HEADER]，不能让调用方把它当成"上游返回 502"。
+     * 还原成 [NetworkSecurity.UnreachableTargetException]：错误分类（被拒 vs 到不了）比状态码更重要，
+     * 上层按它决定回 4xx 还是 502，并给出"连不上哪个地址"的可排查文案。
+     */
+    private fun failIfProxyCouldNotConnect(uri: URI, response: HttpResponse<*>) {
+        if (!response.headers().firstValue(PinnedProxy.ERROR_HEADER).isPresent) return
+        (response.body() as? java.io.Closeable)?.let { runCatching { it.close() } }
+        val port = if (uri.port > 0) uri.port else if (uri.scheme == "https") 443 else 80
+        throw NetworkSecurity.UnreachableTargetException("连不上 ${uri.host}:$port（出站代理建连失败）")
     }
 }
