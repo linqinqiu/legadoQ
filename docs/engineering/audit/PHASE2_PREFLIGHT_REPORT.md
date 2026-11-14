@@ -372,10 +372,20 @@ Database.transaction { db -> ... }   // 深度计数：只有最外层设 autoCo
 3. 六步事务的失败注入是测试专用 `stepHook`，不是运行时开关；生产路径没有「部分导入」选项（有意如此）。
 4. 多进程同时导入不在支持范围（单实例探测已有）。
 
-### 10.3 后续项状态
+### 10.3 P0-2 SSRF 连接级 IP 固定 —— 已完成
+
+| 项 | 内容 |
+| --- | --- |
+| spike | `79eaaaa`，`docs/research/研究-P0-2-连接级IP固定-spike-2026-11-14.md` |
+| 实现 | `d503cf6` feat(ops): 出站改走回环代理，连接级 IP 固定（P0-2） |
+| 改动 | 新增 `ops/PinnedProxy`（只绑回环；解析一次 → 校验 → 连同一地址；https CONNECT 盲隧道、http 绝对形式改写转发）；`NetworkSecurity.newHttpClient` 全部请求经代理（严格 / 放行回环两个实例）；`GuardedHttpClient` 把代理建连失败还原成 `UnreachableTargetException` |
+| 测试 | 新增 `PinnedProxyTest` 8 项；全量 1,186 → 1,194 项 / 157 suite / 0 失败 |
+| 运行时验证 | 启动真实服务后，`curl -x 127.0.0.1:<代理端口>` 访问 `https://www.baidu.com` 与 `http://www.baidu.com` 均 200（CONNECT 与绝对形式两条路径都走通） |
+| 遗留 | 明文 http 每请求一条到源站的连接（不复用、不流水线）；隧道线程为每连接两个守护线程，未做池化；真实 SSE 长连接未单独手测（字节透传已有判据） |
+
+### 10.4 后续项状态
 
 | 项 | 状态 |
 | --- | --- |
-| P0-2 SSRF 连接级 IP 固定 | **spike 完成**（`79eaaaa`，`docs/research/研究-P0-2-连接级IP固定-spike-2026-11-14.md`）。结论：方案 A 可行；实测纠正两条假设 —— `http://` 经代理是绝对形式请求行（不能只写 CONNECT），TLS/SNI 走盲隧道无需特殊处理。**生产代码未动**，落地待下一项 |
 | P0-3 SQLite Schema Version | **未开始**。按 §6.4 设计（`pragma user_version` + 按 `fromVersion → toVersion` 注册迁移） |
 | 第 5 项 沙箱与网络边界补测 | **未开始**（只补测试，不改行为） |
