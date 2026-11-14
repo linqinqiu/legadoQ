@@ -26,6 +26,8 @@ app/src/main/resources/static/
 # 外部模型连接档案：里面有 apiKey（用户填的密钥），与 .env 同级待遇，严禁入库。
 # 运行时由 AgentProfileStore 写在「安装根」和 .data/ 两处；.data/ 已被上面覆盖，这里锚住根目录那份。
 /agent-profiles.json
+# 界面改端口时 runtime.mjs 写的运行态端口文件，同属运行数据，不入库。
+/port.txt
 # AI 内容存储落在「安装根」的运行时产物，全是用户自己的数据，严禁入库：
 # - agent-prompts.json：用户手写的提示词预设；
 # - agent-skills/：用户技能，一条一个 .md；

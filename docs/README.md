@@ -48,6 +48,7 @@
 - [gates-guide.md](../product/docs/gates-guide.md) — 门禁怎么跑、怎么接 CI
 - [coverage-guide.md](../product/docs/coverage-guide.md) — 覆盖率怎么看、先补哪里
 - [changelog-guide.md](../product/docs/changelog-guide.md) — 更新日志细则
+- [import-conflict-policy.md](../product/docs/import-conflict-policy.md) — 备份导入冲突策略（与 ImportConflictPolicyTest 同步）
 - [restructure/facts.md](../product/docs/restructure/facts.md) — **实测事实源**（带命令与时间戳）
 - [restructure/backend-layering.md](../product/docs/restructure/backend-layering.md) — 后端分层
 - [restructure/frontend-host.md](../product/docs/restructure/frontend-host.md) — 前端宿主拆分
@@ -73,12 +74,20 @@
 按日期一轮一份，记「为什么这样做、量到了什么、判据是什么」。命名与骨架见
 [sessions/README.md](sessions/README.md)。用户可见的变化不写在这里，写 CHANGELOG。
 
+## 工程审计与整改（`docs/engineering/`）
+
+- [engineering/README.md](engineering/README.md) — 子目录职责与放置规则
+- [engineering/audit/](engineering/audit/) — 只读审计快照：第一阶段全套 11 份（REPOSITORY_AUDIT、SECURITY_THREAT_MODEL、DATA_MIGRATION_AUDIT、BACKUP_MATRIX、COMPATIBILITY_MATRIX、ECOSYSTEM_COMPATIBILITY_AUDIT 等）+ [directory/](engineering/audit/directory/) 目录与文件资产审计 9 份（2026-11-14）
+- **当前执行计划** = [engineering/audit/ROADMAP.md](engineering/audit/ROADMAP.md)（整改阶段 2-6）+ [PHASE2_PREFLIGHT_REPORT.md](engineering/audit/PHASE2_PREFLIGHT_REPORT.md) §10 执行记录；与 [ROADMAP.md](ROADMAP.md)（产品长期框架）是有意分层，互不替代
+- 审计报告一律进 `engineering/audit/`，不再放 `product/docs/`；快照不回改，勘误以追加节形式写在原文件末尾
+
 ## 归档（`docs/archive/`）
 
-- [archive/README.md](archive/README.md)
+- [archive/README.md](archive/README.md) — 完整清单
 - `reader-redesign-history.md` — 阅读器改造史（旧 7 份合并）
 - `delivery-2026-10-19.md` — 2026-10-19 交付三件套（旧 3 份合并）
 - `研究-书源规则引擎.md` / `研究-界面与AI借鉴.md` — 早期调研（旧 9 份合并为 2 份）
+- `CHANGELOG-0.8.6及以前.md` / `RESEARCH-NOTES.md` / `version-log-governance.md` — 旧日志、研究笔记与版本治理史
 
 ## 根级元文档
 

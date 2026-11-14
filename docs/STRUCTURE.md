@@ -23,8 +23,12 @@
 | `product/web/` | 内置 Web UI 源码与测试 | 独立前端实验 |
 | `product/data/` · `product/app/data/` | 运行数据库、封面、本地书、浏览器配置 | 任何需要提交的文件 |
 | `docs/` | 总览、API 参考、目录规划、研究快照、工程日志、唯一索引 | 产品操作手册（在 `product/docs/`）、构建产物 |
+| `docs/engineering/` | 工程审计快照（audit/）与整改执行记录（remediation/）；放置规则见其 README | 产品手册、研究快照 |
+| `docs/.scratch/` | 未定稿草稿 md 与分析脚本（gitignored，毕业迁 research/sessions） | 上游克隆与大语料（放仓库外 refs）、任何需提交的文件 |
 | `scripts/` | `start` / `stop` 包装，委托 `product` | 旧内嵌模式启动脚本 |
 | `product/logs/` | 1234 运行日志 | 需要提交的文件 |
+
+> **库内轻量归档例外**：`docs/archive/` 是原则 4「历史资料出库」的例外——体积小（<1MB）、AGENTS.md 将其列为禁读区，允许留在库内；大体量历史资料仍按原则 4 放仓库外 `legado-out/assets/archive`。
 
 ## 仓库外目录（统一在 `<仓库外>/legado-out/` 下）
 
@@ -47,6 +51,7 @@
 - 总览/API/目录说明 → `docs/`
 - 研究结论与方案取舍 → `docs/research/研究-<主题>.md`
 - 一轮工程记录 → `docs/sessions/YYYY-MM-DD-<主题>.md`
+- 审计报告（只读快照） → `docs/engineering/audit/`；整改执行记录 → `docs/engineering/remediation/` 或对应 preflight 报告的执行记录附录
 - 发布包 → 仓库外 `<仓库外>/legado-out/`（或按发布流程另指）
 - 临时脚本 → `product/tmp/`（已忽略）或仓库外
 

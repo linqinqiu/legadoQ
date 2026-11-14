@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./web/public/favicon.svg" width="96" height="96" alt="legadoQ Logo" />
+<img src="./web/public/favicon-256.png" width="96" height="96" alt="legadoQ Logo" />
 
 # legadoQ
 

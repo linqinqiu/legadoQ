@@ -389,3 +389,9 @@ Database.transaction { db -> ... }   // 深度计数：只有最外层设 autoCo
 | --- | --- |
 | P0-3 SQLite Schema Version | **未开始**。按 §6.4 设计（`pragma user_version` + 按 `fromVersion → toVersion` 注册迁移） |
 | 第 5 项 沙箱与网络边界补测 | **未开始**（只补测试，不改行为） |
+
+### 10.5 补记（2026-11-14 目录与文件资产审计）
+
+- §2.1 所列并行 WIP（模型拆分/网络层/导入冲突策略/发布完整性/文档刷新）已以 `6a19f28` 提交，正文「未提交」表述按快照纪律不回改，以本条为准。
+- 第一阶段 P1-3「ARCHITECTURE.md Dao 数字漂移」被证伪：`*Dao*.kt` 实测 13 个，文档正确，不得改数（勘误见 `ARCHITECTURE_MAP.md` §11、`ROADMAP.md` §6、`directory/03-DOCUMENTATION-AUDIT.md` D-1）。
+- 目录/文档/脚本卫生线整改计划：`directory/08-RECOMMENDED-STRUCTURE.md`（阶段 A-D）；其中 clean-local.sh 脏 worktree 保护（S-6）建议插队优先。

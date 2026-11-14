@@ -6,6 +6,8 @@
 >
 > 本文后续借鉴材料和阶段建议采集于 2026-11-11 至 2026-11-12。它们是决策背景，不自动代表当前未完成项；开始工作前先核对 `product/docs/compatibility.md`、当前源码、更新日志和测试。
 
+> **2026-11-14 整合注记**：当日完成第一阶段全仓审计（`docs/engineering/audit/` 11 份）与第二阶段 P0-4/P0-1/P0-2 整改（执行记录见 `PHASE2_PREFLIGHT_REPORT.md` §10；P0-3 schema version 未开始）。**当前执行计划权威 = `docs/engineering/audit/ROADMAP.md` + 该执行记录**，本文保留产品长期框架。第二轮外部建议已逐条取证核对（`docs/research/研究-外部建议核对-2026-11-14.md`）：大部分断言已修复/已排期，新增项仅四个——N-1 typeset 分页簇待决（接入或删，归第三阶段）、N-2 备份导出+往返判据（建议并入兼容主线）、N-3 目录与文档治理（计划在 `docs/engineering/audit/directory/08-RECOMMENDED-STRUCTURE.md`）、N-4 AI 指令同步盲区。目录资产审计另证伪了 P1-3「Dao 数字漂移」（13 个 Dao 正确，勘误已追加）。
+
 > 文档性质：基于公开仓库与项目自有文档的客观整理，供开发决策使用。  
 > 生成日期：2026-11-11  
 > 对象仓库：https://github.com/linqinqiu/legadoQ  

@@ -75,3 +75,9 @@
 ## 5. 阶段门槛
 
 每阶段结束产出对应报告（手册要求），并保留原始报告形成工程记录；后续阶段不得重写上一阶段报告。第二阶段开工前的人工审核检查点：本路线图与五份审计报告的事实基础是否被认可。
+
+## 6. 勘误与状态更新（2026-11-14 目录与文件资产审计追加，正文不回改）
+
+- **P1-3 撤销改数动作**：「ARCHITECTURE.md Dao 数字漂移（13 vs 19）」是误判——`*Dao*.kt` 实测恰为 13 个，19 是 data/ 顶层全部文件数（含 Database/Repository/DbSnapshot 等非 Dao 文件）。ARCHITECTURE.md 正确，不得改。文档自动校验仍可做，口径用 `*Dao.kt` glob。证据：`directory/03-DOCUMENTATION-AUDIT.md` D-1、`ARCHITECTURE_MAP.md` §11。
+- **P1-6 可关闭**：Models.kt 拆分 WIP 已以 `6a19f28` 提交（model/ 现存 7 个域文件，无 Models.kt），不再是「进行中」。
+- 目录/文档/脚本卫生线的整改计划在 `directory/08-RECOMMENDED-STRUCTURE.md`（阶段 A-D），与本路线图代码整改线并行。

@@ -97,3 +97,7 @@ http/ 下 database. 调用共 87 处：
 
 - 第四阶段完成后：新增加的业务逻辑不再出现在 Route 中；至少一个业务域完成 Route→UseCase→Repository 全链路并有回归测试；AI 模块经 Application Service 取数；ARCHITECTURE.md 数字与代码一致且有自动校验。
 - 全阶段：无新增循环依赖（ArchitectureBoundaryTest 全绿是硬门禁）。
+
+## 11. 勘误（2026-11-14 目录与文件资产审计追加，正文不回改）
+
+- **A-5 撤销**：「ARCHITECTURE.md 记 13 个 Dao 与实际 19 文件漂移」是误判。独立复核：`data/*Dao*.kt` 恰为 **13 个**；`data/` 顶层 19 个文件 = 13 Dao + Database + BookshelfRepository + SourceRepository + SessionCookies + DbSnapshot + StoreAdapters。ARCHITECTURE.md 的「13 个 Dao」**正确**，第四阶段不得据此改文档。文档数字自动校验若落地，口径应为 `*Dao.kt` glob 而非目录文件数。证据：`directory/03-DOCUMENTATION-AUDIT.md` D-1。

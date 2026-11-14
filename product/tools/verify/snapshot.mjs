@@ -23,7 +23,7 @@ const KEEP = 5;
  */
 const trackedFiles = execSync('git ls-files -z', { cwd: ROOT, maxBuffer: 1 << 26 }).toString().split('\0').filter(Boolean);
 /** 被 .gitignore 忽略、但不可重建的东西（`git archive` 一律拿不到）。`.env` 故意排除：密钥不进备份。 */
-const UNTRACKED_UNIQUE = ['init-mirror.gradle', 'local-patches.diff', 'assets'];
+const UNTRACKED_UNIQUE = ['local-patches.diff', 'assets'];
 const SKIP_DIR = new Set(['out', 'node_modules', 'dist', '.git']);
 
 const note = process.argv.slice(2).join(' ').trim();
