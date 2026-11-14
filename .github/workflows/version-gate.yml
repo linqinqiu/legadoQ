@@ -201,8 +201,13 @@ jobs:
         shell: bash
         run: |
           TAG_NO_V="${GITHUB_REF_NAME#v}"
-          node start.mjs --no-open
-          BODY=$(curl -s --max-time 10 http://127.0.0.1:1234/healthz)
+          START_OUT=$(node start.mjs --no-open)
+          echo "$START_OUT"
+          # start.mjs 端口被占会自动顺延：实际端口从「服务已就绪」输出读，不硬编码 1234
+          PORT=$(printf '%s\n' "$START_OUT" | grep -oE '服务已就绪 http://[0-9.]+:[0-9]+' | grep -oE '[0-9]+$' | head -1)
+          PORT=${PORT:-1234}
+          export LEGADO_BASE_URL="http://127.0.0.1:${PORT}"
+          BODY=$(curl -s --max-time 10 "${LEGADO_BASE_URL}/healthz")
           echo "healthz: $BODY"
           HV=$(printf '%s' "$BODY" | grep -oE '"version"[ ]*:[ ]*"[^"]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           if [ "$HV" != "$TAG_NO_V" ]; then
