@@ -376,6 +376,6 @@ Database.transaction { db -> ... }   // 深度计数：只有最外层设 autoCo
 
 | 项 | 状态 |
 | --- | --- |
-| P0-2 SSRF 连接级 IP 固定 | **未开始**。按 §6.3 先做 spike（方案 A：本地回环 CONNECT 代理），spike 结论出来再决定是否落生产 |
+| P0-2 SSRF 连接级 IP 固定 | **spike 完成**（`79eaaaa`，`docs/research/研究-P0-2-连接级IP固定-spike-2026-11-14.md`）。结论：方案 A 可行；实测纠正两条假设 —— `http://` 经代理是绝对形式请求行（不能只写 CONNECT），TLS/SNI 走盲隧道无需特殊处理。**生产代码未动**，落地待下一项 |
 | P0-3 SQLite Schema Version | **未开始**。按 §6.4 设计（`pragma user_version` + 按 `fromVersion → toVersion` 注册迁移） |
 | 第 5 项 沙箱与网络边界补测 | **未开始**（只补测试，不改行为） |
