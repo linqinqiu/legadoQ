@@ -201,29 +201,31 @@ fun Database.listCookieBuckets(): List<CookieBucket> = connect { db ->
  * 超过 [MAX_COOKIE_HEADER_CHARS] 时要从头部丢最旧的，顺序错了就会把刚拿到的登录态丢掉、
  * 留下一堆早没人用的旧值。
  */
-fun Database.setCookieForUrl(url: String, cookie: String): Boolean {
+fun Database.setCookieForUrl(url: String, cookie: String): Boolean =
+    transaction { setCookieForUrlOn(it, url, cookie) }
+
+/** [setCookieForUrl] 的**事务内实现**：只落库、不开事务，供整批导入在同一笔事务里调用。 */
+internal fun Database.setCookieForUrlOn(db: java.sql.Connection, url: String, cookie: String): Boolean {
     val bucket = cookieBucket(url)
     if (bucket.isBlank()) return false
     val incoming = parseCookieString(cookie)
     if (incoming.isEmpty()) return false
-    return write { db ->
-        val existing = persistentCookiesIn(db, bucket)
-        val merged = LinkedHashMap<String, String>()
-        merged.putAll(existing)
-        for ((key, value) in incoming) {
-            merged.remove(key)
-            merged[key] = value
-        }
-        val value = merged.entries.joinToString("; ") { "${it.key}=${it.value}" }
-        db.prepareStatement("""
-            insert into cookie(url, cookie, updated_at) values(?, ?, ?)
-            on conflict(url) do update set cookie=excluded.cookie, updated_at=excluded.updated_at
-        """).use { stmt ->
-            stmt.setString(1, bucket)
-            stmt.setString(2, value)
-            stmt.setLong(3, System.currentTimeMillis())
-            stmt.executeUpdate() > 0
-        }
+    val existing = persistentCookiesIn(db, bucket)
+    val merged = LinkedHashMap<String, String>()
+    merged.putAll(existing)
+    for ((key, value) in incoming) {
+        merged.remove(key)
+        merged[key] = value
+    }
+    val value = merged.entries.joinToString("; ") { "${it.key}=${it.value}" }
+    return db.prepareStatement("""
+        insert into cookie(url, cookie, updated_at) values(?, ?, ?)
+        on conflict(url) do update set cookie=excluded.cookie, updated_at=excluded.updated_at
+    """).use { stmt ->
+        stmt.setString(1, bucket)
+        stmt.setString(2, value)
+        stmt.setLong(3, System.currentTimeMillis())
+        stmt.executeUpdate() > 0
     }
 }
 

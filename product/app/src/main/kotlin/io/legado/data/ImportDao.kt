@@ -16,7 +16,14 @@ import io.legado.source.SourceCodec
  * 主键是 `sourceUrl`，同地址再导入是整体覆盖 —— 与上游 `Restore.kt` 的
  * `rssSourceDao.insert`（`@Insert(onConflict = REPLACE)`）同语义，不保留本地改动。
  */
-fun Database.importRssSources(rawSources: List<String>): ImportResponse {
+fun Database.importRssSources(rawSources: List<String>): ImportResponse =
+    transaction { importRssSourcesOn(it, rawSources) }.also { invalidateSourceCaches() }
+
+/**
+ * [importRssSources] 的**事务内实现**：只落库、不开事务，供整批导入（备份恢复）在同一笔事务里调用。
+ * 单独调用请用公开包装，它负责开事务。
+ */
+internal fun Database.importRssSourcesOn(db: java.sql.Connection, rawSources: List<String>): ImportResponse {
     val errors = mutableListOf<String>()
     val unique = linkedMapOf<String, ParsedRssSource>()
     rawSources.forEachIndexed { index, raw ->
@@ -30,30 +37,23 @@ fun Database.importRssSources(rawSources: List<String>): ImportResponse {
     if (unique.isEmpty()) return ImportResponse(0, 0, 0, errors)
     var imported = 0
     var updated = 0
-    write { db ->
-        db.autoCommit = false
-        try {
-            db.prepareStatement("select 1 from rss_source where source_url = ?").use { current ->
-                db.prepareStatement("""insert into rss_source(source_url,name,source_group,source_icon,enabled,has_list_rule,payload,updated_at)
-                    values(?,?,?,?,?,?,?,?) on conflict(source_url) do update set name=excluded.name,
-                      source_group=excluded.source_group,source_icon=excluded.source_icon,enabled=excluded.enabled,
-                      has_list_rule=excluded.has_list_rule,payload=excluded.payload,updated_at=excluded.updated_at""").use { save ->
-                    val now = System.currentTimeMillis()
-                    unique.values.forEach { parsed ->
-                        current.setString(1, parsed.sourceUrl)
-                        if (current.executeQuery().use { it.next() }) updated++ else imported++
-                        save.setString(1, parsed.sourceUrl); save.setString(2, parsed.name); save.setString(3, parsed.group)
-                        save.setString(4, parsed.icon); save.setInt(5, if (parsed.enabled) 1 else 0)
-                        save.setInt(6, if (parsed.hasListRule) 1 else 0); save.setString(7, parsed.json)
-                        save.setLong(8, now); save.addBatch()
-                    }
-                    save.executeBatch()
-                }
+    db.prepareStatement("select 1 from rss_source where source_url = ?").use { current ->
+        db.prepareStatement("""insert into rss_source(source_url,name,source_group,source_icon,enabled,has_list_rule,payload,updated_at)
+            values(?,?,?,?,?,?,?,?) on conflict(source_url) do update set name=excluded.name,
+              source_group=excluded.source_group,source_icon=excluded.source_icon,enabled=excluded.enabled,
+              has_list_rule=excluded.has_list_rule,payload=excluded.payload,updated_at=excluded.updated_at""").use { save ->
+            val now = System.currentTimeMillis()
+            unique.values.forEach { parsed ->
+                current.setString(1, parsed.sourceUrl)
+                if (current.executeQuery().use { it.next() }) updated++ else imported++
+                save.setString(1, parsed.sourceUrl); save.setString(2, parsed.name); save.setString(3, parsed.group)
+                save.setString(4, parsed.icon); save.setInt(5, if (parsed.enabled) 1 else 0)
+                save.setInt(6, if (parsed.hasListRule) 1 else 0); save.setString(7, parsed.json)
+                save.setLong(8, now); save.addBatch()
             }
-            db.commit()
-        } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+            save.executeBatch()
+        }
     }
-    invalidateSourceCaches()
     return ImportResponse(imported, updated, rawSources.size - unique.size, errors)
 }
 
@@ -65,31 +65,29 @@ fun Database.importRssSources(rawSources: List<String>): ImportResponse {
  * （本机 1 号往往已经是导入本地书时建的「本地」）。所以按名字找已有组、没有就新建，
  * 返回「手机号 → 本机号」映射给书架条目落组用；同名组只留一个，重复导入不堆第二份。
  */
-fun Database.importBookGroups(groups: List<Pair<Long, String>>): Map<Long, Long> {
+fun Database.importBookGroups(groups: List<Pair<Long, String>>): Map<Long, Long> =
+    transaction { importBookGroupsOn(it, groups) }
+
+/** [importBookGroups] 的**事务内实现**：只落库、不开事务（见 [importRssSourcesOn]）。 */
+internal fun Database.importBookGroupsOn(db: java.sql.Connection, groups: List<Pair<Long, String>>): Map<Long, Long> {
     val mapping = LinkedHashMap<Long, Long>()
     if (groups.isEmpty()) return mapping
-    write { db ->
-        db.autoCommit = false
-        try {
-            groups.forEach { (phoneId, rawName) ->
-                val name = rawName.trim()
-                if (phoneId <= 0 || name.isEmpty() || name == "全部" || mapping.containsKey(phoneId)) return@forEach
-                val existing = db.prepareStatement("select group_id from book_group where name = ? collate nocase").use { find ->
-                    find.setString(1, name)
-                    find.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else null }
-                }
-                val localId = existing ?: db.prepareStatement("select coalesce(max(group_id), 0) + 1 from book_group").use { q ->
-                    q.executeQuery().use { rs -> rs.next(); rs.getLong(1) }
-                }.also { id ->
-                    db.prepareStatement("insert into book_group(group_id, name, sort_order, created_at) values(?,?,?,?)").use {
-                        it.setLong(1, id); it.setString(2, name); it.setInt(3, id.toInt()); it.setLong(4, System.currentTimeMillis())
-                        it.executeUpdate()
-                    }
-                }
-                mapping[phoneId] = localId
+    groups.forEach { (phoneId, rawName) ->
+        val name = rawName.trim()
+        if (phoneId <= 0 || name.isEmpty() || name == "全部" || mapping.containsKey(phoneId)) return@forEach
+        val existing = db.prepareStatement("select group_id from book_group where name = ? collate nocase").use { find ->
+            find.setString(1, name)
+            find.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else null }
+        }
+        val localId = existing ?: db.prepareStatement("select coalesce(max(group_id), 0) + 1 from book_group").use { q ->
+            q.executeQuery().use { rs -> rs.next(); rs.getLong(1) }
+        }.also { id ->
+            db.prepareStatement("insert into book_group(group_id, name, sort_order, created_at) values(?,?,?,?)").use {
+                it.setLong(1, id); it.setString(2, name); it.setInt(3, id.toInt()); it.setLong(4, System.currentTimeMillis())
+                it.executeUpdate()
             }
-            db.commit()
-        } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+        }
+        mapping[phoneId] = localId
     }
     return mapping
 }
@@ -104,72 +102,70 @@ fun Database.importBookGroups(groups: List<Pair<Long, String>>): Map<Long, Long>
  * 这里对墓碑内的条目直接跳过、单独计数（[LibraryImportResult.skippedDeleted]），由导入结果
  * 如实报给界面；用户主动加回同一本书时由 `saveBookshelf`/`switchBookshelf` 清墓碑。
  */
-fun Database.importLibrary(entries: List<BackupShelfEntry>): LibraryImportResult {
+fun Database.importLibrary(entries: List<BackupShelfEntry>): LibraryImportResult =
+    transaction { importLibraryOn(it, entries) }
+
+/** [importLibrary] 的**事务内实现**：只落库、不开事务（见 [importRssSourcesOn]）。 */
+internal fun Database.importLibraryOn(db: java.sql.Connection, entries: List<BackupShelfEntry>): LibraryImportResult {
     if (entries.isEmpty()) return LibraryImportResult(0, 0, 0)
     val now = System.currentTimeMillis()
     var imported = 0
     var updated = 0
     var skippedDeleted = 0
     var progressApplied = 0
-    write { db ->
-        db.autoCommit = false
-        try {
-            // 墓碑在同一个写事务里读：导入与删除不会交错出"刚删的书又被这次导入插回去"。
-            val tombstoned = db.prepareStatement("select source_id, book_url from book_shelf_tombstone").use { query ->
-                query.executeQuery().use { rs ->
-                    buildSet { while (rs.next()) add(rs.getString(1) to rs.getString(2)) }
-                }
+    // 墓碑在同一个写事务里读：导入与删除不会交错出"刚删的书又被这次导入插回去"。
+    val tombstoned = db.prepareStatement("select source_id, book_url from book_shelf_tombstone").use { query ->
+        query.executeQuery().use { rs ->
+            buildSet { while (rs.next()) add(rs.getString(1) to rs.getString(2)) }
+        }
+    }
+    db.prepareStatement("select 1 from book_shelf where source_id = ? and book_url = ?").use { existing ->
+        db.prepareStatement("""
+            insert into book_shelf(source_id,book_url,name,author,toc_url,cover_url,cover_key,last_read_at,completed,alternate_sources,group_id)
+            values(?,?,?,?,?,?,null,?,?,null,?)
+            on conflict(source_id,book_url) do update set
+              name=excluded.name, author=excluded.author, toc_url=excluded.toc_url,
+              cover_url=coalesce(excluded.cover_url,book_shelf.cover_url),
+              last_read_at=excluded.last_read_at, completed=excluded.completed
+        """.trimIndent()).use { save ->
+            entries.forEach { entry ->
+                // 用户删过的书：跳过落架，也不恢复它的进度（下面的 progressed 同样排除）。
+                if ((entry.sourceId to entry.bookUrl) in tombstoned) { skippedDeleted++; return@forEach }
+                existing.setString(1, entry.sourceId); existing.setString(2, entry.bookUrl)
+                if (existing.executeQuery().use { it.next() }) updated++ else imported++
+                save.setString(1, entry.sourceId); save.setString(2, entry.bookUrl); save.setString(3, entry.name)
+                save.setString(4, entry.author); save.setString(5, entry.tocUrl); save.setString(6, entry.coverUrl)
+                save.setLong(7, if (entry.readAt > 0) entry.readAt else now)
+                save.setInt(8, if (entry.completed) 1 else 0)
+                // 组号只在"新书进架"时生效（on conflict 那串里没有它）：
+                // 已在架的书保留本机分组，理由与书源 enabled 一样 —— 本机策展不被备份冲掉。
+                save.setLong(9, entry.groupId)
+                save.addBatch()
             }
-            db.prepareStatement("select 1 from book_shelf where source_id = ? and book_url = ?").use { existing ->
-                db.prepareStatement("""
-                    insert into book_shelf(source_id,book_url,name,author,toc_url,cover_url,cover_key,last_read_at,completed,alternate_sources,group_id)
-                    values(?,?,?,?,?,?,null,?,?,null,?)
-                    on conflict(source_id,book_url) do update set
-                      name=excluded.name, author=excluded.author, toc_url=excluded.toc_url,
-                      cover_url=coalesce(excluded.cover_url,book_shelf.cover_url),
-                      last_read_at=excluded.last_read_at, completed=excluded.completed
-                """.trimIndent()).use { save ->
-                    entries.forEach { entry ->
-                        // 用户删过的书：跳过落架，也不恢复它的进度（下面的 progressed 同样排除）。
-                        if ((entry.sourceId to entry.bookUrl) in tombstoned) { skippedDeleted++; return@forEach }
-                        existing.setString(1, entry.sourceId); existing.setString(2, entry.bookUrl)
-                        if (existing.executeQuery().use { it.next() }) updated++ else imported++
-                        save.setString(1, entry.sourceId); save.setString(2, entry.bookUrl); save.setString(3, entry.name)
-                        save.setString(4, entry.author); save.setString(5, entry.tocUrl); save.setString(6, entry.coverUrl)
-                        save.setLong(7, if (entry.readAt > 0) entry.readAt else now)
-                        save.setInt(8, if (entry.completed) 1 else 0)
-                        // 组号只在"新书进架"时生效（on conflict 那串里没有它）：
-                        // 已在架的书保留本机分组，理由与书源 enabled 一样 —— 本机策展不被备份冲掉。
-                        save.setLong(9, entry.groupId)
-                        save.addBatch()
-                    }
-                    save.executeBatch()
-                }
+            save.executeBatch()
+        }
+    }
+    val progressed = entries.filter { it.chapterIndex > 0 && (it.sourceId to it.bookUrl) !in tombstoned }
+    if (progressed.isNotEmpty()) {
+        // 备份只带章序号 + 章内字符偏移（durChapterPos），不带段落锚点与内容校验值。
+        // 备份进度更新时把这两个本机字段清空：留着旧锚点会指向旧内容，恢复后反而落错行。
+        db.prepareStatement("""
+            insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,char_offset,updated_at)
+            values(?,?,?,?,0,?,?)
+            on conflict(source_id,book_url) do update set
+              chapter_url=excluded.chapter_url, chapter_index=excluded.chapter_index,
+              scroll_position=excluded.scroll_position, char_offset=excluded.char_offset,
+              paragraph_anchor=null, position_checksum=null, updated_at=excluded.updated_at
+            where excluded.updated_at >= reading_progress.updated_at
+        """.trimIndent()).use { stmt ->
+            progressed.forEach { entry ->
+                stmt.setString(1, entry.sourceId); stmt.setString(2, entry.bookUrl); stmt.setString(3, "")
+                stmt.setInt(4, entry.chapterIndex); stmt.setInt(5, entry.chapterPos)
+                stmt.setLong(6, if (entry.readAt > 0) entry.readAt else now)
+                stmt.addBatch()
             }
-            val progressed = entries.filter { it.chapterIndex > 0 && (it.sourceId to it.bookUrl) !in tombstoned }
-            if (progressed.isNotEmpty()) {
-                // 备份只带章序号 + 章内字符偏移（durChapterPos），不带段落锚点与内容校验值。
-                // 备份进度更新时把这两个本机字段清空：留着旧锚点会指向旧内容，恢复后反而落错行。
-                db.prepareStatement("""
-                    insert into reading_progress(source_id,book_url,chapter_url,chapter_index,scroll_position,char_offset,updated_at)
-                    values(?,?,?,?,0,?,?)
-                    on conflict(source_id,book_url) do update set
-                      chapter_url=excluded.chapter_url, chapter_index=excluded.chapter_index,
-                      scroll_position=excluded.scroll_position, char_offset=excluded.char_offset,
-                      paragraph_anchor=null, position_checksum=null, updated_at=excluded.updated_at
-                    where excluded.updated_at >= reading_progress.updated_at
-                """.trimIndent()).use { stmt ->
-                    progressed.forEach { entry ->
-                        stmt.setString(1, entry.sourceId); stmt.setString(2, entry.bookUrl); stmt.setString(3, "")
-                        stmt.setInt(4, entry.chapterIndex); stmt.setInt(5, entry.chapterPos)
-                        stmt.setLong(6, if (entry.readAt > 0) entry.readAt else now)
-                        stmt.addBatch()
-                    }
-                    progressApplied = stmt.executeBatch().sum()
-                }
-            }
-            db.commit()
-        } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+            progressApplied = stmt.executeBatch().sum()
+        }
     }
     return LibraryImportResult(imported, updated, progressApplied, skippedDeleted)
 }

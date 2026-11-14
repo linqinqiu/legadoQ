@@ -113,6 +113,52 @@ class Database(private val path: String) : Closeable, AutoCloseable, PortBundle 
     internal fun <T> write(block: (java.sql.Connection) -> T): T =
         pool.useWrite(block)
 
+    /**
+     * 事务里当前线程的嵌套深度。用 `ThreadLocal` 而不是成员变量：写连接由 `writeLock`
+     * 独占，同一时刻只有一个线程在事务里，深度天然是「这一层调用栈的深度」。
+     */
+    private val transactionDepth = ThreadLocal.withInitial { 0 }
+
+    /**
+     * **可嵌套的事务入口**：只有最外层 `commit` / `rollback`，内层用 SAVEPOINT。
+     *
+     * 为什么需要它：库里有六七个函数自己写 `autoCommit = false … commit() … autoCommit = true`
+     * （六个备份导入步骤都是这个形状）。把它们串成一个整批事务时，直接在外面套一层
+     * `write { autoCommit = false }` 会静默失效 —— 第一个内层函数在 `finally` 里把
+     * `autoCommit` 复位成 true，外层事务当场被提交掉；0.2.35 的批量删书事故就是这条。
+     *
+     * 所以规矩改成：**谁都不许自己动 `autoCommit`**，要么走本函数，要么走 `write {}`（不碰
+     * `autoCommit`，语句自动并入当前事务）。内层失败用 SAVEPOINT 回滚到入口，外层的其它
+     * 步骤不受影响；外层失败则整体回滚。
+     *
+     * 约束：事务内**不要做网络 / 文件 IO**（单写连接被独占，所有写请求排队），也**不要调用
+     * 仍然自己管 `autoCommit` 的 DAO**（`ShelfDao` / `CacheDao` 里的老函数），它们会把
+     * 外层事务提交掉。
+     */
+    fun <T> transaction(block: (java.sql.Connection) -> T): T = write { db ->
+        val depth = transactionDepth.get()
+        val savepoint = if (depth == 0) {
+            db.autoCommit = false
+            null
+        } else {
+            db.setSavepoint("legado_tx_$depth")
+        }
+        transactionDepth.set(depth + 1)
+        try {
+            val result = block(db)
+            if (savepoint != null) db.releaseSavepoint(savepoint)
+            if (depth == 0) db.commit()
+            result
+        } catch (error: Throwable) {
+            // 回滚自己失败不能盖掉真因：真正要抛给上层的还是 block 里那个异常。
+            runCatching { if (savepoint != null) db.rollback(savepoint) else db.rollback() }
+            throw error
+        } finally {
+            transactionDepth.set(depth)
+            if (depth == 0) runCatching { db.autoCommit = true }
+        }
+    }
+
     /** 首次启动：建表 + 迁移 + 快照。碎片回收不在这条同步路径里，见 [scheduleReclaimFragmentation]。 */
     fun initialize() = write { db ->
         Schema.createTables(db)

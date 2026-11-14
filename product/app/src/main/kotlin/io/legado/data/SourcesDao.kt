@@ -309,7 +309,14 @@ fun Database.batchUpdateSources(ids: List<String>, action: String, group: String
     return affectedTotal
 }
 
-fun Database.importSources(rawSources: List<String>): ImportResponse {
+fun Database.importSources(rawSources: List<String>): ImportResponse =
+    transaction { importSourcesOn(it, rawSources) }.also { invalidateSourceCaches() }
+
+/**
+ * [importSources] 的**事务内实现**：只落库、不开事务，供整批导入（备份恢复）在同一笔事务里调用。
+ * 单独调用请用公开包装，它负责开事务并清缓存。
+ */
+internal fun Database.importSourcesOn(db: java.sql.Connection, rawSources: List<String>): ImportResponse {
     val errors = mutableListOf<String>()
     val unique = linkedMapOf<String, ParsedSource>()
     rawSources.forEachIndexed { index, raw ->
@@ -322,38 +329,31 @@ fun Database.importSources(rawSources: List<String>): ImportResponse {
     }
     var imported = 0
     var updated = 0
-    write { db ->
-        db.autoCommit = false
-        try {
-            db.prepareStatement("select version, source_group from source where id = ?").use { current ->
-                // `enabled` 故意**不在** on conflict 的赋值列表里：已在库的书源保留本机的启用/停用选择。
-                // 上游手机是单机恢复自己的状态，整体覆盖没问题；这台服务器与手机已经分叉 ——
-                // 库里 4,876 源只启用 2 个是用户的策展，而手机备份里 7,278 个是 enabled=true，
-                // 一旦覆盖就是一次批量启用事故（用户口径：「到时候我自行决定」）。新入库的源仍按包内值。
-                //
-                // `source_group` 反过来：备份里的分类**照常更新**（那是书源作者写的，比本机旧值新）。
-                // 但体检标签是我们自己打在这个字段里的，覆盖一次就没了 —— 所以写之前把本机那几个
-                // 体检标签并回去（见 [mergeHealthTags]）。用户自己写的标签仍以备份为准。
-                db.prepareStatement("""insert into source(id,name,source_url,source_group,enabled,is_js,payload,version,updated_at,has_login,has_rules)
-                    values(?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login,has_rules=excluded.has_rules""").use { save ->
-                    unique.values.forEach { parsed ->
-                        current.setString(1, parsed.id)
-                        val (version, localGroup) = current.executeQuery().use { result ->
-                            if (result.next()) result.getLong(1) to result.getString(2) else null to null
-                        }
-                        if (version == null) imported++ else updated++
-                        save.setString(1, parsed.id); save.setString(2, parsed.name); save.setString(3, parsed.url)
-                        save.setString(4, mergeHealthTags(parsed.group, localGroup))
-                        save.setInt(5, if (parsed.enabled) 1 else 0); save.setInt(6, if (parsed.isJs) 1 else 0); save.setString(7, parsed.json)
-                        save.setLong(8, (version ?: 0) + 1); save.setLong(9, System.currentTimeMillis()); save.setInt(10, if (parsed.hasLogin) 1 else 0); save.setInt(11, if (parsed.hasRules) 1 else 0); save.addBatch()
-                    }
-                    save.executeBatch()
+    db.prepareStatement("select version, source_group from source where id = ?").use { current ->
+        // `enabled` 故意**不在** on conflict 的赋值列表里：已在库的书源保留本机的启用/停用选择。
+        // 上游手机是单机恢复自己的状态，整体覆盖没问题；这台服务器与手机已经分叉 ——
+        // 库里 4,876 源只启用 2 个是用户的策展，而手机备份里 7,278 个是 enabled=true，
+        // 一旦覆盖就是一次批量启用事故（用户口径：「到时候我自行决定」）。新入库的源仍按包内值。
+        //
+        // `source_group` 反过来：备份里的分类**照常更新**（那是书源作者写的，比本机旧值新）。
+        // 但体检标签是我们自己打在这个字段里的，覆盖一次就没了 —— 所以写之前把本机那几个
+        // 体检标签并回去（见 [mergeHealthTags]）。用户自己写的标签仍以备份为准。
+        db.prepareStatement("""insert into source(id,name,source_url,source_group,enabled,is_js,payload,version,updated_at,has_login,has_rules)
+            values(?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login,has_rules=excluded.has_rules""").use { save ->
+            unique.values.forEach { parsed ->
+                current.setString(1, parsed.id)
+                val (version, localGroup) = current.executeQuery().use { result ->
+                    if (result.next()) result.getLong(1) to result.getString(2) else null to null
                 }
+                if (version == null) imported++ else updated++
+                save.setString(1, parsed.id); save.setString(2, parsed.name); save.setString(3, parsed.url)
+                save.setString(4, mergeHealthTags(parsed.group, localGroup))
+                save.setInt(5, if (parsed.enabled) 1 else 0); save.setInt(6, if (parsed.isJs) 1 else 0); save.setString(7, parsed.json)
+                save.setLong(8, (version ?: 0) + 1); save.setLong(9, System.currentTimeMillis()); save.setInt(10, if (parsed.hasLogin) 1 else 0); save.setInt(11, if (parsed.hasRules) 1 else 0); save.addBatch()
             }
-            db.commit()
-        } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+            save.executeBatch()
+        }
     }
-    invalidateSourceCaches()
     return ImportResponse(imported, updated, rawSources.size - unique.size, errors)
 }
 

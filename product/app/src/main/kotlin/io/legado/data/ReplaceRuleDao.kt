@@ -135,7 +135,16 @@ fun Database.getEnabledReplaceRulesForScope(bookName: String?, sourceUrl: String
     return allEnabled.filter { ContentProcessor.matchesScope(it, bookName, sourceUrl, sourceName) }
 }
 
-fun Database.importReplaceRules(rules: List<ReplaceRule>): ReplaceRuleImportResponse = write { db ->
+fun Database.importReplaceRules(rules: List<ReplaceRule>): ReplaceRuleImportResponse =
+    transaction { importReplaceRulesOn(it, rules) }
+
+/**
+ * [importReplaceRules] 的**事务内实现**：只落库、不开事务，供整批导入（备份恢复）在同一笔事务里调用。
+ *
+ * 与改动前的区别：以前这里是 `write {}` + 逐条自动提交，中途失败会留下「导入了一半」的规则；
+ * 现在整批一个事务，失败即整批回滚。
+ */
+internal fun Database.importReplaceRulesOn(db: java.sql.Connection, rules: List<ReplaceRule>): ReplaceRuleImportResponse {
     val now = System.currentTimeMillis()
     var imported = 0
     var updated = 0
@@ -188,7 +197,7 @@ fun Database.importReplaceRules(rules: List<ReplaceRule>): ReplaceRuleImportResp
         }
         if (existing) updated++ else imported++
     }
-    ReplaceRuleImportResponse(imported, updated, skipped, rules.size)
+    return ReplaceRuleImportResponse(imported, updated, skipped, rules.size)
 }
 
 fun Database.exportReplaceRules(ids: List<String>? = null): List<ReplaceRule> = connect { db ->
