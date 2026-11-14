@@ -334,3 +334,48 @@ Database.transaction { db -> ... }   // 深度计数：只有最外层设 autoCo
 - 未重新抓取上游 MD3。
 - 未运行真浏览器门禁、覆盖率与 e2e。
 - 未对并行 WIP 的正确性做代码评审，只做了归属分类与基线确认。
+
+---
+
+## 10. 执行记录（第二阶段，按项追加）
+
+> 本附录只记事实：提交号、当时的测试数字、遗留问题。正文不动。
+
+### 10.1 P0-4 AI 写操作确认闸 —— 已完成
+
+| 项 | 内容 |
+| --- | --- |
+| 提交 | `e534d8c` feat(ai): 写操作统一确认闸（P0-4） |
+| 改动 | `ToolMeta.needsConfirm`（默认跟随 `writes`）、`Guardrails.confirmWrite` 单一判定、`Agent.runTool` 与 `tool.call` 都过闸（按**目标工具**判定）、`ToolRegistry` 自动补 `confirm` 参数、`AgentModule.selfTest` 补 `confirm` |
+| 测试 | `AgentWriteConfirmTest`（新增 186 行）；全量 1,171 → 1,182 项 |
+| 遗留 | `tool.call` 自身 `needsConfirm=false`（不写库）；MCP 工具豁免（参数表由远端 `inputSchema` 决定，本机补不进 `confirm`）。这两条是有意保留，见提交正文。 |
+
+### 10.2 P0-1 备份导入原子性 —— 已完成（2a / 2b / 2c 三笔）
+
+| 步骤 | 提交 | 内容 | 全量测试 |
+| --- | --- | --- | --- |
+| 2a 事务基础设施 | `36140b5` | `Database.transaction {}`（深度计数 + SAVEPOINT，只有最外层 commit/rollback）；六个导入函数拆成 `*On(db)` + 公开包装；`importReplaceRules` 从「无事务」改为单事务 | 1,182 / 155 suite |
+| 2b commit 单事务 + 文件副作用后置 | `9b6902d` | `BackupImporter.commit()` 六步收进一笔事务；`keep.keep` 移到提交成功之后；`invalidateSourceCaches` 移到提交之后；新增 `internal stepHook` 供失败注入 | 1,185 / 156 suite |
+| 2c 替换规则幂等 | `772ade2` | 空 id 规则先按内容找已有行（沿用其 id），未命中才用内容 SHA-1 派生 `legacy_<16hex>` | 1,186 / 156 suite |
+
+**新增判据**
+
+- `TransactionTest`（3 项）：内层失败只回滚内层、外层失败整批回滚、导入函数在事务内不提前提交。
+- `BackupImportAtomicTest`（4 项）：六步逐一注入失败后六域与个性化文件都为空；成功路径六域齐备且文件在提交后存在；同一份备份连导两次行数稳定；空 id 规则连导两次不堆行。
+
+**执行门槛核对**：只改 §6.2 计划文件（`BackupImporter.kt`、`Database.kt`、`ImportDao.kt`、`SourcesDao.kt`、`ReplaceRuleDao.kt`、`CookieDao.kt`；`BackupStore.kt` 未改，只改调用时机）；未 bump 版本号与 `BUILD_NUMBER`；未执行任何清理型 git 命令；三笔提交均带 `[no-changelog]`。
+
+**遗留问题**
+
+1. 事务期间独占单写连接：大包导入时其它写请求排队，未加超时/取消。读请求不受影响（读连接池独立）。
+2. zip 路径的 `cookies.json` 解密仍在事务内读包（文件读，不是写）；如需彻底规避，得把 cookies 解析提前到事务外，属于后续优化。
+3. 六步事务的失败注入是测试专用 `stepHook`，不是运行时开关；生产路径没有「部分导入」选项（有意如此）。
+4. 多进程同时导入不在支持范围（单实例探测已有）。
+
+### 10.3 后续项状态
+
+| 项 | 状态 |
+| --- | --- |
+| P0-2 SSRF 连接级 IP 固定 | **未开始**。按 §6.3 先做 spike（方案 A：本地回环 CONNECT 代理），spike 结论出来再决定是否落生产 |
+| P0-3 SQLite Schema Version | **未开始**。按 §6.4 设计（`pragma user_version` + 按 `fromVersion → toVersion` 注册迁移） |
+| 第 5 项 沙箱与网络边界补测 | **未开始**（只补测试，不改行为） |
