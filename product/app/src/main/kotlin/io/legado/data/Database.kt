@@ -22,7 +22,6 @@ import io.legado.content.ContentProcessor
 import io.legado.data.db.ConnectionPool
 import io.legado.data.db.Migration
 import io.legado.data.db.Schema
-import io.legado.data.db.SchemaVersion
 import io.legado.localbook.LocalBookParser
 import io.legado.localbook.ParsedBook
 import io.legado.model.BackupShelfEntry

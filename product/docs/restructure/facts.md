@@ -225,3 +225,29 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 被跟踪文件 | 988 | `git ls-files \| wc -l` |
 
 **本机跑法提醒**：`./gradlew` 直接跑会 `ClassNotFoundException: org.gradle.wrapper.GradleWrapperMain`，必须走上面的 `java -classpath gradle/wrapper/gradle-wrapper.jar` 形式；后端全量必须设 `LEGADO_TEST_TMP=<仓库>/product/build/testtmp`。
+
+---
+
+## 9. 2026-11-15 19:45 复跑（typeset 分页簇删除 + SchemaVersion 扁平化后）
+
+> 上一节采集于 `3a3d5d9`；本节是当前工作树（HEAD `777a343` + 未提交一刀）的实测，旧节不回改。**现行数字以本节为准。**
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| HEAD / rev | `777a343` / **333** | `git rev-parse --short HEAD`；`git rev-list --count HEAD` |
+| 对外版本 / 构建号 | 0.2.42 / 55 | `cat VERSION BUILD_NUMBER` |
+| 后端源码 | **150 文件 / 36,812 行** | `find product/app/src/main/kotlin -name '*.kt'` + 行数求和（排除 build） |
+| 前端源码 | **214 文件 / 40,553 行**（typeset 簇删除后，原 218 / 40,863） | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \)` |
+| 前端测试文件 | **146 个**（原 148，删 `LayoutEngine.test.ts` / `PaginationCache.test.ts`） | `find product/web/test -name '*.test.ts*' \| wc -l` |
+| **后端测试实跑** | **1,217 项 / 160 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 7m 14s`；`test-results/test/*.xml` 求和 |
+| **前端测试实跑** | **1,157 项 / 0 失败**（约 50s）+ `tsc -b` 通过 | `npm --prefix product/web test` |
+| 目录深度门禁 | **OK：无新的过深文件（基线内 7 个）** | `cd product && node tools/verify/depth-check.mjs` |
+| HTTP 端点 | 165 条 / 19 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
+| 三条门禁 + 协议 | `version:check`（8 处一致 0.2.42/55）、`docs:api-check`、`changelog:check`、`protocol:check` 全绿 | `npm --prefix product run …` / `npm run protocol:check` |
+| 库版本号 | **`user_version = 1`**（基线），由 `data/SchemaVersion.kt` 管理（**本轮由 `data/db/` 扁平化上来**） | `pragma user_version`；判据 `SchemaVersionTest` 8 项（同步迁到 `data/`） |
+| 阅读器文件数 | **`features/reader/` 72 个**（原 75，删 `typeset/` 3 个） | `find product/web/src/features/reader -type f \| wc -l` |
+| 被跟踪文件 | 997（删除 5 个源码/测试后净减） | `git ls-files \| wc -l` |
+
+**本轮删除**：N-1 typeset 分页簇整簇删除（`features/reader/typeset/` 3 文件 + `content/paginationCache.ts` + 2 份判据），决策记录见 `docs/research/研究-typeset分页簇去留-2026-11-15.md`。
+
+**全量测试注意**：`--max-workers` 不设时默认并行会让 `AgentRoutesHttpTest` / `AgentErrorClassHttpTest` / `McpClientTest` 出现 1 分钟协程超时假失败（单跑全绿）；用 `--max-workers=2` 复跑稳定全绿。
