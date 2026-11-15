@@ -66,7 +66,20 @@ const SCAN = () => {
     const childRect = node.getBoundingClientRect()
     const parentRect = parent.getBoundingClientRect()
     if (childRect.width < 4) continue
-    if (childRect.right > parentRect.right + 2 && !clipped(parent) && styleOf(parent).display !== 'flex') {
+    // `display: contents` 的元素**不生成盒子** —— 它自己 getBoundingClientRect() 是 0×0，
+    // 但它的子元素照常参与父元素的排版。所以拿「子的右缘」去比「这个 0 宽的父」，
+    // 必然报「子撑破父容器」，而实际上子元素一点也没撑破。
+    //
+    // 实测（2026-11-15）：书源页窄屏下 `.sources-main { display: contents }`
+    // （`styles.css:1581`，窄屏纵向堆叠把这一层摊开）——
+    // 父 rect 宽 0，右缘 0；子 `.editor-region` / `.sources-content` 右缘 390，
+    // 正好等于视口宽，**一点没溢出**，却被这条门禁报成撑破。
+    //
+    // 所以：父没有盒子（contents / 宽度为 0）时，这项判据不成立，跳过。
+    const parentDisplay = styleOf(parent).display
+    if (parentDisplay === 'contents' || parentDisplay === 'none') continue
+    if (parentRect.width < 4) continue
+    if (childRect.right > parentRect.right + 2 && !clipped(parent) && parentDisplay !== 'flex') {
       spillover.push({ kind: '撑破父容器', selector: `${parent.tagName.toLowerCase()}.${String(parent.className).split(/\s+/)[0] || ''} > ${node.tagName.toLowerCase()}`, over: Math.round(childRect.right - parentRect.right) })
     }
   }
