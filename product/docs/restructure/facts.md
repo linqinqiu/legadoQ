@@ -228,26 +228,44 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 ---
 
-## 9. 2026-11-15 19:45 复跑（typeset 分页簇删除 + SchemaVersion 扁平化后）
+## 9. 2026-11-15 23:25 复跑（typeset 分页簇删除 + SchemaVersion 扁平化 + 环境清理后）
 
-> 上一节采集于 `3a3d5d9`；本节是当前工作树（HEAD `777a343` + 未提交一刀）的实测，旧节不回改。**现行数字以本节为准。**
+> 上一节采集于 `3a3d5d9`；本节是当前工作树（HEAD `98aed29`）的实测，旧节不回改。**现行数字以本节为准。**
 
 | 项 | 数值 | 命令/口径 |
 |---|---|---|
-| HEAD / rev | `777a343` / **333** | `git rev-parse --short HEAD`；`git rev-list --count HEAD` |
+| HEAD / rev | `98aed29` / **336** | `git rev-parse --short HEAD`；`git rev-list --count HEAD` |
 | 对外版本 / 构建号 | 0.2.42 / 55 | `cat VERSION BUILD_NUMBER` |
 | 后端源码 | **150 文件 / 36,812 行** | `find product/app/src/main/kotlin -name '*.kt'` + 行数求和（排除 build） |
 | 前端源码 | **214 文件 / 40,553 行**（typeset 簇删除后，原 218 / 40,863） | `find product/web/src \( -name '*.ts' -o -name '*.tsx' \)` |
 | 前端测试文件 | **146 个**（原 148，删 `LayoutEngine.test.ts` / `PaginationCache.test.ts`） | `find product/web/test -name '*.test.ts*' \| wc -l` |
-| **后端测试实跑** | **1,217 项 / 160 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 7m 14s`；`test-results/test/*.xml` 求和 |
+| **后端测试实跑** | **1,217 项 / 160 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`；`test-results/test/*.xml` 求和 |
 | **前端测试实跑** | **1,157 项 / 0 失败**（约 50s）+ `tsc -b` 通过 | `npm --prefix product/web test` |
 | 目录深度门禁 | **OK：无新的过深文件（基线内 7 个）** | `cd product && node tools/verify/depth-check.mjs` |
 | HTTP 端点 | 165 条 / 19 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
 | 三条门禁 + 协议 | `version:check`（8 处一致 0.2.42/55）、`docs:api-check`、`changelog:check`、`protocol:check` 全绿 | `npm --prefix product run …` / `npm run protocol:check` |
 | 库版本号 | **`user_version = 1`**（基线），由 `data/SchemaVersion.kt` 管理（**本轮由 `data/db/` 扁平化上来**） | `pragma user_version`；判据 `SchemaVersionTest` 8 项（同步迁到 `data/`） |
 | 阅读器文件数 | **`features/reader/` 72 个**（原 75，删 `typeset/` 3 个） | `find product/web/src/features/reader -type f \| wc -l` |
-| 被跟踪文件 | 997（删除 5 个源码/测试后净减） | `git ls-files \| wc -l` |
+| 被跟踪文件 | 990（原 997，删 7 个：3 源 + 缓存 + 2 判据 + 旧 SchemaVersion） | `git ls-files \| wc -l` |
+| **前端产物指纹** | **`index-Bn5aJX-q.js`（删除前后逐字节相同）** | `ls product/web/dist/assets/`；删除 typeset 簇后重新 `npm run build`，bundle hash 没变 —— 反证那 443 行确实零贡献 |
 
 **本轮删除**：N-1 typeset 分页簇整簇删除（`features/reader/typeset/` 3 文件 + `content/paginationCache.ts` + 2 份判据），决策记录见 `docs/research/研究-typeset分页簇去留-2026-11-15.md`。
 
+**本轮环境清理**（"工作环境干净可靠"）：
+
+| 项 | 清理前 | 清理后 | 影响 |
+|---|---|---|---|
+| `app/build/libs/` 旧版本 jar | 0.2.37–0.2.42 共 12 个 | 只留 0.2.42 两个 | `version-check` 那条「旧版本 all.jar 残留」从红转绿（留着会让打包挑错包） |
+| git stash | 7 个（2026-11-05～11-11） | 0 | 全部是已合进 main 的快照或 CHANGELOG 草稿，纯污染 |
+| git worktree | 1 + 1 临时基线 | 1 | 基线 worktree 已删 |
+| 库里自检临时书源 | 1 个 `ui-check.example.com` | 0 | 门禁自己清不干净（找不到删除按钮），手工走 `/api/sources/batch` 删掉 |
+| `web/.bench-math.ts` | 1 个一次性基准脚本 | 0 | 未跟踪的 scratch |
+
+**门禁修的真 bug**：`source-editor-check.mjs` 读 `web/src/sources/SourceHealthModal.tsx`，而书源编辑器早搬到 `web/src/features/source-editor/` —— 这条门禁不是红，是**崩**（ENOENT 带崩整个脚本）。已改指真实路径。
+
 **全量测试注意**：`--max-workers` 不设时默认并行会让 `AgentRoutesHttpTest` / `AgentErrorClassHttpTest` / `McpClientTest` 出现 1 分钟协程超时假失败（单跑全绿）；用 `--max-workers=2` 复跑稳定全绿。
+
+**浏览器门禁注意**（47 条，实测 34/47 通过）：失败的 13 条**与本轮改动无关** —— 前端 bundle 逐字节相同即可证明。其中：
+- 一类是**状态污染**：门禁之间共用服务端 ui-prefs，前一条点过「同意协议」后 `agreement-check` 就找不到弹层。跑全量前先 `DELETE /api/ui-prefs/<key>`。
+- 一类是**本机书源规模**（5,604 条）下的真实 UI 问题（手机档书源页撑破父容器等），属另一条整改线。
+- `source-editor-check` 的清理段找不到「删除书源」按钮，也是既有 UI 问题，与本轮改动无关。
