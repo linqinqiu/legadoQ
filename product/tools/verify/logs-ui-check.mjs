@@ -159,7 +159,17 @@ try {
   await page.waitForSelector('.app-page-header', { timeout: 45000 })
 
   // ─────────────────────── ① 入口与合并计数 ───────────────────────
-  check('①「我的」菜单点得开', await clickByText(page, '.app-page-header', '我的'), '')
+  // 「我的」入口是**图标按钮**（`aria-label="打开我的菜单"`，class `.header-menu-btn`），
+  // 顶上没有「我的」三个字 —— 早先这里是文字按钮，后来换成汉堡图标了。
+  // 原来按文字找（`clickByText(..., '我的')`）于是永远找不到，判据直接红。
+  // 跟另外三条门禁（ui-shell / version / overlay-tier）统一按 class 找。
+  const menuOpened = await page.evaluate(() => {
+    const button = document.querySelector('.header-menu-btn')
+    if (!button) return false
+    button.click()
+    return true
+  })
+  check('①「我的」菜单点得开', menuOpened, '')
   await page.waitForSelector('.header-menu-dropdown', { timeout: 8000 })
   await sleep(200)
   const openedByMenu = takingLogs(page)
