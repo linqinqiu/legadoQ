@@ -306,7 +306,7 @@ const bundleHtml = await (await fetch(`${BASE}/`)).text()
 const bundleName = /assets\/(index-[\w-]+\.js)/.exec(bundleHtml)?.[1]
 const bundleJs = bundleName ? await (await fetch(`${BASE}/assets/${bundleName}`)).text() : ''
 check('前端产物已更新（含 progressbar 语义）', bundleJs.includes('progressbar') && bundleJs.includes('source-create-btn'))
-check('体检改成分批推进（源码里进度条不再写死 100%）', !/running \? '100%' : '100%'/.test(fs.readFileSync(path.join(ROOT, 'web/src/sources/SourceHealthModal.tsx'), 'utf8')))
+check('体检改成分批推进（源码里进度条不再写死 100%）', !/running \? '100%' : '100%'/.test(fs.readFileSync(path.join(ROOT, 'web/src/features/source-editor/SourceHealthModal.tsx'), 'utf8')))
 
 // ---------- 9. 清理：删掉这次造的源 ----------
 // 上一步停在 #webdav，直接 reload 会回到文件页：那里没有筛选框，清理会静默失败。
