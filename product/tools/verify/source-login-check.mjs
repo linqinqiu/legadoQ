@@ -1,8 +1,9 @@
 // 书源登录浮层交付前自检。用三条一次性探针书源跑，不碰用户真源的凭据：
 //   A 登录入口是整段登录 JS（库内实测 208 个源这么写）→ 默认落在「真浏览器」
-//   B loginUi 有账号/密码字段 → 表单已不再渲染，仍然只剩真浏览器 / 粘贴 Cookie 两条路
+//   B loginUi 有账号/密码字段 → **本地表单这条路可用**（0.1.8 起：loginUi V1 静态表单
+//     与 V2 render/action 都在应用内可用），页签是三条：书源界面 / 真浏览器 / 粘贴 Cookie
 //   C 照番茄官方接口直连源的形状：书源主域是代理站，要登录的是另一个域，搜索又走第三个域
-// 再验：页签固定两条、菜单不重复、图标按钮都有可访问名且不低于 30px、
+// 再验：页签与「有没有本地登录界面」对得上、菜单不重复、图标按钮都有可访问名且不低于 30px、
 // 粘贴 Cookie 就地展开并立刻反映到凭据明细、删掉书源时它的 Cookie 罐必须一起消失。跑法：
 //   node tools/verify/preview.mjs --port 4399 && node tools/verify/source-login-check.mjs
 import fs from 'node:fs'
@@ -16,7 +17,14 @@ const STAMP = process.env.STAMP || new Date().toISOString().replace(/[-:]/g, '')
 const A = { id: `https://probe-a.login-${STAMP}.example`, name: `登录探针A ${STAMP}` }
 const B = { id: `https://probe-b.login-${STAMP}.example`, name: `登录探针B ${STAMP}` }
 const C = { id: `https://proxy.probe-c-${STAMP}.example`, name: `登录探针C ${STAMP}` }
+/**
+ * 页签口径：**有本地登录界面才有「书源界面」那条路**（`hasLocalLoginUi`）。
+ * 所以 A（只有一段登录 JS）两条，C（只有 loginUrl 网址）两条，B（loginUi 有账号密码）三条。
+ * 早先这里写死「固定两条、永远没有表单」—— 那是 0.1.8 之前的状态；
+ * 0.1.8 把 loginUi V1/V2 的本地表单放回来了（见 product/CHANGELOG.md「登录界面本地解析」）。
+ */
 const TAB_LABELS = '真浏览器|粘贴 Cookie'
+const TAB_LABELS_WITH_FORM = '书源界面|真浏览器|粘贴 Cookie'
 
 const sourceJson = (fixture, loginUi, extra = {}) => JSON.stringify({
   bookSourceUrl: fixture.id,
@@ -175,12 +183,18 @@ const jar = await page.evaluate(id => fetch(`/api/sources/${encodeURIComponent(i
 check('凭据明细按主机摊开（不再只有一句结论）', afterSave.jarRows.length === 1 && /probe-a/.test(afterSave.jarRows[0]) && /2 项/.test(afterSave.jarRows[0]), JSON.stringify(afterSave.jarRows))
 check('Cookie 按域名落库（2 项）', jar.count === 1 && /probe_token=abc123/.test(Object.values(jar.cookies)[0]) && /probe_sid=42/.test(Object.values(jar.cookies)[0]), JSON.stringify(jar))
 
-// B：loginUi 里还有账号/密码字段，但表单这条路已按用户要求撤掉，不该再渲染任何输入框
+// B：loginUi 里有账号/密码字段 → **本地表单这条路可用**（0.1.8 起）。
+// 判据从「表单不许渲染」翻成「表单要渲染、且真的能填」：
+// 判据过时比判据错更糟 —— 它会让一条真功能被当成回归来报。
 await openLogin(B)
 const modalB = await readModal()
 await page.screenshot({ path: path.join(SHOTS, `source-login-B-${STAMP}.png`) })
-check('B：仍然只有两个页签', modalB.tabs.length === 2 && modalB.tabs.map(t => t.label).join('|') === TAB_LABELS, modalB.tabs.map(t => t.label).join('|'))
-check('B：登录表单不再渲染（无密码框 / 眼睛按钮）', modalB.formCount === 0 && (await page.evaluate(() => document.querySelectorAll('.source-login-panel input[type=password]').length)) === 0, String(modalB.formCount))
+check('B：本地有登录界面时是三条页签（书源界面 / 真浏览器 / 粘贴 Cookie）',
+  modalB.tabs.length === 3 && modalB.tabs.map(t => t.label).join('|') === TAB_LABELS_WITH_FORM,
+  modalB.tabs.map(t => t.label).join('|'))
+check('B：本地表单确实渲染出来了（有账号框与密码框）',
+  modalB.formCount > 0 && (await page.evaluate(() => document.querySelectorAll('.source-login-panel input[type=password]').length)) > 0,
+  `表单块 ${modalB.formCount} · 密码框 ${await page.evaluate(() => document.querySelectorAll('.source-login-panel input[type=password]').length)}`)
 await page.keyboard.press('Escape')
 
 // C：番茄那种「要登录的域 ≠ 书源主域」的源，粘贴 Cookie 必须能选对域名。
