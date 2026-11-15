@@ -105,6 +105,12 @@ try {
       [...document.querySelectorAll('.library-scope-modes button')].find(n => n.textContent?.includes('指定书源'))?.click()
     })
     await page.waitForFunction(() => !!document.querySelector('.library-scope .ui-select-trigger'), { timeout: 15000 })
+    // 书源是**异步**载进来的（几千条），而「指定书源」那个下拉的选项就是书源。
+    // 还没载完时下拉里只有一句「没有匹配的选项」（Select.tsx:254），**一个 `.ui-select-option` 都没有** ——
+    // 于是量浮层的那段读到 null，判据拿空值当"底色没解析出来"，直接假红。
+    // 这里等选项真的出现（书源数量可不少，给足时间）。
+    await page.waitForFunction(() => !!document.querySelector('.ui-select-option'), { timeout: 60000 })
+      .catch(() => null)
     const library = await openAndMeasure(page, {
       click: () => document.querySelector('.library-scope .ui-select-trigger')?.click(),
     })
@@ -119,9 +125,28 @@ try {
       `描边 ${library.menuBorder} · 投影 ${library.menuShadow.slice(0, 28)}`)
 
     if (theme.id === 'dark') {
-      // 反向对照：把 <html> 上的主题类摘掉，浮层必须**立刻失去配色**。
+      // 反向对照：把 <html> 上的主题类摘掉，浮层必须**立刻失去深色配色**。
       // 没有这一条，上面几条可能只是恒真——变量到底是不是从 html 解析下来的，没人证明过。
-      // （这正是修复前的真实形态：面板透明、文字纯黑压在深色页上，也就是用户看到的"没做好"。）
+      //
+      // 判据口径（2026-11-16 改）：早先这里判的是「变回透明板 + 纯黑字」，
+      // 那是**旧设计** —— 当时 16 个颜色令牌只存在于 7 个 `.theme-*` 类里，
+      // 摘掉类就没有变量、浮层透明、文字是浏览器默认纯黑（也就是用户说的「没做好」）。
+      //
+      // 现在 `:root` 里有一份**与皮肤无关的中性基线**（styles.css 开头那 16 个令牌，
+      // 「全权自定义」的前提：自定义皮肤没写到的变量落到这里，而不是落到任何预设）。
+      // 所以摘掉 `theme-dark` 之后的正确形态是**回落到浅色基线**（白底 + 深墨），
+      // 不是透明板 + 纯黑。
+      //
+      // 真正要证的仍然是同一件事：**颜色确实来自 html 上的主题类**。
+      // 所以判据改成「底色与选项色跟深色主题下不同」——
+      // 写死「透明 + 纯黑」反而会在新设计下假红。
+      const before = await page.evaluate(() => {
+        const menu = document.querySelector('.ui-select-menu')
+        return {
+          bg: getComputedStyle(menu).backgroundColor,
+          color: getComputedStyle(document.querySelector('.ui-select-option')).color,
+        }
+      })
       await page.evaluate(() => document.documentElement.classList.remove('theme-dark'))
       await sleep(250)
       const unthemed = await page.evaluate(() => {
@@ -131,8 +156,11 @@ try {
           color: getComputedStyle(document.querySelector('.ui-select-option')).color,
         }
       })
-      check('反向对照：摘掉 <html> 的主题类，浮层立刻变回"透明板 + 纯黑字"（证明上面几条是活判据）',
-        unthemed.bg === 'rgba(0, 0, 0, 0)' && rgb(unthemed.color).join(',') === '0,0,0',
+      check('反向对照：摘掉 <html> 的主题类，浮层立刻失去深色配色（证明上面几条是活判据）',
+        unthemed.bg !== before.bg || unthemed.color !== before.color,
+        `深色下 ${before.bg} / ${before.color} → 摘掉后 ${unthemed.bg} / ${unthemed.color}`)
+      check('反向对照：摘掉主题类后回落到 :root 的浅色基线（不是透明板 + 纯黑）',
+        rgb(unthemed.bg).length === 3 && unthemed.bg !== 'rgba(0, 0, 0, 0)' && rgb(unthemed.color).join(',') !== '0,0,0',
         `底色 ${unthemed.bg} · 选项色 ${unthemed.color}`)
       await page.evaluate(() => document.documentElement.classList.add('theme-dark'))
       await sleep(250)
