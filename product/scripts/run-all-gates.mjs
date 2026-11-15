@@ -56,6 +56,29 @@ if (onlyList) {
  */
 const GATE_TIMEOUT_MS = 600_000
 
+/**
+ * 每条门禁跑之前把服务端存的界面偏好清掉。
+ *
+ * 为什么：界面偏好**不只存在 localStorage**。`hydrateUiPrefs()`（`web/src/lib/uiPrefs.ts`）
+ * 启动时会把服务端存的那几项**回填**进 localStorage（这就是「改过的设置跨端口留存」的实现）。
+ * 于是前一条门禁在真浏览器里点了「同意协议」，服务端就记下了 `agreement`；
+ * 下一条门禁用**全新 profile**（localStorage 空）打开页面，hydrate 又把它**填回来** ——
+ * 首启协议层不再出现，「第一次打开」这条断言直接红。
+ *
+ * 实测（2026-11-15）：`agreement-check` 单跑绿、排在别的门禁后面跑就红。
+ * 门禁之间共用服务端状态是真实的污染源，每条门禁都该从「第一次打开」起跑。
+ *
+ * 清不掉也不该中断：服务没起时门禁脚本自己会报清楚（`requireService`）。
+ */
+async function resetServerState() {
+  try {
+    const { resetUiPrefs } = await import('../tools/verify/env.mjs')
+    await resetUiPrefs()
+  } catch {
+    // 拿不到就跳过：这是「让门禁更准」的锦上添花，不是前置条件。
+  }
+}
+
 /** 跑一个脚本，返回 { name, ok, ms, tail }。 */
 function runOne(name) {
   const started = Date.now()
@@ -79,6 +102,7 @@ console.log(`串行跑 ${targets.length} 个门禁（每个最多 5 分钟）…
 const results = []
 for (const [i, name] of targets.entries()) {
   process.stdout.write(`[${String(i + 1).padStart(2)}/${targets.length}] ${name.padEnd(38)}`)
+  await resetServerState()
   const r = runOne(name)
   results.push(r)
   console.log(r.ok ? `✓ ${(r.ms / 1000).toFixed(1)}s` : `✗ ${(r.ms / 1000).toFixed(1)}s`)

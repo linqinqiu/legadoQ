@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { BASE, launchOptions } from './env.mjs'
+import { BASE, launchOptions, resetUiPrefs } from './env.mjs'
 /**
  * 首次打开的「用户协议与免责声明」门禁（用户 2026-10-10，参照 legado-with-MD3 的首启免责声明）：
  *  1. 没同意过 → 打开就是全屏协议层，按钮禁用且带 5 秒倒计时；
@@ -8,11 +8,19 @@ import { BASE, launchOptions } from './env.mjs'
  *  3. 点掉 → 层消失、localStorage 记住；
  *  4. 刷新 → 不再出现。
  * 跑完把 localStorage 的标记清掉 —— 门禁用的是常驻调试 profile，不清会把用户自己的"首启"吃掉。
+ *
+ * **还要清服务端那份**：界面的「同意协议」标记会被 `pushUiPref()` 存到服务端，
+ * 而 `hydrateUiPrefs()` 启动时又会把服务端那份**回填**进 localStorage。
+ * 于是上一条门禁点过「同意」，这条门禁即使换了全新 profile 也看不到首启层 —— 假红。
+ * 所以这里先 `resetUiPrefs()`，把服务端那份也一起清掉。
  */
 const require = createRequire(path.join(import.meta.dirname, '../../web/package.json'))
 const puppeteer = require('puppeteer-core')
 const results = []
 const check = (name, ok, detail = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`) }
+
+// 清服务端存的「已同意协议」标记，让「第一次打开」真的成立。
+await resetUiPrefs()
 
 const browser = await puppeteer.launch(launchOptions())
 try {

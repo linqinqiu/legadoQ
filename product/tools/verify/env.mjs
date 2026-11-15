@@ -153,3 +153,56 @@ export async function requireService(name, base = BASE) {
 export async function acceptAgreement(page) {
   await page.evaluate(() => { try { localStorage.setItem('legadoq-agreement-v1', '1') } catch { /* 隐私模式：存不进就每次都看一遍 */ } })
 }
+
+/**
+ * 服务端持久化的「界面偏好」键名。
+ *
+ * 与前端 `web/src/lib/uiPrefs.ts` 的 `UI_PREF_STORAGE` 一一对应（键名是 localStorage 里的 key）。
+ * 抄这一份而不是 import 前端：门禁跑在 Node 里，前端那份是 TS 模块、还带运行时依赖。
+ * 改一处要记得改另一处 —— `UiPrefs.test.ts` 会核对前端那份。
+ */
+export const UI_PREF_KEYS = [
+  'agreement',
+  'wallpaper',
+  'reader-settings',
+  'shelf-layout',
+  'search-layout',
+  'shelf-sort',
+  'sidebar-width',
+  'tts-bar-position',
+  'search-history',
+  'pwa-banner',
+]
+
+/**
+ * 清掉服务端存着的界面偏好，让下一条门禁从「第一次打开」的状态开始。
+ *
+ * 为什么需要它：界面的偏好**不只存在 localStorage**。`hydrateUiPrefs()`（`web/src/lib/uiPrefs.ts`）
+ * 启动时会从服务端把缺的那几项**回填**进 localStorage —— 这正是「改过的设置跨端口留存」的实现。
+ * 于是有一条门禁在真浏览器里点了「同意协议」，服务端就记下了 `agreement`；
+ * 下一条门禁用**全新的 profile**（localStorage 是空的）打开页面，hydrate 又把它**填回来** ——
+ * 首启协议层不再出现，「第一次打开」这条断言直接红。
+ *
+ * 实测（2026-11-15）：`agreement-check` 单跑绿、排在别的门禁后面跑就红；清掉服务端那份就绿。
+ * 所以「门禁之间共用服务端状态」是真实存在的污染源，不是玄学。
+ *
+ * 幂等：删一个本来就不存在的 key 也算成功（服务端 delete 就是幂等的）。
+ *
+ * @param {string} [base] 默认用 BASE
+ * @returns {Promise<number>} 实际清掉的键数
+ */
+export async function resetUiPrefs(base = BASE) {
+  let cleared = 0
+  for (const key of UI_PREF_KEYS) {
+    try {
+      const response = await fetch(`${base}/api/ui-prefs/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+        signal: AbortSignal.timeout(5000),
+      })
+      if (response.ok) cleared++
+    } catch {
+      // 服务没在跑或这个键不存在都无所谓：门禁脚本自己会 requireService 报清楚。
+    }
+  }
+  return cleared
+}
