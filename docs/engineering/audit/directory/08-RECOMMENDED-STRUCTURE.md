@@ -93,7 +93,7 @@ legadoQ/
 |---|---|---|
 | 插件遗留（O-1）挂横幅或出库 | G-2 | 保留历史参考 or 出库 |
 | .scratch 克隆/语料迁 E:\legado-out\assets\refs | D-24 | 迁移时审计引用路径同步 |
-| typeset 分页簇接入或删除 | N-1/O-5 | 先出性能测量，再决策 |
+| typeset 分页簇接入或删除 | N-1/O-5 | ✅ 已决策并执行（2026-11-15）：性能实测后**整簇删除**，见 `docs/research/研究-typeset分页簇去留-2026-11-15.md` |
 | 待定功能.md 转设计记录 | D-26/O-10 | 低 |
 | doc-hygiene 门禁落地（§3） | 防漂移 | 白名单初版须审 |
 | 本机残留清理（hs_err ×39、tmp 38MB、tools 四份探针） | G-4/S-15 | 停服后 clean-local；非 git 资产 |

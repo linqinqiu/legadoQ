@@ -20,6 +20,12 @@
 | O-1 | **已挂废弃横幅**（未出库，出库仍待属主拍板）：`product/plugins/README.md` 重写为「已废弃 + 现行两条加能力路径（`ai/ToolRegistry` / `LlmProvider` / `ConnectionSelector`）」；`product/examples/plugin-hello/README.md` 顶部加横幅说明「编译不过、装不进去」，但保留其中四条踩坑经验（Kotlin 版本 / `compileOnly` / 扩展函数要 import / jar 占用）。两份设计文档 `plugin-framework.md`、`plugin-development-guide.md` 已 `git mv` 到 `docs/archive/plugins/`，各加一张逐项核对表 | 核对：`io/legado/plugin/` 整包不存在；`registerExtension(` 全仓零调用；端点 165/19 而非文中的 142 |
 | 连带 | `docs/STATUS.md` 安全模型里那条 `LEGADO_PLUGIN_JAR_SCAN` 已改为「机制已移除、该变量不存在」；`docs/README.md`、`product/README.md`、`.github/SUPPORT.md`、`agent-api.md`、`restructure/frontend-host.md`、`restructure/root-split.md` 的引用全部改指归档位置 | `grep -rn "product/docs/plugin-"` 仅剩 `root-split.md:451` 的历史快照正文（该节已在其后追加收口注，正文按快照纪律不回改），其余零命中 |
 
+**处置记录（2026-11-15，N-1 typeset 分页簇）**
+
+| # | 处置 | 证据 |
+|---|---|---|
+| O-5 | **已整簇删除**（决策依据见 `docs/research/研究-typeset分页簇去留-2026-11-15.md`）：删 `features/reader/typeset/`（3 文件 264 行）、`content/paginationCache.ts`（179 行）、`LayoutEngine.test.ts`、`PaginationCache.test.ts`；`fontLibrary.ts` 注释去掉了对已删缓存的指向 | 删后 `rg 'typeset/|paginationCache|layoutEngine|layoutWorker'` 在产品代码零命中；`ARCHITECTURE.md` §6.3 由「待决设计图」改写为现行 DOM 量栏实现，§6.4 链路与 §12 扩展点表同步；`docs/STATUS.md` reader/ 文件数 75 → 72 |
+
 ## 2. 半死 / 职责重叠（保留但需收口）
 
 | # | 对象 | 证据 | 建议 |

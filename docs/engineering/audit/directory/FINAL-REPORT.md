@@ -42,7 +42,7 @@
 插件遗留（plugins/README + examples/plugin-hello，O-1）挂废弃横幅或移仓库外 archive；待定功能.md 转设计记录或归档（D-26）；退役脚本 O-2/O-3/O-4 移仓库外 archive（git 历史亦可恢复）。docs/archive 现有 8 份不动。
 
 **Q7 哪些文件应该删除？**
-本轮不建议任何永久删除。可退役（删除或出库，二选一，均附证据）：version-reconcile.mjs（O-2，调用方仅归档文档）、根 gen-api-reference.mjs（O-3，product 同名版才是现役）、build-portable.mjs（O-4，零调用方）。typeset 分页簇（O-5）是**决策项**：接入或整簇删，先出性能测量，不顺手删。
+本轮不建议任何永久删除。可退役（删除或出库，二选一，均附证据）：version-reconcile.mjs（O-2，调用方仅归档文档）、根 gen-api-reference.mjs（O-3，product 同名版才是现役）、build-portable.mjs（O-4，零调用方）。typeset 分页簇（O-5）**已决策并执行**（2026-11-15）：性能实测后整簇删除（决策记录见 `docs/research/研究-typeset分页簇去留-2026-11-15.md`）。
 
 **Q8 哪些文件存在重复？**
 真重复且漂移：product/README 发行资产段 vs build-jar.yml vs deploy.md（D-5，以 CI 为准重写）；根 gen-api-reference vs product 版（O-3）；两个 version-check.mjs 同名异责（S-17，改名）。其余「重复」为有意分层，见 07 分册 §3，勿合并。

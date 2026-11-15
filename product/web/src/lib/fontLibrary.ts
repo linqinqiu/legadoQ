@@ -42,7 +42,7 @@ export interface FontInfo {
 /** 已注册进 `document.fonts` 的 FontFace：删除/重导时要能把旧的摘掉。 */
 const registered = new Map<string, FontFace>()
 
-/** 模块级单连接，与 paginationCache / offlineStorage 同款缓存策略。 */
+/** 模块级单连接，与 offlineStorage 同款缓存策略。 */
 let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {

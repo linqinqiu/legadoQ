@@ -493,25 +493,20 @@ close()       = 关写连接 + 清空池 + 关掉所有曾创建的连接（Wind
 
 ### 6.3 分页引擎（前端，自研）
 
-> **接线状态（2026-10-26 核）**：下面这张图描述的是 `features/reader/typeset/`（`typesetParams` + `layoutEngine` + `layoutWorker`）与 `features/reader/content/paginationCache.ts` 这条设计线。两者**都有实现、也都有单测，但目前没有任何生产者调用它们** —— 全仓唯一的引用是 `product/web/test/PaginationCache.test.ts`，`ReaderScreen` 走的是自己那套 DOM 测量分页（见 6.2 末段），IndexedDB 里的 `pagination_cache` 仓库实际从未被写入。
-> 也就是说这是**待决**而不是已交付：要么把分页接到这条线上，要么整簇删掉（443 行 + 1 份判据）。留着它最坏的代价不是那 443 行，而是文档按"已经这样工作"的口吻描述一个没在跑的设计 —— 读到图的人按图找代码会找不到。
+**分页事实只有一份：浏览器排版 + DOM 量栏。** 正文由 CSS 分栏（`.reader-paginated-*`，`column-fill: auto`）铺满多栏，`usePaginationMeasurement.ts` 读一次 DOM 得出「每章占几栏、起始栏号」，再折算成页。
 
 ```
-正文文本 + TypesetParams
-   │  { fontFamily, fontSize, lineHeight, paragraphSpacing,
-   │    marginX/marginTop/marginBottom, viewportWidth/Height,
-   │    columnMode: single|double, imagePlaceholderRatio }
+窗口 3 章挂进 .reader-page-chapter
    ▼
-layout(text, params) → { startOffsets: number[], columnCount, lineCount }
-   │  startOffsets = 每一栏（页）首字符在章节文本里的绝对偏移，单调递增
+第 1 遍：Range.getClientRects() 数每章栏数（左缘按 stride 分桶，吃掉首行缩进的双左缘）
+第 2 遍：再量每章起始栏（对齐闸门按量出来的值判，不按算术）
    ▼
-paginationCache（IndexedDB `legado-reader` / store `pagination_cache`）
-   key = 书 + 章 + 内容哈希 + 排版参数
+pageSpans（章节 → 页区间） + pageFillers（双栏奇偶垫白）→ pageCount
 ```
 
-- 计算放 **Web Worker**（`features/reader/typeset/layoutWorker.ts`），主线程只收发消息，不阻塞输入。
-- 改字号/字体/分栏时，先用旧结果的偏移定位到「当前页首字符」，新布局算完再按同一字符偏移找回位置 —— 所以**不会跳回第一页**。
-- 缓存命中即可跳过重算；`IndexedDB` 不可用（无头/隐私模式）时静默降级，不影响阅读。
+- 不另造排版模型：字体、字号、字距、`text-indent`、图片高度都交给浏览器，量出来的就是屏幕上真实的页。
+- 位置恢复用**语义位置**（章节 + 字符偏移 + 内容 checksum），不靠页码缓存 —— 改字号/字体后先按偏移找回所在段，再落到对应栏。
+- 成本只在换章 / 改排版 / 窗口尺寸变化时付一次：本机真实库 715 章实测，3 章窗口中位 1.6 ms、p99 4.6 ms，极端三章巨章 18 ms（数据见 `docs/research/研究-typeset分页簇去留-2026-11-15.md`）。
 
 ### 6.4 一条开书链路
 
@@ -522,7 +517,7 @@ paginationCache（IndexedDB `legado-reader` / store `pagination_cache`）
   → GET /api/progress             （逻辑位置：章 + 字符偏移）
   → GET /api/books/content?chapterUrl=…   （正文；命中 book_content_cache 直接回，
                                             否则走书源规则抓取并顺手写缓存）
-  → 前端 layout(text, params)（Worker）
+  → 前端挂 CSS 分栏 + DOM 量栏（`usePaginationMeasurement`）
   → 渲染当前章 + 前后各一章窗口
   → 阅读中滚动/翻页 → 更新 pageIndex → 节流上报 PUT /api/progress（逻辑位置）
 ```
@@ -676,7 +671,6 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 新设置项 | `web/src/features/settings/settingsSections.ts` | `SettingsSections.test.ts`（动作数从 actions 派生，不写死） |
 | 新 AI 工具 | `ai/BuiltinTools.kt` 或宿主 `ToolRegistry.register()` | 工具要带 `origin` 与 `writes` 标记 |
 | 新前端页面 | `web/src/features/<域>/` + `app/pages.tsx` | 路由与导航：`lib/nav.ts` + `app/pages.tsx` |
-| 新排版参数 | `web/src/features/reader/typeset/typesetParams.ts` | 会进分页缓存 key，改动即缓存失效 |
 | 新颜色 / 新主题来源 | `web/src/ui/color/` + `web/src/ui/theme/apply.ts` | 输出**只喂现有 16 个皮肤令牌**（`--canvas`…`--shadow`），不新增第 17 个；`ui/index.ts` 门面同步 |
 | 新动效曲线 | `web/src/ui/motion/spring.ts` 的 `SPRINGS` | `styles.css` 末尾那份 `--spring-*` 兜底要同名同步；`DesignMotionSpring.test.ts` 钉住 |
 | 新玻璃/材质 | `web/src/ui/material/glass.css`（参数走 `--lg-*`） | 每个 `var()` 必须带回落；`@supports` 与 `prefers-reduced-transparency` 两条降级不许删 |

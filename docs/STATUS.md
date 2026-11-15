@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,217 项全绿（160 个 suite，0 失败 0 跳过，第 5 项补测落地后重跑）**；前端 **1,173 项全绿（148 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
+> 当前发布版本 **0.2.42 / build 55** ｜ 分支 `main` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ 最近一次本轮后端实跑 **1,217 项全绿（160 个 suite，0 失败 0 跳过，第 5 项补测落地后重跑）**；前端 **1,157 项全绿（146 个文件）**，`tsc -b` 类型检查通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §8。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -83,7 +83,7 @@
 | 目录 | 内容 |
 |---|---|
 | `app/` | 应用外壳：`AppHeader`（顶栏、版本芯片、功能菜单）、`pages.tsx`（页面注册表） |
-| `features/reader/` | **75 个文件**（含 `settingsPanel/` `typeset/` `dict/` `content/` `dialogs/` `interaction/` `notes/` `tts/` 等子目录）：阅读器主体、目录虚拟列表、笔记/标注、TTS、排版（无 DOM 布局引擎 + Worker）、分页缓存、翻页动画、手势/快捷键 |
+| `features/reader/` | **72 个文件**（含 `settingsPanel/` `dict/` `content/` `dialogs/` `interaction/` `notes/` `tts/` 等子目录）：阅读器主体、目录虚拟列表、笔记/标注、TTS、分页（CSS 分栏 + DOM 量栏）、翻页动画、手势/快捷键 |
 | `features/bookshelf/` | 书架页（`ShelfPage`）与书库页（`LibraryPage`）+ 封面、空态引导、拖拽排序、布局与自定义顺序 |
 | `features/explore/` | 发现页：按书源 `exploreUrl` 分栏浏览 |
 | `features/source-editor/` | 书源页 + 编辑器面板、字段表单、健康体检、登录浮层、换源弹窗、订阅面板 |
@@ -120,9 +120,9 @@
 
 | 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **1,165 项 / 0 失败 / 0 跳过**（152 个 suite；2026-11-13 本轮全量实测，含 `BookCacheServiceTest` 与 `NetworkSecurityTest` 新增用例） |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **1,217 项 / 0 失败 / 0 跳过**（160 个 suite；2026-11-15 本轮全量实测） |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
-| Web 测试 | `web: npm test` | **1,157 项 / 0 失败**（146 个测试文件；2026-11-13 本轮全量实测） |
+| Web 测试 | `web: npm test` | **1,157 项 / 0 失败**（146 个测试文件；2026-11-15 本轮全量实测，typeset 分页簇两份判据删除后） |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-13 本轮实测） |
 | 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 最近一次实测（2026-11-09）：后端行 **70.04%**，前端行 **63.51%**；重跑 `npm run coverage` 取当次值 |
 | 端点文档一致 | `cd product && npm run docs:api-check` | 通过：165 条端点、19 个分组与文档一致 |
