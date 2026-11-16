@@ -87,7 +87,7 @@
 4. **顶层没配 `searchUrl` 的源**：只能当发现页用，界面单列「未配搜索」一档，**不计入"连不上"**，也不参与一键停用/删除（`source/SourceHealth.kt` 的 `probe()` 中 `no_search` / `explore_only` 分支、`web/src/sources/sourceGrouping.ts`）。
 5. **纯前端渲染的登录页**：内置反代浏览器帮不上（表单挂在框架里、或先要过挑战），要改填表或粘 Cookie。
 6. **跨书源的"同一本书"身份**：只能是书名 + 作者，章节坐标只能是标题 —— 换源时 `sourceId + bookUrl` 两个都会变。这条目前只在前端有实现与判据，服务端侧没有对应实现。
-7. **`java.t2s` / `java.s2t`（繁简转换）零实现**：脚本调用直接失败，依赖它做繁简转换的正文/目录规则整章拿不到。2026-11-13 按本机 5,600 条源实测：30 / 7 条源使用（11 条在 `ruleContent` 正文级）；证据与计数口径见 `docs/research/研究-书源JS与字段缺口实测-2026-11-13.md`。实现排期见整改路线图（P1-2）。
+7. **`java.t2s` / `java.s2t`（繁简转换）已实现**（2026-11-16）：表与前端「简繁转换」设置同一份（OpenCC，`tools/gen-script-dict.mjs` 生成 `rules/ScriptConvert.kt` 用的 `/dict/opencc.txt`），词组最长匹配 + s2t 收尾过台港字形表。此前为零实现：脚本调用直接失败，依赖它做繁简转换的正文/目录规则整章拿不到。2026-11-13 按本机 5,600 条源实测：30 / 7 条源使用（11 条在 `ruleContent` 正文级）；证据与计数口径见 `docs/research/研究-书源JS与字段缺口实测-2026-11-13.md`。
 8. **备份导入的排序与范围字段丢失**：书源 `customOrder` 不写 `sort_order`（导入后排序丢）；替换规则 `scopeSource` 无落点（只作用于特定书源名的规则会变成作用于全部）。字段级矩阵见 `docs/engineering/audit/BACKUP_MATRIX.md` §4。
 
 ## 7. 想验证某条说法，跑这三条

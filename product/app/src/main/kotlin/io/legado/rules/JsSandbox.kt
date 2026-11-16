@@ -1247,6 +1247,26 @@ class JsSandbox(
             }
         })
 
+        // java.t2s(text) / java.s2t(text)：上游 JsExtensions 的简繁转换，本机库 30 / 7 条源在用。
+        // 缺了它们不是"少转几个字"：调用 undefined 抛 TypeError，而正文那条路径不包 runCatching
+        // （见 RuleRunner 的 ruleContent），于是整章取不到。表与前端「简繁转换」是同一份，
+        // 见 rules/ScriptConvert.kt 的说明。
+        // 入参是 null / undefined 时回空串，不能让它变成字面量 "undefined" 混进正文。
+        val scriptConvert = { text: Any?, convert: (String) -> String ->
+            when {
+                text == null || text === Context.getUndefinedValue() -> ""
+                else -> convert(text.toString())
+            }
+        }
+        ScriptableObject.putProperty(api, "t2s", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any =
+                scriptConvert(args.firstOrNull()) { ScriptConvert.t2s(it) }
+        })
+        ScriptableObject.putProperty(api, "s2t", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any =
+                scriptConvert(args.firstOrNull()) { ScriptConvert.s2t(it) }
+        })
+
         // java.startBrowser(url, title) / java.openWeb(url)：只请求打开，无返回体
         val browserFn = object : BaseFunction() {
             override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable, args: Array<out Any?>): Any {

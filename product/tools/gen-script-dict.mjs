@@ -27,7 +27,15 @@ import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const OUT = path.join(ROOT, 'web/src/reader/dict/openccData.ts')
+// 前端那份（阅读器的「简繁转换」设置用）。路径带 `features/` —— 文件早就挪过去了，
+// 这里曾经还写着旧路径 `web/src/reader/dict/`，跑一次会在错误的位置生出一份重复表。
+const OUT = path.join(ROOT, 'web/src/features/reader/dict/openccData.ts')
+/**
+ * 后端那份（书源 JS 的 `java.t2s` / `java.s2t` 用，见 `rules/ScriptConvert.kt`）。
+ * 同一份数据、同一套裁剪，只是换成 Kotlin 侧好解析的纯文本：每段一行 `#名字`，
+ * 下面按 CHUNK 条一行、`|` 分隔。别手改，改数据跑这个脚本。
+ */
+const KOTLIN_OUT = path.join(ROOT, 'app/src/main/resources/dict/opencc.txt')
 const PKG = 'opencc-js'
 const MAX_PHRASE_LEN = 4
 /** 每行放多少条，纯粹为了文件别长成一行 17 万字符。 */
@@ -143,7 +151,27 @@ const body = [
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
 fs.writeFileSync(OUT, header + body, 'utf8')
 
+/** Kotlin 侧的资源：只放数据，解析在 `rules/ScriptConvert.kt`。 */
+const resourceSection = (name, list) => {
+  const lines = []
+  for (let i = 0; i < list.length; i += CHUNK) {
+    lines.push(list.slice(i, i + CHUNK).map(([k, v]) => `${k} ${v}`).join('|'))
+  }
+  return `#${name}\n${lines.join('\n')}\n`
+}
+const resource = [
+  resourceSection('s2t_chars', s2tChars),
+  resourceSection('s2t_phrases', sortPhrases(stPhrases)),
+  resourceSection('s2t_tw_chars', twList),
+  resourceSection('t2s_chars', t2sChars),
+  resourceSection('t2s_phrases', sortPhrases(tsPhrases)),
+].join('')
+fs.mkdirSync(path.dirname(KOTLIN_OUT), { recursive: true })
+fs.writeFileSync(KOTLIN_OUT, resource, 'utf8')
+
 console.log(`写出 ${path.relative(ROOT, OUT)}`)
+console.log(`写出 ${path.relative(ROOT, KOTLIN_OUT)}`)
 console.log(`  简→繁  字 ${s2tChars.length}  词 ${stPhrases.length}  台港字形 ${twList.length}   ${kb(size(s2tChars) + size(stPhrases))} (gzip ${kb(gz(s2tChars) + gz(stPhrases))})`)
 console.log(`  繁→简  字 ${t2sChars.length}  词 ${tsPhrases.length}   ${kb(size(t2sChars) + size(tsPhrases))} (gzip ${kb(gz(t2sChars) + gz(tsPhrases))})`)
 console.log(`  文件   ${kb(fs.statSync(OUT).size)}`)
+console.log(`  资源   ${kb(fs.statSync(KOTLIN_OUT).size)}`)

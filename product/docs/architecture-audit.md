@@ -22,7 +22,7 @@
 
 ## 2. `java` 桥暴露面（`createJavaBridge`）
 
-`JsSandbox.kt` 的 `createJavaBridge` 用 `putProperty(api,"…")` 把宿主能力投影给脚本（`ScriptableObject.putProperty(scope,"java", …)`），**共 68 个方法**。取证语料：`E:\legado-out\legado-releases/qingyue-portable-0.8.6/data/legado.sqlite`（2026-11-11 从仓库内移出），**5598 个源、其中 2019 个含 JS**，正则扫 `java\.[A-Za-z0-9_]+` 得到每方法调用次数。
+`JsSandbox.kt` 的 `createJavaBridge` 用 `putProperty(api,"…")` 把宿主能力投影给脚本（`ScriptableObject.putProperty(scope,"java", …)`），**共 70 个方法**。取证语料：`E:\legado-out\legado-releases/qingyue-portable-0.8.6/data/legado.sqlite`（2026-11-11 从仓库内移出），**5598 个源、其中 2019 个含 JS**，正则扫 `java\.[A-Za-z0-9_]+` 得到每方法调用次数。
 
 ### 2.1 高频（真实依赖，必须保留）
 
@@ -32,13 +32,21 @@
 
 `aesDecodeToBase64` `copyText` `desBase64DecodeToString` `desDecodeToString` `desEncodeToString` `digestBase64Str` `getKey` `getStrResponseAwait` `md5` `openWeb` `reUiView` `refreshBookToc`
 
-不直接删的原因：① 这是**单份快照语料**，零调用 ≠ 全网没人用；`md5/aesDecodeToBase64/desEncodeToString` 多为上游历史别名（`md5Encode` 790 次在用而 `md5` 为 0，疑似旧写法），删了会砸这份库之外的社区源。② `copyText/getKey` 虽零调用但有宿主副作用，是"可安心收"的一小撮，仍需走 §4 流程。**因此本测试只冻结现状（68 全保留）防扩面，删与补都交后续扩语料举证。**
+不直接删的原因：① 这是**单份快照语料**，零调用 ≠ 全网没人用；`md5/aesDecodeToBase64/desEncodeToString` 多为上游历史别名（`md5Encode` 790 次在用而 `md5` 为 0，疑似旧写法），删了会砸这份库之外的社区源。② `copyText/getKey` 虽零调用但有宿主副作用，是"可安心收"的一小撮，仍需走 §4 流程。**因此本测试只冻结现状（当时 68 个全保留）防扩面，删与补都交后续扩语料举证；2026-11-16 按真实语料补了 `t2s/s2t` 两个，现为 70。**
 
 ### 2.3 语料用了、桥未暴露（潜在兼容缺口，需人工定性）
 
 `getVerificationCode`(11) `webView`(47) `refreshTocUrl`(31) `ruleUrl`(10) `initUrl`(8) `t2s`(151)
 
 这些是"别人写好了、我们的桥不认"方向，比裁剪更值得先看。**但**其中 `t2s/ruleUrl/initUrl` 很可能是压缩脚本里 `java` 恰为局部变量的正则误命中，未逐条确认前不定性为缺口。建议后续用更长正则 + 反混淆抽样人工核验。
+
+### 2.4 `t2s` / `s2t` 已定性并补上（2026-11-16）
+
+`t2s` 不是正则误命中：按本机 5,600 条源逐段查 `json_extract(payload, …)` 确认 **30 条源**在规则里调用 `java.t2s`（11 条在 `ruleContent`），另有 **7 条**用 `java.s2t`；证据与计数口径见 `docs/research/研究-书源JS与字段缺口实测-2026-11-13.md` §2。缺它时 Rhino 调 undefined 抛 TypeError，而正文路径不包 `runCatching`，表现为整章取不到。
+
+落地：`rules/ScriptConvert.kt` + 资源 `/dict/opencc.txt`（与前端「简繁转换」同一份 OpenCC 表，`tools/gen-script-dict.mjs` 同时生成两份），`JsSandbox.createJavaBridge` 增加两个方法。能力类归属：**文本转换**（纯函数，无网络、无存储、无宿主副作用）。判据 `ScriptConvertTest` 6 项 + `JsScriptConvertBridgeTest` 3 项。
+
+`ruleUrl/initUrl/webView/getVerificationCode` 仍未定性（本机库没有可复现调用），保持缺口记录。
 
 ## 3. 领域包依赖矩阵（跨包 import 边表）
 

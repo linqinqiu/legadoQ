@@ -406,6 +406,8 @@ class ArchitectureBoundaryTest {
             "cacheFile", "getCookie", "getKey", "getString", "getStringList", "importScript", "put",
             // —— DOM/内容/排版 ——
             "getElement", "getElements", "htmlFormat", "setContent", "toNumChapter", "toURL",
+            // —— 文本转换（简繁）：30 / 7 条真实源在用，证据见 docs/architecture-audit.md §2.4 ——
+            "s2t", "t2s",
             // —— 编码/摘要/加解密 ——
             "aesBase64DecodeToString", "aesDecodeToBase64", "base64Decode", "base64DecodeToByteArray",
             "base64Encode", "bytesToStr", "createSymmetricCrypto", "desBase64DecodeToString",
