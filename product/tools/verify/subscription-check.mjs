@@ -250,6 +250,16 @@ try {
   ok('停用/失败的订阅仍能手动点「立即同步」', failureRow?.syncDisabled === false, `disabled=${failureRow?.syncDisabled}`)
 
   // 停用后仍可同步（这条把"停用 = 只能等自动同步"的死角堵掉）
+  // 上一条刚点过「立即同步」，那个请求可能还在飞：忙的时候整行按钮都是
+  // disabled、同步按钮写着「同步中…」，于是这里的「已启用/已停用」按钮点不动，
+  // 断言读到的是没切换过的状态。门禁串着跑时机器忙，那个请求要好几秒 ——
+  // 先等这一行不忙了再点。
+  await page.waitForFunction(() => {
+    const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
+      .find(node => node.textContent?.includes(window.__SUB_TOKEN))
+    if (!article) return true
+    return ![...article.querySelectorAll('button')].some(node => node.disabled)
+  }, { timeout: 30000, polling: 200 }).catch(() => null)
   const toggled = await page.evaluate(() => {
     const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
       .find(node => node.textContent?.includes(window.__SUB_TOKEN))
@@ -257,7 +267,18 @@ try {
     button?.click()
     return button?.textContent?.trim() ?? ''
   })
-  await sleep(1200)
+  // 等这一行「定下来」：toggle() 会 setBusy → 保存 + 重新载入列表。
+  // 忙的时候「已启用/已停用」那颗按钮是 disabled、旁边那颗写着「同步中…」，
+  // 读早了读到的是半路上的状态（门禁串着跑、机器忙时尤其明显）。
+  await page.waitForFunction(() => {
+    const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
+      .find(node => node.textContent?.includes(window.__SUB_TOKEN))
+    if (!article) return false
+    const buttons = [...article.querySelectorAll('button')]
+    // 不忙了，且那颗「已启用/已停用」按钮已经翻过来了
+    if (buttons.some(node => node.disabled)) return false
+    return buttons.some(node => /已停用/.test(node.textContent ?? ''))
+  }, { timeout: 30000, polling: 200 }).catch(() => null)
   const afterToggle = await page.evaluate(() => {
     const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
       .find(node => node.textContent?.includes(window.__SUB_TOKEN))
