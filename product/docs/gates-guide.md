@@ -121,7 +121,7 @@ done
 | **过期门禁** | `next-mount-check`、`next-ui-check` | `/next/` 架构已删（404，`.grid-cards`/`.md-list` 等 class 一个都不存在） | 移到 `tools/verify/retired/` |
 | **判据写错** | `cache-range-check`、`source-health-check`、`explore-empty-check`、`source-editor-check`、`webview-*-check` | 见下 | 改判据 |
 | **外部漂移** | `media-reader-check` | 外部音频站搜不出书 | 改判 NOTE（跳过） |
-| **已知未修** | `stalled-client-check` | 停读客户端能让 `/healthz` 卡住（任务 #36；0.1.7 复测见下） | 保留红，如实记录 |
+| **已修（24 档）** | `stalled-client-check` | 停读客户端能让 `/healthz` 卡住（任务 #36） | 2026-11-16 抬 `Dispatchers.IO` 并行度后 24 档转绿；60 档仍降级，见 §6.3.2 |
 
 ### 6.3.1 `stalled-client-check` 的实测台阶（2026-10-28，0.1.7 复测）
 
@@ -139,6 +139,38 @@ done
 
 门禁本身保持原判据（它描述的是**目标**，不是现状），红着如实记录；修的时候要么给响应写加超时，
 要么换非阻塞写的引擎（Netty），都属于改运行时的活儿，单独排期。
+
+> **上面第三条已被 2026-11-16 的实测推翻一半**：同一天在 24 个停读对端下把
+> `Dispatchers.IO` 并行度抬到 200，`/healthz` 从 15 秒回到 0.6 秒。0.1.7 那次
+> `-Dkotlinx.coroutines.io.parallelism=512` 为什么没见效，没有再追（两次的门禁版本与
+> 服务状态不同），以最新实测为准。见 §6.3.2。
+
+### 6.3.2 `stalled-client-check` 的现状（2026-11-16 实跑）
+
+口径：`legado-0.2.42-all.jar` 独立进程、临时数据目录、`LEGADO_BASE_URL=http://127.0.0.1:1235`，
+`LEGADO_IO_PARALLELISM` 默认 200。
+
+| 阶段 | `/healthz` | `/api/sources` | 卡在写上的线程 |
+| --- | ---: | ---: | ---: |
+| 基线（无停读） | 12 ms | 472 ms | — |
+| 24 个停读对端 | **824 ms** | 2202 ms | 24 / 38 |
+| 再叠 36 个（共 60） | 4549 ms | 2743 ms | 60 / 107 |
+| 对端全部撤掉 | 8 ms | — | — |
+
+**结论：24 档（门禁判据）已绿；60 档仍明显降级**，因为 CIO 的写是**每条连接一条线程的阻塞写**，
+并行度只是把天花板抬高，抬不到无限。
+
+**「给响应写加超时」这条在应用层走不通（已实测，别再重试）**：
+在 `BundledAssets.respond` 里把 `respondBytes` 放进子协程、`withTimeoutOrNull(1000)` 之后
+`cancel` 这个 call 的 `Job`，24 个停读对端下 1.5 秒后 `jstack` 里**仍有 24 条线程卡在
+`SocketDispatcher.write0`**；单连接实验里对端停读 3.5 秒再恢复读取，**仍完整收到 1,000,320 字节**、
+连接没被关掉。原因是阻塞写发生在 CIO 的**每连接 writer loop** 上，它不属于 call 的协程树 ——
+取消 call 既不会中断 `write0`，也不会关掉 socket。真要在应用层做，只能拿到 `SocketChannel`
+直接 `close()`，而 Ktor 3.4.3 没有把这个对象暴露给 `ApplicationCall`（`CIOApplicationCall`
+只有 request/response 两个字段，response 里只有 `ByteWriteChannel`）。
+
+**剩下的根治路径只有两条**：① 换 Netty 等非阻塞写引擎；② 等上游给 CIO 的 writer loop 加写超时。
+两条都是改运行时的活儿，需要单独排期与全量门禁回归，不在这一档顺手做。
 
 ### 6.4 五个"判据写错"的具体错法（值得记，都是同类）
 
