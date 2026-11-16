@@ -28,7 +28,7 @@ class AppConfigEnvWiringTest {
      * 漏了会红，不会静默少测一条。
      */
     private val bindings = listOf(
-        Binding("LEGADO_CALL_GROUP_SIZE") { AppConfig.callGroupSize.toString() },
+        Binding("LEGADO_IO_PARALLELISM") { AppConfig.ioParallelism.toString() },
         Binding("LEGADO_SEARCH_CONCURRENCY_MIN") { AppConfig.searchConcurrencyMin.toString() },
         Binding("LEGADO_SEARCH_CONCURRENCY_MAX") { AppConfig.searchConcurrencyMax.toString() },
         Binding("LEGADO_SEARCH_TIMEOUT_MS") { AppConfig.searchTimeoutMs.toString() },

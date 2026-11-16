@@ -47,7 +47,20 @@ object AppConfig {
         record(key, int(key, default).coerceIn(range).toString()).toInt()
 
     /** Ktor CIO 引擎处理请求与写响应的分组线程数。 */
-    val callGroupSize: Int = int("LEGADO_CALL_GROUP_SIZE", 64)
+    /**
+     * `Dispatchers.IO` 的并行度（`kotlinx.coroutines.io.parallelism`）。
+     *
+     * 这才是 CIO 引擎真正受用的旋钮：请求处理与响应写都跑在 `Dispatchers.IO` 上，
+     * 而停读的客户端各自占住一条线程做**阻塞写**（不是挂起）。
+     * 默认并行度是 max(64, 核数) —— 24 个停读连接就能把池占满，
+     * 无关请求的轻量工作跟着排队，`/healthz` 要等 15 秒。
+     *
+     * （原来这里放的是 `callGroupSize`，而那个属性**在 CIO 引擎上不存在** ——
+     * 它属于 Netty 引擎，给 CIO 设它不报错也不起作用。）
+     *
+     * 见 `tools/verify/stalled-client-check.mjs`。
+     */
+    val ioParallelism: Int = intIn("LEGADO_IO_PARALLELISM", 200, 8..1024)
 
     /** 多书源并发搜索的并发上下限（按 CPU 核数在此区间内取）。 */
     val searchConcurrencyMin: Int = int("LEGADO_SEARCH_CONCURRENCY_MIN", 16)

@@ -157,7 +157,7 @@ fun Route.searchRoutes(
                 return@post
             }
             try {
-                // 阻塞的网络取书不能占 CIO call-group 线程（见 Application.kt 对 callGroupSize 的调参说明）
+                // 阻塞的网络取书不能占住处理请求的那些线程（见 Application.kt 对 IO 并行度的调参说明）
                 call.respond(withContext(Dispatchers.IO) { runner.explore(source.json, request.url, request.page.coerceAtLeast(1)) })
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error

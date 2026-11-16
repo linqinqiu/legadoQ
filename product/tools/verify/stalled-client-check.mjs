@@ -166,10 +166,22 @@ console.log('  NOTE 今天保证的是上面那档（默认 24 个对端，STALL
 for (const client of extra) client.close()
 
 for (const client of clients) client.close()
-await sleep(800)
-const afterClose = await timed('/healthz')
+// 把挂着的连接都关掉之后，服务要**等一会儿**才恢复得过来：
+// 那些停读的写还卡在 `write0` 里，直到对端复位才松开，IO 池在那之前一直是满的。
+// 这里轮询等它真的快回来（而不是 sleep 一下就量一次），
+// 既量得准，也保证**下一条门禁拿到的是干净的服务** ——
+// 否则这条门禁跑完把服务留在饱和状态，下一条（或这条的下一轮）
+// 一开始量到的基线就是 15 秒。
+const recoveryStarted = Date.now()
+let recovered = null
+for (let attempt = 0; attempt < 40; attempt++) {
+  const probe = await timed('/healthz', 5000)
+  if (probe.status === 200 && probe.ms <= 1000) { recovered = probe; break }
+  await sleep(500)
+}
+const afterClose = recovered ?? await timed('/healthz')
 check('客户端全部撤掉之后服务立刻恢复正常', afterClose.status === 200 && afterClose.ms <= 1500,
-  `${afterClose.ms}ms（24 个对端压着时 ${underLoadHealth.ms}ms）`)
+  `${afterClose.ms}ms（24 个对端压着时 ${underLoadHealth.ms}ms，撤掉后 ${Date.now() - recoveryStarted}ms 恢复）`)
 
 let pass = 0
 let fail = 0

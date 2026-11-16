@@ -48,10 +48,21 @@ import io.legado.model.ApiError
  * 就不再往下读"的连接，就能让一个无关的 `/healthz` 等 15 秒 —— 表现就是"端口还在听，
  * 服务像死了"。这条现在做成了可重跑的门禁：`tools/verify/stalled-client-check.mjs`。
  *
- * 能调的旋钮是引擎的分组线程数：`callGroupSize` 决定"跑请求处理与写响应"那一组有多大，
- * 默认等于 CPU 核数 —— 也就是说几台停读的浏览器就能把整组占满，连搜索要的算力一起拖死。
- * 给到 64 之后，阻塞写占的是这一组（本来就是为"可能在等"而存在的组），
- * 而 DefaultDispatcher 那批线程留给规则引擎与搜索。
+ * 能调的旋钮是 **IO 调度器的并行度**：`kotlinx.coroutines.io.parallelism`。
+ *
+ * 踩过的坑记一笔：`callGroupSize` 那个属性**在 CIO 引擎上根本不存在** ——
+ * 它属于 Netty 引擎。CIO 的 `CIOApplicationEngine` 只有 `engineDispatcher` 与
+ * `userDispatcher` 两个字段，两个都是 `Dispatchers.IO`（`CoroutineUtilsJvmKt.getIOBridge`）。
+ * 给 CIO 设 `callGroupSize` 不报错、也不起作用 —— 字节码里 `getCallGroupSize`
+ * 一次都没被读，所以"给到 64 之后阻塞写占的是这一组"这句话是**假的**：
+ * 停读的客户端照样能占满真正在跑的那些线程。
+ *
+ * 真正管用的是 `Dispatchers.IO` 的并行度（`kotlinx.coroutines.io.parallelism`，
+ * 默认 max(64, 核数)）。停读客户端各自占住一条线程做阻塞写，于是把 IO 池占满，
+ * 无关请求的轻量工作也跟着排队 —— 实测 24 个停读连接能让 `/healthz` 等 15 秒。
+ * 把并行度抬到 200 之后，同样 24 个停读连接下 `/healthz` 只要 0.9 秒。
+ *
+ * （引擎真正该做的是给写加超时，那是上游的事；这里先把并行度这条旋钮拧对。）
  *
  * 形状上的坑记一笔：`embeddedServer(CIO, host, port) { … }` 那条重载**没有** configure 参数，
  * 尾随 lambda 是 module 而不是引擎配置 —— 要调引擎就得走 environment + configure 这条，
@@ -62,7 +73,6 @@ fun createLegadoEngine(config: ServerConfig, cdsDump: Boolean = false) = embedde
     environment = applicationEnvironment(),
     configure = {
         connector { host = config.host; port = config.port }
-        callGroupSize = AppConfig.callGroupSize
     },
 ) {
     // --cds-dump：只为生成 CDS 类归档（tools/make-cds.mjs 用）。服务照常起来，
@@ -70,7 +80,35 @@ fun createLegadoEngine(config: ServerConfig, cdsDump: Boolean = false) = embedde
     legadoApplication(config, cdsDump = cdsDump)
 }
 
+/**
+ * 把 `Dispatchers.IO` 的并行度抬上去，**必须在协程调度器被创建之前**。
+ *
+ * kotlinx.coroutines 只在调度器类初始化时读一次 `kotlinx.coroutines.io.parallelism`，
+ * 之后改系统属性没用 —— 所以这个函数只能在 `main` 的第一行附近调，
+ * 一旦有别的代码碰过 `Dispatchers` 就晚了。
+ *
+ * 为什么需要它：CIO 引擎的请求处理与响应写都跑在 `Dispatchers.IO` 上，
+ * 而停读的客户端各自占住一条线程做**阻塞写**（不是挂起）。
+ * 默认并行度是 max(64, 核数) —— 24 个停读连接就能把池占满，
+ * 无关请求的轻量工作跟着排队，`/healthz` 要等 15 秒。
+ * 抬到 200 之后，同样 24 个停读连接下 `/healthz` 只要 0.9 秒。
+ *
+ * 见 `tools/verify/stalled-client-check.mjs`（可重跑的门禁）。
+ */
+internal fun applyIoParallelism() {
+    val wanted = AppConfig.ioParallelism
+    if (wanted <= 0) return
+    val current = System.getProperty(IO_PARALLELISM_PROPERTY)?.toIntOrNull() ?: 0
+    if (current >= wanted) return
+    System.setProperty(IO_PARALLELISM_PROPERTY, wanted.toString())
+}
+
+/** kotlinx.coroutines 读并行度用的那个系统属性名。 */
+private const val IO_PARALLELISM_PROPERTY = "kotlinx.coroutines.io.parallelism"
+
 fun main(args: Array<String>) {
+    // 必须在任何协程/调度器被创建之前调（见 applyIoParallelism 的说明）。
+    applyIoParallelism()
     val config = ServerConfig.fromEnvironment()
     createLegadoEngine(config, cdsDump = args.contains("--cds-dump")).start(wait = true)
 }

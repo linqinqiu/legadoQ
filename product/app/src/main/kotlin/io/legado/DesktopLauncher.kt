@@ -69,6 +69,9 @@ import kotlin.system.exitProcess
  *  - 启动失败给带日志路径的对话框，而不是只在托盘停 8 秒。
  */
 fun main(args: Array<String>) {
+    // 与裸跑 jar 那条路一样：IO 并行度必须在协程调度器被创建之前调。
+    // 见 Application.kt 的 applyIoParallelism。
+    applyIoParallelism()
     val noOpen = args.contains("--no-open")
 
     val imageRoot = computeImageRoot()
