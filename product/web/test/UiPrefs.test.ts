@@ -121,7 +121,9 @@ test('键表与各模块里的 localStorage 常量逐字一致（改一处没跟
  * 表面上"已支持跨端口"，实际永远只有默认值。所以逐个 key 反查它在哪个模块被 push。
  */
 test('表里每个 key 都有人在保存时 push（只登记不上行 = 永远不会同步）', () => {
-  const pushers: Record<keyof typeof UI_PREF_STORAGE, string[]> = {
+  // 每条是**路径分段**（readSrc 是变参），不是单个字符串 —— 之前写成 string[] 时
+  // tsc 只在本机之外的红（本地没跑 check 就提交了），CI 一跑 typecheck 就红。
+  const pushers: Record<keyof typeof UI_PREF_STORAGE, string[][]> = {
     agreement: [['components', 'FirstRunAgreement.tsx']],
     wallpaper: [['lib', 'wallpaper.ts']],
     'reader-settings': [['features', 'reader', 'settingsPanel', 'readerSettings.ts']],
