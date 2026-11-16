@@ -109,6 +109,12 @@ try {
 
   await trigger.click()
   await page.waitForSelector('.ui-select-menu', { timeout: 15000 })
+  // 书源是**异步**载进来的（几千条）。刚切到「指定书源」就开下拉，里面只有一句
+  // 「没有匹配的选项」（Select.tsx:254），一个选项都没有 —— 后面那些"默认列表里
+  // 每一项都在启用中的集合里""点选项后回显"就会读到空/错的项。
+  // 这里等到选项真的出现再往下走。
+  await page.waitForFunction(() => document.querySelectorAll('.ui-select-option').length > 0,
+    { timeout: 60000, polling: 300 }).catch(() => null)
   await sleep(300)
   const disabledName = inventory.disabledSample?.name ?? ''
   const enabledName = inventory.enabledSample?.name ?? ''
@@ -160,7 +166,16 @@ try {
   check('启用源带分组副标题', groupHint, `样例「${enabledName}」`)
 
   // 选中它，真发一次搜索：这一条回答的是"选完之后到底跑不跑"
-  await page.evaluate(() => document.querySelector('.ui-select-option')?.click())
+  // 点**名字完全等于**样例的那一项，不能点"第一项"：
+  // 过滤是普通子串匹配，而「5200小说网」里就含着「00小说网」（5-2-**00小说网**），
+  // 所以搜出来的第一项可能是别的源 —— 那是产品的正常行为，探针挑错行才是问题。
+  const picked = await page.evaluate(name => {
+    const option = [...document.querySelectorAll('.ui-select-option')]
+      .find(node => (node.querySelector('span')?.textContent ?? '').trim() === name)
+    option?.click()
+    return !!option
+  }, enabledName)
+  check("搜到的列表里找得到名字完全等于样例的那一项", picked, enabledName)
   await sleep(400)
   const chosen = await page.evaluate(() => document.querySelector('.ui-select-trigger .ui-select-value')?.textContent?.trim() ?? '')
   check('点选项后触发按钮回显所选书源', chosen.length > 0 && (!enabledName || chosen === enabledName), chosen)

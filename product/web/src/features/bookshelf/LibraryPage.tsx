@@ -230,6 +230,9 @@ export function LibraryPage({ sources, onSourcesChanged, onOpen }: { sources: So
             <>
               <Select
                 ariaLabel="指定书源搜索"
+                // 那颗「含已停用」勾选框就住在下拉旁边、而且改的正是下拉里那份列表 ——
+                // 点它不能把下拉关掉（关了用户刚输的过滤词就白输了）。
+                staysOpenOn=".library-scope-toggle"
                 placeholder={sources.length ? '选择书源' : '书源还在载入'}
                 value={search.selectedSourceId}
                 onChange={search.setSelectedSourceId}

@@ -47,9 +47,23 @@ type SelectProps = {
   disabled?: boolean
   /** 挂到触发器那颗 button 上，给外部 `<label htmlFor>` 用（button 也是可标注元素）。 */
   id?: string
+  /**
+   * 点这些控件时**不要**关掉下拉。
+   *
+   * 下拉一开，"点外面就关"是默认行为（outside-pointerdown）。但有些控件就住在
+   * 下拉旁边、又是**下拉的筛选条件** —— 典型是书架「指定书源」旁边那颗
+   * 「含已停用（N）」勾选框：它改的正是下拉里那份列表。
+   *
+   * 早先没管这件事，点那颗勾选框 → outside-pointerdown 认为点到了"外面" →
+   * 下拉当场关闭 → 用户刚输的过滤词没了、列表也空了 —— 那个勾选框于是**没法用**
+   * （这不是观感问题：勾上的瞬间列表就消失了，等于勾了白勾）。
+   *
+   * 传进来的是"点它不算点到外面"的元素选择器（逗号分隔也行）。
+   */
+  staysOpenOn?: string
 }
 
-export function Select({ value, options, onChange, ariaLabel, placeholder = '请选择', className = '', searchable, disabled = false, id }: SelectProps) {
+export function Select({ value, options, onChange, ariaLabel, placeholder = '请选择', className = '', searchable, disabled = false, id, staysOpenOn }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [active, setActive] = useState(0)
@@ -132,6 +146,8 @@ export function Select({ value, options, onChange, ariaLabel, placeholder = '请
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
       if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+      // 住在下拉旁边、又是下拉的筛选条件的控件：点它不算"点到外面"（见 staysOpenOn）
+      if (staysOpenOn && target instanceof Element && target.closest(staysOpenOn)) return
       setOpen(false)
     }
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) } }
