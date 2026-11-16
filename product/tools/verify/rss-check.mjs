@@ -219,9 +219,18 @@ async function uiCheck() {
       const row = [...document.querySelectorAll('.rss-panel .rss-source-main strong')].find(n => n.textContent.includes('甲-') && n.textContent.includes(stamp))
       row?.closest('button')?.click()
     }, STAMP)
+    // 进文章视图后要等**那一次取文章的尝试结束**，说明才会出现：
+    // `RssPanel.tsx:241` 进视图先 `setMessage('')`，真正失败/超时时才写上人话
+    // （「这一栏 30 秒内没有响应，换个栏目试试」等）。
+    // 原来固定等 1.5 秒就读 —— 那时多半还在飞，读到空串，判据就红了。
     await new Promise(resolve => setTimeout(resolve, 1500))
     const articleHeader = await page.evaluate(() => document.querySelector('.rss-articles h2')?.textContent?.trim() ?? '')
     ok('点订阅源进入它的文章视图', articleHeader.includes('甲') && articleHeader.includes(STAMP), articleHeader)
+    // 等说明出现（失败最多要等 30 秒超时），别把「还没到」当成「没有说明」
+    await page.waitForFunction(
+      () => !!document.querySelector('.rss-articles .explore-message'),
+      { timeout: 45000, polling: 300 },
+    ).catch(() => null)
     const message = await page.evaluate(() => document.querySelector('.rss-articles .explore-message')?.textContent?.trim() ?? '')
     ok('取不到文章时给出人话说明（.test 域本来就解析不了）', message.length > 0, message)
     await page.screenshot({ path: path.join(SHOTS, `rss-articles-${STAMP}.png`) })
