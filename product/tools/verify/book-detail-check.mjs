@@ -120,13 +120,18 @@ try {
     const head = await page.evaluate(() => {
       const modal = document.querySelector('.book-detail-modal')
       if (!modal) return null
-      const stats = [...modal.querySelectorAll('.book-detail-stats > div')].map(row => ({
+      const statRows = [...modal.querySelectorAll('.book-detail-stats > div')]
+      const stats = statRows.map(row => ({
         label: row.querySelector('dt')?.textContent?.trim() ?? '',
         value: row.querySelector('dd')?.textContent?.trim() ?? '',
       }))
+      // 「是不是一个标签+值清单」：容器是 <dl>，每行是 dt + dd 配对
+      const statsIsList = modal.querySelector('.book-detail-stats')?.tagName === 'DL'
+        && statRows.every(row => row.querySelector('dt') && row.querySelector('dd'))
       const cover = modal.querySelector('.book-detail-cover')
       return {
         stats,
+        statsIsList,
         title: modal.querySelector('.book-detail-info h2')?.textContent?.trim() ?? '',
         hasTextCover: !!modal.querySelector('.book-detail-cover-text .cover-fallback-title'),
         coverIsImg: cover?.tagName === 'IMG',
@@ -138,7 +143,14 @@ try {
     if (head) {
       const labels = head.stats.map(item => item.label)
       check('头部信息是"标签 + 值"清单，不是挤成一行的 run-on 文本',
-        labels.includes('章节') && labels.includes('可用源') && labels.length >= 3, labels.join(' / '))
+        labels.includes('章节') && labels.includes('可用源') && labels.length >= 2 && head.statsIsList,
+        labels.join(' / '))
+      // 「分类 / 篇幅 / 最新 / 读到」那几行是**看情况**的（BookDetailModal.tsx：
+      // 分类 ← details.kind、篇幅 ← details.wordCount、最新 ← details.lastChapter、
+      // 读到 ← book.progress）。书没有这些元数据时就不该硬凑一行 ——
+      // 所以这里断的是「这是不是一个 dt/dd 清单」，不是「有几行」。
+      check('头部那几行确实是 <dl> 里的 dt/dd 配对',
+        head.statsIsList, head.statsIsList ? `${head.stats.length} 行 dt/dd` : '不是 dl>div>dt+dd 的形状')
       check('每个标签都配到了值（不留空项）',
         head.stats.every(item => item.label.length > 0 && item.value.length > 0),
         head.stats.map(item => `${item.label}=${item.value}`).join(' ').slice(0, 150))
