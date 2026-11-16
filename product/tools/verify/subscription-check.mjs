@@ -197,42 +197,39 @@ try {
     subForm: !!document.querySelector('input[aria-label="书源订阅地址"]'),
     nativeSelects: document.querySelectorAll('select').length,
     readableLabel: document.querySelector('.rss-readable-toggle')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    // 两块是不是真的并排摆着（分家之后不该再有 tab 切换，两块直接露出来）
+    blocks: [...document.querySelectorAll('.subscription-block')].map(node => node.getAttribute('aria-label') ?? ''),
   }))
   ok('「订阅」页的页头写着「订阅」，且不再有页签',
     rssPageState.pageHeading === '订阅' && rssPageState.tabs === 0,
     `页头=${rssPageState.pageHeading} 页签=${rssPageState.tabs}`)
-  ok('这一页里没有书源订阅那一张（两件事已分家）', !rssPageState.subForm, `书源订阅输入框在不在=${rssPageState.subForm}`)
+  ok('书源订阅与 RSS 文章源在同一页并排两块（不再是分家）',
+    rssPageState.blocks.includes('书源订阅') && rssPageState.blocks.includes('RSS 文章源') && rssPageState.subForm,
+    `两块=${rssPageState.blocks.join(' / ') || '(没有)'} · 书源订阅输入框在不在=${rssPageState.subForm}`)
   ok('订阅页没有原生 select', rssPageState.nativeSelects === 0, `${rssPageState.nativeSelects} 个`)
   const rssListedTotal = Number(/（\d+ \/ (\d+)）/.exec(rssPageState.readableLabel)?.[1] ?? -1)
   ok('订阅页报的总数与服务端一致（「只看能读的（x / y）」里的 y）',
     rssListedTotal === expectRss, `界面「${rssPageState.readableLabel}」/ 服务端 ${expectRss}`)
 
-  // ——— 书源订阅那一档：从「书源」页里开出来 ———
-  await goto('#sources')
-  await page.waitForSelector('.source-subscribe-btn', { timeout: 40000 })
-  const paneOpened = await page.evaluate(() => {
-    if (document.querySelector('input[aria-label="书源订阅地址"]')) return 'already'
-    const button = document.querySelector('.source-subscribe-btn')
-    button?.click()
-    return button ? 'clicked' : 'missing'
-  })
-  await page.waitForSelector('input[aria-label="书源订阅地址"]', { timeout: 20000 })
+  // ——— 书源订阅那张：同页并排（口径变更 2026-11-16，见文件头） ———
+  // 早先是「订阅」页只有 RSS、书源订阅在「书源」页里开出的一档，
+  // 触发器是 `.source-subscribe-btn` —— 那个类名现在**没有任何组件在用**
+  // （只剩 styles.css 里两条样式规则），按它找必然超时。
+  await goto('#subscriptions')
+  await page.waitForSelector('input[aria-label="书源订阅地址"]', { timeout: 40000 })
   const paneState = await page.evaluate(() => ({
-    expanded: document.querySelector('.source-subscribe-btn')?.getAttribute('aria-expanded') ?? null,
-    // 它是页面流里的一档，不是浮在正文上的弹窗
+    // 它是页面流里的一块，不是浮在正文上的弹窗
     inDialog: !!document.querySelector('.dialog-shell input[aria-label="书源订阅地址"]'),
-    heading: document.querySelector('.subscription-panel h2')?.textContent?.trim() ?? '',
-    rows: document.querySelectorAll('.subscription-list article').length,
+    heading: document.querySelector('.subscription-panel:not(.rss-panel) h2')?.textContent?.trim() ?? '',
+    rows: document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article').length,
   }))
-  ok('书源页里那颗「订阅地址」点得开，展开态写在 aria-expanded 上',
-    paneOpened !== 'missing' && paneState.expanded === 'true', `${paneOpened} / aria-expanded=${paneState.expanded}`)
-  ok('书源订阅那一档不是弹窗（没有 .dialog-shell 罩在正文上）', !paneState.inDialog, `inDialog=${paneState.inDialog}`)
-  ok('展开的确实是书源订阅那张', paneState.heading === '书源订阅地址', paneState.heading)
+  ok('书源订阅那块不是弹窗（没有 .dialog-shell 罩在正文上）', !paneState.inDialog, `inDialog=${paneState.inDialog}`)
+  ok('那确实是书源订阅那张', paneState.heading === '书源订阅地址', paneState.heading)
   ok('书源订阅的行数与服务端一致', paneState.rows === expectSubs, `界面 ${paneState.rows} 行 / 服务端 ${expectSubs} 条`)
 
   // ② 失败行：一行结论 + 可展开原文
   const failureRow = await page.evaluate(() => {
-    const article = [...document.querySelectorAll('.subscription-list article')]
+    const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
       .find(node => node.textContent?.includes(window.__SUB_TOKEN))
     if (!article) return null
     const error = article.querySelector('.sub-error')
@@ -254,7 +251,7 @@ try {
 
   // 停用后仍可同步（这条把"停用 = 只能等自动同步"的死角堵掉）
   const toggled = await page.evaluate(() => {
-    const article = [...document.querySelectorAll('.subscription-list article')]
+    const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
       .find(node => node.textContent?.includes(window.__SUB_TOKEN))
     const button = [...(article?.querySelectorAll('button') ?? [])].find(node => /已启用|已停用/.test(node.textContent ?? ''))
     button?.click()
@@ -262,7 +259,7 @@ try {
   })
   await sleep(1200)
   const afterToggle = await page.evaluate(() => {
-    const article = [...document.querySelectorAll('.subscription-list article')]
+    const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
       .find(node => node.textContent?.includes(window.__SUB_TOKEN))
     return {
       label: [...(article?.querySelectorAll('button') ?? [])].map(node => node.textContent?.trim()).join('/'),
@@ -272,7 +269,7 @@ try {
   ok('订阅可以停用，且明说自动同步会跳过', toggled === '已启用' && /已停用/.test(afterToggle.label) && afterToggle.hasOffNote,
     `${toggled} → ${afterToggle.label} 说明=${afterToggle.hasOffNote}`)
   await page.evaluate(() => {
-    const article = [...document.querySelectorAll('.subscription-list article')]
+    const article = [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article')]
       .find(node => node.textContent?.includes(window.__SUB_TOKEN))
     const button = [...(article?.querySelectorAll('button') ?? [])].find(node => /已启用|已停用/.test(node.textContent ?? ''))
     button?.click()
@@ -281,9 +278,9 @@ try {
 
   // ③ 空态引导（书源订阅这张：本机有真订阅时断"不挡路"，没有时断引导可点）
   const sourcesEmpty = await page.evaluate(() => ({
-    guide: !!document.querySelector('.subscription-list .panel-empty'),
+    guide: !!document.querySelector('.subscription-panel:not(.rss-panel) .subscription-list .panel-empty'),
     buttons: [...document.querySelectorAll('.subscription-list .panel-empty-actions button')].map(node => node.textContent?.trim()),
-    rows: document.querySelectorAll('.subscription-list article').length,
+    rows: document.querySelectorAll('.rss-panel .subscription-list article').length,
   }))
   if (sourcesEmpty.rows === 0) {
     ok('书源订阅空态给了可点的去处', sourcesEmpty.guide && sourcesEmpty.buttons.length >= 2, JSON.stringify(sourcesEmpty.buttons))
@@ -298,9 +295,9 @@ try {
   const rssState = await page.evaluate(() => ({
     filterSelect: !!document.querySelector('.rss-filter .ui-select'),
     nativeSelects: document.querySelectorAll('select').length,
-    rows: document.querySelectorAll('.subscription-list article').length,
-    guide: !!document.querySelector('.subscription-list .panel-empty'),
-    guideButtons: [...document.querySelectorAll('.panel-empty-actions button')].map(node => node.textContent?.trim()),
+    rows: document.querySelectorAll('.rss-panel .subscription-list article').length,
+    guide: !!document.querySelector('.rss-panel .subscription-list .panel-empty'),
+    guideButtons: [...document.querySelectorAll('.rss-panel .panel-empty-actions button')].map(node => node.textContent?.trim()),
   }))
   ok('RSS 列表有行（探针源在）', rssState.rows >= 1, `${rssState.rows} 行`)
   ok('RSS 分组筛选是站内控件', rssState.filterSelect && rssState.nativeSelects === 0,
@@ -312,7 +309,7 @@ try {
   const toggleState = await page.evaluate(() => ({
     label: document.querySelector('.rss-readable-toggle')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
     checked: document.querySelector('.rss-readable-toggle input')?.checked ?? null,
-    rows: [...document.querySelectorAll('.subscription-list article')].map(node => node.textContent ?? ''),
+    rows: [...document.querySelectorAll('.rss-panel .subscription-list article')].map(node => node.textContent ?? ''),
   }))
   ok('存在读不出的源时给出「只看能读的」并如实报数',
     /只看能读的（\d+ \/ \d+）/.test(toggleState.label) && toggleState.checked === true, toggleState.label)
@@ -322,7 +319,7 @@ try {
   await page.evaluate(() => document.querySelector('.rss-readable-toggle input')?.click())
   await sleep(500)
   const unfiltered = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll('.subscription-list article')]
+    const rows = [...document.querySelectorAll('.rss-panel .subscription-list article')]
     return {
       count: rows.length,
       shown: rows.some(node => node.textContent?.includes('探针无规则')),
@@ -352,7 +349,7 @@ try {
   }, GROUP)
   await sleep(900)
   const filtered = await page.evaluate(() => ({
-    rows: [...document.querySelectorAll('.subscription-list article strong')].map(node => node.textContent?.trim()),
+    rows: [...document.querySelectorAll('.rss-panel .subscription-list article strong')].map(node => node.textContent?.trim()),
     trigger: document.querySelector('.rss-filter .ui-select-trigger .ui-select-value')?.textContent?.trim() ?? '',
   }))
   ok('选中分组后只剩该分组的源', filtered.rows.length === 1 && filtered.rows[0] === RSS_NAME, JSON.stringify(filtered.rows))
@@ -374,7 +371,7 @@ try {
   await page.evaluate(() => document.querySelector('.rss-no-match .link-button')?.click())
   await sleep(1200)
   const cleared = await page.evaluate(() => ({
-    rows: document.querySelectorAll('.subscription-list article').length,
+    rows: document.querySelectorAll('.rss-panel .subscription-list article').length,
     trigger: document.querySelector('.rss-filter .ui-select-trigger .ui-select-value')?.textContent?.trim() ?? '',
   }))
   ok('清空筛选后列表和选择框都回到全部', cleared.rows >= 1 && cleared.trigger.includes('全部分组'), JSON.stringify(cleared))
@@ -444,20 +441,21 @@ try {
   ok('用户原有数据没被动过',
     (await listRss()).length === rssBefore.length && (await listSubs()).length === subsBefore.length,
     `RSS ${(await listRss()).length}/${rssBefore.length}，订阅 ${(await listSubs()).length}/${subsBefore.length}`)
-  // 书源订阅那一档在「书源」页里，收尾的空态要回那一页看
-  await goto('#sources')
-  await page.waitForSelector('.source-subscribe-btn', { timeout: 40000 })
-  await page.evaluate(() => {
-    if (document.querySelector('input[aria-label="书源订阅地址"]')) return
-    document.querySelector('.source-subscribe-btn')?.click()
-  })
-  await page.waitForSelector('.subscription-panel h2', { timeout: 20000 })
+  // 书源订阅那张现在也在「订阅」页里（与 RSS 并排），收尾的空态回那一页看。
+  await goto('#subscriptions')
+  await page.waitForSelector('.subscription-panel:not(.rss-panel)', { timeout: 40000 })
+  await page.waitForFunction(() => document.querySelectorAll('.subscription-panel:not(.rss-panel) .subscription-list article').length > 0
+    || !!document.querySelector('.subscription-panel:not(.rss-panel) .subscription-list .panel-empty'), { timeout: 30000, polling: 400 }).catch(() => null)
   const afterCleanup = await page.evaluate(() => ({
-    guide: !!document.querySelector('.subscription-list .panel-empty'),
-    buttons: [...document.querySelectorAll('.panel-empty-actions button')].map(node => node.textContent?.trim()),
+    guide: !!document.querySelector('.subscription-panel:not(.rss-panel) .subscription-list .panel-empty'),
+    buttons: [...document.querySelectorAll('.subscription-panel:not(.rss-panel) .panel-empty-actions button')].map(node => node.textContent?.trim()),
   }))
   if (subsBefore.length === 0) {
-    ok('书源订阅删干净后空态引导回来了', afterCleanup.guide && afterCleanup.buttons.length >= 2, JSON.stringify(afterCleanup.buttons))
+    // 空态引导要能点：那个「填一个订阅地址」按钮在不在（早先还要求 ≥2 个按钮，
+    // 因为那时这一档是「书源」页里可收起的页签，多一个「收起这一档」；
+    // 现在这一块直接摆在「订阅」页上，没有 onClose，只有「填一个订阅地址」一个按钮）。
+    ok('书源订阅删干净后空态引导回来了', afterCleanup.guide && afterCleanup.buttons.includes('填一个订阅地址'),
+      JSON.stringify(afterCleanup.buttons))
   } else {
     ok('本机有真订阅时不显示空态', !afterCleanup.guide, `guide=${afterCleanup.guide}`)
   }
@@ -466,19 +464,19 @@ try {
   await sleep(1400)
   // RSS 列表是进这一页后才去取的，负载下 1.4 秒可能还在飞 —— 等到"有行"或"明确空态"再读，
   // 而不是把"还没到"当成"一条都没有"。
-  await page.waitForFunction(() => document.querySelectorAll('.subscription-list article').length > 0
-    || !!document.querySelector('.subscription-list .panel-empty'), { timeout: 30000, polling: 400 }).catch(() => null)
+  await page.waitForFunction(() => document.querySelectorAll('.rss-panel .subscription-list article').length > 0
+    || !!document.querySelector('.rss-panel .subscription-list .panel-empty'), { timeout: 30000, polling: 400 }).catch(() => null)
   const rssEmpty = await page.evaluate(() => ({
-    guide: !!document.querySelector('.subscription-list .panel-empty'),
-    buttons: [...document.querySelectorAll('.panel-empty-actions button')].map(node => node.textContent?.trim()),
-    rows: document.querySelectorAll('.subscription-list article').length,
+    guide: !!document.querySelector('.rss-panel .subscription-list .panel-empty'),
+    buttons: [...document.querySelectorAll('.rss-panel .panel-empty-actions button')].map(node => node.textContent?.trim()),
+    rows: document.querySelectorAll('.rss-panel .subscription-list article').length,
   }))
   if (rssBefore.length === 0) {
     ok('RSS 清干净后给出两个可点的去处', rssEmpty.rows === 0 && rssEmpty.guide && rssEmpty.buttons.length >= 2, JSON.stringify(rssEmpty.buttons))
     // 空态上的「导入手机备份包」必须真的开出备份入口（阶段 2 的上传入口在那里）。
     // 0.6.27 起备份是悬浮层：不再跳页、hash 不变，判据改成「开出了悬浮层且有选包按钮」。
     await page.evaluate(() => {
-      const button = [...document.querySelectorAll('.panel-empty-actions button')].find(node => node.textContent?.includes('备份包'))
+      const button = [...document.querySelectorAll('.rss-panel .panel-empty-actions button')].find(node => node.textContent?.includes('备份包'))
       button?.click()
     })
     await sleep(1200)
