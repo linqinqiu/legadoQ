@@ -121,7 +121,7 @@ done
 | **过期门禁** | `next-mount-check`、`next-ui-check` | `/next/` 架构已删（404，`.grid-cards`/`.md-list` 等 class 一个都不存在） | 移到 `tools/verify/retired/` |
 | **判据写错** | `cache-range-check`、`source-health-check`、`explore-empty-check`、`source-editor-check`、`webview-*-check` | 见下 | 改判据 |
 | **外部漂移** | `media-reader-check` | 外部音频站搜不出书 | 改判 NOTE（跳过） |
-| **已修（24 档）** | `stalled-client-check` | 停读客户端能让 `/healthz` 卡住（任务 #36） | 2026-11-16 抬 `Dispatchers.IO` 并行度后 24 档转绿；60 档仍降级，见 §6.3.2 |
+| **已修** | `stalled-client-check` | 停读客户端能让 `/healthz` 卡住（任务 #36） | 2026-11-17 换 Netty 引擎（非阻塞写）后 24 档与 60 档全绿，见 §6.3.3 |
 
 ### 6.3.1 `stalled-client-check` 的实测台阶（2026-10-28，0.1.7 复测）
 
@@ -169,8 +169,32 @@ done
 直接 `close()`，而 Ktor 3.4.3 没有把这个对象暴露给 `ApplicationCall`（`CIOApplicationCall`
 只有 request/response 两个字段，response 里只有 `ByteWriteChannel`）。
 
-**剩下的根治路径只有两条**：① 换 Netty 等非阻塞写引擎；② 等上游给 CIO 的 writer loop 加写超时。
-两条都是改运行时的活儿，需要单独排期与全量门禁回归，不在这一档顺手做。
+**剩下的根治路径只有两条**：① 换 Netty 等非阻塞写引擎 —— **已于 2026-11-17 落地，见 §6.3.3**；
+② 等上游给 CIO 的 writer loop 加写超时（不再需要，CIO 依赖已留作对照实验，见 `build.gradle` 注释）。
+
+### 6.3.3 换 Netty 引擎之后（2026-11-17 实跑，已修）
+
+口径与 §6.3.2 相同（`legado-0.2.42-all.jar` 独立进程、临时数据目录），
+唯一差别是引擎：`Application.kt` 的 `embeddedServer(CIO, …)` 换成 `embeddedServer(Netty, …)`，
+`build.gradle` 加 `io.ktor:ktor-server-netty:3.4.3`。
+
+```
+PASS 基线：轻请求本身是快的              — /healthz 5ms · /api/sources 35ms
+PASS 停读客户端不许把轻请求拖慢到不可用     — 4ms（基线 5ms）
+PASS 停读客户端不许让数据库读接口饿死       — 9ms（基线 35ms）
+PASS 客户端全部撤掉之后服务立刻恢复正常     — 5ms
+NOTE 归因：0 / 3 条工作线程此刻卡在 socket 写上（24 个对端停读）
+NOTE 60 个停读对端：/healthz 4ms · /api/sources 3ms · 卡在写上的线程 0 / 3
+stalled-client-check: PASS 6 / FAIL 0
+```
+
+**两个关键差别**：① 卡在 `SocketDispatcher.write0` 上的线程从 24 条变成 **0** —— Netty 的写是非阻塞的，
+对端不读只让那一路停在"可写未就绪"；② 停读对端这次**都读到了 65495 字节**才停手
+（CIO 时最多 8192B，甚至 0B），说明响应真的发出去了，只是对端不再收。
+
+**同时纠正 §6.3.2 的一条**：那份表里"24 个停读对端 → 824ms"今天复现不出来 ——
+同一版本、同一条门禁，2026-11-16 与 11-17 两次实跑都是 **15045ms / 15036ms**（正好撞满门禁自己的 15 秒超时）。
+抬并行度只是把天花板抬高，挡不住"一条停读连接钉死一条线程"这件事本身；以 §6.3.3 的 Netty 结果为准。
 
 ### 6.4 五个"判据写错"的具体错法（值得记，都是同类）
 

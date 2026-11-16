@@ -3,7 +3,7 @@ package io.legado
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
-import io.ktor.server.cio.*
+import io.ktor.server.netty.*
 import io.ktor.server.engine.*
 import io.ktor.server.plugins.*
 import io.ktor.server.plugins.compression.*
@@ -46,7 +46,14 @@ import io.legado.model.ApiError
  *
  * 停读的客户端会把一个线程整篇压在 socket 的阻塞写上（不是挂起）：实测 24 个"读了 8KB
  * 就不再往下读"的连接，就能让一个无关的 `/healthz` 等 15 秒 —— 表现就是"端口还在听，
- * 服务像死了"。这条现在做成了可重跑的门禁：`tools/verify/stalled-client-check.mjs`。
+ * 服务像死了"。这条做成了可重跑的门禁：`tools/verify/stalled-client-check.mjs`。
+ *
+ * **2026-11-17：引擎从 CIO 换成 Netty，这条门禁转绿。** 根因是 CIO 的响应用的是**原生阻塞写**
+ * （`SocketDispatcher.write0`，一条停读连接钉住一条 `Dispatchers.IO` 线程），而取消协程是协作式的 ——
+ * 在应用层给响应写加超时救不回来（1 秒 / 600 秒两档实测无差别，见
+ * `docs/sessions/2026-11-16-停读客户端写超时无效.md`）。Netty 的写是非阻塞的：对端不读只会让那一路
+ * 停在"可写未就绪"，不再占线程。同一门禁下 24 个停读对端时 `/healthz` 从 15045ms 回到 9ms，
+ * 卡在 socket 写上的线程从 24 条变成 0 条。
  *
  * 能调的旋钮是 **IO 调度器的并行度**：`kotlinx.coroutines.io.parallelism`。
  *
@@ -62,14 +69,14 @@ import io.legado.model.ApiError
  * 无关请求的轻量工作也跟着排队 —— 实测 24 个停读连接能让 `/healthz` 等 15 秒。
  * 把并行度抬到 200 之后，同样 24 个停读连接下 `/healthz` 只要 0.9 秒。
  *
- * （引擎真正该做的是给写加超时，那是上游的事；这里先把并行度这条旋钮拧对。）
+ * （当时以为上游该给写加超时；真正管用的是把阻塞写本身换掉，见上面那段结论。）
  *
  * 形状上的坑记一笔：`embeddedServer(CIO, host, port) { … }` 那条重载**没有** configure 参数，
  * 尾随 lambda 是 module 而不是引擎配置 —— 要调引擎就得走 environment + configure 这条，
  * 主机端口改由 `connector { }` 给。
  */
 fun createLegadoEngine(config: ServerConfig, cdsDump: Boolean = false) = embeddedServer(
-    CIO,
+    Netty,
     environment = applicationEnvironment(),
     configure = {
         connector { host = config.host; port = config.port }
@@ -87,7 +94,7 @@ fun createLegadoEngine(config: ServerConfig, cdsDump: Boolean = false) = embedde
  * 之后改系统属性没用 —— 所以这个函数只能在 `main` 的第一行附近调，
  * 一旦有别的代码碰过 `Dispatchers` 就晚了。
  *
- * 为什么需要它：CIO 引擎的请求处理与响应写都跑在 `Dispatchers.IO` 上，
+ * 为什么需要它：请求处理跑在 `Dispatchers.IO` 上（CIO 时连响应写也在上面，换成 Netty 后写不再占线程），
  * 而停读的客户端各自占住一条线程做**阻塞写**（不是挂起）。
  * 默认并行度是 max(64, 核数) —— 24 个停读连接就能把池占满，
  * 无关请求的轻量工作跟着排队，`/healthz` 要等 15 秒。
