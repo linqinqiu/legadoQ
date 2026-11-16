@@ -39,8 +39,22 @@ export function swipeDirection(startX: number, startY: number, endX: number, end
   return null
 }
 
+/**
+ * 这个点是不是落在"自己能处理"的控件上（点它不该触发分区派发）。
+ *
+ * 口径要点：**不只看元素名，还要看 ARIA 角色**。
+ * 正文里的插图是 `<img role="button">`（`ReaderScreen.tsx` 里那张）——
+ * 元素名是 `img`，不在 `button, a, input, …` 那串里，于是它被当成了正文：
+ * 点图**一边开预览层、一边顺手翻了一页**。
+ *
+ * 预览层的关闭按钮、笔记标记等凡是"自己会响应点击"的，都属于这一类。
+ */
 export function isInteractiveReaderTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('button, a, input, textarea, select, label, summary, [contenteditable="true"]'))
+  if (!(target instanceof Element)) return false
+  if (target.closest('button, a, input, textarea, select, label, summary, [contenteditable="true"]')) return true
+  // ARIA 角色：role="button"/"link" 的自定义元素同样自己会响应点击
+  if (target.closest('[role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="switch"], [role="checkbox"]')) return true
+  return false
 }
 
 /**

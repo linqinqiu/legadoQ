@@ -199,7 +199,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const restoredRef = useRef(false)
   const wakeLockRef = useRef<WakeLockSentinel | null>(null)
   const lastScrollYRef = useRef(0)
-  const pointerStartRef = useRef<{ x: number; y: number; target: EventTarget | null } | null>(null)
+  const pointerStartRef = useRef<{ x: number; y: number; target: EventTarget | null; hadSelection: boolean } | null>(null)
   const boundaryTimerRef = useRef<number | null>(null)
   const targetInitialPageRef = useRef<'first' | 'last' | null>(null)
   const initialPagePositionRef = useRef<number | null>(null)
@@ -2056,7 +2056,11 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     // 页面已经翻了一页 / 正文往上滚了一屏（用户 2026-10-04：「鼠标右键点击正文页面取消后正文莫名向上移动」）。
     if (event.button !== 0) return
     if (loading || activeDrawer || isInteractiveReaderTarget(event.target)) return
-    pointerStartRef.current = { x: event.clientX, y: event.clientY, target: event.target }
+    // 「手上选着字」这件事必须在**落下那一刻**记下来，不能等抬手再看：
+    // 抬手点别处时，选区已经被那次点击收掉了（`getSelection().toString()` 变空），
+    // 于是"选着字时点一下"会当成普通点 → 照样翻页 —— 选字时点右边仍然会翻，
+    // 那正是这条早退本来要拦的事。
+    pointerStartRef.current = { x: event.clientX, y: event.clientY, target: event.target, hadSelection: Boolean(window.getSelection()?.toString()) }
   }
 
   /**
@@ -2125,7 +2129,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     const start = pointerStartRef.current
     pointerStartRef.current = null
     if (event.button !== 0) return
-    if (!start || loading || isInteractiveReaderTarget(event.target) || isInteractiveReaderTarget(start.target) || window.getSelection()?.toString()) return
+    if (!start || loading || isInteractiveReaderTarget(event.target) || isInteractiveReaderTarget(start.target) || start.hadSelection) return
 
     if (activeDrawer) {
       setActiveDrawer(null)

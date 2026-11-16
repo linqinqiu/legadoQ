@@ -1440,6 +1440,26 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .segmented-option.selected { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 
 .reader-paginated-viewport { position: relative; flex: 1 1 auto; width: min(var(--reader-max-width, 860px), calc(100% - var(--reader-pad, 80px) * 2)); margin: 40px auto 10px; overflow: hidden; user-select: none; }
+
+/*
+ * 分页模式里的**正文文字要能选中**。
+ *
+ * 外层 `.reader-paginated-viewport` 之所以是 `user-select: none`：正文区被当成"拖过去就是翻页"
+ * 的手势区，拖到字上会一路高亮，看着像误触。
+ *
+ * 但阅读器的右键菜单整个建在 `window.getSelection()` 上（ReaderScreen.tsx:2171：
+ * 复制 / 做笔记 / 朗读 / 替换 / 站内搜索）。`user-select: none` 之下**一个字都选不出来**，
+ * 那条分支在分页模式里就是死代码 —— 用户没法选中、没法复制、没法就选中的句子做笔记。
+ *
+ * 所以：外层仍不可选，正文里的文字**恢复可选**。拖动翻页靠的是 pointer 手势（pointerdown/up
+ * 记起点、超过阈值算滑动），不依赖"能不能高亮"，所以放开选中不影响翻页。
+ */
+.reader-paginated-column-body,
+.reader-paginated-column-body .reader-paragraph,
+.reader-paginated-column-body .reader-paragraph-image {
+  user-select: text;
+  -webkit-user-select: text;
+}
 .reader-paginated-viewport.is-double-column::after {
   content: '';
   position: absolute;
