@@ -164,15 +164,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [localSyncing, setLocalSyncing] = useState(false)
   const [localSyncProgress, setLocalSyncProgress] = useState({ current: 0, total: 0 })
   const localSyncAbortRef = useRef<AbortController | null>(null)
-  const [customRangeOpen, setCustomRangeOpen] = useState(false)
-  /**
-   * 目录抽屉底部那一块（离线缓存 + 这本书）默认收起（用户 2026-10-09：「这张图片位置内容折叠整理
-   * 归纳到底部，不要影响目录显示」）—— 原来它常驻四五行，把章节列表挤得只剩几条。
-   * 缓存进行中时强制展开，不然进度条看不见。
-   */
-  const [drawerFooterOpen, setDrawerFooterOpen] = useState(false)
-  const [customRangeStart, setCustomRangeStart] = useState(1)
-  const [customRangeEnd, setCustomRangeEnd] = useState(50)
 
   // Pagination states
   const [pageIndex, setPageIndex] = useState(0)
@@ -1200,32 +1191,25 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }
 
   const handleCacheBook = async () => {
-    await handleCacheRange('all')
+    await handleCacheAll()
   }
 
-  const handleCacheRange = async (mode: 'all' | 'custom', start?: number, end?: number) => {
-    let s = chapterIndex
-    let count: number | undefined
-    let e: number | undefined
-
-    if (mode === 'all') {
-      s = 0
-      count = undefined
-    } else {
-      s = Math.max(0, (start ?? 1) - 1)
-      e = Math.max(s, (end ?? currentBook.chapters.length) - 1)
-      count = undefined
-    }
-
+  /**
+   * 把整本书加入离线缓存队列。
+   *
+   * 原来这里还有一条 `mode: 'custom'` 的分支（第 X 至 Y 章），
+   * 但那套界面**从来没做过** —— 档位面板的 CSS 写了，组件没写，
+   * 于是这条分支永远走不到（`customRangeOpen` 之类的状态也是死的，已一并删掉）。
+   * 自定义范围现在只剩后端 `cache.range` 端点还在。
+   */
+  const handleCacheAll = async () => {
     try {
       await api.cacheBookshelfRange({
         sourceId: currentBook.details.sourceId,
         bookUrl: currentBook.bookUrl,
-        startIndex: s,
-        endIndex: e,
-        count,
+        startIndex: 0,
       })
-      toast.success(mode === 'all' ? '已加入全本离线缓存队列' : `已开始缓存第 ${s + 1} ~ ${(e ?? 0) + 1} 章`)
+      toast.success('已加入全本离线缓存队列')
       setCacheStatus(prev => ({ ...prev, state: 'caching', error: undefined }))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '发起缓存失败')

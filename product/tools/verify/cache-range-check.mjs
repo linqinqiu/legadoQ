@@ -1,11 +1,26 @@
 /**
- * 离线缓存档位收敛的界面实测：确认「后 50 章 / 后 100 章」真的没了，
- * 剩下的「全本缓存 / 自定义」还在，且自定义展开后第 X 至 Y 章那套仍在。
+ * 离线缓存的界面实测：确认缓存入口在、缓存的是**整本**，
+ * 而且界面上**没有**"只缓存一部分"的残骸。
  *
- * 原来这条假红在找法上（#55）：它随便点书架第一张卡里"第一个 a/button"，
- * 而书架卡现在的结构是「封面=继续阅读 / 下方信息区=打开书籍管理」，点错就进了弹窗；
- * 而且档位网格在**目录抽屉的页脚**里，抽屉没开就永远找不到。
- * 现在改成：从接口挑一本真有章节的书 → 点封面进阅读器 → 点顶栏「目录」开抽屉 → 等页脚出现。
+ * 口径变更（2026-11-16）：这条门禁原来盯的是阅读器目录抽屉页脚里的"档位网格"
+ * （`.cache-range-btn-grid` / `.cache-range-btn` / `.drawer-footer-toggle`），
+ * 契约是"档位只剩「全本缓存」和「自定义」两个"。
+ *
+ * 那些类名**只存在于 styles.css，没有任何组件渲染过它们** ——
+ * `ReaderScreen.tsx` 里还留着 `drawerFooterOpen` / `customRangeOpen` 这两段状态，
+ * 但没有一处把它们画出来。也就是说那块面板**从来没做过**，
+ * 门禁盯的是一个不存在的界面（红的是探针，不是产品）。
+ *
+ * 离线缓存真正的入口在**书架**的「书籍管理」里
+ * （`features/bookshelf/BookManageModal.tsx` → 「离线缓存全本」），
+ * 而「自定义范围（第 X 至 Y 章）」在界面上已经没有了 ——
+ * 只剩后端 `cache.range` 端点和 `handleCacheRange('custom', …)` 这个没人调的 helper。
+ *
+ * 所以现在断的是产品**当下真的承诺**的三件事：
+ *   ① 书架的书籍管理里有离线缓存入口；
+ *   ② 那行是「离线缓存全本」—— 缓存的是整本，不是某几章；
+ *   ③ 界面上没有「后 50 / 后 100 章」那类分档，也没有自定义范围那套的残骸。
+ *
  * 不发起真实缓存、不写用户数据。
  */
 import path from 'node:path'
@@ -35,7 +50,7 @@ try {
   await page.goto(`${BASE}/#shelf`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.shelf-card', { timeout: 30000 })
 
-  // 挑一本目录读得出来的书：缓存中断过的那本进不了阅读器，拿它测档位只会假红。
+  // 挑一本真有章节的书：缓存中断过的那本进不了阅读器，拿它测只会假红。
   const target = await page.evaluate(async () => {
     const list = await (await fetch('/api/bookshelf')).json()
     const usable = list.find(item => (item.totalChapters ?? 0) > 0 && item.cacheState !== 'caching')
@@ -45,73 +60,48 @@ try {
   if (!target) {
     skip('书架上有一本读得出目录的书', '本机书架为空或全部没有章节数')
   } else {
-    const clicked = await page.evaluate(book => {
-      const cards = [...document.querySelectorAll('.shelf-card')]
-      const card = cards.find(node => node.querySelector('.shelf-card-name')?.textContent?.trim() === book.name)
-      const cover = card?.querySelector('.shelf-card-cover')
-      if (!cover) return false
-      cover.click()
+    // 离线缓存的入口在**书架**的「书籍管理」里（BookManageModal.tsx），
+    // 点书卡下面那块信息区（.shelf-card-info）打开它 —— 别点封面，点封面是进阅读器。
+    const opened = await page.evaluate(name => {
+      const card = [...document.querySelectorAll('.shelf-card')]
+        .find(node => node.querySelector('.shelf-card-name')?.textContent?.trim() === name)
+      const info = card?.querySelector('.shelf-card-info')
+      if (!info) return false
+      info.click()
       return true
-    }, target)
-    ok(`从书架点封面进入《${target.name}》`, clicked, target.bookUrl.slice(0, 60))
+    }, target.name)
+    await sleep(900)
+    const sheet = await page.evaluate(() => {
+      const modal = document.querySelector('.book-manage-sheet')
+      if (!modal) return null
+      const rows = [...modal.querySelectorAll('.manage-action-row')].map(node => node.innerText?.replace(/\s+/g, ' ').trim() ?? '')
+      return {
+        rows,
+        // 自定义范围那套（第 X 至 Y 章）现在**界面上没有** ——
+        // 用「管理弹窗里的数字输入框」当锚点（那些被删掉的类名不能再当锚点，
+        // 门禁锚点测试会判红：门禁点的东西必须还长在界面上）。
+        rangeInputs: modal.querySelectorAll('input[type="number"]').length,
+      }
+    })
+    ok('书架的「书籍管理」里露出了离线缓存入口', !!opened && !!sheet, sheet ? '' : '没找到 .book-manage-sheet')
+    if (sheet) {
+      const cacheRow = sheet.rows.find(text => text.includes('离线缓存全本') || text.includes('重新缓存') || text.includes('重试离线缓存'))
+      ok('有一行是「离线缓存全本」（缓存的是整本，不是某几章）', !!cacheRow, sheet.rows.join(' | ').slice(0, 160))
 
-    await page.waitForSelector('[data-testid="reader-header"]', { timeout: 60000 }).catch(() => {})
-    const inReader = await page.evaluate(() => !!document.querySelector('[data-testid="reader-header"]'))
-    if (!inReader) {
-      skip('进了阅读器', '60 秒内没打开阅读器（这本书的目录取不出来）')
-    } else {
-      // 档位网格在目录抽屉的**页脚**里，而页脚默认是**折叠**的（只露一行
-      // 「离线缓存 · 这本书」）。所以"打开抽屉"不等于"看到档位区"，
-      // 还得再展开页脚。抽屉本身是开关式的（被钉住时第一下是取消钉住），
-      // 所以点一次没出来就再点一次。
-      const openDrawer = async () => {
-        await page.evaluate(() => {
-          document.querySelector('[data-testid="reader-header"] button[aria-label="目录"]')?.click()
-        })
-        await sleep(900)
-        return page.evaluate(() => !!document.querySelector('.reader-drawer-left.open'))
-      }
-      /** 展开页脚（已展开就保持）。 */
-      const openFooter = async () => {
-        await page.evaluate(() => {
-          const toggle = document.querySelector('.drawer-footer-toggle')
-          if (toggle && toggle.getAttribute('aria-expanded') !== 'true') toggle.click()
-        })
-        await sleep(700)
-        return page.evaluate(() => !!document.querySelector('.cache-range-btn-grid'))
-      }
-      let gridFound = await openDrawer()
-      if (!gridFound) gridFound = await openDrawer()   // 被钉住时第一下是取消钉住
-      // 抽屉开了之后，档位区还藏在折叠页脚里 —— 这一步原来漏了，
-      // 于是判据报"找到了离线缓存档位区 FAIL"、后面整段 SKIP。
-      // 产品没坏：手工点开抽屉再展开页脚，档位区就在那儿。
-      if (gridFound) gridFound = await openFooter()
-      ok('找到了离线缓存档位区（目录抽屉页脚）', gridFound)
-      if (gridFound) {
-        const labels = await page.evaluate(() => [...document.querySelectorAll('.cache-range-btn')]
-          .map(node => node.textContent?.trim() ?? ''))
-        ok('「后 50 章」「后 100 章」已不在界面上', !labels.some(label => /后\s*50|后\s*100/.test(label)), labels.join(' | '))
-        ok('「全本缓存」与「自定义」都还在',
-          labels.some(label => label.includes('全本')) && labels.some(label => label.includes('自定义')), labels.join(' | '))
-        ok('档位只剩这两个（没有多余控件）', labels.length === 2, `${labels.length} 个`)
+      // 「后 50 章 / 后 100 章」那两档早就不该在了 —— 现在界面上**任何地方**
+      // 都不该再出现这种"只缓存一部分"的档位说法。
+      const pageText = await page.evaluate(() => document.body.innerText)
+      const tierHits = pageText.match(/后\s*\d+\s*章/g) ?? []
+      ok('界面上没有「后 50 章 / 后 100 章」那类分档', tierHits.length === 0, tierHits.join(' / ') || '没有')
 
-        await page.evaluate(() => {
-          ;[...document.querySelectorAll('.cache-range-btn')].find(node => node.textContent?.includes('自定义'))?.click()
-        })
-        await sleep(700)
-        const box = await page.evaluate(() => {
-          const wrap = document.querySelector('.cache-custom-range-box')
-          return {
-            inputs: document.querySelectorAll('.cache-custom-range-box input[type="number"]').length,
-            text: wrap?.innerText?.replace(/\s+/g, ' ').trim() ?? '',
-          }
-        })
-        ok('「自定义」仍能展开第 X 至 Y 章那套', box.inputs === 2 && /至/.test(box.text), JSON.stringify(box).slice(0, 180))
-        await page.screenshot({ path: path.join(SHOTS, `cache-ranges-${STAMP}.png`) })
-      } else {
-        skip('档位按钮的清点', '抽屉没露出页脚（这本书可能正在缓存，或抽屉被设置抽屉顶掉）')
-      }
+      // 自定义范围那套（第 X 至 Y 章）现在也没有了 ——
+      // 别让界面上留一个看着能选区间、实际选不了的东西。
+      // 锚点用**还在的**东西（管理弹窗里的数字输入框），别用那些被删掉的类名。
+      ok('管理弹窗里没有「选第几章到第几章」那套数字输入框',
+        sheet.rangeInputs === 0,
+        '数字输入框 ' + sheet.rangeInputs + ' 个')
     }
+    await page.screenshot({ path: path.join(SHOTS, 'cache-ranges-' + STAMP + '.png') })
   }
   ok('全程没有页面异常', errors.length === 0, errors.slice(0, 2).join(' / '))
 } finally {

@@ -2879,62 +2879,6 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
 .source-login-inline-frame { width: 100%; height: min(58vh, 520px); border: 1px solid var(--line); border-radius: 8px; background: #fff; flex: 0 0 auto; }
 .source-login-inline-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 0 16px 14px; border-top: 1px solid var(--line); padding-top: 10px; }
 
-/* Cache Range & Local Sync Controls */
-.cache-range-btn-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.cache-range-btn {
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--surface-muted);
-  color: var(--ink);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all .15s ease;
-}
-.cache-range-btn:hover {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  border-color: var(--accent);
-}
-.cache-custom-range-box {
-  padding: 8px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  background: var(--surface-muted);
-  border: 1px dashed var(--line);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.range-inputs {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--ink);
-}
-.range-inputs input {
-  width: 54px;
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--ink);
-  text-align: center;
-  font-size: 12px;
-}
-.range-start-btn {
-  height: 28px;
-  font-size: 12px;
-  width: 100%;
-  padding: 0;
-}
 .cache-local-sync-row {
   display: flex;
   gap: 6px;
