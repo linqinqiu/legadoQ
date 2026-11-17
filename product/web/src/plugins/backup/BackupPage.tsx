@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type BackupImportSummary, type BackupSnapshotInfo, type KeptBackupEntry } from '../../lib/api'
+import { requestBlob } from '../../lib/api/client'
 import { toast } from '../../components/Toast'
 import { Icon } from '../../icons'
 import { loadReaderSettings, saveReaderSettings } from '../../features/reader/settingsPanel/readerSettings'
@@ -71,6 +72,7 @@ export function BackupPage() {
   const [importUrl, setImportUrl] = useState('')
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [kept, setKept] = useState<KeptBackupEntry[]>([])
   // 取失败与"确实没导过包"要分开：以前 catch 成空数组，整块面板直接消失，
   // 用户读到的是"这个服务没收下任何东西"，而真实情况可能是那一次请求没成。
@@ -183,6 +185,35 @@ export function BackupPage() {
     toast.success(`已套用：${result.applied.join('、')}${result.notes.length ? `（${result.notes.join('；')}）` : ''}`)
   }
 
+  /**
+   * 导出备份：一次取回五域（书源 / 替换规则 / 分组 / RSS / 书架含进度），浏览器直接存成 zip。
+   *
+   * 用 fetch 取 Blob 而不是 `<a href download>`：这样失败（服务 500、磁盘满）能给出具体原因，
+   * 而不是点下去什么都不发生。文件名由服务端 Content-Disposition 给，这里本地再造一份只为兜底。
+   */
+  const handleExport = useCallback(async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const blob = await requestBlob('/api/backup/export')
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
+      link.href = url
+      link.download = `legadoq-backup-${stamp}.zip`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      // 立刻 revoke 会让部分浏览器下不到文件，留一拍再释放
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      toast.success(`备份已导出：${Math.max(1, Math.round(blob.size / 1024))} KB`)
+    } catch (error) {
+      toast.error(error instanceof Error ? `导出失败：${error.message}` : '导出失败')
+    } finally {
+      setExporting(false)
+    }
+  }, [exporting])
+
   return (
     <section className="backup-page">
       {/* 标题由悬浮层头给（0.6.27）。正文不再写"全程在本机/不经过网盘"这类讲实现的句子 ——
@@ -191,6 +222,21 @@ export function BackupPage() {
         选一个 Legado 导出的备份就能恢复：zip 备份包，或 MD3 / Max / Night-Reader 等兄弟项目的包；
         分享出来的书源 JSON、合并导出也直接认。
       </p>
+
+      <section className="backup-panel">
+        <h2>导出备份</h2>
+        <p className="backup-hint">
+          一个包带走五样：书源、替换净化规则、分组、RSS 订阅源、书架与阅读进度。
+          <strong>不含登录凭据</strong>（登录态不随包走），也不含笔记、书签、封面与本地书文件 ——
+          这几样导入侧还没有对应入口，放了就是「恢复了但看不见」。
+        </p>
+        <div className="backup-actions">
+          <button type="button" className="primary-button" onClick={() => void handleExport()} disabled={exporting}>
+            <span>{exporting ? '导出中…' : '导出备份包'}</span>
+          </button>
+        </div>
+        <p className="backup-hint">包在这台电脑上生成，不上传任何地方。</p>
+      </section>
 
       <section className="backup-panel">
         <div className="backup-actions">

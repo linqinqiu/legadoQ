@@ -7,6 +7,8 @@ import io.legado.data.forEachShelfEntry
 import io.legado.data.forEachSourcePayload
 import io.legado.data.listBookGroups
 import io.legado.model.BackupShelfEntry
+import io.legado.model.BookGroup
+import io.legado.model.ReplaceRule
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -163,31 +165,25 @@ internal object BackupExporter {
      * 字段名与 BackupImporter.ruleOf 逐一对齐（那边的 text/flag/number 读的就是这些键）；
      * 可选字段为空时**整个键不写** —— 写成空串会让导入侧拿到空串而不是 null，往返就对不上了。
      */
-    fun exportReplaceRules(database: Database, out: OutputStream) {
-        val rules = database.exportReplaceRules(null)
-        val array = buildJsonArray {
-            for (rule in rules) {
-                add(
-                    buildJsonObject {
-                        put("id", rule.id)
-                        put("name", rule.name)
-                        rule.group?.let { put("group", it) }
-                        put("pattern", rule.pattern)
-                        put("replacement", rule.replacement)
-                        put("isRegex", rule.isRegex)
-                        rule.scope?.let { put("scope", it) }
-                        rule.excludeScope?.let { put("excludeScope", it) }
-                        put("scopeTitle", rule.scopeTitle)
-                        put("scopeContent", rule.scopeContent)
-                        put("isEnabled", rule.isEnabled)
-                        put("order", rule.order)
-                        put("timeoutMillisecond", rule.timeoutMillisecond)
-                    },
-                )
-            }
-        }
-        writeSingleEntry(out, RULES_ENTRY, array.toString().toByteArray(Charsets.UTF_8))
-    }
+    fun exportReplaceRules(database: Database, out: OutputStream) =
+        writeJsonArray(out, RULES_ENTRY) { emit -> database.exportReplaceRules(null).forEach { emit(ruleJson(it)) } }
+
+    /** 一条替换规则 → 上游形状（字段与 ruleOf 对齐，空值不写键）。 */
+    private fun ruleJson(rule: ReplaceRule): String = buildJsonObject {
+        put("id", rule.id)
+        put("name", rule.name)
+        rule.group?.let { put("group", it) }
+        put("pattern", rule.pattern)
+        put("replacement", rule.replacement)
+        put("isRegex", rule.isRegex)
+        rule.scope?.let { put("scope", it) }
+        rule.excludeScope?.let { put("excludeScope", it) }
+        put("scopeTitle", rule.scopeTitle)
+        put("scopeContent", rule.scopeContent)
+        put("isEnabled", rule.isEnabled)
+        put("order", rule.order)
+        put("timeoutMillisecond", rule.timeoutMillisecond)
+    }.toString()
 
     /**
      * 导出分组（第三域）。
@@ -197,27 +193,25 @@ internal object BackupExporter {
      *
      * 与替换规则一样是几十条量级，拼数组一次写完。
      */
-    fun exportBookGroups(database: Database, out: OutputStream) {
-        val array = buildJsonArray {
-            for (group in database.listBookGroups()) {
-                add(
-                    buildJsonObject {
-                        put("groupId", group.id)
-                        put("groupName", group.name)
-                    },
-                )
-            }
-        }
-        writeSingleEntry(out, GROUPS_ENTRY, array.toString().toByteArray(Charsets.UTF_8))
-    }
+    fun exportBookGroups(database: Database, out: OutputStream) =
+        writeJsonArray(out, GROUPS_ENTRY) { emit -> database.listBookGroups().forEach { emit(groupJson(it)) } }
 
-    /** 单个条目的 zip：数组型那几域都走它，省得每加一域就抄一遍 putNextEntry/finish。 */
-    private fun writeSingleEntry(out: OutputStream, entryName: String, body: ByteArray) {
-        val zip = ZipOutputStream(out)
-        zip.putNextEntry(ZipEntry(entryName))
-        zip.write(body)
-        zip.closeEntry()
-        zip.finish()
-        zip.flush()
-    }
+    private fun groupJson(group: BookGroup): String =
+        buildJsonObject { put("groupId", group.id); put("groupName", group.name) }.toString()
+
+    /**
+     * 导出**完整备份**：一个包里放全部五域（默认入口）。
+     *
+     * 为什么默认是「全部」而不是某一域：界面上的按钮叫「导出备份」，用户按的就是这个意思；
+     * 只导一域是排查/迁移用的，得显式写 `domain=`。五域各自带自己的形状约定，这里只是把它们串进同一个 zip ——
+     * 顺序固定成「书源 → 替换规则 → 分组 → RSS → 书架」，纯粹为了人排查时顺眼，导入侧按条目名认，与顺序无关。
+     */
+    fun exportAll(database: Database, out: OutputStream) =
+        zipWith(out) { zip ->
+            writeArrayEntry(zip, SOURCES_ENTRY) { emit -> database.forEachSourcePayload(emit) }
+            writeArrayEntry(zip, RULES_ENTRY) { emit -> database.exportReplaceRules(null).forEach { emit(ruleJson(it)) } }
+            writeArrayEntry(zip, GROUPS_ENTRY) { emit -> database.listBookGroups().forEach { emit(groupJson(it)) } }
+            writeArrayEntry(zip, RSS_ENTRY) { emit -> database.forEachRssPayload(emit) }
+            writeArrayEntry(zip, SHELF_ENTRY) { emit -> database.forEachShelfEntry { emit(shelfJson(it)) } }
+        }
 }

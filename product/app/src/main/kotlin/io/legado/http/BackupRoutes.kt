@@ -81,10 +81,13 @@ fun Route.backupRoutes(
          * 5,600 条书源约 30–40 MB，不整包读进内存（见 [BackupExporter]）。
          */
         get("/backup/export") {
-            val domain = call.request.queryParameters["domain"]?.trim()?.lowercase().orEmpty().ifBlank { "source" }
+            val domain = call.request.queryParameters["domain"]?.trim()?.lowercase().orEmpty().ifBlank { "all" }
             val stamp = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
             when (domain) {
+                // 不写 domain = 导出完整备份（界面那个按钮走的就是这条）：
+                // 一域一包是排查用的，默认给"全部"才符合「导出备份」四个字。
+                "all", "" -> respondZip(call, "legadoq-backup-$stamp.zip") { BackupExporter.exportAll(database, this) }
                 "source" -> respondZip(call, "legadoq-sources-$stamp.zip") { BackupExporter.exportSources(database, this) }
                 "replacerule", "rule" -> respondZip(call, "legadoq-replace-rules-$stamp.zip") {
                     BackupExporter.exportReplaceRules(database, this)

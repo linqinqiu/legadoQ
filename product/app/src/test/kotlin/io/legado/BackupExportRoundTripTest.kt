@@ -12,6 +12,8 @@ import io.legado.data.createBookGroup
 import io.legado.data.forEachRssPayload
 import io.legado.data.forEachShelfEntry
 import io.legado.data.importRssSources
+import io.legado.data.importSources
+import io.legado.data.saveReplaceRule
 import io.legado.data.saveBookshelf
 import io.legado.data.saveProgress
 import io.legado.data.setBookshelfCompleted
@@ -310,6 +312,59 @@ class BackupExportRoundTripTest {
             // 分组号由导入侧按名字重映射：空库里新分组是 1 号，名字必须对上
             assertEquals("分组名", listOf("玄幻"), target.listBookGroups().map { it.name })
             assertEquals("挂到分组上", 1L, back.phoneGroupId)
+        } finally {
+            source.close()
+            target.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+
+    @Test
+    fun `完整备份包一次带齐五域，导回空库都在`() {
+        val directory = Files.createTempDirectory("legado-backup-export-all")
+        val source = Database(directory.resolve("source.sqlite").toString())
+        val target = Database(directory.resolve("target.sqlite").toString())
+        try {
+            source.initialize()
+            target.initialize()
+            source.importSources(listOf("""{"bookSourceUrl":"https://all.example/","bookSourceName":"全量源","enabled":true}"""))
+            source.saveReplaceRule(ReplaceRule(name = "全量规则", pattern = "广告", replacement = ""))
+            val group = source.createBookGroup("全量分组")
+            source.importRssSources(listOf("""{"sourceUrl":"https://all.example/feed","sourceName":"全量订阅"}"""))
+            val sourceId = "https://all.example/"
+            val bookUrl = "https://all.example/book/1"
+            source.saveBookshelf(
+                BookshelfWriteRequest(sourceId = sourceId, bookUrl = bookUrl, name = "全量书", tocUrl = bookUrl),
+                cover = null,
+            )
+            source.saveProgress(ReadingProgress(sourceId, bookUrl, "c3", 3, 0.0, 42))
+            source.assignBookGroup(sourceId, bookUrl, group.id)
+
+            val bytes = ByteArrayOutputStream().also { BackupExporter.exportAll(source, it) }.toByteArray()
+
+            // 一个包里五个条目，名字与导入侧认的那五个一致
+            val names = mutableSetOf<String>()
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    names += entry.name
+                    assertTrue("${entry.name} 必须是 JSON 数组", zip.readBytes().toString(Charsets.UTF_8).trim().startsWith("["))
+                }
+            }
+            assertEquals("五域都要在包里", setOf("bookSource.json", "replaceRule.json", "bookGroup.json", "rssSources.json", "bookshelf.json"), names)
+
+            val archive = directory.resolve("all.zip")
+            Files.write(archive, bytes)
+            val summary = BackupImporter(target).import(archive)
+            assertEquals("书源", 1, summary.sources)
+            assertEquals("替换规则", 1, summary.rules)
+            assertEquals("分组", 1, summary.bookGroups)
+            assertEquals("RSS", 1, summary.rssSources)
+            assertEquals("书", 1, summary.books)
+            assertEquals("进度", 1, summary.progress)
+            assertTrue("不该有报错：${summary.errors}", summary.errors.isEmpty())
+            assertEquals(shelfEntries(source).single().name, shelfEntries(target).single().name)
         } finally {
             source.close()
             target.close()
