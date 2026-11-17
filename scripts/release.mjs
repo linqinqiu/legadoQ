@@ -25,7 +25,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ROOT, buildNumber, externalVersion } from "./version.mjs";
+import { ROOT, buildNumber, bumpBuild, externalVersion } from "./version.mjs";
 
 const RELEASES = resolve(ROOT, "RELEASES.md");
 const CHANGELOG = resolve(ROOT, "product/CHANGELOG.md");
@@ -113,13 +113,18 @@ function shortSha(sha) {
 }
 
 const version = externalVersion();
-const build = buildNumber();
+// 构建号在**发布这一步**自动 +1，不再要求先手动 `npm run build:bump`。
+// 老流程是两步（bump → release），漏第一步不会报错，只会让两个版本共用一个构建号 ——
+// 0.2.16 与 0.2.17 就这么共用过 13，事后只能在 RELEASES.md 里留一条例外说明。
+// 现在换成一个动作：release 记账时顺手把号推进，dry-run 只预告不改。
+const previousBuild = buildNumber();
+const build = previousBuild + 1;
 const tag = `v${version}`;
 const branch = tryGit(["symbolic-ref", "--short", "HEAD"]) || "(detached HEAD)";
 const head = git(["rev-parse", "HEAD"]);
 const subject = git(["log", "-1", "--pretty=%s"]);
 
-console.log(`[release] 对外版本 ${version} · 构建号 ${build} · tag ${tag}`);
+console.log(`[release] 对外版本 ${version} · 构建号 ${previousBuild} → ${build} · tag ${tag}`);
 console.log(`[release] 当前分支 ${branch} · 代码提交 ${shortSha(head)} ${subject}`);
 
 if (branch !== "main") {
@@ -134,6 +139,7 @@ else console.log("[release] dry-run：跳过工作区清洁检查");
 
 const row = `| ${version} | ${build} | ${shortSha(head)} |`;
 if (!dryRun) {
+  bumpBuild({ quiet: true });
   const previous = existsSync(RELEASES) ? read(RELEASES) : "";
   const next = `${previous}${previous.endsWith("\n") ? "" : "\n"}${row}\n`;
   writeFileSync(RELEASES, next);

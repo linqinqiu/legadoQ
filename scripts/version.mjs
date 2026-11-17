@@ -6,9 +6,10 @@
  * - **对外语义版本的唯一真源仍是 `product/app/build.gradle` 的 `version`**，由 Gradle 清单
  *   注入 `BuildInfo`，`/healthz`、About 页与界面读的是同一个数。本脚本只**读**它来展示，
  *   不在仓库里另立 `VERSION_EXTERNAL` 之类的第二真源 —— 那正是历史上反复栽的坑。
- * - **内部构建号 `BUILD_NUMBER`** 是一个独立的单调计数器：**仅在对外发布时**随 `RELEASES.md`
- *   记账 `bump-build` 加一（`release.mjs` 流程），日常开发提交不动它——`VersionTracks.test.ts`
- *   钉住「RELEASES 末行 build == 当前 BUILD_NUMBER」，平时 bump 必红。一个对外版本对应一个构建号。
+ * - **内部构建号 `BUILD_NUMBER`** 是一个独立的单调计数器，但**不需要人手动推进**：
+ *   `scripts/release.mjs` 在记账那一刻自动 `+1`（`release:dry` 只预告）。老流程是「先 bump 再 release」
+ *   两步，漏第一步不会报错，只会让两个版本共用同一个构建号（0.2.16/0.2.17 共用过 13）。
+ *   `bumpBuild` 保留为应急入口（号被手工改坏时退数字），日常与发布都不该用它。
  * - `RELEASES.md` 记录「对外版本 ← 构建号 ← commit」的映射，由 `scripts/release.mjs` 自动追加。
  *
  * 用法：

@@ -11,7 +11,7 @@
 4. 跨轮不重复读同一文件：要点记到计划/记忆里，下轮直接引 `file:line`。
 5. 禁止「读一遍全仓再总结」式探索——那正是 token 爆炸根因。
 6. **禁读区**：`docs/archive/**`、`product/data/**`（用户书库）、`**/build/**`、`node_modules/**`、`dist/**`、`*.jar`——只按关键词 grep 或列清单，绝不整读。
-7. **版本纪律**：真源是 `product/app/build.gradle` 的 `version`；日常提交只涨 rev，**不要提前 bump `BUILD_NUMBER`**（`VersionTracks.test.ts` 钉住，平时 bump 必红）。
+7. **版本纪律**：真源是 `product/app/build.gradle` 的 `version`；日常提交只涨 rev（自动的提交数），**构建号由发布脚本在 `npm run release` 时自动 +1**，不要手改 `BUILD_NUMBER`（`bump` 只作应急）。
 
 ## 热点（最常改、最烧 token，按需 grep 段，别整读）
 - 前端阅读器：`product/web/src/features/reader/` —— `ReaderScreen.tsx`(2346) 是状态中枢，**整读最烧 token**；跳转原语已抽到 `useReaderPositionJump.ts`，笔记状态在 `useReaderNotes.ts`，`toggleBookmark` 仍在 `ReaderScreen.tsx`。

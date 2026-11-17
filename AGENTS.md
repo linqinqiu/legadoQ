@@ -14,7 +14,7 @@
 ## 1. 仓库形态
 - 单一 git 仓；`product/` 是唯一产品（Kotlin/Ktor 后端 + React/Vite 前端 + 数据）。
 - 顶层：`product/`（产品）· `docs/`（总览/API/架构/研究）· `scripts/`（发版与校验）。历史发行产物已移到仓库外 `E:\legado-out\legado-releases`（2026-11-11，符合 STRUCTURE「产物出库」）。
-- 版本真源：`product/app/build.gradle` 的 `version`；`/healthz` 返回 `version`/`rev`/`sha`。日常提交只涨 `rev`（提交数），**不要提前 bump `BUILD_NUMBER`**（`VersionTracks.test.ts` 钉住）。
+- 版本真源：`product/app/build.gradle` 的 `version`；`/healthz` 返回 `version`/`rev`/`sha`。日常提交只涨 `rev`（提交数，自动），**构建号由 `npm run release` 自动 +1，不要手改 `BUILD_NUMBER`**（`npm run build:bump` 只作应急）。
 
 ## 2. 常用命令（别乱试，跑这些）
 - 启动：`npm start`（→ `product/start.mjs`，端口 1234）
@@ -33,7 +33,7 @@
 
 ## 4. 后端要点
 - `product/app/src/main/kotlin/io/legado/`：`http/`（路由）· `data/`（Repository，**一律放 data/**，放 `source/` 会撞 `ArchitectureBoundaryTest`）· `rules/`（`RuleRunner` + `RuleProcessor` 扩展点）· `ai/` · `tts/`。
-- 端点 **165 条 / 19 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
+- 端点 **166 条 / 19 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
 
 ## 5. 常见坑（详见 facts.md / 研究文档）
 - 池里只有一条写连接：DAO 的 `write{}` 不能被外层 `write{}` 包（内层退出复位 autoCommit → commit 抛错）。

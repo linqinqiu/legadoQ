@@ -3,7 +3,8 @@
 对外语义版本 ← 内部构建号 ← commit 的映射表。`npm run release` 在打 tag 时自动追加一行，**不要手改**。
 
 - **对外版本**的唯一真源是 `product/app/build.gradle` 的 `version`，经 Gradle 清单注入 `BuildInfo`，`/healthz`、About 页、界面显示的同一个数。
-- **内部构建号**是 `BUILD_NUMBER`，每完成一项改动 `npm run build:bump` 递增一次，与对外版本完全解耦；一个对外版本可以对应多个构建号（只有对外发布那一刻才打 tag 并落一行）。
+- **内部构建号**是 `BUILD_NUMBER`，由 `npm run release` 在记账那一刻**自动 +1**（`release:dry` 只预告），不需要手动 bump；只有对外发布那一刻才打 tag 并落一行。
+  > 2026-11-17 起改了流程：以前是「先 `build:bump` 再 `release`」两步，漏第一步不报错、只会让两版共用构建号（`0.2.16`/`0.2.17` 都是 13）。历史行不回改，永远按当时的 `BUILD_NUMBER` 复算。
 
 | 对外版本 | 构建号 | Commit |
 |---|---|---|

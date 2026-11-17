@@ -129,6 +129,9 @@ const toLf = (text) => text.replaceAll('\r\n', '\n');
 //
 // 口径收窄到「看起来在说总数」的写法：像「AI 22 个端点」这种分组内的数字不在此列。
 const LIVE_DOC_FILES = ['ARCHITECTURE.md', 'STATUS.md', 'ROADMAP.md', 'STRUCTURE.md', 'README.md'];
+// 协议入口也在写端点数（AGENTS.md §4 的「165 条 / 19 组」就是同一类漂移），一起扫。
+// CLAUDE/GEMINI/.cursorrules 由模板生成、本身不带数字，但扫一眼成本为零。
+const ROOT_DOC_FILES = ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.cursorrules'];
 const TOTAL_PATTERNS = [
   /端点数[：:]\s*(\d+)/g,
   /(\d+)\s*条端点/g,
@@ -139,8 +142,11 @@ const TOTAL_PATTERNS = [
 
 function liveDocDrift() {
   const problems = [];
-  for (const name of LIVE_DOC_FILES) {
-    const file = path.join(PARENT, 'docs', name);
+  const targets = [
+    ...LIVE_DOC_FILES.map((name) => path.join(PARENT, 'docs', name)),
+    ...ROOT_DOC_FILES.map((name) => path.join(PARENT, name)),
+  ];
+  for (const file of targets) {
     if (!fs.existsSync(file)) continue;
     const lines = toLf(fs.readFileSync(file, 'utf8')).split('\n');
     lines.forEach((text, index) => {
@@ -151,7 +157,7 @@ function liveDocDrift() {
           const total = Number(match[1]);
           const groupCount = match[2] === undefined ? null : Number(match[2]);
           if (total !== endpoints.length || (groupCount !== null && groupCount !== groups.length)) {
-            problems.push(name + ':' + (index + 1) + ' 写「' + match[0] + '」，契约是 ' + endpoints.length + ' 条 / ' + groups.length + ' 组');
+            problems.push(path.basename(file) + ':' + (index + 1) + ' 写「' + match[0] + '」，契约是 ' + endpoints.length + ' 条 / ' + groups.length + ' 组');
           }
           if (pattern.lastIndex === match.index) pattern.lastIndex += 1;
           match = pattern.exec(text);

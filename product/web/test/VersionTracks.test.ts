@@ -83,7 +83,10 @@ test('npm 入口把日常 bump 与发布分开', () => {
     }
   }
   const doc = read('RELEASING.md')
-  assert.match(doc, /npm run build:bump/)
+  // 2026-11-17：发布自动 +1 之后，文档不再要求手动 bump；build:bump 只留作应急手段。
+  assert.match(doc, /build:bump/, '应急入口要在文档里留着，但要说明它不是日常步骤')
+  assert.match(doc, /自动 \+1|自动\+1/, '文档要写清构建号由发布脚本自动推进')
+  assert.match(read('scripts/release.mjs'), /bumpBuild/, '发布脚本要自己推进构建号，别退回两步手工流程')
   assert.match(doc, /npm run release:dry/)
   assert.match(doc, /npm run release/)
   assert.match(doc, /version-check/)
