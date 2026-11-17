@@ -137,9 +137,19 @@ checkNotReleased(version, tag);
 if (!dryRun) assertCleanWorktree();
 else console.log("[release] dry-run：跳过工作区清洁检查");
 
-const row = `| ${version} | ${build} | ${shortSha(head)} |`;
+// 构建号必须在**被记录的那个提交之前**就落库。RELEASES 记的是「版本 | 构建号 | 提交」，
+// 判据 `RELEASES.md 每一行都能被 git 复算` 会回到那个提交去读 BUILD_NUMBER 核对。
+// 若把 bump 与记账塞进同一个提交，被记的提交上还是旧号 —— 0.3.0 发布时就栽在这里。
+// 所以：先 bump + 单独提交，再取 HEAD 记账。
 if (!dryRun) {
   bumpBuild({ quiet: true });
+  git(["add", "BUILD_NUMBER"]);
+  git(["commit", "-m", `chore(release): build ${build}`], { inherit: true });
+}
+const recordedHead = dryRun ? head : git(["rev-parse", "HEAD"]);
+
+const row = `| ${version} | ${build} | ${shortSha(recordedHead)} |`;
+if (!dryRun) {
   const previous = existsSync(RELEASES) ? read(RELEASES) : "";
   const next = `${previous}${previous.endsWith("\n") ? "" : "\n"}${row}\n`;
   writeFileSync(RELEASES, next);
