@@ -84,24 +84,21 @@ fun Route.backupRoutes(
             val domain = call.request.queryParameters["domain"]?.trim()?.lowercase().orEmpty().ifBlank { "source" }
             val stamp = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
-            val file = when (domain) {
-                "source" -> "legadoq-sources-$stamp.zip"
-                "replacerule", "rule" -> "legadoq-replace-rules-$stamp.zip"
-                else -> return@get call.respond(
+            when (domain) {
+                "source" -> respondZip(call, "legadoq-sources-$stamp.zip") { BackupExporter.exportSources(database, this) }
+                "replacerule", "rule" -> respondZip(call, "legadoq-replace-rules-$stamp.zip") {
+                    BackupExporter.exportReplaceRules(database, this)
+                }
+                "group", "bookgroup" -> respondZip(call, "legadoq-book-groups-$stamp.zip") {
+                    BackupExporter.exportBookGroups(database, this)
+                }
+                else -> call.respond(
                     HttpStatusCode.BadRequest,
                     ApiError(
                         "invalid_domain",
-                        "目前支持导出书源（domain=source）与替换规则（domain=replaceRule）；书架/分组/RSS 随后补",
+                        "目前支持导出书源（domain=source）、替换规则（domain=replaceRule）、分组（domain=group）；书架/RSS 随后补",
                     ),
                 )
-            }
-            call.response.header(
-                HttpHeaders.ContentDisposition,
-                "attachment; filename=\"$file\"",
-            )
-            call.respondOutputStream(ContentType.Application.Zip) {
-                if (domain == "source") BackupExporter.exportSources(database, this)
-                else BackupExporter.exportReplaceRules(database, this)
             }
         }
         post("/backup/import") {
@@ -166,5 +163,20 @@ private const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
 
 /** 排定恢复的回包：只说"已排定、需重启"，不代表已改库。 */
 @Serializable data class SnapshotRestoreScheduled(val scheduled: Boolean, val restartRequired: Boolean, val name: String)
+
+/**
+ * 导出包统一回包：定 `Content-Disposition`，再把 body 交给各域自己写 zip。
+ *
+ * 抽出来是因为域会一域一域加（书源 / 替换规则 / 分组 / 书架 / RSS），
+ * 每个域都抄一遍 header + respondOutputStream 的话，加第三域时就该重了。
+ */
+private suspend fun respondZip(
+    call: ApplicationCall,
+    fileName: String,
+    write: java.io.OutputStream.() -> Unit,
+) {
+    call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"$fileName\"")
+    call.respondOutputStream(ContentType.Application.Zip) { write() }
+}
 
 

@@ -4,7 +4,9 @@ import io.legado.backup.BackupExporter
 import io.legado.backup.BackupImporter
 import io.legado.model.ReplaceRule
 import io.legado.data.Database
+import io.legado.data.createBookGroup
 import io.legado.data.exportReplaceRules
+import io.legado.data.listBookGroups
 import io.legado.data.exportSources
 import io.legado.data.importSources
 import io.legado.data.saveReplaceRule
@@ -141,6 +143,42 @@ class BackupExportRoundTripTest {
                 source.exportReplaceRules(null).map(::comparable),
                 target.exportReplaceRules(null).map(::comparable),
             )
+        } finally {
+            source.close()
+            target.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+
+    @Test
+    fun `导出的分组包能原样导回空库`() {
+        val directory = Files.createTempDirectory("legado-backup-export-groups")
+        val source = Database(directory.resolve("source.sqlite").toString())
+        val target = Database(directory.resolve("target.sqlite").toString())
+        try {
+            source.initialize()
+            target.initialize()
+            source.createBookGroup("玄幻")
+            source.createBookGroup("都市")
+
+            val bytes = ByteArrayOutputStream().also { BackupExporter.exportBookGroups(source, it) }.toByteArray()
+
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                assertEquals("bookGroup.json", zip.nextEntry?.name)
+                val text = zip.readBytes().toString(Charsets.UTF_8)
+                assertTrue("必须是 JSON 数组：${text.take(40)}", text.startsWith("[") && text.endsWith("]"))
+                assertTrue("两个分组都要在包里", text.contains("玄幻") && text.contains("都市"))
+            }
+
+            val archive = directory.resolve("groups.zip")
+            Files.write(archive, bytes)
+            assertEquals("导入条数", 2, BackupImporter(target).import(archive).bookGroups)
+
+            // 分组号由导入侧按**名字**重新映射（importBookGroupsOn 的语义），所以比名字与条数、不硬比 id：
+            // 源库分组号是 3、7 时导进空库会变成 1、2，这是设计如此（见设计文档 §6 开放问题 1）。
+            assertEquals(source.listBookGroups().map { it.name }, target.listBookGroups().map { it.name })
+            assertEquals(2, target.listBookGroups().size)
         } finally {
             source.close()
             target.close()

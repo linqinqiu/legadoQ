@@ -3,6 +3,7 @@ package io.legado.backup
 import io.legado.data.Database
 import io.legado.data.exportReplaceRules
 import io.legado.data.forEachSourcePayload
+import io.legado.data.listBookGroups
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -35,6 +36,9 @@ internal object BackupExporter {
 
     /** 替换规则那份；BackupImporter 的 RULE_NAMES 认它。 */
     const val RULES_ENTRY = "replaceRule.json"
+
+    /** 分组那份；BackupImporter 的 GROUP_NAMES 认它（大小写不敏感，驼峰只为可读）。 */
+    const val GROUPS_ENTRY = "bookGroup.json"
 
     /** 攒到这么大就落一次盘；太小会让小库也写很多次，太大会让峰值内存变难看。 */
     private const val FLUSH_CHARS = 64 * 1024
@@ -94,9 +98,36 @@ internal object BackupExporter {
                 )
             }
         }
+        writeSingleEntry(out, RULES_ENTRY, array.toString().toByteArray(Charsets.UTF_8))
+    }
+
+    /**
+     * 导出分组（第三域）。
+     *
+     * **保留原 groupId，不重编号**：书架那一路（bookshelf.json 的 group 字段）引用的就是这个号，
+     * 导入侧 importBookGroupsOn 再按名字把它映射成本机 id。这里一重编，书就自动掉进空分组。
+     *
+     * 与替换规则一样是几十条量级，拼数组一次写完。
+     */
+    fun exportBookGroups(database: Database, out: OutputStream) {
+        val array = buildJsonArray {
+            for (group in database.listBookGroups()) {
+                add(
+                    buildJsonObject {
+                        put("groupId", group.id)
+                        put("groupName", group.name)
+                    },
+                )
+            }
+        }
+        writeSingleEntry(out, GROUPS_ENTRY, array.toString().toByteArray(Charsets.UTF_8))
+    }
+
+    /** 单个条目的 zip：数组型那几域都走它，省得每加一域就抄一遍 putNextEntry/finish。 */
+    private fun writeSingleEntry(out: OutputStream, entryName: String, body: ByteArray) {
         val zip = ZipOutputStream(out)
-        zip.putNextEntry(ZipEntry(RULES_ENTRY))
-        zip.write(array.toString().toByteArray(Charsets.UTF_8))
+        zip.putNextEntry(ZipEntry(entryName))
+        zip.write(body)
         zip.closeEntry()
         zip.finish()
         zip.flush()
