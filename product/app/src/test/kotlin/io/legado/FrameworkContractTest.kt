@@ -130,7 +130,7 @@ class FrameworkContractTest {
     // ===== 4. 端点计数契约（161 / 19 / 22） =====
 
     @Test
-    fun `agent-api 契约：165 端点、19 组、AI 自定义接入 22 条`() {
+    fun `agent-api 契约：166 端点、19 组、AI 自定义接入 22 条`() {
         // RouteCatalog 从 classpath 读 /agent-api.json，serve 会补齐 version、count 与 baseUrl。
         val raw = RouteCatalog.serve("0.0.0-contract", "http://127.0.0.1:1234")
         val root = Json.parseToJsonElement(raw).jsonObject
@@ -145,7 +145,8 @@ class FrameworkContractTest {
         // MCP 客户端补 GET/POST /api/agent/mcp、POST /api/agent/mcp/refresh、DELETE /api/agent/mcp/{id} 四条到 161）。
         // 2026-11-12：界面偏好服务端持久化（修「改端口后壁纸/设置/免责声明全丢」）补三条
         // （GET /api/ui-prefs、PUT/DELETE /api/ui-prefs/{key}）→ 162 → 165。
-        assertEquals("端点总数必须是 165", 165, endpoints.size)
+        // 2026-11-17：备份导出补 GET /api/backup/export（domain=source 先做）→ 166。
+        assertEquals("端点总数必须是 166", 166, endpoints.size)
 
         // baseUrl 必须按运行时地址注入，不能沿用文件里写死的端口。
         val injectedBase = root["howToConnect"]?.jsonObject?.get("baseUrl")?.jsonPrimitive?.content

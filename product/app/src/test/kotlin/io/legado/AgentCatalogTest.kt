@@ -26,7 +26,8 @@ class AgentCatalogTest {
         assertTrue("应读到端点，实际 ${endpoints.size} 条", endpoints.isNotEmpty())
         // 权威契约当前是 165 条（web/test/ApiCatalog.test.ts 与 :app:verifyFramework 双重钉住）。
         // 2026-11-12：界面偏好持久化补三条 /api/ui-prefs。
-        assertEquals("端点条数应与 agent-api.json 一致", 165, endpoints.size)
+        // 2026-11-17：备份导出补 GET /api/backup/export → 166。
+        assertEquals("端点条数应与 agent-api.json 一致", 166, endpoints.size)
     }
 
     @Test

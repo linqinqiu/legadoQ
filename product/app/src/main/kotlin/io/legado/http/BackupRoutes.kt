@@ -10,6 +10,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import io.legado.backup.BackupExporter
 import io.legado.backup.BackupImporter
 import io.legado.backup.BackupStore
 import io.legado.data.Database
@@ -68,6 +69,33 @@ fun Route.backupRoutes(
             val body = backupKeep.read(name)
                 ?: return@get call.respond(HttpStatusCode.NotFound, ApiError("not_kept", "服务器上没有这个条目"))
             call.respondText(body, ContentType.Application.Json)
+        }
+        /**
+         * 导出备份（当前只有**书源**这一域，其余域按 `docs/research/研究-备份导出设计-2026-11-16.md` 逐个补）。
+         *
+         * 为什么要带 `domain` 参数而不是直接叫"导出全部"：只导一域时，文件名与参数都写明范围，
+         * 用户不会以为"备份好了"、恢复时才发现书架没在里面。未知域直接 400，不静默降级。
+         *
+         * 只读 GET：不写库、不改状态，所以不过同源写门。响应是流式 zip，
+         * 5,600 条书源约 30–40 MB，不整包读进内存（见 [BackupExporter]）。
+         */
+        get("/backup/export") {
+            val domain = call.request.queryParameters["domain"]?.trim()?.lowercase().orEmpty().ifBlank { "source" }
+            if (domain != "source") {
+                return@get call.respond(
+                    HttpStatusCode.BadRequest,
+                    ApiError("invalid_domain", "目前只支持导出书源（domain=source）；书架/规则/分组/RSS 随后补"),
+                )
+            }
+            val stamp = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
+            call.response.header(
+                HttpHeaders.ContentDisposition,
+                "attachment; filename=\"legadoq-sources-$stamp.zip\"",
+            )
+            call.respondOutputStream(ContentType.Application.Zip) {
+                BackupExporter.exportSources(database, this)
+            }
         }
         post("/backup/import") {
             if (!call.requireSameOriginWrite()) return@post

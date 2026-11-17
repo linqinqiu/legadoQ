@@ -387,6 +387,21 @@ fun Database.exportSources(ids: List<String>?): List<String> = connect { db ->  
     db.prepareStatement(sql).use { statement -> ids?.forEachIndexed { index, id -> statement.setString(index + 1, id) }; statement.executeQuery().use { rs -> buildList { while (rs.next()) add(rs.getString(1)) } } }
 }
 
+/**
+ * 逐条吐书源 payload，**不**先收成 List —— 备份导出用。
+ *
+ * 本机真实库 5,600 条 payload 约 30–40 MB；`exportSources` 会先 `buildList` 全读进内存，
+ * 导出时再拼成一份 JSON 就是两三倍峰值。这里按游标逐条交给调用方写进 zip，
+ * 峰值只有一块缓冲区。读连接独立，导出期间不占写连接。
+ */
+fun Database.forEachSourcePayload(block: (String) -> Unit): Unit = connect { db ->
+    db.createStatement().use { statement ->
+        statement.executeQuery("select payload from source order by name collate nocase").use { rs ->
+            while (rs.next()) block(rs.getString(1))
+        }
+    }
+}
+
 private fun java.sql.ResultSet.toSummary() = SourceSummary(
     id = getString(1),
     name = getString(2),

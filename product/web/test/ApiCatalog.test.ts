@@ -186,7 +186,8 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 2026-11-12：S0/C-03 段评详情层只读，新增 POST /api/books/reviews（阅读组，写门）→ 161 → 162。
   // 2026-11-12：界面偏好服务端持久化（修「改端口后壁纸/设置/免责声明全丢」），
   // 新增 GET /api/ui-prefs、PUT /api/ui-prefs/{key}、DELETE /api/ui-prefs/{key}（系统组，写门）→ 162 → 165，系统组 8 → 11。
-  assert.equal(catalog.endpoints.length, 165, `端点总数必须为 165，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-11-16：备份导出第一域（书源），新增 GET /api/backup/export（备份组，只读）→ 165 → 166。
+  assert.equal(catalog.endpoints.length, 166, `端点总数必须为 166，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')
   assert.equal(systemGroup.length, 11, `系统组必须为 11 条（含 /api/diagnostics 与三条 /api/ui-prefs），现在是 ${systemGroup.length}`)

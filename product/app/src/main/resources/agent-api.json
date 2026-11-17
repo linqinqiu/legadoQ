@@ -676,6 +676,14 @@
     },
     {
       "method": "GET",
+      "path": "/api/backup/export",
+      "write": false,
+      "group": "备份",
+      "purpose": "导出备份包（zip）：当前只支持书源（domain=source，默认值），包内是 bookSource.json；书架 / 替换规则 / 分组 / RSS 随后补",
+      "response": "application/zip，Content-Disposition 为 attachment，文件名 legadoq-sources-<yyyyMMdd-HHmm>.zip；未知 domain 400 invalid_domain"
+    },
+    {
+      "method": "GET",
       "path": "/api/backup/kept",
       "write": false,
       "group": "备份",
@@ -1863,5 +1871,5 @@
       "response": "204；key 非法 400 invalid_prefs_key"
     }
   ],
-  "count": 165
+  "count": 166
 }
