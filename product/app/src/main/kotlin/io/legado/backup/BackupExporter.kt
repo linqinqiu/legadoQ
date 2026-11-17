@@ -2,6 +2,7 @@ package io.legado.backup
 
 import io.legado.data.Database
 import io.legado.data.exportReplaceRules
+import io.legado.data.forEachRssPayload
 import io.legado.data.forEachSourcePayload
 import io.legado.data.listBookGroups
 import kotlinx.serialization.json.buildJsonArray
@@ -40,16 +41,41 @@ internal object BackupExporter {
     /** 分组那份；BackupImporter 的 GROUP_NAMES 认它（大小写不敏感，驼峰只为可读）。 */
     const val GROUPS_ENTRY = "bookGroup.json"
 
+    /** RSS 订阅源那份；上游写出的名字是复数 rssSources.json。 */
+    const val RSS_ENTRY = "rssSources.json"
+
     /** 攒到这么大就落一次盘；太小会让小库也写很多次，太大会让峰值内存变难看。 */
     private const val FLUSH_CHARS = 64 * 1024
 
-    fun exportSources(database: Database, out: OutputStream) {
+    fun exportSources(database: Database, out: OutputStream) =
+        writePayloadArray(out, SOURCES_ENTRY, database::forEachSourcePayload)
+
+    /**
+     * 导出 RSS 订阅源（第四域）。
+     *
+     * 与书源同构：库里存的就是上游那份 JSON 原文（`rss_source.payload`），原样吐回去，
+     * 包内 `rssSources.json` 是一整个数组 —— `BackupImporter` 认这个名字，也认这种形状。
+     */
+    fun exportRssSources(database: Database, out: OutputStream) =
+        writePayloadArray(out, RSS_ENTRY, database::forEachRssPayload)
+
+    /**
+     * 原样输出 payload 的那几域（书源 / RSS）共用：边查边写，绝不把整表拼成一个字符串。
+     *
+     * 5,600 条书源 25 MB 的实测摆在那里：先拼成大字符串再写，峰值要翻两三倍；
+     * 而 zip 是一路往后追加的，攒够 [FLUSH_CHARS] 就落一次盘，峰值只有一块缓冲区。
+     */
+    private fun writePayloadArray(
+        out: OutputStream,
+        entryName: String,
+        forEachPayload: ((String) -> Unit) -> Unit,
+    ) {
         val zip = ZipOutputStream(out)
-        zip.putNextEntry(ZipEntry(SOURCES_ENTRY))
+        zip.putNextEntry(ZipEntry(entryName))
         val buffer = StringBuilder(FLUSH_CHARS + 1024)
         buffer.append('[')
         var first = true
-        database.forEachSourcePayload { payload ->
+        forEachPayload { payload ->
             if (!first) buffer.append(',')
             buffer.append(payload)
             first = false

@@ -92,11 +92,14 @@ fun Route.backupRoutes(
                 "group", "bookgroup" -> respondZip(call, "legadoq-book-groups-$stamp.zip") {
                     BackupExporter.exportBookGroups(database, this)
                 }
+                "rss", "rsssource" -> respondZip(call, "legadoq-rss-sources-$stamp.zip") {
+                    BackupExporter.exportRssSources(database, this)
+                }
                 else -> call.respond(
                     HttpStatusCode.BadRequest,
                     ApiError(
                         "invalid_domain",
-                        "目前支持导出书源（domain=source）、替换规则（domain=replaceRule）、分组（domain=group）；书架/RSS 随后补",
+                        "目前支持导出书源（domain=source）、替换规则（domain=replaceRule）、分组（domain=group）、RSS（domain=rss）；书架随后补",
                     ),
                 )
             }

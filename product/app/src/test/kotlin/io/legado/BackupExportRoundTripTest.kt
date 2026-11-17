@@ -5,6 +5,8 @@ import io.legado.backup.BackupImporter
 import io.legado.model.ReplaceRule
 import io.legado.data.Database
 import io.legado.data.createBookGroup
+import io.legado.data.forEachRssPayload
+import io.legado.data.importRssSources
 import io.legado.data.exportReplaceRules
 import io.legado.data.listBookGroups
 import io.legado.data.exportSources
@@ -69,15 +71,24 @@ class BackupExportRoundTripTest {
     fun `空库导出的仍然是一个合法的空数组`() {
         val directory = Files.createTempDirectory("legado-backup-export-empty")
         val database = Database(directory.resolve("empty.sqlite").toString())
+        val target = Database(directory.resolve("target.sqlite").toString())
         try {
             database.initialize()
+            target.initialize()
             val bytes = ByteArrayOutputStream().also { BackupExporter.exportSources(database, it) }.toByteArray()
             ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
                 assertEquals("bookSource.json", zip.nextEntry?.name)
                 assertEquals("[]", zip.readBytes().toString(Charsets.UTF_8))
             }
+
+            // 空包也必须是能导回来的包：以前导入侧只认"有内容"的段，这种包被判成
+            // 不是可识别的备份 —— 用户自己导出来的东西导不回去，比报错更让人困惑。
+            val archive = directory.resolve("empty.zip")
+            Files.write(archive, bytes)
+            assertEquals("空包导入回来是 0 条，不是抛错", 0, BackupImporter(target).import(archive).sources)
         } finally {
             database.close()
+            target.close()
             directory.toFile().deleteRecursively()
         }
     }
@@ -184,6 +195,49 @@ class BackupExportRoundTripTest {
             target.close()
             directory.toFile().deleteRecursively()
         }
+    }
+
+    @Test
+    fun `导出的 RSS 源包能原样导回空库`() {
+        val directory = Files.createTempDirectory("legado-backup-export-rss")
+        val source = Database(directory.resolve("source.sqlite").toString())
+        val target = Database(directory.resolve("target.sqlite").toString())
+        try {
+            source.initialize()
+            target.initialize()
+            val rss = listOf(
+                """{"sourceUrl":"https://rss-a.example/feed","sourceName":"甲订阅","sourceGroup":"科技","enabled":true,"ruleArticles":"@css:.item"}""",
+                """{"sourceUrl":"https://rss-b.example/feed","sourceName":"乙订阅","enabled":false}""",
+            )
+            assertEquals("导入条数", 2, source.importRssSources(rss).imported)
+
+            val bytes = ByteArrayOutputStream().also { BackupExporter.exportRssSources(source, it) }.toByteArray()
+
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                assertEquals("rssSources.json", zip.nextEntry?.name)
+                val text = zip.readBytes().toString(Charsets.UTF_8)
+                assertTrue("必须是 JSON 数组：${text.take(40)}", text.startsWith("[") && text.endsWith("]"))
+                assertTrue("两条订阅都要在包里", text.contains("甲订阅") && text.contains("乙订阅"))
+            }
+
+            val archive = directory.resolve("rss.zip")
+            Files.write(archive, bytes)
+            assertEquals("导入条数", 2, BackupImporter(target).import(archive).rssSources)
+
+            // payload 原样往返：库里存的就是上游那份 JSON 原文，导出再导入后应逐字相同
+            assertEquals("RSS payload 必须逐条相同", rssPayloads(source), rssPayloads(target))
+        } finally {
+            source.close()
+            target.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /** 按导出同款顺序（名字升序）取全部 RSS payload 原文。 */
+    private fun rssPayloads(database: Database): List<String> {
+        val list = mutableListOf<String>()
+        database.forEachRssPayload { list += it }
+        return list
     }
 
     /** 参与往返比对的字段；createdAt/updatedAt 是导入时按当前时间写的，不比。 */

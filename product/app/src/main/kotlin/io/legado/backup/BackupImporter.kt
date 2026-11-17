@@ -114,8 +114,15 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         // 手机上只勾了个性化条目（书签 / 搜索历史 / TXT 分章规则…）导出的包也是合法备份：
         // 以前这类包会被判"不是可识别的 Legado 备份"整包拒收，用户看到的是"我明明导出来了"。
         val keepable = present.intersect(BackupStore.KEEP_NAMES.map { it.lowercase() }.toSet())
+        // 认得出的条目**在包里**就算合法备份，哪怕它是空的数组：
+        // 导出侧一域一包，某个域正好是空的时候写出来就是 `bookSource.json` 里只有 `[]`。
+        // 以前这种包被判"不是可识别的 Legado 备份"，用户看到的是"我自己导出来的包不让导回去"。
+        val recognized = present.intersect(
+            (SOURCE_NAMES + RULE_NAMES + SHELF_NAMES + COOKIE_NAMES + GROUP_NAMES + RSS_NAMES)
+                .map { it.lowercase() }.toSet(),
+        )
         require(sources.isNotEmpty() || rules.isNotEmpty() || shelf.isNotEmpty() || groups.isNotEmpty() ||
-            rss.isNotEmpty() || keepable.isNotEmpty()) {
+            rss.isNotEmpty() || keepable.isNotEmpty() || recognized.isNotEmpty()) {
             "不是可识别的 Legado 备份：找过 ${SOURCE_NAMES.joinToString()} / ${RULE_NAMES.joinToString()} / " +
                 "${SHELF_NAMES.joinToString()}，也没有能收下的个性化条目，包内实际有 ${present.size} 个条目"
         }

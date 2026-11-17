@@ -64,3 +64,15 @@ fun Database.deleteRssSource(sourceUrl: String): Boolean = write { db ->
         statement.executeUpdate() == 1
     }
 }
+
+/**
+ * 逐条吐 RSS 源的 payload 原文 —— 备份导出用（与 `forEachSourcePayload` 同一套理由：
+ * 不先收成 List，边查边写，峰值只有一块缓冲区）。排序按名字，导出包里的顺序才稳定、可复现。
+ */
+fun Database.forEachRssPayload(block: (String) -> Unit): Unit = connect { db ->
+    db.createStatement().use { statement ->
+        statement.executeQuery("select payload from rss_source order by name collate nocase").use { rs ->
+            while (rs.next()) block(rs.getString(1))
+        }
+    }
+}
