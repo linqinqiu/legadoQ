@@ -89,7 +89,8 @@ fun Route.apiRoutes(
         mediaRoutes(database, coverCache, localBooksDirectory, runner)
         readerRoutes(database)
         ttsRoutes(edgeTts, ttsSessions)
-        agentApiRoutes(database, homeDirectory, agentConnection, profileStore)
+        // AI 关掉时这批端点根本不注册（/api/agent/* → 404）：能力这版没有，就表现为没有。
+        agentConnection?.let { agentApiRoutes(database, homeDirectory, it, profileStore) }
     }
 }
 

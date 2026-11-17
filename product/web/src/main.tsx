@@ -165,6 +165,8 @@ function App() {
   const [serverRevision, setServerRevision] = useState('')
   /** 修订号对应的短 sha，用于定位具体提交（只进 tooltip，不占界面）。 */
   const [serverSha, setServerSha] = useState('')
+  /** AI 能力面这一版是否启用（`/healthz` 的 `ai`）。2026-11-17 起产品默认关：关着时不渲染悬浮球、设置里也不出现「AI」那一档。初值 false，避免默认关的产品先闪一下入口再消失。 */
+  const [aiEnabled, setAiEnabled] = useState(false)
   const [selected, setSelected] = useState<SourceSummary | null>(null)
   const [reader, setReader] = useState<{ book: OpenBook; index: number } | null>(() => {
     try {
@@ -390,7 +392,8 @@ function App() {
         if (health?.rev) {
           setServerRevision(String(health.rev))
         }
-        if (health?.sha) {
+        if (typeof health?.ai === 'boolean') setAiEnabled(health.ai)
+    if (health?.sha) {
           setServerSha(String(health.sha))
         }
         setBootHint('')
@@ -660,7 +663,7 @@ function App() {
 
             注意它必须挂在**这一支自己的返回树**里：主壳那支在下面提前 return 了，
             读到这里说明主壳根本没渲染过，指望主壳的悬浮球是等不到的。 */}
-        <AiFloatingBall uiContext={currentUiContext} />
+        {aiEnabled && <AiFloatingBall uiContext={currentUiContext} />}
       </div>
     )
   }
@@ -697,7 +700,7 @@ function App() {
       openAiPrompts: () => openModalDirect('ai-prompts'),
       openAiSourceCheck: () => openModalDirect('ai-source-check'),
       openCookies: () => openModalDirect('cookies'),
-    }),
+    }).filter(section => aiEnabled || section.title !== 'AI'),
     tocRulesSignal,
     onSelectSource: setSelected,
     onSourcesChange: setSources,
@@ -815,7 +818,7 @@ function App() {
           以前只能从「设置 → AI 接入」开模态弹窗，人得离开正在看的书/书源走三层才能问一句。
           现在它常驻右下角，带着当前页面的 uiContext（在阅读器就带这本书与章节，
           在书源页就带这个源），问的就是眼前这个东西；对话历史跨页面/跨会话保留。 */}
-      <AiFloatingBall uiContext={currentUiContext} />
+      {aiEnabled && <AiFloatingBall uiContext={currentUiContext} />}
     </div>
   )
 }

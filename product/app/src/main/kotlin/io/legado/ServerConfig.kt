@@ -23,6 +23,11 @@ data class ServerConfig(
      * 「我就是在验绑 0.0.0.0 时的行为」，而不是去改全局环境变量。
      */
     val allowExternalBind: Boolean = AppConfig.allowExternalBind,
+    /**
+     * AI 能力面是否启用（默认 false，见 [AppConfig.aiEnabled]）。关着时不注册 `/api/agent` 那一组、
+     * 界面也没有对话入口；测试直接构造 `ServerConfig(...)` 时默认 true，保持既有用例不动。
+     */
+    val aiEnabled: Boolean = true,
 ) {
     companion object {
 
@@ -51,6 +56,7 @@ data class ServerConfig(
                 nextDirectory = Path.of(env["LEGADO_NEXT_DIR"] ?: "next"),
                 homeDirectory = Path.of(env["LEGADO_HOME"] ?: ".").toAbsolutePath(),
                 allowExternalBind = AppConfig.allowExternalBind,
+                aiEnabled = AppConfig.aiEnabled,
             )
         }
     }

@@ -23,6 +23,8 @@ data class HealthStatus(
     val rev: String = "",
     /** 与 [rev] 配套的短 sha，用于精确定位提交；取不到时为空串。 */
     val sha: String = "",
+    /** AI 能力面这一版是否启用；界面据此决定要不要显示对话入口（2026-11-17 起产品默认关）。 */
+    val ai: Boolean = true,
 )
 
 /** 「关于」页顶部那三样：名字、版本、发布仓库。版本只有一个来源（清单），界面不许写死。 */

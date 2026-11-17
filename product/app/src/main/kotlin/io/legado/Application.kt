@@ -178,16 +178,18 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     // 内部 AI 连接（网关）句柄：无条件构造，让 `/api/agent/*` 始终能委派阅读理解/外部模型。
     // 它不注册任何路由、不开端口（路由仍由 Routes.kt 字面登记，ApiCatalog 门禁数量不变）；
     // `-Dai.debug` 下只是额外跑一次自检演示，不改变生产运行面。
-    val agentConnection = AgentModule.connect(
+    // AI 默认关（用户 2026-11-17：「就像 AI 这样的附属额外功能可以暂且移除，不使用」）：
+    // 关着时不建连接、不注册 /api/agent/*，界面上也没有对话入口；要回来设 LEGADO_AI_ENABLED=1。
+    val agentConnection = if (config.aiEnabled) AgentModule.connect(
         database, runner, coverCache, subscriptions,
         homeDirectory = config.homeDirectory,
         // 朗读与备份的 AI 工具要用到这两个；与 HTTP 端点背后是**同一份**服务，
         // 不在进程里另起一套（否则 AI 合成的音频、看到的备份与界面上的不是一回事）。
         edgeTts = edgeTts,
         backupStore = io.legado.backup.BackupStore(config.localBooksDirectory.resolveSibling("backup_kept")),
-    )
+    ) else null
     // 仅调试：额外自检（不会污染真实库）。生产环境返回 null，不影响任何对外行为。
-    AgentModule.install(agentConnection)
+    if (agentConnection != null) AgentModule.install(agentConnection)
 
     // 插件系统已移除（用户 2026-10-26：不再做插件）。
     // 工具注册表 / 钩子仍在 ai/ 里，宿主代码可以直接 register() 挂工具 —— 那属于 AI 能力面，不是「插件」。
@@ -216,7 +218,7 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
             bookCache.start()
             // 外部 MCP 工具：握手 + 拉清单是网络活儿，不能挡在"端口能连"前面。
             // 失败只让那一组工具为空（原因记进 /api/agent/mcp），不影响对话。
-            runCatching { agentConnection.mcp.sync() }
+            agentConnection?.let { connection -> runCatching { connection.mcp.sync() } }
             // 大库高碎片时全量 VACUUM 会重写整个文件，同步跑明显拖冷启动。
             // 端口已 listen，把碎片回收挪到后台守护线程里（见 Database.scheduleReclaimFragmentation）。
             database.scheduleReclaimFragmentation()
@@ -300,6 +302,7 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
                     build = BuildInfo.buildNumber,
                     rev = BuildInfo.revision,
                     sha = BuildInfo.revisionSha,
+                    ai = config.aiEnabled,
                 )
             )
         }

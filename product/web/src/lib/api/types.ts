@@ -34,6 +34,8 @@ export type AboutInfo = {
   version: string
   repository: string
   build?: string
+  /** AI 能力面是否启用（`/healthz` 的 `ai`）；2026-11-17 起产品默认关 */
+  ai?: boolean
 }
 
 /** 服务自身：这次运行实际绑在哪（改 port.txt 不会让它变，要重启）。 */
