@@ -89,6 +89,10 @@ test('HeaderMenu - 版本号来自 /healthz，前端不写死', () => {
   assert.match(header, /version\?:\s*string/, 'AppHeader 必须把版本号做成 prop（值由外层从 /healthz 取）')
   assert.match(header, /\{version \|\| '未取到'\}/, '没取到版本号时要显示"未取到"，不能空着让人以为版本未知是正常')
   assert.match(header, /className="menu-version"/, '版本号要有自己的位置，跟状态位一起摆在菜单头部')
+  // 2026-11-17（用户：「版本号不好太长还有问题」）：菜单里只留一个号，
+  // 修订号与提交 sha 收进 title —— 界面上一行 0.3.0，鼠标悬停才看到 rev / sha。
+  assert.ok(!header.includes('<span>修订</span>'), '不再单起一行「修订」：版本那一格只放版本号')
+  assert.match(header, /filter\(Boolean\)\.join\(' · '\)/, '修订号与提交 sha 要走 title，不铺在界面上')
 
   const app = fs.readFileSync(path.resolve(import.meta.dirname, '../src/main.tsx'), 'utf8')
   // 探活那条带 signal（超时用），所以不要求紧跟右括号。

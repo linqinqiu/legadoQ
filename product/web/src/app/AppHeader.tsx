@@ -229,16 +229,19 @@ export function AppHeader({
                   <span className="menu-status-dot" />
                   <span className="menu-header-title">本机服务在线</span>
                 </div>
+                {/* 版本只显示一个号（0.3.0）；修订号与提交 sha 收进 title ——
+                    原来「版本」「修订」各占一行，用户读到的是一串 0.3.0 / rev-375 / a105588，
+                    而这两项只有排查问题的人才需要（用户 2026-11-17：「版本号不好太长还有问题」）。 */}
                 <div className="menu-version">
                   <span>版本</span>
-                  <code>{version || '未取到'}</code>
+                  <code
+                    title={
+                      [revision, revisionSha ? `提交 ${revisionSha}` : ''].filter(Boolean).join(' · ') || undefined
+                    }
+                  >
+                    {version || '未取到'}
+                  </code>
                 </div>
-                {revision && (
-                  <div className="menu-version">
-                    <span>修订</span>
-                    <code title={revisionSha ? `提交 ${revisionSha}` : undefined}>{revision}</code>
-                  </div>
-                )}
               </div>
 
               <div className="menu-section">
