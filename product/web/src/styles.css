@@ -5435,6 +5435,20 @@ input[type="checkbox"] {
 .customize-base-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .customize-error { margin: 0; color: var(--danger); font-size: 13px; }
 .customize-note { margin: 0; color: var(--muted); font-size: 12px; }
+
+/* 「服务端口」里那两条说明（自动顺延 / 设置不受影响）：做成轻提示条，
+   与上面那条「当前绑定 / 是否对外暴露」的状态框分出主次 —— 三条同款灰字堆在一起，
+   用户只会一眼扫过去什么也没记住。 */
+.server-port-hint {
+  margin: 0;
+  padding: 8px 10px 8px 12px;
+  border-left: 3px solid var(--accent, var(--line));
+  border-radius: var(--r-1);
+  background: var(--surface-muted, transparent);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
 .customize-note code { padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-muted); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 .skin-library-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .skin-library { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--line); overflow: hidden; }
