@@ -20,6 +20,12 @@ import { fetchImportUrl, fileNameFromUrl } from '../../lib/importFromUrl'
  */
 
 /** 服务端承接的内容；界面要提前说清楚，而不是导入完让人猜。 */
+/** 上一次导出的记录（时间 + 大小），只在这台机器的这个浏览器里 —— 用户点完能回头确认「确实下下来了」。 */
+const LAST_EXPORT_KEY = 'legadoq-last-export'
+
+const formatSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+
 const RESTORED_SECTIONS: [string, string][] = [
   ['书源', '同名书源按 ID 覆盖规则内容；**已存在的书源保留你本机的启用/停用选择**'],
   ['替换净化规则', '按规则标识覆盖'],
@@ -73,6 +79,15 @@ export function BackupPage() {
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [lastExport, setLastExport] = useState<{ at: number; bytes: number } | null>(null)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LAST_EXPORT_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as { at?: number; bytes?: number }
+      if (typeof parsed.at === 'number' && typeof parsed.bytes === 'number') setLastExport({ at: parsed.at, bytes: parsed.bytes })
+    } catch { /* 读不出来就当没有，不影响导出 */ }
+  }, [])
   const [kept, setKept] = useState<KeptBackupEntry[]>([])
   // 取失败与"确实没导过包"要分开：以前 catch 成空数组，整块面板直接消失，
   // 用户读到的是"这个服务没收下任何东西"，而真实情况可能是那一次请求没成。
@@ -206,7 +221,10 @@ export function BackupPage() {
       link.remove()
       // 立刻 revoke 会让部分浏览器下不到文件，留一拍再释放
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      toast.success(`备份已导出：${Math.max(1, Math.round(blob.size / 1024))} KB`)
+      const record = { at: Date.now(), bytes: blob.size }
+      setLastExport(record)
+      try { localStorage.setItem(LAST_EXPORT_KEY, JSON.stringify(record)) } catch { /* 存不下不影响导出 */ }
+      toast.success(`备份已导出：${formatSize(blob.size)}`)
     } catch (error) {
       toast.error(error instanceof Error ? `导出失败：${error.message}` : '导出失败')
     } finally {
@@ -219,8 +237,8 @@ export function BackupPage() {
       {/* 标题由悬浮层头给（0.6.27）。正文不再写"全程在本机/不经过网盘"这类讲实现的句子 ——
           "包不落盘"那句（下面主操作面板里）才是用户真正要的那句。 */}
       <p className="page-lead">
-        选一个 Legado 导出的备份就能恢复：zip 备份包，或 MD3 / Max / Night-Reader 等兄弟项目的包；
-        分享出来的书源 JSON、合并导出也直接认。
+        两个方向都在这一页：把备份包选进来就恢复，点下面的「导出备份包」就把本机的东西打包带走。
+        导入认 Legado 的 zip，也认 MD3 / Max / Night-Reader 等兄弟项目的包，以及分享出来的书源 JSON。
       </p>
 
       <section className="backup-panel">
@@ -230,6 +248,17 @@ export function BackupPage() {
           <strong>不含登录凭据</strong>（登录态不随包走），也不含笔记、书签、封面与本地书文件 ——
           这几样导入侧还没有对应入口，放了就是「恢复了但看不见」。
         </p>
+        {exporting && (
+          <p className="backup-hint" role="status">
+            正在打包…书源多的时候要几秒。这一步没有进度条：服务端是边查边写，不先把整库读进内存。
+          </p>
+        )}
+        {!exporting && lastExport && (
+          <p className="backup-hint" role="status">
+            上次导出：{new Date(lastExport.at).toLocaleString('zh-CN', { hour12: false })} · {formatSize(lastExport.bytes)}
+            （这次下载到哪了，看浏览器的「下载」列表）
+          </p>
+        )}
         <div className="backup-actions">
           <button type="button" className="primary-button" onClick={() => void handleExport()} disabled={exporting}>
             <span>{exporting ? '导出中…' : '导出备份包'}</span>
