@@ -21,6 +21,7 @@
 | `product/` | 后端源码、内置 UI、后端文档、测试、工具 | 旧前端、旧内嵌模式 |
 | `product/app/` | Kotlin/Ktor 源码与资源 | 前端代码 |
 | `product/web/` | 内置 Web UI 源码与测试 | 独立前端实验 |
+| `product/experimental/` | 试验型代码（当前 `ai/`，2026-11-17 从 `app/src/main/kotlin/io/legado/ai/` 与测试目录整体挪入）**不参与编译与打包**；放置与恢复规则见其 README | 任何被构建引用的源码、需要出包的东西 |
 | `product/data/` · `product/app/data/` | 运行数据库、封面、本地书、浏览器配置 | 任何需要提交的文件 |
 | `docs/` | 总览、API 参考、目录规划、研究快照、工程日志、唯一索引 | 产品操作手册（在 `product/docs/`）、构建产物 |
 | `docs/engineering/` | 工程审计快照（audit/）与整改执行记录（remediation/）；放置规则见其 README | 产品手册、研究快照 |

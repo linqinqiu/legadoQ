@@ -32,8 +32,8 @@
 - 跳转原语定位：要找 `jumpToNote` / `jumpToSearchHit` / `jumpToNotePosition`，**直接看 `useReaderPositionJump.ts`**，不要回 `ReaderScreen.tsx`。`toggleBookmark` 仍在 `ReaderScreen.tsx`（本轮留原地降风险）。
 
 ## 4. 后端要点
-- `product/app/src/main/kotlin/io/legado/`：`http/`（路由）· `data/`（Repository，**一律放 data/**，放 `source/` 会撞 `ArchitectureBoundaryTest`）· `rules/`（`RuleRunner` + `RuleProcessor` 扩展点）· `ai/` · `tts/`。
-- 端点 **166 条 / 19 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
+- `product/app/src/main/kotlin/io/legado/`：`http/`（路由）· `data/`（Repository，**一律放 data/**，放 `source/` 会撞 `ArchitectureBoundaryTest`）· `rules/`（`RuleRunner` + `RuleProcessor` 扩展点）· `tts/`。AI 那一整套 2026-11-17 已挪到 `product/experimental/ai/`（不参与编译与打包），见该目录 README。
+- 端点 **144 条 / 18 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
 
 ## 5. 常见坑（详见 facts.md / 研究文档）
 - 池里只有一条写连接：DAO 的 `write{}` 不能被外层 `write{}` 包（内层退出复位 autoCommit → commit 抛错）。
@@ -60,7 +60,6 @@
 | 改什么 | 文件 |
 |--------|------|
 | 路由装配 / 端点清单 | `http/Routes.kt` · `http/RouteCatalog.kt` |
-| AI 对话端点 | `http/AgentApiRoutes.kt` |
 | 书源 CRUD/批量/体检 | `http/SourcesRoutes.kt`(830) |
 | 书架/分组 | `http/ShelfRoutes.kt` |
 | 搜索 | `http/SearchRoutes.kt` · `http/SearchSession.kt` |
@@ -74,20 +73,13 @@
 | TTS | `http/TtsRoutes.kt` |
 | 守卫/鉴权 | `http/Guard.kt` |
 
-### 8.2 后端 · AI 子系统（`ai/`）
-| 改什么 | 文件 |
-|--------|------|
-| AI 对话核心逻辑 | `ai/Agent.kt`(1035) |
-| AI 端点 | `ai/AgentRoutes.kt`(923) |
-| 内置工具实现 | `ai/BuiltinTools.kt`(804) |
-| 工具注册/选择 | `ai/ToolRegistry.kt` · `ai/ToolSelection.kt` |
-| 工具钩子/护栏 | `ai/ToolHooks.kt` · `ai/Guardrails.kt` |
-| 提示词/Profile | `ai/AgentPromptStore.kt` · `ai/AgentProfileStore.kt` · `ai/ProfileOptions.kt` |
-| 连接选择 | `ai/ConnectionSelector.kt` · `ai/AgentConnection.kt` |
-| LLM Provider | `ai/OpenAiCompatibleProvider.kt` · `ai/OpenAiResponsesProvider.kt` · `ai/AnthropicProvider.kt` · `ai/LlmProvider.kt` · `ai/ProviderHttp.kt` |
-| MCP 客户端/桥/配置 | `ai/McpClient.kt` · `ai/McpBridge.kt` · `ai/McpServerStore.kt` |
-| 装配(ApiCatalog) | `ai/AgentModule.kt` · `ai/AgentCatalog.kt` |
+### 8.2 后端 · AI 子系统（已挪到 `product/experimental/ai/`）
 
+2026-11-17：AI 那一整套（`ai/` 28 个文件 + `http/AgentApiRoutes.kt` + 25 个测试）移到 `product/experimental/ai/`，
+**不参与编译、不打包、`/api/agent` 那一组端点不再注册**。
+要看某个文件（对话核心 `Agent.kt`、内置工具 `BuiltinTools.kt`、provider、MCP…）去那个目录下找，
+路径形状与原来一致：`main/` = 原 `app/src/main/kotlin/io/legado/ai/`，`tests/` = 原测试目录。
+恢复方式见 `product/experimental/README.md`。
 ### 8.3 后端 · 规则引擎 / 脚本（`rules/`）
 | 改什么 | 文件 |
 |--------|------|
@@ -122,7 +114,7 @@
 | 阅读器 hook/展示 | `features/reader/` 下 `useReader*`(`useReaderPositionJump`=跳转原语：`jumpToNote`/`jumpToSearchHit`/`jumpToNotePosition`) · `ReaderBody`/`ReaderOverlays`/`ReaderChrome`/`ReaderCatalog` |
 | 书架页 | `features/bookshelf/ShelfPage.tsx`(1240) · `LibraryPage.tsx` |
 | 书源编辑器 | `features/source-editor/SourcesPage.tsx`(933) · `SourceLoginModal/UiPanel` · `SourceEditorPanel` · `SourceHealthModal` |
-| AI 连接/悬浮球 | `features/ai/AiConnectionsModal.tsx` · `AiFloatingBall.tsx` |
+| AI 连接/悬浮球（已撤） | 前端源码仍在 `features/ai/`，但入口由 `/healthz` 的 `ai` 关着；下一步同样挪进 `product/experimental/` |
 | 通用模态 | `components/ReplaceRulesModal` · `SourceSwitchModal` · `BookDetailModal` |
 | 设置/Cookie | `features/settings/CookieSection.tsx` · `app/AppHeader.tsx` |
 | 统一 API 客户端（fetchWithMetrics） | `lib/api/client.ts` · `lib/performance.ts` |

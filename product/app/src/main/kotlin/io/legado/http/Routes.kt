@@ -7,8 +7,6 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
-import io.legado.ai.AgentConnection
-import io.legado.ai.AgentProfileStore
 import io.legado.backup.BackupStore
 import io.legado.cache.BookCacheService
 import io.legado.cache.CoverCache
@@ -56,10 +54,6 @@ fun Route.apiRoutes(
     // 这次运行实际绑的地址与端口（`/api/server` 报给界面）。
     currentHost: String = "127.0.0.1",
     currentPort: Int = 8080,
-    // AI 自定义接入面所需的可选连接句柄；基础框架不强制启用：仅在 -Dai.debug 下 AgentModule.install 返回非 null 时才有值。
-    agentConnection: AgentConnection? = null,
-    // 「自定义接入」持久层（连接描述存取）；传 null 时各处理器内部自行回退到 AgentProfileStore 默认实现。
-    profileStore: AgentProfileStore? = null,
 ) {
     val webView = WebViewProxy(database)
     // 备份包里没有原生归宿的个性化条目，原样收在数据目录下的一个文件夹里（见 BackupStore 的取舍说明）。
@@ -89,8 +83,6 @@ fun Route.apiRoutes(
         mediaRoutes(database, coverCache, localBooksDirectory, runner)
         readerRoutes(database)
         ttsRoutes(edgeTts, ttsSessions)
-        // AI 关掉时这批端点根本不注册（/api/agent/* → 404）：能力这版没有，就表现为没有。
-        agentConnection?.let { agentApiRoutes(database, homeDirectory, it, profileStore) }
     }
 }
 

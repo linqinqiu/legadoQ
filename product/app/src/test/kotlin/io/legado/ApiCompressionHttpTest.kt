@@ -47,14 +47,15 @@ class ApiCompressionHttpTest {
         try {
             testApplication {
                 application { legadoApplication(config) }
-                // /api/agent/manifest 是随包的 8.6KB 静态 JSON，不依赖库内容，适合当样本。
-                val plain = client.get("/api/agent/manifest")
+                // /api/catalog 是随包的契约 JSON（几十 KB），不依赖库内容，适合当样本。
+                // 2026-11-17：原来用的 /api/agent/manifest 随 AI 那套挪走后没了，换成同样静态的 catalog。
+                val plain = client.get("/api/catalog")
                 assertEquals(HttpStatusCode.OK, plain.status)
                 assertNotEquals("不带 Accept-Encoding 就不该压", "gzip", plain.headers[HttpHeaders.ContentEncoding])
                 val raw = plain.bodyAsBytes()
                 assertTrue("样本要大到会触发压缩：${raw.size} 字节", raw.size > 1024)
 
-                val gz = client.get("/api/agent/manifest") { header(HttpHeaders.AcceptEncoding, "gzip") }
+                val gz = client.get("/api/catalog") { header(HttpHeaders.AcceptEncoding, "gzip") }
                 assertEquals(HttpStatusCode.OK, gz.status)
                 assertEquals("gzip", gz.headers[HttpHeaders.ContentEncoding])
                 val compressed = gz.bodyAsBytes()
