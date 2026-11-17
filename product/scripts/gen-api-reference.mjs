@@ -121,12 +121,59 @@ for (const name of groups) {
 // 生成的却是 CRLF；Windows 本地那份工作副本本来就是 CRLF，所以本地一直是绿的。
 // 现在两边先归一到 LF 再比，写出也用 LF，跨平台同一结论。
 const toLf = (text) => text.replaceAll('\r\n', '\n');
+
+// 散落在**其它**文档里的端点数也一起盯：本脚本生成的只有 docs/API-REFERENCE.md，
+// 而 ARCHITECTURE / STATUS / ROADMAP 是手写的，里面的「165 条端点」「端点数：165」只能靠人记得改。
+// 2026-11-17 就抓到三份文档停在 165（契约已经 166）—— 数字漂移在 diff 里看不出来，
+// 只会在「照着文档数接口」的那天打脸，所以放进门禁。
+//
+// 口径收窄到「看起来在说总数」的写法：像「AI 22 个端点」这种分组内的数字不在此列。
+const LIVE_DOC_FILES = ['ARCHITECTURE.md', 'STATUS.md', 'ROADMAP.md', 'STRUCTURE.md', 'README.md'];
+const TOTAL_PATTERNS = [
+  /端点数[：:]\s*(\d+)/g,
+  /(\d+)\s*条端点/g,
+  /(\d+)\s*条\s*\/\s*(\d+)\s*组/g,
+  /当前返回\s*(\d+)\s*条/g,
+  /端点分布（\s*(\d+)\s*条/g,
+];
+
+function liveDocDrift() {
+  const problems = [];
+  for (const name of LIVE_DOC_FILES) {
+    const file = path.join(PARENT, 'docs', name);
+    if (!fs.existsSync(file)) continue;
+    const lines = toLf(fs.readFileSync(file, 'utf8')).split('\n');
+    lines.forEach((text, index) => {
+      for (const pattern of TOTAL_PATTERNS) {
+        pattern.lastIndex = 0;
+        let match = pattern.exec(text);
+        while (match !== null) {
+          const total = Number(match[1]);
+          const groupCount = match[2] === undefined ? null : Number(match[2]);
+          if (total !== endpoints.length || (groupCount !== null && groupCount !== groups.length)) {
+            problems.push(name + ':' + (index + 1) + ' 写「' + match[0] + '」，契约是 ' + endpoints.length + ' 条 / ' + groups.length + ' 组');
+          }
+          if (pattern.lastIndex === match.index) pattern.lastIndex += 1;
+          match = pattern.exec(text);
+        }
+      }
+    });
+  }
+  return problems;
+}
 const output = toLf(lines.join('\n') + '\n');
 const existing = fs.existsSync(TARGET) ? toLf(fs.readFileSync(TARGET, 'utf8')) : null;
 
 if (checkOnly) {
   if (normalizeGeneratedAt(existing ?? '') !== normalizeGeneratedAt(output)) {
     console.error('[gen-api-reference] docs/API-REFERENCE.md 与 agent-api.json 不一致，重跑 `node scripts/gen-api-reference.mjs`');
+    process.exit(1);
+  }
+  const drift = liveDocDrift();
+  if (drift.length > 0) {
+    console.error('[gen-api-reference] 这些文档里手写的端点数与契约不一致：');
+    for (const line of drift) console.error('  ' + line);
+    console.error('  改数字，或者把那句数字删掉 —— 数字真源是 agent-api.json 的 count');
     process.exit(1);
   }
   console.log(`[gen-api-reference] OK：${endpoints.length} 条端点，${groups.length} 个分组，文档一致`);

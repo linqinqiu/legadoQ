@@ -85,7 +85,14 @@ fun main(args: Array<String>) {
     // 端口优先级：port.txt（界面上最后改的那一下）> .env / 环境变量 > 固定 1234。
     // 必须显式定死：裸 jar 默认是 8080，不传就会"起了但连不上"。
     val host = pick("LEGADO_HOST", "127.0.0.1")
-    var port = readPortFile(imageRoot) ?: pick("LEGADO_PORT", "1234").toIntOrNull() ?: 1234
+    val configuredPort = pick("LEGADO_PORT", "").trim().toIntOrNull()
+    var port = readPortFile(imageRoot) ?: configuredPort ?: 1234
+    // port.txt 是「界面里最后改的那一下」的记忆，优先级**刻意**高于 .env：否则用户在界面改的端口
+    // 下次启动会被 .env 里的旧值盖回去。但两者不一致时必须说出来 —— 用户明明改了 .env 却没生效，
+    // 日志里只有一句「启动中 http://…:旧端口」是猜不出原因的（2026-11-17 复查端口相关配置时发现）。
+    if (configuredPort != null && configuredPort != port) {
+        logDesktop("注意：.env/环境变量里的 LEGADO_PORT=$configuredPort 没生效，实际用 port.txt 记住的 $port（界面里改端口会写 port.txt；要用 $configuredPort 就先删掉 port.txt）")
+    }
 
     // 数据目录：.env / 环境变量显式给的优先；相对路径相对"镜像根"（exe 所在目录）解析；
     // 都没给就落在 <镜像根>/data（便携、不写系统盘）。
@@ -291,8 +298,12 @@ private fun findFreePort(host: String, from: Int, to: Int): Int? {
  */
 private fun shiftToFreePort(host: String, occupied: Int, imageRoot: Path): Int? {
     val shifted = findFreePort(host, occupied + 1, occupied + 20) ?: return null
-    imageRoot.resolve("port.txt").toFile().writeText("$shifted\n")
-    logDesktop("端口 $occupied 被占用，自动改用 $shifted（已写进 port.txt 记住）")
+    // 装进 `C:\Program Files` 这类只读目录时 port.txt 写不进去 —— 数据目录有 chooseDataDir 兜底，
+    // 这里以前没有：writeText 抛 IOException 会把整个启动打断（用户看到的是「双击没反应」）。
+    // 正确行为是照常起在空闲端口上，只是记不住：下次再顺延一遍，代价仅是启动时多探几个端口。
+    runCatching { imageRoot.resolve("port.txt").toFile().writeText("$shifted\n") }
+        .onSuccess { logDesktop("端口 $occupied 被占用，自动改用 $shifted（已写进 port.txt 记住）") }
+        .onFailure { logDesktop("端口 $occupied 被占用，自动改用 $shifted（安装目录不可写，这个端口没记住：${it.message}）") }
     return shifted
 }
 
