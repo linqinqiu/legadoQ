@@ -15,7 +15,8 @@
 
 | 目录 | 原来在哪 | 为什么挪走 | 怎么恢复 |
 | --- | --- | --- | --- |
-| `ai/` | `product/app/src/main/kotlin/io/legado/ai/`（28 个文件）· `product/app/src/main/kotlin/io/legado/http/AgentApiRoutes.kt` · `app/src/test/kotlin/io/legado/` 下 25 个 AI 测试（含 `ai/` 子目录） | 用户 2026-11-17：「就像 AI 这样的附属额外功能可以暂且移除，不使用」——整套 AI（对话、工具、外部模型接入、MCP、技能/提示词）不属于阅读器主线，先挪到一边做实验型 | ① `git mv product/experimental/ai/main/*.kt product/app/src/main/kotlin/io/legado/ai/`（`AgentApiRoutes.kt` 回 `http/`）；② `git mv product/experimental/ai/tests/*.kt product/app/src/test/kotlin/io/legado/`；③ 接回 `Application.kt` 的 `AgentModule.connect/install` 与 `Routes.kt` 的 `agentApiRoutes(...)`（两处各留了一行注释指路）；④ 把 22 条 `/api/agent` 端点加回 `agent-api.json` 并重跑 `npm --prefix product run docs:api`；⑤ 端点计数判据 `ApiContractTest` 与 `ApiCatalog.test.ts` 跟着改 |
+| `ai/web/` | `product/web/src/features/ai/`（12 个）· `lib/aiChatStore.ts` · `lib/aiToolGroups.ts` · `lib/api/domains/agent.ts` · 判据 7 个（`web/test/` 下 `Ai*.test.ts` 六个 + `SelectionContext.test.ts`） | 同上（AI 那个决定覆盖前后端） | 挪回 `web/src/` 对应位置，再把 `main.tsx` 的浮层/悬浮球、`settingsSections.ts` 的 AI 分区、`lib/api/index.ts` 的 agent 导出接回去；`MarkingMenu` 的「发给 AI」按钮同理 |
+| `ai/`（后端） | `product/app/src/main/kotlin/io/legado/ai/`（28 个文件）· `product/app/src/main/kotlin/io/legado/http/AgentApiRoutes.kt` · `app/src/test/kotlin/io/legado/` 下 25 个 AI 测试（含 `ai/` 子目录） | 用户 2026-11-17：「就像 AI 这样的附属额外功能可以暂且移除，不使用」——整套 AI（对话、工具、外部模型接入、MCP、技能/提示词）不属于阅读器主线，先挪到一边做实验型 | ① `git mv product/experimental/ai/main/*.kt product/app/src/main/kotlin/io/legado/ai/`（`AgentApiRoutes.kt` 回 `http/`）；② `git mv product/experimental/ai/tests/*.kt product/app/src/test/kotlin/io/legado/`；③ 接回 `Application.kt` 的 `AgentModule.connect/install` 与 `Routes.kt` 的 `agentApiRoutes(...)`（两处各留了一行注释指路）；④ 把 22 条 `/api/agent` 端点加回 `agent-api.json` 并重跑 `npm --prefix product run docs:api`；⑤ 端点计数判据 `ApiContractTest` 与 `ApiCatalog.test.ts` 跟着改 |
 
 ## 为什么不做成「开关」
 

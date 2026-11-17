@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { api, type BookNote, type Chapter } from '../../lib/api'
-import { setAiChatOpen } from '../../lib/aiChatStore'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
 import { toast } from '../../components/Toast'
 import type { OpenBook } from '../../lib/openBook'
@@ -172,12 +171,6 @@ export function useReaderNotes({ currentBook, bookName, chapter, content, paragr
     setNoteDraft(null)
     setNoteEditorOpen(false)
   }
-  /** 标记快捷条：把选区交给 AI 悬浮球（选区已写入 selectionStore）。 */
-  const sendSelectionToAi = () => {
-    setAiChatOpen(true)
-    setNoteDraft(null)
-    setNoteEditorOpen(false)
-  }
   /** 标记快捷条：关闭（Esc 也走这条）。 */
   const dismissMarkingMenu = () => {
     setNoteDraft(null)
@@ -195,6 +188,6 @@ export function useReaderNotes({ currentBook, bookName, chapter, content, paragr
     setNotes, setNoteDraft, setNoteEditorOpen, setNotesPanel,
     buildSelectionDraft, onReaderMouseUp,
     saveNote, removeNote, highlightFromMenu, openNoteEditor,
-    copySelection, sendSelectionToAi, dismissMarkingMenu, openNote,
+    copySelection, dismissMarkingMenu, openNote,
   }
 }

@@ -43,16 +43,6 @@ import { tts } from './domains/reader'
 
 import { backup } from './domains/backup'
 
-import { connections } from './domains/agent'
-import { models } from './domains/agent'
-import { agentSources } from './domains/agent'
-import { comprehend } from './domains/agent'
-import { chat } from './domains/agent'
-import { chatStream } from './domains/agent'
-import { skills } from './domains/agent'
-import { prompts } from './domains/agent'
-import { taskModels } from './domains/agent'
-import { mcp } from './domains/agent'
 
 import { brand } from './domains/brand'
 import { system } from './domains/system'
@@ -88,16 +78,6 @@ export {
   replaceRules,
   tts,
   backup,
-  connections,
-  models,
-  agentSources,
-  comprehend,
-  chat,
-  chatStream,
-  skills,
-  prompts,
-  taskModels,
-  mcp,
   brand,
   system,
 }
@@ -273,29 +253,6 @@ export const api = {
   controlTtsSession: tts.control,
   deleteTtsSession: tts.delete,
   fetchTtsAudioBlob: tts.speak,
-  // agent
-  agentManifest: connections.manifest,
-  listAgentConnections: connections.list,
-  registerAgentConnection: connections.register,
-  deleteAgentConnection: connections.delete,
-  validateAgentSource: agentSources.validate,
-  createAgentSource: agentSources.create,
-  agentComprehend: comprehend,
-  agentChat: chat,
-  agentChatStream: chatStream,
-  listAgentModels: models.list,
-  listAgentSkills: skills.list,
-  saveAgentSkill: skills.save,
-  deleteAgentSkill: skills.delete,
-  listAgentPrompts: prompts.list,
-  saveAgentPrompt: prompts.save,
-  deleteAgentPrompt: prompts.delete,
-  listAgentTaskModels: taskModels.list,
-  saveAgentTaskModel: taskModels.save,
-  listAgentMcp: mcp.list,
-  saveAgentMcp: mcp.save,
-  refreshAgentMcp: mcp.refresh,
-  deleteAgentMcp: mcp.delete,
   // system
   logs: system.logs,
   clearLogs: system.clearLogs,

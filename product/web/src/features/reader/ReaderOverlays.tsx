@@ -64,8 +64,7 @@ export interface ReaderOverlaysProps {
     onHighlight: () => void
     onNote: () => void
     onCopy: () => void
-    onAi: () => void
-    onReviews: () => void
+      onReviews: () => void
     onDismissMarking: () => void
     onCloseReviews: () => void
     onChangeNoteText: (text: string) => void
@@ -213,8 +212,7 @@ export function ReaderOverlays({ dialogs, book, reader, actions }: ReaderOverlay
           onHighlight={actions.onHighlight}
           onNote={actions.onNote}
           onCopy={actions.onCopy}
-          onAi={actions.onAi}
-          onReviews={actions.onReviews}
+              onReviews={actions.onReviews}
           onDismiss={actions.onDismissMarking}
         />
       )}

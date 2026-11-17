@@ -15,7 +15,6 @@ import { TapAction, zoneAt } from './interaction/tapZones'
 import { isMediaType } from '../../lib/bookType'
 import { bookmarkPayload, findBookmarkAt } from './notes/bookmark'
 import { splitByTerm } from './searchTerm'
-import { setAiChatOpen } from '../../lib/aiChatStore'
 import { performanceMonitor } from '../../lib/performance'
 import { setSelection, setSelectionFromDraft } from '../../lib/selectionStore'
 import { ReaderBody } from './ReaderBody'
@@ -2199,11 +2198,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
           onSelect: () => { notesApi.setNoteDraft(draft); notesApi.setNoteEditorOpen(true) },
         })
         items.push({
-          label: '发给 AI',
-          icon: 'sparkles',
-          onSelect: () => { setSelectionFromDraft(built.selection); setAiChatOpen(true) },
-        })
-        items.push({
           label: '段评',
           icon: 'comment',
           onSelect: () => setReviewsOpen(true),
@@ -2394,8 +2388,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onHighlight: notesApi.highlightFromMenu,
         onNote: notesApi.openNoteEditor,
         onCopy: notesApi.copySelection,
-        onAi: notesApi.sendSelectionToAi,
-        onReviews: () => { notesApi.dismissMarkingMenu(); setReviewsOpen(true) },
+          onReviews: () => { notesApi.dismissMarkingMenu(); setReviewsOpen(true) },
         onDismissMarking: notesApi.dismissMarkingMenu,
         onCloseReviews: () => setReviewsOpen(false),
         onChangeNoteText: text => notesApi.setNoteDraft(current => (current ? { ...current, text } : current)),

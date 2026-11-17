@@ -594,7 +594,7 @@ test('从主界面打开浮层要清空返回栈（否则会凭空跳回上一�
   assert.match(body, /setModalBackTo\(null\)/, 'openModalDirect 必须先清空返回栈')
 
   // 设置页/顶栏那些入口都该走 openModalDirect
-  for (const entry of ['openShortcuts', 'openOfflineCache', 'openSkins', 'openWallpaper', 'openBackup', 'openLogs', 'openServerPort', 'openAiConnections']) {
+  for (const entry of ['openShortcuts', 'openOfflineCache', 'openSkins', 'openWallpaper', 'openBackup', 'openLogs', 'openServerPort']) {
     assert.match(main, new RegExp(`${entry}: \\(\\) => openModalDirect\\('`),
       `${entry} 应从主界面打开（走 openModalDirect 清空返回栈）`)
   }

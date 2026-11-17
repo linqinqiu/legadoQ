@@ -53,20 +53,6 @@ export type SettingsActions = {
   openServerPort: () => void
   /** 应用名称与图标（本机安装根的品牌；与端口同一族） */
   openBrand: () => void
-  /** AI 对话助手：说话的地方（配置都收在下面几档） */
-  openAiChat: () => void
-  /** AI · 模型连接：登记外部模型、设为默认、实测可达 */
-  openAiConnections: () => void
-  /** AI · 工具：勾选模型能调用哪一组能力 */
-  openAiTools: () => void
-  /** AI · 外部工具：接本机跑的 MCP 服务，把它的工具变成 AI 的能力 */
-  openAiMcp: () => void
-  /** AI · 技能：命中关键词才注入的方法说明 */
-  openAiSkills: () => void
-  /** AI · 提示词：每次对话都生效的"怎么说话" */
-  openAiPrompts: () => void
-  /** AI · 书源校验：只读检查一份书源 JSON 的结构 */
-  openAiSourceCheck: () => void
   /**
    * 「Cookie」管理：打开全局凭据弹窗（与应用里其它 `AppModal` 浮层同一套外壳）。
    * 凭据按注册域共享，删书源不清桶，所以必须有这一处能看见全部、能逐个撤掉。
@@ -144,58 +130,6 @@ export function buildSettingsSections(actions: SettingsActions): SettingsSection
           hint: '导入手机 legadoQ 的备份包，或把书源、书架与规则导出成备份包。',
           action: '打开备份',
           onClick: actions.openBackup,
-        },
-        {
-          // 2026-11-12：这一项原先挂在「服务与接入」的 AI 堆里叫「AI 书源校验」——
-          // 它既不是 AI 能力（不调模型、不花钱），也不属于"服务怎么跑"。
-          // 它是**书源数据的合法性检查**，归「数据与凭据」才名实相符。
-          title: '书源 JSON 校验',
-          hint: '粘贴一份书源 JSON 看结构合不合法，只检查、不写入。',
-          action: '去校验',
-          onClick: actions.openAiSourceCheck,
-        },
-      ],
-    },
-    {
-      // AI 是自己的一个分区：它管的既不是"数据存了什么"，也不是"这台服务怎么跑"。
-      // 混在「服务与接入」里时，用户找一个端口要越过六个 AI 入口，找一个 AI 入口要先读端口。
-      title: 'AI',
-      rows: [
-        {
-          title: '对话助手',
-          hint: '跟模型说话；它会自己调用下面几项里开启的工具去查、去改。',
-          action: '开始对话',
-          onClick: actions.openAiChat,
-        },
-        {
-          title: '模型连接',
-          hint: '登记可用的模型、设为默认，并实测此刻通不通。',
-          action: '管理连接',
-          onClick: actions.openAiConnections,
-        },
-        {
-          title: '工具开关',
-          hint: '勾选模型能调用哪几组能力；关掉的组它连看都看不到。',
-          action: '选择工具',
-          onClick: actions.openAiTools,
-        },
-        {
-          title: '外部工具（MCP）',
-          hint: '接上本机跑的 MCP 服务，它的工具就会进「工具开关」的「外部工具」一档。',
-          action: '管理 MCP',
-          onClick: actions.openAiMcp,
-        },
-        {
-          title: '技能',
-          hint: '「这类任务怎么做」的方法说明，命中关键词才注入，一次最多 3 条。',
-          action: '管理技能',
-          onClick: actions.openAiSkills,
-        },
-        {
-          title: '提示词',
-          hint: '「怎么说话」的要求，启用的每次对话都带上，可排序可停用。',
-          action: '管理提示词',
-          onClick: actions.openAiPrompts,
         },
       ],
     },

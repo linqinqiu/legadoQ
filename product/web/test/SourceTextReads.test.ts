@@ -66,7 +66,6 @@ const BASELINE: Record<string, number> = {
   // 2026-11-17：AI 那批 web 判据挪到 product/experimental/ai/tests-web/，对上面这些文件的引用随之清零，
   // 基线按「只许单调缩小」的规矩跟着删；AiFloatingBall 仍被 main.tsx 的入口判断读到一次。
 
-  'src/features/ai/AiFloatingBall.tsx': 1,
   'src/features/bookshelf/BookInfoEditModal.tsx': 1,
   'src/features/bookshelf/BookManageModal.tsx': 1,
   'src/features/bookshelf/LibraryPage.tsx': 2,
@@ -85,7 +84,7 @@ const BASELINE: Record<string, number> = {
   'src/features/reader/ReaderChrome.tsx': 4,
   'src/features/reader/ReaderHeader.tsx': 3,
   'src/features/reader/ReaderOverlays.tsx': 1,
-  'src/features/reader/ReaderScreen.tsx': 16,
+  'src/features/reader/ReaderScreen.tsx': 15,
   'src/features/reader/settingsPanel/BehaviorTab.tsx': 1,
   'src/features/reader/settingsPanel/OtherSettingsPanel.tsx': 4,
   'src/features/reader/settingsPanel/readerSettings.ts': 3,
@@ -119,11 +118,9 @@ const BASELINE: Record<string, number> = {
   'src/lib/pageMeta.ts': 2,
 
   'src/lib/searchStore.ts': 1,
-  'src/lib/selectionStore.ts': 2,
   'src/lib/shelfLayout.ts': 1,
-  'src/lib/uiContext.ts': 2,
   'src/lib/useFocusTrap.ts': 2,
-  'src/main.tsx': 16,
+  'src/main.tsx': 15,
   'src/plugins/about/AboutModal.tsx': 3,
   'src/plugins/about/AboutPage.tsx': 1,
   'src/plugins/about/FeatureGuide.tsx': 1,

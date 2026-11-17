@@ -114,7 +114,7 @@
 | 阅读器 hook/展示 | `features/reader/` 下 `useReader*`(`useReaderPositionJump`=跳转原语：`jumpToNote`/`jumpToSearchHit`/`jumpToNotePosition`) · `ReaderBody`/`ReaderOverlays`/`ReaderChrome`/`ReaderCatalog` |
 | 书架页 | `features/bookshelf/ShelfPage.tsx`(1240) · `LibraryPage.tsx` |
 | 书源编辑器 | `features/source-editor/SourcesPage.tsx`(933) · `SourceLoginModal/UiPanel` · `SourceEditorPanel` · `SourceHealthModal` |
-| AI 连接/悬浮球（已撤） | 前端源码仍在 `features/ai/`，但入口由 `/healthz` 的 `ai` 关着；下一步同样挪进 `product/experimental/` |
+| AI 连接/悬浮球（已挪走） | 前端 12 个组件 + `lib/aiChatStore.ts`·`aiToolGroups.ts`·`api/domains/agent.ts` 已在 `product/experimental/ai/web/`；界面无入口 |
 | 通用模态 | `components/ReplaceRulesModal` · `SourceSwitchModal` · `BookDetailModal` |
 | 设置/Cookie | `features/settings/CookieSection.tsx` · `app/AppHeader.tsx` |
 | 统一 API 客户端（fetchWithMetrics） | `lib/api/client.ts` · `lib/performance.ts` |

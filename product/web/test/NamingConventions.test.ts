@@ -66,7 +66,7 @@ test('features/ 下的目录职责与文档一致', () => {
   // 那套 `builtinSettings.ts` 注册表连同分区一起删了，设置项的唯一来源是
   // `settings/settingsSections.ts`（见 SettingsPage.tsx 的说明）。
   // 0.2.14：业务域按面收进 features/（书源 / 书架 / 阅读 / 设置）；feedback 为既有域。
-  const expected = ['ai', 'bookshelf', 'explore', 'reader', 'rss', 'settings', 'source-editor']
+  const expected = ['bookshelf', 'explore', 'reader', 'rss', 'settings', 'source-editor']
   for (const d of expected) {
     assert.ok(fs.existsSync(path.join(SRC, 'features', d)),
       `features/${d}/ 应存在（产品自带内容）`)

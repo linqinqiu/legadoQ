@@ -136,11 +136,11 @@ test('选中浮层里多了一个「段评」入口，其余四个动作照旧',
     onHighlight: () => {}, onNote: () => {}, onCopy: () => {}, onAi: () => {}, onReviews: () => {}, onDismiss: () => {},
   }))
   assert.match(html, /aria-label="段评"/)
-  for (const label of ['划线', '笔记', '复制', 'AI']) {
+  for (const label of ['划线', '笔记', '复制', '段评']) {
     assert.match(html, new RegExp(`aria-label="${label}"`), `原有动作 ${label} 不该被这一刀挤掉`)
   }
   const buttons = html.match(/<button[^>]*>/g) ?? []
-  assert.equal(buttons.length, 6, `选中断层应是 5 个动作 + 关闭，实际 ${buttons.length}`)
+  assert.equal(buttons.length, 5, `选中断层应是 4 个动作 + 关闭（AI 那个按钮 2026-11-17 随代码搬走），实际 ${buttons.length}`)
   for (const button of buttons) assert.match(button, /type="button"/)
 })
 

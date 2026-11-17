@@ -25,14 +25,6 @@ import { AboutModal } from './plugins/about/AboutModal'
 import { GuideModal } from './plugins/about/GuideModal'
 import { ReadingLogModal } from './plugins/reading-log/ReadingLogModal'
 import { SourceHealthEntryModal } from './plugins/source-health/SourceHealthModalEntry'
-import { AiModal } from './features/ai/AiModal'
-import { AiConnectionsModal } from './features/ai/AiConnectionsModal'
-import { AiToolsModal } from './features/ai/AiToolsModal'
-import { AiMcpModal } from './features/ai/AiMcpModal'
-import { AiSkillsModal } from './features/ai/AiSkillsModal'
-import { AiPromptsModal } from './features/ai/AiPromptsModal'
-import { AiSourceCheckModal } from './features/ai/AiSourceCheckModal'
-import { AiFloatingBall } from './features/ai/AiFloatingBall'
 import type { UiContext } from './lib/uiContext'
 import { getSelection, subscribeSelection } from './lib/selectionStore'
 import { cleanAuthor, cleanTitle } from './lib/searchFilters'
@@ -165,8 +157,6 @@ function App() {
   const [serverRevision, setServerRevision] = useState('')
   /** 修订号对应的短 sha，用于定位具体提交（只进 tooltip，不占界面）。 */
   const [serverSha, setServerSha] = useState('')
-  /** AI 能力面这一版是否启用（`/healthz` 的 `ai`）。2026-11-17 起产品默认关：关着时不渲染悬浮球、设置里也不出现「AI」那一档。初值 false，避免默认关的产品先闪一下入口再消失。 */
-  const [aiEnabled, setAiEnabled] = useState(false)
   const [selected, setSelected] = useState<SourceSummary | null>(null)
   const [reader, setReader] = useState<{ book: OpenBook; index: number } | null>(() => {
     try {
@@ -392,8 +382,7 @@ function App() {
         if (health?.rev) {
           setServerRevision(String(health.rev))
         }
-        if (typeof health?.ai === 'boolean') setAiEnabled(health.ai)
-    if (health?.sha) {
+        if (health?.sha) {
           setServerSha(String(health.sha))
         }
         setBootHint('')
@@ -657,13 +646,6 @@ function App() {
             sources={sources}
           />
         </ErrorBoundary>
-        {/* 全局 AI 悬浮球在阅读器里也要在：
-            「不能随时随地使用、不能在对应地点研究」——读到一半的正文正是最该能问的地方。
-            这里带的 uiContext 含「正在读这本书第几章」，模型问的是眼前这一段。
-
-            注意它必须挂在**这一支自己的返回树**里：主壳那支在下面提前 return 了，
-            读到这里说明主壳根本没渲染过，指望主壳的悬浮球是等不到的。 */}
-        {aiEnabled && <AiFloatingBall uiContext={currentUiContext} />}
       </div>
     )
   }
@@ -692,15 +674,8 @@ function App() {
       openLogs: () => openModalDirect('logs'),
       openServerPort: () => openModalDirect('server-port'),
       openBrand: () => openModalDirect('brand'),
-      openAiChat: () => openModalDirect('ai'),
-      openAiConnections: () => openModalDirect('ai-connections'),
-      openAiTools: () => openModalDirect('ai-tools'),
-      openAiMcp: () => openModalDirect('ai-mcp'),
-      openAiSkills: () => openModalDirect('ai-skills'),
-      openAiPrompts: () => openModalDirect('ai-prompts'),
-      openAiSourceCheck: () => openModalDirect('ai-source-check'),
       openCookies: () => openModalDirect('cookies'),
-    }).filter(section => aiEnabled || section.title !== 'AI'),
+    }),
     tocRulesSignal,
     onSelectSource: setSelected,
     onSourcesChange: setSources,
@@ -796,29 +771,6 @@ function App() {
         />
       )}
 
-      {/* —— AI：**按能力各一档**（以前六块挤在一屏里滚不到底） ——
-          对话是「用」，其余是「配」：连接、工具、技能、提示词、书源校验都能从设置直达。
-          对话里那颗「去登记模型连接」走浮层返回栈：关掉连接要回到对话，而不是被扔回主界面。 */}
-      {openModal === 'ai' && (
-        <AiModal
-          onClose={closeModal}
-          uiContext={currentUiContext}
-          onOpenConnections={() => openModalFrom('ai-connections', 'ai')}
-        />
-      )}
-      {openModal === 'ai-connections' && <AiConnectionsModal onClose={closeModal} />}
-      {openModal === 'ai-tools' && <AiToolsModal onClose={closeModal} />}
-      {openModal === 'ai-mcp' && <AiMcpModal onClose={closeModal} />}
-      {openModal === 'ai-skills' && <AiSkillsModal onClose={closeModal} />}
-      {openModal === 'ai-prompts' && <AiPromptsModal onClose={closeModal} />}
-      {openModal === 'ai-source-check' && <AiSourceCheckModal onClose={closeModal} />}
-
-      {/* —— 全局 AI 悬浮球：挂在根上，**每个页面都在** ——
-          用户原话：「ai 功能太差，1 是位置问题，不能随时随地使用，不能在对应地点研究」。
-          以前只能从「设置 → AI 接入」开模态弹窗，人得离开正在看的书/书源走三层才能问一句。
-          现在它常驻右下角，带着当前页面的 uiContext（在阅读器就带这本书与章节，
-          在书源页就带这个源），问的就是眼前这个东西；对话历史跨页面/跨会话保留。 */}
-      {aiEnabled && <AiFloatingBall uiContext={currentUiContext} />}
     </div>
   )
 }
