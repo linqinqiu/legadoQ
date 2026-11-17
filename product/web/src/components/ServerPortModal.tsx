@@ -64,6 +64,12 @@ export function ServerPortModal({ onClose }: { onClose: () => void }) {
                 : '已绑定到非回环地址：同一网络中的其它设备可以访问本服务及其全部接口。仅在可信网络中临时使用；启动时需要设置 LEGADO_ALLOW_EXTERNAL_BIND=1。'}
             </p>
           )}
+          <p className="customize-note">
+            这个端口被别的程序占着也不会起不来：启动时会自动往后找第一个空闲端口，并在控制台说明改用了哪个。
+          </p>
+          <p className="customize-note">
+            改端口不影响你的数据与设置 —— 书架、书源、壁纸、阅读设置都存在数据目录里，跟着这台机器走。
+          </p>
           <label className="customize-field">
             <span>改成（1–65535）</span>
             <input
