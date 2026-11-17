@@ -679,7 +679,7 @@
       "path": "/api/backup/export",
       "write": false,
       "group": "备份",
-      "purpose": "导出备份包（zip）：当前只支持书源（domain=source，默认值），包内是 bookSource.json；书架 / 替换规则 / 分组 / RSS 随后补",
+      "purpose": "导出备份包（zip）：domain=source（默认）导出书源、包内 bookSource.json；domain=replaceRule 导出替换规则、包内 replaceRule.json；书架 / 分组 / RSS 随后补",
       "response": "application/zip，Content-Disposition 为 attachment，文件名 legadoq-sources-<yyyyMMdd-HHmm>.zip；未知 domain 400 invalid_domain"
     },
     {

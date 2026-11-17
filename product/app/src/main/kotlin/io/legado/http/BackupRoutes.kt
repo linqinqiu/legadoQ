@@ -71,7 +71,8 @@ fun Route.backupRoutes(
             call.respondText(body, ContentType.Application.Json)
         }
         /**
-         * 导出备份（当前只有**书源**这一域，其余域按 `docs/research/研究-备份导出设计-2026-11-16.md` 逐个补）。
+         * 导出备份，一域一包。当前支持**书源**（domain=source，默认）与**替换规则**（domain=replaceRule）；
+         * 书架 / 分组 / RSS 按 `docs/research/研究-备份导出设计-2026-11-16.md` 逐个补。
          *
          * 为什么要带 `domain` 参数而不是直接叫"导出全部"：只导一域时，文件名与参数都写明范围，
          * 用户不会以为"备份好了"、恢复时才发现书架没在里面。未知域直接 400，不静默降级。
@@ -81,20 +82,26 @@ fun Route.backupRoutes(
          */
         get("/backup/export") {
             val domain = call.request.queryParameters["domain"]?.trim()?.lowercase().orEmpty().ifBlank { "source" }
-            if (domain != "source") {
-                return@get call.respond(
-                    HttpStatusCode.BadRequest,
-                    ApiError("invalid_domain", "目前只支持导出书源（domain=source）；书架/规则/分组/RSS 随后补"),
-                )
-            }
             val stamp = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
+            val file = when (domain) {
+                "source" -> "legadoq-sources-$stamp.zip"
+                "replacerule", "rule" -> "legadoq-replace-rules-$stamp.zip"
+                else -> return@get call.respond(
+                    HttpStatusCode.BadRequest,
+                    ApiError(
+                        "invalid_domain",
+                        "目前支持导出书源（domain=source）与替换规则（domain=replaceRule）；书架/分组/RSS 随后补",
+                    ),
+                )
+            }
             call.response.header(
                 HttpHeaders.ContentDisposition,
-                "attachment; filename=\"legadoq-sources-$stamp.zip\"",
+                "attachment; filename=\"$file\"",
             )
             call.respondOutputStream(ContentType.Application.Zip) {
-                BackupExporter.exportSources(database, this)
+                if (domain == "source") BackupExporter.exportSources(database, this)
+                else BackupExporter.exportReplaceRules(database, this)
             }
         }
         post("/backup/import") {

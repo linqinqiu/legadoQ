@@ -1,7 +1,11 @@
 package io.legado.backup
 
 import io.legado.data.Database
+import io.legado.data.exportReplaceRules
 import io.legado.data.forEachSourcePayload
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -26,8 +30,11 @@ import java.util.zip.ZipOutputStream
  */
 internal object BackupExporter {
 
-    /** 上游与 `BackupImporter` 都认的条目名。 */
+    /** 上游与 BackupImporter 都认的条目名。 */
     const val SOURCES_ENTRY = "bookSource.json"
+
+    /** 替换规则那份；BackupImporter 的 RULE_NAMES 认它。 */
+    const val RULES_ENTRY = "replaceRule.json"
 
     /** 攒到这么大就落一次盘；太小会让小库也写很多次，太大会让峰值内存变难看。 */
     private const val FLUSH_CHARS = 64 * 1024
@@ -49,6 +56,47 @@ internal object BackupExporter {
         }
         buffer.append(']')
         zip.write(buffer.toString().toByteArray(Charsets.UTF_8))
+        zip.closeEntry()
+        zip.finish()
+        zip.flush()
+    }
+
+    /**
+     * 导出替换规则（第二域）。
+     *
+     * 与书源不同，这里**不**逐条流式写：替换规则是几十条量级、单条十几到几百字节，
+     * 先拼成一个数组再写，峰值也就几十 KB —— 为它套一层游标反而把代码复杂化。
+     * 什么时候量级变了（比如有人导进几千条），再照 exportSources 的写法改。
+     *
+     * 字段名与 BackupImporter.ruleOf 逐一对齐（那边的 text/flag/number 读的就是这些键）；
+     * 可选字段为空时**整个键不写** —— 写成空串会让导入侧拿到空串而不是 null，往返就对不上了。
+     */
+    fun exportReplaceRules(database: Database, out: OutputStream) {
+        val rules = database.exportReplaceRules(null)
+        val array = buildJsonArray {
+            for (rule in rules) {
+                add(
+                    buildJsonObject {
+                        put("id", rule.id)
+                        put("name", rule.name)
+                        rule.group?.let { put("group", it) }
+                        put("pattern", rule.pattern)
+                        put("replacement", rule.replacement)
+                        put("isRegex", rule.isRegex)
+                        rule.scope?.let { put("scope", it) }
+                        rule.excludeScope?.let { put("excludeScope", it) }
+                        put("scopeTitle", rule.scopeTitle)
+                        put("scopeContent", rule.scopeContent)
+                        put("isEnabled", rule.isEnabled)
+                        put("order", rule.order)
+                        put("timeoutMillisecond", rule.timeoutMillisecond)
+                    },
+                )
+            }
+        }
+        val zip = ZipOutputStream(out)
+        zip.putNextEntry(ZipEntry(RULES_ENTRY))
+        zip.write(array.toString().toByteArray(Charsets.UTF_8))
         zip.closeEntry()
         zip.finish()
         zip.flush()

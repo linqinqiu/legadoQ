@@ -2,9 +2,12 @@ package io.legado
 
 import io.legado.backup.BackupExporter
 import io.legado.backup.BackupImporter
+import io.legado.model.ReplaceRule
 import io.legado.data.Database
+import io.legado.data.exportReplaceRules
 import io.legado.data.exportSources
 import io.legado.data.importSources
+import io.legado.data.saveReplaceRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -76,4 +79,79 @@ class BackupExportRoundTripTest {
             directory.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun `导出的替换规则包能原样导回空库`() {
+        val directory = Files.createTempDirectory("legado-backup-export-rules")
+        val source = Database(directory.resolve("source.sqlite").toString())
+        val target = Database(directory.resolve("target.sqlite").toString())
+        try {
+            source.initialize()
+            target.initialize()
+            source.saveReplaceRule(
+                ReplaceRule(
+                    name = "去广告",
+                    group = "净化",
+                    pattern = "<div class=\"ad\".*?</div>",
+                    replacement = "",
+                    isRegex = true,
+                    scope = ".*",
+                    excludeScope = null,
+                    scopeTitle = true,
+                    scopeContent = true,
+                    isEnabled = true,
+                    order = 1,
+                    timeoutMillisecond = 3000L,
+                ),
+            )
+            source.saveReplaceRule(
+                ReplaceRule(
+                    name = "换行合并",
+                    group = null,
+                    pattern = "\\n+",
+                    replacement = "\n",
+                    isRegex = false,
+                    scope = null,
+                    excludeScope = ".*漫画.*",
+                    scopeTitle = false,
+                    scopeContent = false,
+                    isEnabled = false,
+                    order = 2,
+                    timeoutMillisecond = 800L,
+                ),
+            )
+
+            val bytes = ByteArrayOutputStream().also { BackupExporter.exportReplaceRules(source, it) }.toByteArray()
+
+            // 包形状：唯一一条 replaceRule.json，内容是一整个 JSON 数组
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                assertEquals("replaceRule.json", zip.nextEntry?.name)
+                val text = zip.readBytes().toString(Charsets.UTF_8)
+                assertTrue("必须是 JSON 数组：${text.take(40)}", text.startsWith("[") && text.endsWith("]"))
+                assertTrue("两条规则都要在包里", text.contains("去广告") && text.contains("换行合并"))
+            }
+
+            val archive = directory.resolve("rules.zip")
+            Files.write(archive, bytes)
+            assertEquals("导入条数", 2, BackupImporter(target).import(archive).rules)
+
+            // 逐字段比对：id 也一起比（导出带 id，导入按 id upsert）
+            assertEquals(
+                "规则字段必须逐条相同",
+                source.exportReplaceRules(null).map(::comparable),
+                target.exportReplaceRules(null).map(::comparable),
+            )
+        } finally {
+            source.close()
+            target.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /** 参与往返比对的字段；createdAt/updatedAt 是导入时按当前时间写的，不比。 */
+    private fun comparable(rule: ReplaceRule): List<Any?> = listOf(
+        rule.id, rule.name, rule.group, rule.pattern, rule.replacement, rule.isRegex,
+        rule.scope, rule.excludeScope, rule.scopeTitle, rule.scopeContent,
+        rule.isEnabled, rule.order, rule.timeoutMillisecond,
+    )
 }

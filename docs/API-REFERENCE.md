@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.2.42 · 端点数：166 · 生成时间：2026-11-16
+> 版本：0.2.42 · 端点数：166 · 生成时间：2026-11-17
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -146,7 +146,7 @@
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
-| GET | `/api/backup/export` | 否 | 导出备份包（zip）：当前只支持书源（domain=source，默认值），包内是 bookSource.json；书架 / 替换规则 / 分组 / RSS 随后补 |
+| GET | `/api/backup/export` | 否 | 导出备份包（zip）：domain=source（默认）导出书源、包内 bookSource.json；domain=replaceRule 导出替换规则、包内 replaceRule.json；书架 / 分组 / RSS 随后补 |
 | GET | `/api/backup/kept` | 否 | 服务器上留存的备份条目清单（手机导出的 .zip 里那几段，段级存下来了） |
 | GET | `/api/backup/kept/{name}` | 否 | 取其中一个条目的 JSON 原文（name 用清单里给的那个，别自己拼） |
 | POST | `/api/backup/import` | 是 | 上传备份入库（multipart）：手机/兄弟项目导出的 zip，或裸 JSON（分享书源数组、{bookSource:[…],bookshelf:[…]} 合并导出）；容器按内容判别，不看扩展名；请求体：file=multipart 文件字段，zip 或 .json（≤64 MiB），password=可选，只用于解开 zip 里的 cookies.json |
