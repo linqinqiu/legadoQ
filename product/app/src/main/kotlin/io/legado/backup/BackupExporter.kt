@@ -3,8 +3,10 @@ package io.legado.backup
 import io.legado.data.Database
 import io.legado.data.exportReplaceRules
 import io.legado.data.forEachRssPayload
+import io.legado.data.forEachShelfEntry
 import io.legado.data.forEachSourcePayload
 import io.legado.data.listBookGroups
+import io.legado.model.BackupShelfEntry
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -44,11 +46,14 @@ internal object BackupExporter {
     /** RSS 订阅源那份；上游写出的名字是复数 rssSources.json。 */
     const val RSS_ENTRY = "rssSources.json"
 
+    /** 书架那份（含阅读进度）。 */
+    const val SHELF_ENTRY = "bookshelf.json"
+
     /** 攒到这么大就落一次盘；太小会让小库也写很多次，太大会让峰值内存变难看。 */
     private const val FLUSH_CHARS = 64 * 1024
 
     fun exportSources(database: Database, out: OutputStream) =
-        writePayloadArray(out, SOURCES_ENTRY, database::forEachSourcePayload)
+        writeJsonArray(out, SOURCES_ENTRY) { emit -> database.forEachSourcePayload(emit) }
 
     /**
      * 导出 RSS 订阅源（第四域）。
@@ -57,27 +62,86 @@ internal object BackupExporter {
      * 包内 `rssSources.json` 是一整个数组 —— `BackupImporter` 认这个名字，也认这种形状。
      */
     fun exportRssSources(database: Database, out: OutputStream) =
-        writePayloadArray(out, RSS_ENTRY, database::forEachRssPayload)
+        writeJsonArray(out, RSS_ENTRY) { emit -> database.forEachRssPayload(emit) }
 
     /**
-     * 原样输出 payload 的那几域（书源 / RSS）共用：边查边写，绝不把整表拼成一个字符串。
+     * 导出书架 + 阅读进度（第五域，也是最麻烦的一域）。
+     *
+     * 三条都得对上，否则「恢复了但位置不对 / 分组全丢」：
+     * 1. 进度在 `reading_progress`、分组在 `book_shelf.group_id`，见 forEachShelfEntry；
+     * 2. `completed` 是布尔，上游是 `kind` 文本（`contains("完结")`），这里写「完结」/空串；
+     * 3. `group` 写**原 group_id**：导入侧 importBookGroupsOn 按名字重映射成本机号。
+     */
+    fun exportBookshelf(database: Database, out: OutputStream) =
+        zipWith(out) { zip ->
+            // 分组必须跟着书架一起走：`bookshelf.json` 里的 `group` 是手机那侧的组号，
+            // 导入侧靠 `bookGroup.json` 里的 (组号 → 名字) 把它换成本机号。
+            // 只给 bookshelf.json 的话，包导回去所有书都掉进「未分组」—— 这不是恢复，是丢数据。
+            // 用 `domain=group` 单独导也行，那份只写 bookGroup.json。
+            val groups = database.listBookGroups()
+            if (groups.isNotEmpty()) {
+                writeArrayEntry(zip, GROUPS_ENTRY) { emit ->
+                    for (group in groups) {
+                        emit(buildJsonObject { put("groupId", group.id); put("groupName", group.name) }.toString())
+                    }
+                }
+            }
+            writeArrayEntry(zip, SHELF_ENTRY) { emit ->
+                database.forEachShelfEntry { entry -> emit(shelfJson(entry)) }
+            }
+        }
+
+    /** 一条书架记录 → 上游形状。可选字段为空时整个键不写（空串与 null 在导入侧不等价）。 */
+    private fun shelfJson(entry: BackupShelfEntry): String = buildJsonObject {
+        put("name", entry.name)
+        entry.author?.takeIf { it.isNotBlank() }?.let { put("author", it) }
+        put("bookUrl", entry.bookUrl)
+        put("origin", entry.sourceId)
+        put("tocUrl", entry.tocUrl)
+        entry.coverUrl?.takeIf { it.isNotBlank() }?.let { put("coverUrl", it) }
+        put("kind", if (entry.completed) "完结" else "")
+        put("durChapterIndex", entry.chapterIndex)
+        put("durChapterPos", entry.chapterPos)
+        put("durChapterTime", entry.readAt)
+        put("group", entry.phoneGroupId)
+    }.toString()
+
+    /**
+     * 所有数组型域共用：边查边写，绝不把整表拼成一个字符串。
      *
      * 5,600 条书源 25 MB 的实测摆在那里：先拼成大字符串再写，峰值要翻两三倍；
      * 而 zip 是一路往后追加的，攒够 [FLUSH_CHARS] 就落一次盘，峰值只有一块缓冲区。
+     *
+     * [forEachJson] 负责逐条把 JSON 文本交给 `emit`：书源/RSS 是原样透传 payload，
+     * 书架则是把行拼成对象再交出来 —— 都归到这里，加域时不用再抄一遍分块逻辑。
      */
-    private fun writePayloadArray(
+    private fun writeJsonArray(
         out: OutputStream,
         entryName: String,
-        forEachPayload: ((String) -> Unit) -> Unit,
-    ) {
+        forEachJson: ((String) -> Unit) -> Unit,
+    ) = zipWith(out) { zip -> writeArrayEntry(zip, entryName, forEachJson) }
+
+    /** 单条目 zip 的外壳；多条目的域（书架带分组）自己往 [zip] 里塞。 */
+    private fun zipWith(out: OutputStream, write: (ZipOutputStream) -> Unit) {
         val zip = ZipOutputStream(out)
+        write(zip)
+        zip.finish()
+        zip.flush()
+    }
+
+    /** 往已打开的 zip 里写一个 JSON 数组条目，边查边写、攒够 [FLUSH_CHARS] 落一次盘。 */
+    private fun writeArrayEntry(
+        zip: ZipOutputStream,
+        entryName: String,
+        forEachJson: ((String) -> Unit) -> Unit,
+    ) {
         zip.putNextEntry(ZipEntry(entryName))
         val buffer = StringBuilder(FLUSH_CHARS + 1024)
         buffer.append('[')
         var first = true
-        forEachPayload { payload ->
+        forEachJson { json ->
             if (!first) buffer.append(',')
-            buffer.append(payload)
+            buffer.append(json)
             first = false
             if (buffer.length >= FLUSH_CHARS) {
                 zip.write(buffer.toString().toByteArray(Charsets.UTF_8))
@@ -87,8 +151,6 @@ internal object BackupExporter {
         buffer.append(']')
         zip.write(buffer.toString().toByteArray(Charsets.UTF_8))
         zip.closeEntry()
-        zip.finish()
-        zip.flush()
     }
 
     /**

@@ -2,11 +2,19 @@ package io.legado
 
 import io.legado.backup.BackupExporter
 import io.legado.backup.BackupImporter
+import io.legado.model.BackupShelfEntry
+import io.legado.model.BookshelfWriteRequest
+import io.legado.model.ReadingProgress
 import io.legado.model.ReplaceRule
 import io.legado.data.Database
+import io.legado.data.assignBookGroup
 import io.legado.data.createBookGroup
 import io.legado.data.forEachRssPayload
+import io.legado.data.forEachShelfEntry
 import io.legado.data.importRssSources
+import io.legado.data.saveBookshelf
+import io.legado.data.saveProgress
+import io.legado.data.setBookshelfCompleted
 import io.legado.data.exportReplaceRules
 import io.legado.data.listBookGroups
 import io.legado.data.exportSources
@@ -237,6 +245,82 @@ class BackupExportRoundTripTest {
     private fun rssPayloads(database: Database): List<String> {
         val list = mutableListOf<String>()
         database.forEachRssPayload { list += it }
+        return list
+    }
+
+
+    @Test
+    fun `导出的书架包能原样导回空库（含进度与分组）`() {
+        val directory = Files.createTempDirectory("legado-backup-export-shelf")
+        val source = Database(directory.resolve("source.sqlite").toString())
+        val target = Database(directory.resolve("target.sqlite").toString())
+        try {
+            source.initialize()
+            target.initialize()
+            val sourceId = "https://shelf-a.example/"
+            val bookUrl = "https://shelf-a.example/book/1"
+            source.saveBookshelf(
+                BookshelfWriteRequest(
+                    sourceId = sourceId,
+                    bookUrl = bookUrl,
+                    name = "甲书",
+                    author = "作者甲",
+                    tocUrl = "https://shelf-a.example/book/1/toc",
+                    coverUrl = "https://img.example/a.jpg",
+                ),
+                cover = null,
+            )
+            source.saveProgress(ReadingProgress(sourceId, bookUrl, "chapter-7", 7, 0.25, 123))
+            source.assignBookGroup(sourceId, bookUrl, source.createBookGroup("玄幻").id)
+            source.setBookshelfCompleted(sourceId, bookUrl, true)
+
+            val bytes = ByteArrayOutputStream().also { BackupExporter.exportBookshelf(source, it) }.toByteArray()
+
+            // 书架域刻意带两条：分组必须跟着一起走，否则导回去全掉进「未分组」
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                assertEquals("bookGroup.json", zip.nextEntry?.name)
+                val groupsText = zip.readBytes().toString(Charsets.UTF_8)
+                assertTrue("分组要一起导出", groupsText.contains("玄幻"))
+            }
+            ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                zip.nextEntry
+                assertEquals("bookshelf.json", zip.nextEntry?.name)
+                val text = zip.readBytes().toString(Charsets.UTF_8)
+                assertTrue("必须是 JSON 数组：${text.take(40)}", text.startsWith("[") && text.endsWith("]"))
+                assertTrue("kind 要写成上游的「完结」，不是 true", text.contains("\"kind\":\"完结\""))
+                assertTrue("group 要写原 group_id", text.contains("\"group\":"))
+            }
+
+            val archive = directory.resolve("shelf.zip")
+            Files.write(archive, bytes)
+            assertEquals("导入本数", 1, BackupImporter(target).import(archive).books)
+
+            val mine = shelfEntries(source).single()
+            val back = shelfEntries(target).single()
+            assertEquals("书名", mine.name, back.name)
+            assertEquals("作者", mine.author, back.author)
+            assertEquals("书源", mine.sourceId, back.sourceId)
+            assertEquals("目录地址", mine.tocUrl, back.tocUrl)
+            assertEquals("封面", mine.coverUrl, back.coverUrl)
+            assertEquals("完结标记", true, back.completed)
+            assertEquals("章序号", 7, back.chapterIndex)
+            assertEquals("章内偏移", 123, back.chapterPos)
+            assertEquals("读到时间", mine.readAt, back.readAt)
+
+            // 分组号由导入侧按名字重映射：空库里新分组是 1 号，名字必须对上
+            assertEquals("分组名", listOf("玄幻"), target.listBookGroups().map { it.name })
+            assertEquals("挂到分组上", 1L, back.phoneGroupId)
+        } finally {
+            source.close()
+            target.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /** 按导出同款顺序（书名升序）取书架条目。 */
+    private fun shelfEntries(database: Database): List<BackupShelfEntry> {
+        val list = mutableListOf<BackupShelfEntry>()
+        database.forEachShelfEntry { list += it }
         return list
     }
 

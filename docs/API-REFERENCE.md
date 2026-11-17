@@ -146,7 +146,7 @@
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
-| GET | `/api/backup/export` | 否 | 导出备份包（zip），一域一包：domain=source（默认）→ bookSource.json，domain=replaceRule → replaceRule.json，domain=group → bookGroup.json，domain=rss → rssSources.json；书架随后补 |
+| GET | `/api/backup/export` | 否 | 导出备份包（zip），一域一包：domain=source（默认）→ bookSource.json，domain=replaceRule → replaceRule.json，domain=group → bookGroup.json，domain=rss → rssSources.json，domain=shelf → bookshelf.json（含阅读进度）＋分组一起带上 bookGroup.json |
 | GET | `/api/backup/kept` | 否 | 服务器上留存的备份条目清单（手机导出的 .zip 里那几段，段级存下来了） |
 | GET | `/api/backup/kept/{name}` | 否 | 取其中一个条目的 JSON 原文（name 用清单里给的那个，别自己拼） |
 | POST | `/api/backup/import` | 是 | 上传备份入库（multipart）：手机/兄弟项目导出的 zip，或裸 JSON（分享书源数组、{bookSource:[…],bookshelf:[…]} 合并导出）；容器按内容判别，不看扩展名；请求体：file=multipart 文件字段，zip 或 .json（≤64 MiB），password=可选，只用于解开 zip 里的 cookies.json |

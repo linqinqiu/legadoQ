@@ -1,6 +1,7 @@
 package io.legado.data
 
 import io.legado.cache.CachedCover
+import io.legado.model.BackupShelfEntry
 import io.legado.model.BookGroup
 import io.legado.model.BookIdentifier
 import io.legado.model.BookshelfInfoUpdateRequest
@@ -126,6 +127,45 @@ fun Database.deleteBookGroup(groupId: Long): Boolean = write { db ->
     val removed = db.prepareStatement("delete from book_group where group_id=?").use { it.setLong(1, groupId); it.executeUpdate() } == 1
     if (removed) db.prepareStatement("update book_shelf set group_id=0 where group_id=?").use { it.setLong(1, groupId); it.executeUpdate() }
     removed
+}
+
+
+/**
+ * 逐条吐书架条目（含阅读进度与分组号）—— 备份导出用。
+ *
+ * 进度不在 `book_shelf` 里（在 `reading_progress`）、分组在 `book_shelf.group_id`，这里一次 left join 取齐。
+ * 没有进度行时三个进度字段取 0（与导入侧的默认口径一致），`readAt` 退回书架自己的 `last_read_at`。
+ *
+ * 复用 [BackupShelfEntry] 而不是另造一个导出 DTO：导出与导入必须认同一个字段集，
+ * 两个类型迟早会漂成两套（备份这种「写出去了还得能读回来」的东西尤其不能容忍）。
+ */
+fun Database.forEachShelfEntry(block: (BackupShelfEntry) -> Unit): Unit = connect { db ->
+    db.createStatement().use { statement ->
+        statement.executeQuery(
+            """select s.source_id, s.book_url, s.name, s.author, s.toc_url, s.cover_url, s.completed,
+               coalesce(p.chapter_index, 0), coalesce(p.char_offset, 0), coalesce(p.updated_at, s.last_read_at),
+               s.group_id
+               from book_shelf s
+               left join reading_progress p on p.source_id = s.source_id and p.book_url = s.book_url
+               order by s.name collate nocase, s.book_url""".trimIndent(),
+        ).use { rs ->
+            while (rs.next()) block(
+                BackupShelfEntry(
+                    sourceId = rs.getString(1),
+                    bookUrl = rs.getString(2),
+                    name = rs.getString(3),
+                    author = rs.getString(4),
+                    tocUrl = rs.getString(5) ?: rs.getString(2),
+                    coverUrl = rs.getString(6),
+                    completed = rs.getInt(7) != 0,
+                    chapterIndex = rs.getInt(8),
+                    chapterPos = rs.getInt(9),
+                    readAt = rs.getLong(10),
+                    phoneGroupId = rs.getLong(11),
+                ),
+            )
+        }
+    }
 }
 
 fun Database.assignBookGroup(sourceId: String, bookUrl: String, groupId: Long): BookshelfItem? = write { db ->
