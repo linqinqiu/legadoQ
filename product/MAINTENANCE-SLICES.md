@@ -85,7 +85,7 @@
 
 ## 切片 2 · 给 RuleProcessor 找真实使用者（或砍掉它）
 
-**状态**：先做适配性判定（spike），再决定「搬」还是「删」。**不要直接开搬。**
+**状态**：spike 已做（2026-11-18），结论是「没有真实使用者」；删除/降级待单独决策，未在本次执行。
 
 ### 问题
 
@@ -125,6 +125,45 @@
 ### 风险
 
 spike 的结论很可能是「没有真实使用者」。这是可接受结果，不是失败——比继续挂着一个空转扩展点好。
+
+### spike 记录（2026-11-18，只读）
+
+**数据源**：`E:\legadoQ-archive\product\data\legado.sqlite`（5,601 条书源，`sqlite3 -readonly`）。
+
+**方法**：用 `json_tree(payload)` 取出每条源的全部文本值，统计以 `@xxx:` 开头的取值前缀，
+按源去重；`@tag.` 方言单独计数。
+
+| 前缀 | 使用源数 | 引擎是否支持 |
+|---|---:|---|
+| `@js:` | 1,150 | 支持（Rhino 沙箱） |
+| `@get:` | 289 | 支持（变量语法） |
+| `@put:` | 246 | 支持（变量语法） |
+| `@css:` | 144 | 支持 |
+| `@json:` | 38 | 支持 |
+| `@xpath:` | 5 | 支持 |
+| 其它 `@type:` | **0** | — |
+| `@tag.`（选择器方言，非前缀） | 1,994 | 支持（`RuleValue` / `RuleNodeSelection`） |
+
+复现命令（只读，不碰归档）：
+
+```bash
+sqlite3 -readonly legado.sqlite "
+WITH vals AS (SELECT s.id AS id, j.value AS v FROM source s, json_tree(s.payload) j
+              WHERE j.type='text' AND length(j.value)>0),
+     pref AS (SELECT id, lower(substr(v,1,instr(v,':')-1)) AS p FROM vals
+              WHERE substr(v,1,1)='@' AND instr(v,':')>1)
+SELECT p, count(DISTINCT id) FROM pref
+WHERE p GLOB '@[a-z]*' AND p NOT GLOB '*[^@a-z]*'
+GROUP BY p ORDER BY 2 DESC;"
+```
+
+**结论**：
+
+1. 5,601 条源里**没有出现内建四类之外的取值前缀**——不存在「缺一种取值方式」的真实使用者。
+2. 正文净化 / 繁简 / 排版后处理不是取值方式（见上表），不适合塞进 `RuleProcessor`。
+3. 因此「搬三个处理器」不成立。按本切片第 3 步，应删除扩展点或降级为 `internal` demo。
+4. 删除会动规则求值热路径与后端 993 项测试，**本次未执行**；需单独立切片、跑全量后端测试、
+   并在 `DECISIONS.md` 留一条记录。spike 只负责给出「没有真实使用者」这个前提。
 
 ---
 
