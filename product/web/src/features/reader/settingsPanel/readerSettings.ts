@@ -4,8 +4,15 @@ import { DEFAULT_READER_MENU, parseReaderMenu, type ReaderMenuAction } from '../
 import { parseScriptMode, type ScriptMode } from '../content/scriptConvert'
 import type { MangaDirection } from '../content/mangaPages'
 import type { PageTurnAnim } from '../interaction/pageTurn'
-import { READER_FONT_SIZE_MAX, READER_FONT_SIZE_MIN } from '../content/fontSizeControl'
 import { clampNumber, clampScrollPosition, scrollPosition } from '../../../lib/scrollProgress'
+import {
+  READER_SETTINGS_STORAGE_KEYS,
+  getScalarSpec,
+  readScalarSetting,
+  readScalarSettings,
+  readerScalarDefaults,
+  type ReaderScalarKey,
+} from './readerConfigRegistry'
 
 /**
  * 这三个纯函数已下沉到 `lib/scrollProgress.ts`（它们不引用任何 `ReaderSettings`，
@@ -189,45 +196,35 @@ export type ReaderSettings = {
   scriptMode: ScriptMode
 }
 
-const storageKey = 'legado-reader-settings-v2'
+/**
+ * 存档键取 registry 的第一项（v2）；旧键只用于读，不再写。
+ */
+const storageKey = READER_SETTINGS_STORAGE_KEYS[0]
+
+/**
+ * 标量部分的出厂值来自 `readerConfigRegistry`（切片 1a 的单一真源）。
+ * 类型断言是必要的：registry 的键集合与 `ReaderSettings` 的对应字段是同一批，
+ * 但 TS 无法从「运行期表」反推出每个键的具体类型；键集合由 `ReaderConfigRegistry.test.ts`
+ * 双向核对（少登记 / 多登记 / 重复登记都会红）。
+ */
+const scalarDefaults = readerScalarDefaults() as Pick<ReaderSettings, ReaderScalarKey>
+
 export const defaultReaderSettings: ReaderSettings = {
+  ...scalarDefaults,
   theme: 'light',
   customSkins: [],
   builtinSkinOverrides: {},
   hiddenBuiltinSkins: [],
-  fontSize: 19,
-  lineHeight: 1.95,
-  letterSpacing: 0,
-  paragraphSpacing: 1.15,
   textIndent: 2,
-  contentPadding: 80,
-  font: 'song',
-  pageMode: 'scroll',
-  pageAnim: 'slide',
-  maxWidth: 860,
-  columnMode: 'auto',
-  textAlign: 'justify',
-  mangaSinglePage: true,
-  mangaSpread: false,
-  mangaDirection: 'ltr',
-  coverTheme: true,
-  wallpaperTheme: true,
-  ttsEngine: 'edge',
   ttsVoice: 'zh-CN-XiaoxiaoNeural',
-  ttsSpeed: 1.0,
-  ttsPitch: 1.0,
-  ttsAutoNextChapter: true,
-  ttsFilterSymbols: true,
   ttsCustomUrl: '',
   ttsCustomBody: '',
-  ttsCustomMethod: 'GET',
   ttsCustomVoice: '',
   ttsCustomHeader: '',
   txtTocRule: 'auto',
   customFont: '',
   readerBgColor: '',
   readerBgImage: '',
-  readerBgDim: 0.25,
   customBackgrounds: [],
   tapZones: { paginate: DEFAULT_MAPS.paginate, scroll: DEFAULT_MAPS.scroll },
   menuItems: DEFAULT_READER_MENU,
@@ -235,8 +232,7 @@ export const defaultReaderSettings: ReaderSettings = {
 }
 
 export function parseReaderFont(font: unknown): ReaderFont {
-  if (font === 'hei' || font === 'kai' || font === 'fangsong' || font === 'system' || font === 'yuan' || font === 'mono' || font === 'custom') return font
-  return 'song'
+  return readScalarSetting(getScalarSpec('font'), font) as ReaderFont
 }
 
 /**
@@ -263,11 +259,11 @@ export function parseBgImage(value: unknown): string {
 }
 
 export function parsePageMode(mode: unknown): ReaderPageMode {
-  return mode === 'paginate' ? 'paginate' : 'scroll'
+  return readScalarSetting(getScalarSpec('pageMode'), mode) as ReaderPageMode
 }
 
 export function parsePageAnim(anim: unknown): ReaderPageAnim {
-  return anim === 'fade' || anim === 'cover' || anim === 'none' ? anim : 'slide'
+  return readScalarSetting(getScalarSpec('pageAnim'), anim) as ReaderPageAnim
 }
 
 /**
@@ -584,12 +580,11 @@ export function readBuiltinSkinCss(id: BuiltinSkinId): string {
 }
 
 export function parseColumnMode(mode: unknown): ReaderColumnMode {
-  if (mode === 'single' || mode === 'double' || mode === 'auto') return mode
-  return 'auto'
+  return readScalarSetting(getScalarSpec('columnMode'), mode) as ReaderColumnMode
 }
 
 export function parseTextAlign(value: unknown): ReaderTextAlign {
-  return value === 'left' ? 'left' : 'justify'
+  return readScalarSetting(getScalarSpec('textAlign'), value) as ReaderTextAlign
 }
 
 /** 首行缩进只认 0 / 1 / 2 三档：滑杆给中间值（比如 1.3em）在中文里没有对应排版惯例，只会显得没对齐。 */
@@ -601,12 +596,11 @@ export function parseTextIndent(value: unknown): number {
 }
 
 export function parseMaxWidth(width: unknown): number {
-  return Math.round(clampNumber(width, 560, 1400, defaultReaderSettings.maxWidth))
+  return readScalarSetting(getScalarSpec('maxWidth'), width) as number
 }
 
 export function parseTtsEngine(engine: unknown): TtsEngineType {
-  if (engine === 'webSpeech' || engine === 'edge' || engine === 'custom') return engine
-  return defaultReaderSettings.ttsEngine
+  return readScalarSetting(getScalarSpec('ttsEngine'), engine) as TtsEngineType
 }
 
 /**
@@ -670,49 +664,32 @@ function loadCustomSkins(saved: Record<string, unknown>): CustomSkin[] {
 
 export function loadReaderSettings(): ReaderSettings {
   try {
-    const raw = window.localStorage.getItem(storageKey) || window.localStorage.getItem('legado-reader-settings-v1')
-    const saved = JSON.parse(raw ?? '{}') as Partial<ReaderSettings> & { font?: string }
-    const customSkins = loadCustomSkins(saved as unknown as Record<string, unknown>)
+    // 读取顺序（v2 → v1）只在 registry 的键表里写一次；空串按"没有"处理，与旧的 `||` 一致。
+    const raw = READER_SETTINGS_STORAGE_KEYS
+      .map(key => window.localStorage.getItem(key))
+      .find(value => value !== null && value !== '') ?? '{}'
+    const saved = JSON.parse(raw) as Record<string, unknown>
+    // 标量字段（数字/布尔/枚举）统一由 registry 读回；复杂结构仍走下面的专用清洗。
+    const scalar = readScalarSettings(saved) as Pick<ReaderSettings, ReaderScalarKey>
+    const customSkins = loadCustomSkins(saved)
     const builtinSkinOverrides = parseBuiltinSkinOverrides(saved.builtinSkinOverrides)
     const hiddenBuiltinSkins = parseHiddenBuiltinSkins(saved.hiddenBuiltinSkins)
     return {
+      ...scalar,
       theme: parseSkinId(saved.theme) || defaultReaderSettings.theme,
       customSkins,
       builtinSkinOverrides,
       hiddenBuiltinSkins,
-      fontSize: clampNumber(saved.fontSize, READER_FONT_SIZE_MIN, READER_FONT_SIZE_MAX, defaultReaderSettings.fontSize),
-      lineHeight: clampNumber(saved.lineHeight, 1.45, 2.4, defaultReaderSettings.lineHeight),
-      letterSpacing: clampNumber(saved.letterSpacing, -.25, 1.5, defaultReaderSettings.letterSpacing),
-      paragraphSpacing: clampNumber(saved.paragraphSpacing, .7, 2, defaultReaderSettings.paragraphSpacing),
       textIndent: parseTextIndent(saved.textIndent),
-      contentPadding: clampNumber(saved.contentPadding, 20, 120, defaultReaderSettings.contentPadding),
-      font: parseReaderFont(saved.font),
-      pageMode: parsePageMode(saved.pageMode),
-      pageAnim: parsePageAnim(saved.pageAnim),
-  maxWidth: parseMaxWidth(saved.maxWidth),
-  columnMode: parseColumnMode(saved.columnMode),
-  textAlign: parseTextAlign(saved.textAlign),
-      mangaSinglePage: typeof saved.mangaSinglePage === 'boolean' ? saved.mangaSinglePage : defaultReaderSettings.mangaSinglePage,
-      mangaSpread: typeof saved.mangaSpread === 'boolean' ? saved.mangaSpread : defaultReaderSettings.mangaSpread,
-      mangaDirection: saved.mangaDirection === 'rtl' ? 'rtl' : 'ltr',
-      coverTheme: typeof saved.coverTheme === 'boolean' ? saved.coverTheme : defaultReaderSettings.coverTheme,
-      wallpaperTheme: typeof saved.wallpaperTheme === 'boolean' ? saved.wallpaperTheme : defaultReaderSettings.wallpaperTheme,
-      ttsEngine: parseTtsEngine(saved.ttsEngine),
       ttsVoice: typeof saved.ttsVoice === 'string' && saved.ttsVoice.trim() ? saved.ttsVoice : defaultReaderSettings.ttsVoice,
-      ttsSpeed: clampNumber(saved.ttsSpeed, 0.5, 3.0, defaultReaderSettings.ttsSpeed),
-      ttsPitch: clampNumber(saved.ttsPitch, 0.5, 1.5, defaultReaderSettings.ttsPitch),
-      ttsAutoNextChapter: typeof saved.ttsAutoNextChapter === 'boolean' ? saved.ttsAutoNextChapter : defaultReaderSettings.ttsAutoNextChapter,
-      ttsFilterSymbols: typeof saved.ttsFilterSymbols === 'boolean' ? saved.ttsFilterSymbols : defaultReaderSettings.ttsFilterSymbols,
       ttsCustomUrl: typeof saved.ttsCustomUrl === 'string' ? saved.ttsCustomUrl : '',
       ttsCustomBody: typeof saved.ttsCustomBody === 'string' ? saved.ttsCustomBody : '',
-      ttsCustomMethod: saved.ttsCustomMethod === 'POST' ? 'POST' : 'GET',
       ttsCustomVoice: typeof saved.ttsCustomVoice === 'string' ? saved.ttsCustomVoice : '',
       ttsCustomHeader: typeof saved.ttsCustomHeader === 'string' ? saved.ttsCustomHeader : '',
       txtTocRule: parseTocRuleKey(saved.txtTocRule),
       customFont: parseCustomFont(saved.customFont),
       readerBgColor: parseBgColor(saved.readerBgColor),
       readerBgImage: parseBgImage(saved.readerBgImage),
-      readerBgDim: clampNumber(saved.readerBgDim, 0, .6, defaultReaderSettings.readerBgDim),
       customBackgrounds: parseReaderBackgrounds(saved.customBackgrounds),
       // 缺项/写错都回落到出厂那张表（不清洗就会点到 undefined 上，表现为"这一格没反应"）；
       // 旧版存的是"格子表"，新版是"虚线表"，读的时候迁一次。

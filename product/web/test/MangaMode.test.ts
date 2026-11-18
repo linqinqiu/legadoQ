@@ -14,6 +14,8 @@ import {
   mangaSpreadSize,
   mangaSpreadStart,
 } from '../src/features/reader/content/mangaPages'
+import { getScalarSpec } from '../src/features/reader/settingsPanel/readerConfigRegistry'
+import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
 
 /**
  * 漫画分页算术（双页对开 / 从右到左 / 页进度换算）。
@@ -127,8 +129,13 @@ test('设置项：双页与顺序有出厂值、有清洗、有入口', () => {
   const settings = read('../src/features/reader/settingsPanel/readerSettings.ts')
   assert.match(settings, /mangaSpread: boolean/)
   assert.match(settings, /mangaDirection: MangaDirection/)
-  assert.match(settings, /mangaSpread: false/, '出厂单页 —— 与改动前一致')
-  assert.match(settings, /mangaDirection: saved\.mangaDirection === 'rtl' \? 'rtl' : 'ltr'/, '脏数据回落')
+  // 出厂值与值域自 1a 起由 readerConfigRegistry 统一给出：这里用行为断言，不再抓源码字面量。
+  assert.equal(defaultReaderSettings.mangaSpread, false, '出厂单页 —— 与改动前一致')
+  const direction = getScalarSpec('mangaDirection')
+  assert.equal(direction.kind, 'enum')
+  if (direction.kind === 'enum') {
+    assert.deepEqual([...direction.values], ['ltr', 'rtl'], '脏数据只能落回这两个值')
+  }
   const tab = read('../src/features/reader/settingsPanel/BehaviorTab.tsx')
   assert.match(tab, /漫画双页/)
   assert.match(tab, /从右到左/)

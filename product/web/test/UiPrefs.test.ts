@@ -91,8 +91,11 @@ test('服务端没有的键不动本地：不许把用户的设置"补"成空', 
 test('键表与各模块里的 localStorage 常量逐字一致（改一处没跟 = 设置赎不回来）', () => {
   assert.ok(readSrc('lib', 'wallpaper.ts').includes(`'${UI_PREF_STORAGE.wallpaper}'`),
     'wallpaper.ts 的 SETTINGS_KEY 与本表不一致')
-  assert.ok(readSrc('features', 'reader', 'settingsPanel', 'readerSettings.ts').includes(`'${UI_PREF_STORAGE['reader-settings']}'`),
-    'readerSettings.ts 的 storageKey 与本表不一致')
+  assert.ok(readSrc('features', 'reader', 'settingsPanel', 'readerSettings.ts').includes(`'reader-settings'`),
+    'readerSettings.ts 的 pushUiPref 键与本表不一致')
+  // 存档键自 1a 起在 readerConfigRegistry（单一真源），readerSettings 只引用它。
+  assert.ok(readSrc('features', 'reader', 'settingsPanel', 'readerConfigRegistry.ts').includes(`'${UI_PREF_STORAGE['reader-settings']}'`),
+    'readerConfigRegistry.ts 的存档键与本表不一致')
   assert.ok(readSrc('components', 'FirstRunAgreement.tsx').includes(`'${UI_PREF_STORAGE.agreement}'`),
     'FirstRunAgreement.tsx 的 STORAGE_KEY 与本表不一致')
   // 2026-11-14 扩容的那几项：用户在界面上改过、换端口/换机器后应当还在
