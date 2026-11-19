@@ -1436,4 +1436,68 @@ class RuleRunnerTest {
 
         assertEquals("https://v.example/player/m3u8.php?vid=9527", chapter.content)
     }
+
+    @Test
+    fun `规则给出的短正文不被整页评论段落顶掉`() {
+        // 文本站的短章：正文规则选中的 .content 只有 3 段、约 240 字（< 500），
+        // 页面上还有 5 段评论区。旧的「段落兜底」只看长度，会把正文换成评论。
+        val source = """{
+            "bookSourceUrl":"https://short.example",
+            "ruleContent":{"content":"class.content@text"}
+        }"""
+        val body = """<html><body>
+            <div class="content">
+              <p>第一段正文，讲的是主角在雨夜里走进那间旧书店，柜台后面没有人，只有一盏还亮着的灯和一摞发黄的书。</p>
+              <p>第二段正文，他随手翻开最上面那本，扉页上写着一个陌生的名字，墨迹已经洇开，像是被水泡过。</p>
+              <p>第三段正文，门外忽然传来脚步声，他合上书，抬头看见一个穿灰色风衣的人站在门口，正盯着他手里的书。</p>
+            </div>
+            <div class="comments">
+              <p>评论一：这本书我追了三年，终于等到更新了，作者加油。</p>
+              <p>评论二：前面节奏有点慢，看到一百章以后就停不下来了。</p>
+              <p>评论三：有没有类似的书推荐，书荒中，谢谢各位大佬。</p>
+              <p>评论四：主角这个选择我不太理解，感觉作者在强行推进剧情。</p>
+              <p>评论五：刚看完最新一章，来评论区找找有没有同样的感受。</p>
+            </div>
+            </body></html>"""
+
+        val chapter = RuleRunner { _ -> body }.content(source, "https://short.example/1/2.html")
+
+        assertTrue(chapter.content.contains("第一段正文"))
+        assertFalse("评论区被当成正文: ${chapter.content}", chapter.content.contains("评论一"))
+    }
+
+    @Test
+    fun `规则取不到内容时仍用整页长段落救场`() {
+        // 兜底的正向用途：选择器写坏/站点改版，规则一条也取不到，页面正文仍是标准 `<p>`。
+        val source = """{
+            "bookSourceUrl":"https://rescue.example",
+            "ruleContent":{"content":"class.gone@text"}
+        }"""
+        val body = """<html><body>
+            <p>第一段正文，雨停以后他沿着河岸慢慢走，路灯把水面照得一片碎金，远处有人在收摊。</p>
+            <p>第二段正文，他想起白天那本书里的句子，忽然觉得有些话只有在夜里才读得懂，白天太亮了。</p>
+            <p>第三段正文，手机在口袋里震了一下，是编辑发来的消息，问他稿子改到哪一步了，他还没回。</p>
+            <p>第四段正文，走到桥头的时候他停下来，看着水流发了会儿呆，然后转身往回走，步子比来时慢。</p>
+            <p>第五段正文，楼道的灯坏了，他摸黑上了四层，开门的时候手有点抖，屋里还是走时那个样子。</p>
+            </body></html>"""
+
+        val chapter = RuleRunner { _ -> body }.content(source, "https://rescue.example/1/2.html")
+
+        assertTrue(chapter.content.contains("第一段正文"))
+        assertTrue(chapter.content.contains("第五段正文"))
+    }
+
+    @Test(expected = RuleExecutionException::class)
+    fun `整页只有导航短句时不拿导航当正文`() {
+        // 规则为空、页面又只有五条导航短句：宁可如实报「未提取到内容」，也不要把导航当正文。
+        val source = """{
+            "bookSourceUrl":"https://nav.example",
+            "ruleContent":{"content":"class.gone@text"}
+        }"""
+        val body = """<html><body>
+            <p>猜你喜欢</p><p>热播榜</p><p>本周演员</p><p>网友评论</p><p>下一页</p>
+            </body></html>"""
+
+        RuleRunner { _ -> body }.content(source, "https://nav.example/1/2.html")
+    }
 }

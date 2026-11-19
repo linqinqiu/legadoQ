@@ -970,7 +970,15 @@ class RuleRunner(
                         .toList()
                     if (paragraphs.size >= 5) {
                         val candidate = paragraphs.joinToString("\n\n")
-                        if (candidate.length > pageText.length) pageText = candidate
+                        // 兜底必须**明显多于**规则给出的内容。只多一点点，通常是把评论区/页脚/推荐位
+                        // 一起捞进来：规则已经选中了页面的一部分（短章 144 字），整页段落 286 字
+                        // 只多 2 倍，覆盖过去就是把正文换成评论。空输出时另设 200 字下限，
+                        // 避免整页只有五条导航短句（「猜你喜欢」「热播榜」…）也被当成正文。
+                        val floor = maxOf(
+                            PARAGRAPH_FALLBACK_MIN_CHARS,
+                            pageText.length * PARAGRAPH_FALLBACK_RATIO,
+                        )
+                        if (candidate.length >= floor) pageText = candidate
                     }
                 }
                 for (entry in patterns) {
@@ -1600,6 +1608,12 @@ class RuleRunner(
         const val STAGE_HTTP = "http"
 
         const val MAX_TRACE_CHARS = 240
+
+        /** 「段落兜底」的最小产出：规则输出为空时，短于此的整页 `<p>` 多半是导航/页脚。 */
+        const val PARAGRAPH_FALLBACK_MIN_CHARS = 200
+
+        /** 「段落兜底」相对规则输出的倍数下限：只多一点点说明规则已选中页面的一部分。 */
+        const val PARAGRAPH_FALLBACK_RATIO = 3
         /** ruleData（跨调用复用的 @put 变量）的键上限：超了按最近使用淘汰最旧那条（见 [newRuleDataCache]），不再整表清空。 */
         const val MAX_RULE_DATA_KEYS = 4096
         /** Java HttpClient 的受限请求头（设了会抛 IllegalArgumentException，见 request()）。 */
