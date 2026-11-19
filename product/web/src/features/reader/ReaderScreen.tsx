@@ -159,7 +159,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     else void document.documentElement.requestFullscreen().catch(() => undefined)
   }
   const [showReplaceRules, setShowReplaceRules] = useState(false)
-  const [offlineStatsModal, setOfflineStatsModal] = useState(false)
   const [showRefreshChapters, setShowRefreshChapters] = useState(false)
   const [localSyncing, setLocalSyncing] = useState(false)
   const [localSyncProgress, setLocalSyncProgress] = useState({ current: 0, total: 0 })
@@ -647,7 +646,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (existing) {
       const ok = await api.deleteNote(existing.id).then(() => true).catch(() => false)
       if (!ok) { toast.warning('书签没能取消'); return }
-      notesApi.setNotes(list => list.filter(item => item.id !== existing.id))
+      notesApi.removeNoteRecord(existing.id)
       toast.success('已取消书签')
       return
     }
@@ -665,7 +664,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     if (!payload) { toast.warning('这一章还没有正文，等它加载完再试'); return }
     const created = await api.addNote(payload).catch(() => null)
     if (!created) { toast.warning('书签没能保存'); return }
-    notesApi.setNotes(list => [...list, created])
+    notesApi.addNoteRecord(created)
     toast.success('已加书签')
   }
 
@@ -2167,7 +2166,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
               chapterUrl: draft.chapterUrl, chapterIndex: draft.chapterIndex,
               startOffset: draft.startOffset, endOffset: draft.endOffset, excerpt: draft.excerpt, note: '',
             }).then(
-              created => { if (created) { notesApi.setNotes(list => [...list, created]); toast.success('已划线') } },
+              created => { if (created) { notesApi.addNoteRecord(created); toast.success('已划线') } },
               () => toast.warning('划线失败'),
             )
           },
@@ -2344,7 +2343,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         ttsActive,
         ttsSettings: showTtsSettings,
         replaceRules: showReplaceRules,
-        offlineStats: offlineStatsModal,
         refreshChapters: showRefreshChapters,
         offlineTtsConfirm: offlineTtsConfirmOpen,
         lightboxSrc,
@@ -2363,7 +2361,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onCloseTtsSettings: () => setShowTtsSettings(false),
         onRulesChanged: handleReplaceRulesChanged,
         onCloseReplaceRules: () => setShowReplaceRules(false),
-        onCloseOfflineStats: () => { setOfflineStatsModal(false); void syncCacheStatus() },
         onCloseRefreshChapters: () => setShowRefreshChapters(false),
         onRefreshed: handleChaptersRefreshed,
         onCloseOfflineTtsConfirm: () => setOfflineTtsConfirmOpen(false),

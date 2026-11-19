@@ -81,5 +81,8 @@ test('接线：正文加载后重定位，面板把「原文已变」说出来',
   const notesHook = read('../src/features/reader/useReaderNotes.ts')
   assert.match(notesHook, /reanchorNotes\(list, chapter\.index, content, positionChecksum\)/, '正文与校验值变了就重算这一章')
   assert.match(notesHook, /只改内存，不写库/, '不把一次猜测固化进库')
+  assert.match(notesHook, /const addNoteRecord =/, 'notes 新增收进 hook 的语义口')
+  assert.match(notesHook, /const removeNoteRecord =/, 'notes 删除收进 hook 的语义口')
+  assert.doesNotMatch(notesHook, /setNotes, setNoteDraft/, '裸 setNotes 不得随 hook 返回值外泄')
   assert.match(read('../src/features/reader/notes/NotesPanel.tsx'), /原文已变，位置可能不准/, '认不出来要说出来')
 })

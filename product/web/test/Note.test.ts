@@ -32,6 +32,7 @@ test('阅读器：选中正文 → 浮层 → 保存，且偏移按章节内字�
   // 这里钉"真的挂了它" + "外壳标记在那一份里"，抽走之后不许变成没人渲染的死组件。
   const overlays = read('../src/features/reader/ReaderOverlays.tsx')
   assert.match(overlays, /<NoteToolbar/, '浮层要在（挂在阅读器的弹层集合上）')
+  assert.doesNotMatch(overlays, /offlineStats/, '零置 true 的死弹层声明不得复活')
   assert.match(read('../src/features/reader/notes/NoteToolbar.tsx'), /reader-note-toolbar/, '浮层外壳标记要在')
   assert.match(read('../src/features/reader/NoteHighlights.tsx'), /reader-note-highlight/, '正文要能画高亮')
 })

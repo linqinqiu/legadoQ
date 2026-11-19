@@ -93,6 +93,11 @@ test('三处入口都接上了：顶栏 / 旧工具栏 / 笔记面板', () => {
   assert.match(panel, /onBookmarkHere/, '窄屏顶栏藏掉后，面板上有入口')
   assert.match(panel, /reader-notes-tabs/, '三档筛选在面板上')
   assert.match(read('../src/features/reader/ReaderCatalog.tsx'), /onBookmarkHere=\{onBookmarkHere\}/, '面板拿得到父组件的动作')
+  // 写入只经语义口：父端不得绕过 hook 直接 setNotes，零置 true 的死弹层不得复活。
+  assert.doesNotMatch(screen, /notesApi\.setNotes\(/, '父端书签 / 划线不得绕过 hook 直接改 notes')
+  assert.doesNotMatch(screen, /offlineStatsModal/, '零置 true 的死弹层状态不得复活')
+  assert.match(screen, /notesApi\.addNoteRecord\(created\)/, '新建走语义新增口')
+  assert.match(screen, /notesApi\.removeNoteRecord\(existing\.id\)/, '取消走语义删除口')
 })
 
 test('跳到书签要落到那一段，不是只切章；书签不画正文高亮', () => {

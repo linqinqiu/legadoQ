@@ -18,7 +18,8 @@ import { reanchorNotes } from './notes/reanchor'
  * - `toggleBookmark`：要用 `readLogicalPosition`，与 `persist` 共享同一套逻辑位置算法，留在 ReaderScreen；
  * - `renderNoteHighlights` / `jumpToNote` / `jumpToSearchHit`：前者在正文渲染深层调用，后两者与搜索命中
  *   共用 `jumpToNotePosition` / `pendingNoteJumpRef` 导航原语，也留在 ReaderScreen。
- * 本 hook 只把「状态 + 与渲染/导航无关的增删改」收进来，`setNotes` / `openNote` 暴露给上面那两块复用。
+ * 本 hook 只把「状态 + 与渲染/导航无关的增删改」收进来；notes 写入只经 `addNoteRecord` /
+ * `removeNoteRecord` 两个语义口，裸 setter 不外露（书签/右键划线各经语义口，见下）。
  */
 export interface UseReaderNotesDeps {
   currentBook: OpenBook
@@ -135,7 +136,7 @@ export function useReaderNotes({ currentBook, bookName, chapter, content, paragr
         startOffset: draft.startOffset, endOffset: draft.endOffset, excerpt: draft.excerpt, note: draft.text,
       }).catch(() => null)
       if (created) {
-        setNotes(list => [...list, created])
+        addNoteRecord(created)
         toast.success(draft.text?.trim() ? '已保存笔记' : '已划线')
       }
     } else {
@@ -155,10 +156,14 @@ export function useReaderNotes({ currentBook, bookName, chapter, content, paragr
     const draft = noteDraft
     if (!draft || draft.id === null) return
     const ok = await api.deleteNote(draft.id).then(() => true).catch(() => false)
-    if (ok) setNotes(list => list.filter(item => item.id !== draft.id))
+    if (ok) removeNoteRecord(draft.id)
     setNoteDraft(null)
     setSelection(null)
   }
+
+  /** 语义化的 notes 写入口：把裸 setNotes 收进 hook，父端（书签/右键划线）不再直接改内部状态。 */
+  const addNoteRecord = (note: BookNote) => setNotes(list => [...list, note])
+  const removeNoteRecord = (id: number) => setNotes(list => list.filter(item => item.id !== id))
 
   /** 标记快捷条：划线（仅高亮，不写备注）。 */
   const highlightFromMenu = () => { void saveNote() }
@@ -185,7 +190,7 @@ export function useReaderNotes({ currentBook, bookName, chapter, content, paragr
 
   return {
     notes, noteDraft, notesPanel, noteEditorOpen,
-    setNotes, setNoteDraft, setNoteEditorOpen, setNotesPanel,
+    addNoteRecord, removeNoteRecord, setNoteDraft, setNoteEditorOpen, setNotesPanel,
     buildSelectionDraft, onReaderMouseUp,
     saveNote, removeNote, highlightFromMenu, openNoteEditor,
     copySelection, dismissMarkingMenu, openNote,

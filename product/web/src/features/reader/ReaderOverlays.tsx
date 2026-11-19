@@ -3,7 +3,6 @@ import { Icon } from '../../icons'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { zh } from '../../i18n/zh'
 import type { BookDetails, Chapter, SearchResult } from '../../lib/api'
-import { OfflineCacheModal } from '../../components/OfflineCacheModal'
 import { ReplaceRulesModal } from '../../components/ReplaceRulesModal'
 import { SourceSwitchModal } from '../../components/SourceSwitchModal'
 import { BookSearchDialog } from './dialogs/BookSearchDialog'
@@ -21,7 +20,6 @@ export interface ReaderOverlaysProps {
     ttsActive: boolean
     ttsSettings: boolean
     replaceRules: boolean
-    offlineStats: boolean
     refreshChapters: boolean
     offlineTtsConfirm: boolean
     lightboxSrc: string | null
@@ -53,7 +51,6 @@ export interface ReaderOverlaysProps {
     onCloseTtsSettings: () => void
     onRulesChanged: () => void
     onCloseReplaceRules: () => void
-    onCloseOfflineStats: () => void
     onCloseRefreshChapters: () => void
     onRefreshed: (chapterUrls: string[]) => void
     onCloseOfflineTtsConfirm: () => void
@@ -136,8 +133,6 @@ export function ReaderOverlays({ dialogs, book, reader, actions }: ReaderOverlay
           onRulesChanged={actions.onRulesChanged}
         />
       )}
-
-      {dialogs.offlineStats && <OfflineCacheModal onClose={actions.onCloseOfflineStats} />}
 
       {dialogs.refreshChapters && (
         <RefreshChaptersModal
