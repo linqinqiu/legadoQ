@@ -310,6 +310,24 @@ try {
     await pause(500)
     await screenshot(page, 'reader-content-dedup-flowtail-ch3.png')
     assert.equal(harness.countFor(target), 1, '放行后不应再补发第 2 章请求')
+
+    // 第 4 章（index 3）不在初始续接窗口：推进到第 3 章后，续接窗口才会续取它。
+    // 先看推进是否已带出第 4 章，不在则滚到第 3 章底部再推一次。
+    const has4 = await page.evaluate(() => !!document.querySelector('.reading-content [data-chapter-index="3"]'))
+    if (!has4) {
+      await page.evaluate(() => {
+        const third = document.querySelector('.reading-content [data-chapter-index="2"]')
+        if (third) scrollTo({ top: scrollY + third.getBoundingClientRect().top + third.offsetHeight - innerHeight + 120, behavior: 'instant' })
+      })
+      await pause(900)
+    }
+    await page.waitForFunction(() => !!document.querySelector('.reading-content [data-chapter-index="3"]'), { timeout: 12000 })
+    await page.evaluate(() => {
+      const fourth = document.querySelector('.reading-content [data-chapter-index="3"]')
+      if (fourth) scrollTo({ top: scrollY + fourth.getBoundingClientRect().top - 16, behavior: 'instant' })
+    })
+    await pause(500)
+    await screenshot(page, 'reader-content-dedup-flowtail-ch4.png')
   } finally {
     try { await harness.cleanup() } catch (error) {
       failures += 1
