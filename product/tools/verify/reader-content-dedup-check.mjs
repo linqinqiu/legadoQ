@@ -287,6 +287,12 @@ try {
     // 放行在飞请求，续接窗口应正常把第 2 章挂到窗口下方（行为不变）。
     harness.release()
     await harness.waitFlowTail()
+    // 截图要能看见被验证的现象：滚到续接进来的第 2 章开头，而不是停在第 1 章尾部。
+    await page.evaluate(() => {
+      const second = document.querySelectorAll('.reading-content .reader-flow-chapter')[1]
+      if (second) scrollTo({ top: scrollY + second.getBoundingClientRect().top - 16, behavior: 'instant' })
+    })
+    await pause(300)
     await screenshot(page, 'reader-content-dedup-flowtail.png')
     assert.equal(harness.countFor(target), 1, '放行后不应再补发第 2 章请求')
   } finally {
