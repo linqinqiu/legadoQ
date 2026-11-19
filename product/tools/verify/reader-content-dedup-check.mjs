@@ -328,6 +328,23 @@ try {
     })
     await pause(500)
     await screenshot(page, 'reader-content-dedup-flowtail-ch4.png')
+
+    // 第 5 章（index 4，末章）：推进到第 4 章后由续接窗口续取。
+    const has5 = await page.evaluate(() => !!document.querySelector('.reading-content [data-chapter-index="4"]'))
+    if (!has5) {
+      await page.evaluate(() => {
+        const fourth = document.querySelector('.reading-content [data-chapter-index="3"]')
+        if (fourth) scrollTo({ top: scrollY + fourth.getBoundingClientRect().top + fourth.offsetHeight - innerHeight + 120, behavior: 'instant' })
+      })
+      await pause(900)
+    }
+    await page.waitForFunction(() => !!document.querySelector('.reading-content [data-chapter-index="4"]'), { timeout: 12000 })
+    await page.evaluate(() => {
+      const fifth = document.querySelector('.reading-content [data-chapter-index="4"]')
+      if (fifth) scrollTo({ top: scrollY + fifth.getBoundingClientRect().top - 16, behavior: 'instant' })
+    })
+    await pause(500)
+    await screenshot(page, 'reader-content-dedup-flowtail-ch5.png')
   } finally {
     try { await harness.cleanup() } catch (error) {
       failures += 1
