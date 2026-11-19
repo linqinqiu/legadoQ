@@ -160,9 +160,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   }
   const [showReplaceRules, setShowReplaceRules] = useState(false)
   const [showRefreshChapters, setShowRefreshChapters] = useState(false)
-  const [localSyncing, setLocalSyncing] = useState(false)
-  const [localSyncProgress, setLocalSyncProgress] = useState({ current: 0, total: 0 })
-  const localSyncAbortRef = useRef<AbortController | null>(null)
 
   // Pagination states
   const [pageIndex, setPageIndex] = useState(0)
@@ -218,7 +215,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   // 离线缓存状态（书架记录 + 本地 IndexedDB）整段收进 hook，阅读器只消费它的返回值。
   const {
     cacheStatus,
-    setCacheStatus,
     cachedChapterUrls,
     setCachedChapterUrls,
     chapterWordCounts,
@@ -627,9 +623,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   const [reviewsOpen, setReviewsOpen] = useState(false)
   /** 刚跳过来的搜索命中：在正文里临时高亮几秒，过期自动清掉（见下面的 effect）。 */
   const [searchFlash, setSearchFlash] = useState<{ chapterIndex: number; offset: number; term: string } | null>(null)
-  /** 阅读设置弹层里的顶层标签页：阅读（排版/颜色/行为）或其它（简繁/点击区域/工具栏/本地书目录/净化）。
-   *  用户要求「两颗齿轮合并成一颗，点开用标签页切换界面/其它」。 */
-  const [settingsTab, setSettingsTab] = useState<'reader' | 'other'>('reader')
 
   /**
    * 书签：把当前读到的那一段记下来，再点一次取消。
@@ -1187,83 +1180,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     } catch (error) {
       // 调用点是 void toggleShelf()：不接住就成 unhandled rejection，用户还以为加架成功了
       toast.error(error instanceof Error ? error.message : '书架操作失败')
-    }
-  }
-
-  const handleCacheBook = async () => {
-    await handleCacheAll()
-  }
-
-  /**
-   * 把整本书加入离线缓存队列。
-   *
-   * 原来这里还有一条 `mode: 'custom'` 的分支（第 X 至 Y 章），
-   * 但那套界面**从来没做过** —— 档位面板的 CSS 写了，组件没写，
-   * 于是这条分支永远走不到（`customRangeOpen` 之类的状态也是死的，已一并删掉）。
-   * 自定义范围现在只剩后端 `cache.range` 端点还在。
-   */
-  const handleCacheAll = async () => {
-    try {
-      await api.cacheBookshelfRange({
-        sourceId: currentBook.details.sourceId,
-        bookUrl: currentBook.bookUrl,
-        startIndex: 0,
-      })
-      toast.success('已加入全本离线缓存队列')
-      setCacheStatus(prev => ({ ...prev, state: 'caching', error: undefined }))
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '发起缓存失败')
-    }
-  }
-
-  const handleSyncToLocal = async (rangeChapters?: Chapter[]) => {
-    const targetChapters = rangeChapters || currentBook.chapters.slice(chapterIndex, chapterIndex + 50)
-    localSyncAbortRef.current?.abort()
-    const controller = new AbortController()
-    localSyncAbortRef.current = controller
-
-    setLocalSyncing(true)
-    setLocalSyncProgress({ current: 0, total: targetChapters.length })
-
-    try {
-      const res = await downloadChaptersToOffline(
-        currentBook.details.sourceId,
-        currentBook.bookUrl,
-        targetChapters,
-        async (chUrl) => {
-          return api.content(currentBook.details.sourceId, chUrl, currentBook.bookUrl, controller.signal)
-        },
-        (comp, tot) => {
-          setLocalSyncProgress({ current: comp, total: tot })
-        },
-        controller.signal
-      )
-      if (!controller.signal.aborted) {
-        toast.success(`离线同步完成：成功 ${res.successful} 章，跳过/已缓存 ${targetChapters.length - res.failed - res.successful} 章`)
-        // 原来这里 `setCachedChapterUrls(offlineSet)` —— 用 IndexedDB 那一份**整体替换**，
-        // 于是「只在服务端缓存过」的那些章节（整本缓存过、或换设备后本地库被清空）云朵全部复亮，
-        // 用户看到的就是「缓存下载了怎么还有小云朵」。改成走同一条并集通道：
-        // syncCacheStatus 自己就是「服务端 ∪ IndexedDB」，顺带把字数表一起刷新。
-        await syncCacheStatus()
-      }
-    } catch (err) {
-      if (!controller.signal.aborted) {
-        toast.error('离线同步中断')
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setLocalSyncing(false)
-      }
-    }
-  }
-
-  const handleCancelCache = async () => {
-    try {
-      await api.cancelBookCache(currentBook.details.sourceId, currentBook.bookUrl)
-      setCacheStatus(prev => ({ ...prev, state: 'failed', error: '已取消缓存' }))
-      toast.info(`已取消《${bookName}》的离线缓存`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '无法取消缓存')
     }
   }
 
