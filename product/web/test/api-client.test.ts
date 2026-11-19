@@ -178,10 +178,11 @@ test('api client - 文本 / Blob / ArrayBuffer 助手共用同源凭据与错误
   }
 })
 
-test('api.saveProgress - no logical position omits all fields; explicit zero still sent', async () => {
+test('api.saveProgress - keepalive; no logical position omits all fields; explicit zero still sent', async () => {
   const originalFetch = globalThis.fetch
   const bodies: any[] = []
   globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    assert.equal(init?.keepalive, true)
     bodies.push(init?.body ? JSON.parse(String(init.body)) : null)
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

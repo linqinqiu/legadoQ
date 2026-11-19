@@ -38,6 +38,7 @@ import { usePaginationMeasurement } from './usePaginationMeasurement'
 import { useReadingLog } from './useReadingLog'
 import { useReaderNotes } from './useReaderNotes'
 import { useReaderPositionJump } from './useReaderPositionJump'
+import { useReaderProgress } from './useReaderProgress'
 import { renderNoteHighlights } from './NoteHighlights'
 import { TtsContext } from './tts/ReaderTtsContext'
 import { useReaderTts } from './tts/useReaderTts'
@@ -185,7 +186,6 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
   })
 
   const currentRef = useRef<{ chapter: Chapter; position: number } | null>(null)
-  const timerRef = useRef<number | null>(null)
   const restoredRef = useRef(false)
   const wakeLockRef = useRef<WakeLockSentinel | null>(null)
   const lastScrollYRef = useRef(0)
@@ -813,19 +813,21 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     return () => window.clearTimeout(handle)
   }, [searchFlash])
 
-  const persist = useCallback(() => {
+  const readProgressSnapshot = useCallback(() => {
     const current = currentRef.current
-    if (!current) return
-    const logical = readLogicalPosition(current.chapter)
-    void api.saveProgress(
-      currentBook.details.sourceId,
-      currentBook.bookUrl,
-      current.chapter.url,
-      current.chapter.index,
-      clampScrollPosition(current.position),
-      logical ?? undefined,
-    ).catch(() => undefined)
-  }, [currentBook.bookUrl, currentBook.details.sourceId, readLogicalPosition])
+    if (!current) return null
+    return {
+      chapterUrl: current.chapter.url,
+      chapterIndex: current.chapter.index,
+      scrollPosition: clampScrollPosition(current.position),
+      position: readLogicalPosition(current.chapter) ?? undefined,
+    }
+  }, [readLogicalPosition])
+  const { persist, schedule: scheduleProgress, state: progressSave } = useReaderProgress({
+    sourceId: currentBook.details.sourceId,
+    bookUrl: currentBook.bookUrl,
+    readSnapshot: readProgressSnapshot,
+  })
 
   // 切章的 ref：ReaderTtsManager 里的 playTtsChunk 要跨章续播，而 changeChapter 又要 stopTts —— 环用 ref 打破
   const changeChapterRef = useRef<(rawIndex: number) => void>(() => undefined)
@@ -1715,27 +1717,15 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         } else if (current.position <= 0.3) {
           preloadPrevChapter(current.chapter.index)
         }
-        if (timerRef.current === null) {
-          timerRef.current = window.setTimeout(() => {
-            timerRef.current = null
-            persist()
-          }, 1200)
-        }
+        scheduleProgress()
       })
     }
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') persist()
-    }
     window.addEventListener('scroll', onScroll, { passive: true })
-    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       window.removeEventListener('scroll', onScroll)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
       if (rafId !== null) window.cancelAnimationFrame(rafId)
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-      persist()
     }
-  }, [persist, preloadNextChapter, preloadPrevChapter, settings.pageMode, currentBook.chapters])
+  }, [persist, scheduleProgress, preloadNextChapter, preloadPrevChapter, settings.pageMode, currentBook.chapters])
 
   useEffect(() => {
     if (settings.pageMode !== 'paginate' || isMangaMode) return
@@ -1751,14 +1741,9 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       } else if (position <= 0.3) {
         preloadPrevChapter(chapter.index)
       }
-      if (timerRef.current === null) {
-        timerRef.current = window.setTimeout(() => {
-          timerRef.current = null
-          persist()
-        }, 1200)
-      }
+      scheduleProgress()
     }
-  }, [chapter, pageCount, pageIndex, persist, preloadNextChapter, preloadPrevChapter, settings.pageMode, isMangaMode])
+  }, [chapter, pageCount, pageIndex, scheduleProgress, preloadNextChapter, preloadPrevChapter, settings.pageMode, isMangaMode])
 
   /**
    * 分页模式的进度上报（PROPOSAL-020 P2）：章内页码比例，供底栏进度条显示真实进度。
@@ -1783,13 +1768,8 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     reportProgress({ chapterIndex, total: currentBook.chapters.length, fraction: position })
     if (position >= 0.7) preloadNextChapter(chapter.index)
     else if (position <= 0.3) preloadPrevChapter(chapter.index)
-    if (timerRef.current === null) {
-      timerRef.current = window.setTimeout(() => {
-        timerRef.current = null
-        persist()
-      }, 1200)
-    }
-  }, [isMangaMode, chapter, chapterIndex, mangaStart, mangaImages.length, currentBook.chapters.length, persist, preloadNextChapter, preloadPrevChapter])
+    scheduleProgress()
+  }, [isMangaMode, chapter, chapterIndex, mangaStart, mangaImages.length, currentBook.chapters.length, scheduleProgress, preloadNextChapter, preloadPrevChapter])
 
   // Stop TTS on unmount
   useEffect(() => () => {
@@ -2336,6 +2316,12 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
         onExit: onClose,
       }}
     >
+      {progressSave.failed && <div className="reader-progress-save" role="status">
+        <span>阅读进度未保存</span>
+        <button type="button" disabled={progressSave.saving} onClick={persist}>
+          {progressSave.saving ? '正在重试' : '重试保存'}
+        </button>
+      </div>}
       {boundaryMessage && <p className="reader-boundary-message" role="status">{boundaryMessage}</p>}
     </ReaderBody>
 

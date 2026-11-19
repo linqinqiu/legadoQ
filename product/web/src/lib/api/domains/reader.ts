@@ -181,6 +181,7 @@ export const progress = {
     return request<ReadingProgress>('/api/reading-progress', {
       method: 'PUT',
       body: JSON.stringify(progressItem),
+      keepalive: true,
     })
   },
 }

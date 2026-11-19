@@ -1311,6 +1311,8 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
    全角空格，缩进只能有一个主人）；标题 h1 与配图不跟着缩。对齐（--reader-text-align）同理：
    两端对齐是中文出版惯例（默认），左对齐给西文混排/等宽字体用。 */
 .reading-content p, .reader-paginated-column-body p { margin-bottom: var(--reader-paragraph-spacing); color: var(--ink); text-align: var(--reader-text-align, justify); text-wrap: pretty; text-indent: var(--reader-text-indent, 2em); }
+.reader-progress-save { position: fixed; z-index: 25; top: calc(64px + var(--safe-top)); inset-inline: 16px; width: fit-content; max-width: calc(100% - 32px); margin-inline: auto; display: flex; align-items: center; gap: 12px; padding: 6px 12px; border: 1px solid var(--line); border-inline-start: 3px solid var(--accent); border-radius: 4px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.reader-progress-save button { flex-shrink: 0; min-height: 36px; padding: 4px 10px; color: var(--accent); }
 .reader-boundary-message { position: fixed; z-index: 25; top: calc(18px + var(--safe-top)); left: 50%; transform: translateX(-50%); padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: 0 6px 20px rgba(0, 0, 0, .12); color: var(--ink); font-size: 13px; pointer-events: none; }
 .reader-status, .reader-error { color: var(--muted) !important; text-align: center !important; padding: 60px 0; }
 .reader-error { color: var(--danger) !important; }
