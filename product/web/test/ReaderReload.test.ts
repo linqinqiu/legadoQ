@@ -32,4 +32,18 @@ test('重试接的是「重拉当前章」，不是刷新整页', () => {
   assert.match(hook, /const \[reloadToken, setReloadToken\]/, '靠自增 token 触发加载 effect')
   assert.match(hook, /progress\?\.positionChecksum, reloadToken\]/, 'token 要进依赖数组，否则重试不生效')
   assert.match(hook, /preloadedContentRef\.current\.delete\(chapter\.url\)/, '重试要绕开预取缓存，否则命中旧的那份')
+
+  // R3 正文单一入口（折叠在此，共用上面的 read，不新增源码文本引用）：
+  // 单一获取口在飞表按 URL 复用 Promise，续接/回接/预取都走它，D1 同章不再各发一次。
+  assert.match(hook, /const fetchContent = useCallback/, '要有唯一的取正文口')
+  assert.match(hook, /inFlightRef\.current\.get\(url\)/, '在飞命中要复用同一个请求')
+  assert.match(hook, /inFlightRef\.current\.set\(url, req\)/, '发起后要登记在飞表')
+  assert.match(hook, /inFlightRef\.current\.delete\(url\)/, '结束要从在飞表摘除')
+  const preloadBody = hook.slice(hook.indexOf('const preload ='), hook.indexOf('const preloadNextChapter'))
+  assert.doesNotMatch(preloadBody, /api\.content\(/, 'preload 不得绕过 fetchContent 直发请求')
+  assert.equal(
+    (screen.match(/await fetchContent\(/g) ?? []).length,
+    2,
+    '续接窗口与向前接章两处都要走 fetchContent（各一次），不许再裸调 api.content',
+  )
 })

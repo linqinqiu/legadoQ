@@ -288,7 +288,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     loading,
     setLoading,
     preloadedContentRef,
-    preloadingRef,
+    fetchContent,
     preloadNextChapter,
     preloadPrevChapter,
     clearPreload,
@@ -1321,14 +1321,10 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       }
       const filled: { chapter: Chapter; content: string }[] = []
       for (const candidate of wanted) {
-        const cached = preloadedContentRef.current.get(candidate.url)
-        if (cached) {
-          filled.push({ chapter: candidate, content: cached })
-          continue
-        }
-        const result = await api.content(currentBook.details.sourceId, candidate.url, currentBook.bookUrl).catch(() => null)
+        // 统一走 fetchContent：缓存命中 / 在飞复用 / 写缓存都在那一处，
+        // 不再和 preload 对同一 URL 各发一次（D1）。
+        const result = await fetchContent(candidate.url)
         if (!result || cancelled) break
-        preloadedContentRef.current.set(candidate.url, result.content)
         // 预载的下一章若含图（漫画常见），趁现在把它的图也预热，翻过去时直接命中缓存。
         warmContentImages(result.content, candidate.url, currentBook.details.sourceId)
         filled.push({ chapter: candidate, content: result.content })
@@ -1336,7 +1332,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
       if (!cancelled) setFlowTail(filled)
     })()
     return () => { cancelled = true }
-  }, [settings.pageMode, chapterIndex, chapter?.url, content, loadedChapterUrl, currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId])
+  }, [settings.pageMode, chapterIndex, chapter?.url, content, loadedChapterUrl, currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId, fetchContent])
 
   // Scroll mode layout effect to restore position or jump to start/end
   useLayoutEffect(() => {
@@ -1537,18 +1533,14 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
     while (target >= 0 && (currentBook.chapters[target]?.isVolume || !currentBook.chapters[target]?.url)) target -= 1
     if (oldestIndex < 1 || target < 0) return false
     const candidate = currentBook.chapters[target]
-    const cached = preloadedContentRef.current.get(candidate.url)
-    let text = cached ?? null
-    if (text === null) {
-      const result = await api.content(currentBook.details.sourceId, candidate.url, currentBook.bookUrl).catch(() => null)
-      if (!result) return false
-      text = result.content
-      preloadedContentRef.current.set(candidate.url, result.content)
-    }
+    // 同续接窗口，统一走 fetchContent（缓存 / 在飞去重 / 写缓存单点化）。
+    const result = await fetchContent(candidate.url)
+    if (!result) return false
+    const text = result.content
     pendingPrependRef.current = candidate.url
     setFlowHead(prev => (prev.some(item => item.chapter.url === candidate.url) ? prev : [{ chapter: candidate, content: text ?? '' }, ...prev]))
     return true
-  }, [chapter, currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId])
+  }, [chapter, currentBook.bookUrl, currentBook.chapters, currentBook.details.sourceId, fetchContent])
 
   const goPrevPage = useCallback(() => {
     // 漫画：章内退一屏，退到第一屏再回上一章的末屏。

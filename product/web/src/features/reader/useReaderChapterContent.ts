@@ -8,6 +8,12 @@ export interface ReaderChapterProgress {
   positionChecksum?: string | null
 }
 
+/** fetchContent 的统一返回：正文 + 可选媒体地址（取缓存命中时没有媒体地址）。 */
+export interface ReaderFetchedContent {
+  content: string
+  mediaUrl: string | null
+}
+
 export interface ReaderChapterContentOptions {
   chapter: Chapter
   chapters: Chapter[]
@@ -45,7 +51,8 @@ export function useReaderChapterContent({
   const [loading, setLoading] = useState(true)
 
   const preloadedContentRef = useRef(new Map<string, string>())
-  const preloadingRef = useRef(new Set<string>())
+  /** 同一 URL 的在飞请求（R3）：让"取正文"只有一个出口，避免续接窗口/预取各发一次。 */
+  const inFlightRef = useRef(new Map<string, Promise<ReaderFetchedContent | null>>())
   /** 手动重试：自增一次就让加载 effect 重跑（正文失败时界面上的"重新加载"）。 */
   const [reloadToken, setReloadToken] = useState(0)
   const onLoadedRef = useRef(onLoaded)
@@ -60,17 +67,37 @@ export function useReaderChapterContent({
     }
   }, [])
 
+  /**
+   * 单一正文获取口（R3）——缓存命中直接回、同一 URL 在飞复用同一个 Promise，
+   * 否则发起请求并写预载缓存。续接窗口、向前接章、预取三条路径都走这里，
+   * 消除"同一章被请求两次"（hook 的 preload 已在飞时，续接窗口不再另发一次）。
+   *
+   * 只管"取 + 缓存"；图片预热仍由调用方决定（预取不需要、续接窗口才要），
+   * 避免把渲染层的关注点塞进获取层。
+   */
+  const fetchContent = useCallback((url: string): Promise<ReaderFetchedContent | null> => {
+    const cached = preloadedContentRef.current.get(url)
+    if (cached !== undefined) return Promise.resolve({ content: cached, mediaUrl: null })
+    const flying = inFlightRef.current.get(url)
+    if (flying) return flying
+    const req = api.content(sourceId, url, bookUrl)
+      .then(result => {
+        remember(url, result.content)
+        return { content: result.content, mediaUrl: result.mediaUrl ?? null }
+      })
+      .catch(() => null)
+      .finally(() => { inFlightRef.current.delete(url) })
+    inFlightRef.current.set(url, req)
+    return req
+  }, [bookUrl, remember, sourceId])
+
   const preload = useCallback((index: number, step: 1 | -1) => {
     let j = index + step
     while (j >= 0 && j < chapters.length && (chapters[j].isVolume || !chapters[j].url)) j += step
     const target = chapters[j]
-    if (!target || !target.url || preloadedContentRef.current.has(target.url) || preloadingRef.current.has(target.url)) return
-    preloadingRef.current.add(target.url)
-    void api.content(sourceId, target.url, bookUrl)
-      .then(result => remember(target.url, result.content))
-      .catch(() => undefined)
-      .finally(() => preloadingRef.current.delete(target.url))
-  }, [bookUrl, chapters, remember, sourceId])
+    if (!target || !target.url) return
+    void fetchContent(target.url)
+  }, [chapters, fetchContent])
 
   const preloadNextChapter = useCallback((index: number) => preload(index, 1), [preload])
   const preloadPrevChapter = useCallback((index: number) => preload(index, -1), [preload])
@@ -127,7 +154,7 @@ export function useReaderChapterContent({
     loading,
     setLoading,
     preloadedContentRef,
-    preloadingRef,
+    fetchContent,
     preloadNextChapter,
     preloadPrevChapter,
     clearPreload,
