@@ -284,16 +284,31 @@ try {
     assert.equal(harness.countFor(target), 1,
       `在飞期间 preload 重复请求了同一章：期望 1 次，实际 ${harness.countFor(target)} 次`)
 
-    // 放行在飞请求，续接窗口应正常把第 2 章挂到窗口下方（行为不变）。
+    // 放行在飞请求，续接窗口应正常把第 2、3 章挂到窗口下方（行为不变）。
     harness.release()
     await harness.waitFlowTail()
-    // 截图要能看见被验证的现象：滚到续接进来的第 2 章开头，而不是停在第 1 章尾部。
+    // 续接窗口一次取 2 章：先断言第 2、3 章都在且索引对得上（滚动前，避免推进重排干扰）。
+    const tailIndexes = await page.evaluate(() => [...document.querySelectorAll('.reading-content .reader-flow-chapter')]
+      .map(node => Number(node.dataset.chapterIndex)))
+    assert.ok(tailIndexes.includes(1) && tailIndexes.includes(2),
+      `续接窗口应挂入第 2、3 章，实际索引 ${JSON.stringify(tailIndexes)}`)
+    // 截图第 2 章
     await page.evaluate(() => {
       const second = document.querySelectorAll('.reading-content .reader-flow-chapter')[1]
       if (second) scrollTo({ top: scrollY + second.getBoundingClientRect().top - 16, behavior: 'instant' })
     })
     await pause(300)
     await screenshot(page, 'reader-content-dedup-flowtail.png')
+    // 截图第 3 章：先把它滚进视口（可能触发续接推进 + holdScroll 校正），
+    // 等重排稳定后按 data-chapter-index 重新定位它，滚到顶部截标题 + 首段。
+    await page.evaluate(() => document.querySelector('.reading-content [data-chapter-index="2"]')?.scrollIntoView())
+    await pause(800)
+    await page.evaluate(() => {
+      const third = document.querySelector('.reading-content [data-chapter-index="2"]')
+      if (third) scrollTo({ top: scrollY + third.getBoundingClientRect().top - 16, behavior: 'instant' })
+    })
+    await pause(500)
+    await screenshot(page, 'reader-content-dedup-flowtail-ch3.png')
     assert.equal(harness.countFor(target), 1, '放行后不应再补发第 2 章请求')
   } finally {
     try { await harness.cleanup() } catch (error) {
