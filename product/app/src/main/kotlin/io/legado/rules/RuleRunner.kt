@@ -968,15 +968,20 @@ class RuleRunner(
                 if (pageText.length < 500 && sniffMediaUrl(pageText, source.sourceType()) == null &&
                     !pageText.isBareUrlLine() && !NO_CONTENT_PAGE.containsMatchIn(body)
                 ) {
-                    val paragraphs = Regex("(?i)<p[^>]*>([\\s\\S]*?)</p>").findAll(body)
+                    val allParagraphs = Regex("(?i)<p[^>]*>([\\s\\S]*?)</p>").findAll(body)
+                        .map { it.groupValues[1] }
+                        .toList()
+                    val paragraphs = allParagraphs
                         // 导航条 / 推荐位 / 网盘广告的文字几乎全在 `<a>` 里，先按链接密度剔掉；
                         // 相同文案重复出现（「请退出浏览器阅读模式」贴两遍）只算一次。
-                        .filter { it.groupValues[1].linkTextRatio() <= PARAGRAPH_FALLBACK_MAX_LINK_RATIO }
-                        .map { it.groupValues[1].cleanContent() }
+                        .filter { it.linkTextRatio() <= PARAGRAPH_FALLBACK_MAX_LINK_RATIO }
+                        .map { it.cleanContent() }
                         .filter { it.length > 2 && !it.contains("按←键返回") && !it.contains("加入书签") && !it.contains("仅放置最近浏览") }
                         .distinct()
-                        .toList()
-                    if (paragraphs.size >= 5) {
+                    // 段落数按**筛选前**算：导航链接也算段落，而一章正文可能只有一段（实测
+                    // yydskxs 的整章就是单个 2,273 字的 `<p>`，按筛选后的 2 段会被挡在门外，
+                    // 正确正文直接变成「未提取到内容」）。
+                    if (allParagraphs.size >= 5) {
                         val candidate = paragraphs.joinToString("\n\n")
                         // 兜底必须**明显多于**规则给出的内容。只多一点点，通常是把评论区/页脚/推荐位
                         // 一起捞进来：规则已经选中了页面的一部分（短章 144 字），整页段落 286 字
