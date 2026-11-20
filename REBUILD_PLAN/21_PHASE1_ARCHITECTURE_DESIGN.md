@@ -28,7 +28,7 @@
 | 项 | 审计快照（11-17，`09`/`08`） | 当前实测（11-20，`8ff04fa`） | 影响 |
 |---|---|---|---|
 | 一级包结构 | 目标 11 域 + kernel 9 包 | 实际 14 个：`backup cache content data http localbook model ops port reading rules source subscription tts` | 目标态尚未落地；`kernel/` 不存在，`port/`（4 文件）是过渡物 |
-| R4 `setAutoCommit` | 12 处待收口 | **0 处**（`grep -rn setAutoCommit product/app/src/main/kotlin` 无命中）；`Database.kt:113/138` 已有 `write{}`/`transaction{}` 门面 | **阶段 3.3 事务收口事实上已完成**，R4 可直接硬红 |
+| R4 手动 autoCommit | 12 处待收口（按函数计） | **未收口**：`grep -rn "\.autoCommit\s*="` 共 26 行——DAO 白名单 4 文件（ShelfDao 12 / SourcesDao 8 / SourceHealthDao 2 / CacheDao 2）+ `Database.kt` 门面内 2 行（合法）。注意代码用 `db.autoCommit = false/true` 赋值，**不是** `setAutoCommit()` 方法；按后者写门禁会假绿 | **阶段 3.3 尚未完成**；R4 门禁必须用 `\.autoCommit\s*=` 正则，白名单登记 4 个 DAO 文件 |
 | R2 裸 `HttpClient.newBuilder` | 6 处 | 6 处（`DesktopLauncher:313,323`、`UpdateCheck:42`、`ExternalBrowserLogin:99`、`WebViewProxy:60`、`EdgeTtsService:28`）+ 唯一合法签发点 `NetworkSecurity:62` | 数字一致，白名单可沿用 |
 | R5 DTO 越界 | `LogEntry`@`ops/LogService.kt:178` | `ops/`、`http/`、`data/`、`rules/` 等 10 个文件含 `@Serializable`（详见 §2.2 R5） | 违例面比审计记录的大，需完整登记 |
 | `rules → data/source/http` 横穿 | 已清零 | **仍为 0**（`rules/` 只 import content/model/ops/port/rules） | 保持硬红 |
@@ -109,8 +109,8 @@ kernel ×9（无业务语义，被所有域依赖，自己谁也不依赖）
 | **R2a** | 只有 `data/` 能拼 SQL | `grep -rn "executeQuery\|prepareStatement" --include=*.kt \| grep -v "/data/"` | 待登记（审计标注 `http/`、`rules/` 有直连，本轮未精确复测） | G2 |
 | **R2b** | 只有 app+kernel/fetch 能 new HTTP 客户端 | `grep -rn "HttpClient\.newBuilder" --include=*.kt \| grep -v "NetworkSecurity.kt"` | **6 处**（DesktopLauncher×2 / UpdateCheck / ExternalBrowserLogin / WebViewProxy / EdgeTtsService）；`NetworkSecurity:62` 为唯一合法签发点 | G3 |
 | **R3** | 域之间只走对方 `api/`，不得 import 对方 `data/` | `grep -rn "import io\.legado\.<域>\.data" --include=*.kt`（任意跨域） | 真环 2 对：`data↔source`、`cache↔data`、`data↔ops`、`content↔rules`（`ArchitectureBoundaryTest:344` 基线 4 对） | 建议新增 G7 |
-| **R4** | 禁止手动 `autoCommit` | `grep -rn "setAutoCommit" --include=*.kt \| grep -v "kernel/db"` | **0**（已收口，可直接硬红）；`Database.kt:130` 注释明令禁止 | G4 |
-| **R5** | DTO 只允许在 `model/` | `grep -rn "@Serializable" --include=*.kt \| grep -v "/model/"` | **10 文件**：`BrandStore` `data/CookieDao` `data/DbSnapshot` `http/BackupRoutes` `http/SourcesRoutes` `localbook/TxtTocRule` `ops/LogService` `ops/Metrics` `rules/RuleProcessor` `rules/RuleRunner` | G5 |
+| **R4** | 禁止手动 `autoCommit` | `grep -rn "\.autoCommit\s*=" --include=*.kt \| grep -v "/Database.kt"`（门面内合法；目标态改为 `kernel/db`） | **4 文件**：`data/ShelfDao.kt`(12) `data/SourcesDao.kt`(8) `data/SourceHealthDao.kt`(2) `data/CacheDao.kt`(2)；门面 `Database.kt`(2) 合法。**注意用 `.autoCommit =` 而非 `setAutoCommit()`** | G4 |
+| **R5** | DTO 只允许在 `model/` | `grep -rn "@Serializable" --include=*.kt \| grep -v "/model/"` | **11 文件**：`BrandStore` `data/CookieDao` `data/DbSnapshot` `http/BackupRoutes` `http/SourcesRoutes` `localbook/TxtTocRule` `ops/LogService` `ops/Metrics` `rules/RuleProcessor` `rules/RuleRunner` `source/SourceDebugger` | G5 |
 | **R6** | 新样式不得进全局 CSS | `wc -l styles.css` 上限 + 增量检查（复用 `depth-check.mjs` 模式） | `styles.css` 6,757 行（目标单调下降） | 建议新增 G8 |
 
 ### 3.2 与现有判据的关系
@@ -201,7 +201,53 @@ kernel ×9（无业务语义，被所有域依赖，自己谁也不依赖）
 | golden 现状（6 目录 15 文件、逐字段断言） | `14_RULE_COMPATIBILITY_MATRIX.md:22,134,224`；`GoldenRuleTest.kt:44-46,115-117,129-135` |
 | 逐字节 vs 逐字段矛盾 | `14:170`（§4.1-#1） |
 | 7 个补充样本 | `14:192-206`（§5） |
-| `setAutoCommit=0`（已收口） | `grep -rn setAutoCommit product/app/src/main/kotlin`（0 命中）；`Database.kt:113,130,138` |
+| autoCommit 未收口（4 DAO + 门面 2） | `grep -rn "\.autoCommit\s*=" product/app/src/main/kotlin --include=*.kt`；`Database.kt:113,130,138`（门面）；DAO 白名单 ShelfDao/SourcesDao/SourceHealthDao/CacheDao |
 | 6 处裸 HttpClient | `grep -rn "HttpClient.newBuilder"`（DesktopLauncher:313,323 / UpdateCheck:42 / ExternalBrowserLogin:99 / WebViewProxy:60 / EdgeTtsService:28）+ `NetworkSecurity:62` 合法签发 |
+| G5 越界 DTO 11 文件 | `grep -rln "@Serializable" --include=*.kt \| grep -v "/model/"` |
+
+---
+
+## 7. 阶段 2 落地记录（2026-11-20）
+
+> S-1 / S-2 签字后实施的判据先行成果。原则：`09` §1.1"这一步禁止改任何业务代码"——本阶段只造尺子。
+
+### 7.1 G1–G8 门禁（判据脚本）
+
+- 文件：`product/tools/verify/architecture-check.mjs`
+- 模式：照抄 `depth-check.mjs`（显式基线 Set + fresh/shrunk 双向断言 + 空转哨兵 + 末尾打印各门禁基线数量）。
+- CI：被 `gates.yml` 的 `for f in tools/verify/*-check.mjs` 通配自动收编，无需改 workflow。
+- 当前基线（实测全绿、只许单调缩小）：
+
+| 门禁 | 白名单基线 | 当前命中 | 形态 |
+|---|---|---|---|
+| G1 kernel→域 import | 0（硬红） | 0 | rules/ 作过渡扫描面 |
+| G2 data/ 外 SQL | 0（硬红） | 0 | — |
+| G3 NetworkSecurity 外裸 HttpClient | 6 文件 | 6 | 按文件登记（行号会漂移） |
+| G4 手动 autoCommit | 4 文件（ShelfDao/SourcesDao/SourceHealthDao/CacheDao） | 4 | 门面 Database.kt 内合法；正则用 `\.autoCommit\s*=` 而非 `setAutoCommit()`（后者会假绿） |
+| G5 model/ 外 @Serializable | 11 文件 | 11 | — |
+| G6 端点目录一致 | 由 `ApiContractTest.kt` + `web/test/ApiCatalog.test.ts` 承载 | — | 脚本内 NOTE，不重复实现 |
+| G7 跨域 import 对方 data/ | 0（硬红） | 0 | — |
+| G8 全局 CSS 行数 | 上限 6760（单调下降） | 6760 | — |
+
+- ⚠️ **修正记录**：21 §3.1 原写"R4 setAutoCommit=0 已收口"系误判——代码用 `db.autoCommit = false/true` 赋值，**非** `setAutoCommit()`；按后者写门禁会永远绿（假绿，正是 depth-check 注释警告的陷阱）。已改正则与白名单，见 §1/§3.1。
+
+### 7.2 compat 模块骨架
+
+- 文件：`product/app/src/test/kotlin/io/legado/compat/CompatHarness.kt` + `CompatGoldenTest.kt`
+- 形态：复用 `:app` 测试 source set（不建独立 Gradle module——遵循 `ArchitectureBoundaryTest.kt:16-17`"刻意不建多模块"的既有纪律；21 §4.4 的"待确认"在此定为 source set）。
+- 内容：把原 `GoldenRuleTest` 的 6 类 golden（search/details+toc/content/rss/login×2）迁进 `compat` 包，断言遵循 S-1 的 L1–L4：
+  - L1 正文逐字符：`assertBodyEquals` 已备，待 `14` §5 样本 #1 接入 `expected.txt`；
+  - L2 结构化字段：`assertFieldEquals` 逐字段 + `assertDtoShape` 键集合封闭；
+  - L3 请求形态：`assertRequestedSingle`；
+  - L4 二进制：沿用 `ImageDecodeTest`。
+- 原 `GoldenRuleTest.kt` 已删除（等价迁移，避免判据分裂）。
+- 验证：`CompatGoldenTest` 6/6 绿；全量后端测试无回归。
+
+### 7.3 退出判据达成情况
+
+| 09 §2.3 退出判据 | 状态 |
+|---|---|
+| 6 条门禁在 CI 上跑，白名单数量被打印记录 | ✅ G1–G8 落地，基线数量末尾打印；gates.yml 通配收编 |
+| compat 能跑通现有 6 类 golden（不改实现） | ✅ `CompatGoldenTest` 6/6 绿 |
 | rules→域横穿=0 | `grep` 实测；`ArchitectureBoundaryTest:287,439`；`03:578` |
 | 当前一级包 14 个 | `ls -d product/app/src/main/kotlin/io/legado/*/` |
