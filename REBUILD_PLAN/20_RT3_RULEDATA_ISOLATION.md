@@ -1,6 +1,15 @@
 # 20 RT-3：ruleData 跨源变量污染验证
 
-> 授权范围：**仅 RT-3**。不修任何代码、不改归档、不联网、不使用真实 Cookie。
+> [!NOTE]
+> **修复状态（2026-11-20）：已修复并回归验证通过。** 在 `E:\legado` 主线 `refactor/rebuild` 上，
+> 把 `ruleData` 的键从纯 URL 改为 `(sourceId, url)` 复合键（`RuleRunner.kt` 的 `ruleDataKey`，
+> 改动随 commit 提交）。用本文 §8 的同一驱动、同一 classpath 重跑 3 遍：核心污染实验
+> **E1 / E1b / E7 从 `POLLUTED` 全部转为 `clean`**，3 遍一致；单源变量交接
+> （`RuleVariableHandoffTest` / `PutPairsTest` / `RuleDataCacheLruTest` / `RuleRunnerTest`）全绿。
+> E3/E6 由污染态转为隔离态是**预期正确行为**。完整对比见文末 §10「修复记录」。
+> 下方 §0–§9 是 2026-11-18 的**审计发现原文**，保留不改，以便对照。
+
+> 授权范围（2026-11-18 审计当时）：**仅 RT-3**。不修任何代码、不改归档、不联网、不使用真实 Cookie。
 > 执行时间：2026-11-18 00:0x–00:3x（Asia/Shanghai）
 > 执行方式：仓库外独立驱动 `E:\legadoQ-runtime\rt3\Rt3.java`，编译进产品运行时 classpath
 > （`product/app/build/install/legado/lib/*`），通过 `RuleRunner` 的**公开构造函数**注入
@@ -240,3 +249,58 @@ grep VERDICT run*.log | sort | uniq -c
 3. 没有跑真实书源语料统计 URL 碰撞率（标 NEEDS_MORE_TEST）。
 4. 没有做多页目录（`pageUrl` 键）实验。
 5. 没有触碰 RT-1 / RT-2 / RT-4 及其余 9 条。
+
+---
+
+## 10. 修复记录（2026-11-20）
+
+### 10.1 改动
+
+| 项 | 内容 |
+|---|---|
+| 工作区 / 分支 | `E:\legado` · `refactor/rebuild` |
+| 文件 | `product/app/src/main/kotlin/io/legado/rules/RuleRunner.kt`（单文件，+27/−11） |
+| 机制 | 新增 `ruleDataKey(sourceId, url)`，用 NUL（`\u0000`）分隔合成复合键；`rememberRuleData` / `recallRuleData` 增加 sourceId 入参；6 个读写点（写 `:288`/`:705`，读 `:662`/`:705`/`:829`/`:972`）全部改为带 sourceId。sourceId 为 null 归一到空串，与搜索侧非空 String 统一。 |
+| 依据 | §4 所有权分析（键无 sourceId）+ §6 方向（键变 `(sourceId, url)` 是最小改动）。全 6 个读写点都能稳定拿到 `bookSourceUrl`，各路径语义一致。 |
+
+### 10.2 回归判据（同一驱动，重跑 3 遍，结论一致）
+
+| 实验 | 修复前（审计原文） | 修复后 | 判定 |
+|---|---|---|---|
+| E1 跨源详情污染 | `POLLUTED` | `clean` | ✅ 已修 |
+| E1b 跨阶段键碰撞 | `POLLUTED` | `clean` | ✅ 已修 |
+| E7 目录链路污染 | `POLLUTED` | `clean` | ✅ 已修 |
+| E5 同执行内 put→get | `SHARED_OK` | `SHARED_OK` | ✅ 机制不坏 |
+| E2 同源不同书 | `clean` | `clean` | ✅ 无回归 |
+| E4 失败不残留 | `NOT_RESIDUAL` | `NOT_RESIDUAL` | ✅ 无回归 |
+| E8 实例隔离 | `per-instance` | `per-instance` | ✅ 无回归 |
+| E3 并发同键 | `LAST_WRITER_WINS:A-tag` | `LAST_WRITER_WINS:A-tag` | ⚠️ 预期不变：同一源码并发写同一键，仍按设计 last-writer-wins（非跨源场景） |
+| E6 跨线程 | `SHARED_ACROSS_THREADS` | `thread-isolated` | ⚠️ 预期变化：B 源不再读到 A 源线程写的变量，正是隔离目标 |
+
+> E3/E6 的变化不是回归：修复前驱动把「跨线程/并发共享」当作污染证据，是因为当时无法区分「同源跨线程」
+> 与「跨源」。现在 sourceId 进键后，A 源与 B 源彻底隔离，跨线程写读同源仍共享（synchronizedMap 不变），
+> 只是驱动里 E6 用的是 A 写 B 读（不同源），所以显示隔离——这是正确的。
+
+### 10.3 单源契约测试
+
+`RuleVariableHandoffTest` / `PutPairsTest` / `RuleDataCacheLruTest` / `RuleRunnerTest` 全绿：
+单源下 sourceId 恒定，复合键与旧纯 URL 键等价，「搜索 @put → 目录 @get」「详情 put → 目录 get」
+的合法交接不受影响。
+
+全套后端测试实跑 `998 tests / 1 failed / 6 skipped`。唯一失败是
+`RuleRunnerExtendedTest.rule runner content fallback when extracted text is short but paragraph tags exist`
+（正文段落兜底，报「正文内容未提取到内容」）。**已用 stash 对照实验确认**：在撤销本修复的干净 HEAD 上
+单跑该测试同样失败——它是 24 个后续 commit 中段落兜底改动引入的**基线既有失败**，与本修复无关。
+按单一切点纪律不在本轮处理，另记为待办。审计基线 17 号文档的 992/0/6 是更早快照，测试数已随后续 commit 变化。
+
+### 10.4 复现命令（修复后）
+
+```bash
+cd /e/legado/product && ./gradlew :app:installDist --no-daemon
+# javac/java 需 cygpath -w 转换 classpath（Git Bash 不自动转 POSIX 路径）
+CP=$(ls /e/legado/product/app/build/install/legado/lib/*.jar | cygpath -w -f - | paste -sd';' -)
+OUT=$(cygpath -w /tmp/rt3verify/out); SRC=$(cygpath -w /tmp/rt3verify/Rt3.java)
+javac -encoding UTF-8 -cp "$CP" -d "$OUT" "$SRC"
+for i in 1 2 3; do java -Dfile.encoding=UTF-8 -cp "$OUT;$CP" Rt3 > run$i.log 2>&1; done
+grep VERDICT run1.log   # E1/E1b/E7 应为 clean
+```

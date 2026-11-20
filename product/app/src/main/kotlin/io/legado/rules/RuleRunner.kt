@@ -125,8 +125,9 @@ class RuleRunner(
      * `@get:{bid}` —— 我们的变量表原来只挂在单次解析的 NodeValue 上，搜索一结束就没了，
      * 于是目录取不到（0 章，用户 2026-10-09 报的「漫画打不开」的根因之一）。
      *
-     * 键是 bookUrl（搜索/发现时存），详情解析出 tocUrl 之后再补一份 tocUrl 的键
-     * （`chapters()` 那一侧拿到的是 tocUrl）。
+     * 键是 `(sourceId, bookUrl/tocUrl/pageUrl)` 复合键（见 [ruleDataKey]）：sourceId 必须是键的一部分，
+     * 否则两个书源指向同一 URL 会互相读到对方 `@put` 的变量（RT-3 跨源污染，详见 REBUILD_PLAN/20）。
+     * 搜索/发现时以 bookUrl 存，详情解析出 tocUrl 之后再补一份 tocUrl 的键（`chapters()` 拿到的是 tocUrl）。
      *
      * 上限用**按最近使用淘汰**（LRU）来守，不是整表清空：从前超过上限就 `clear()`，长跑进程 +
      * 多书源时会把别的书刚 `@put` 的变量一起抹掉，命中「目录取 0 章」这条老 bug（见上面漫画源那例）。
@@ -134,12 +135,27 @@ class RuleRunner(
      */
     private val ruleData = newRuleDataCache(MAX_RULE_DATA_KEYS)
 
-    private fun rememberRuleData(key: String?, vars: Map<String, String>) {
-        if (key.isNullOrBlank() || vars.isEmpty()) return
-        ruleData[key] = vars
+    /**
+     * RT-3（2026-11-20）：`ruleData` 的键必须带书源身份。
+     *
+     * 原来键是纯 URL（bookUrl/tocUrl/pageUrl），两个书源指向同一 URL 时会互相读到对方 `@put` 的
+     * 变量——跨源污染（换源、镜像站、A.tocUrl 撞 B.bookUrl 都会触发，规则详情见 REBUILD_PLAN/20）。
+     * 这里把键改成 `(sourceId, url)` 复合键： NUL（`\u0000`）做分隔符，URL 与 sourceId 都不含该字符，
+     * 不会歧义。sourceId 为 null 时归一到空串，与搜索侧（非空 String）保持同一合成规则。
+     *
+     * 单源场景下 `sourceId` 恒定，复合键与旧纯 URL 键等价，不破坏「搜索 @put → 目录 @get」的交接。
+     */
+    private fun ruleDataKey(sourceId: String?, url: String?): String? =
+        url?.takeIf { it.isNotBlank() }?.let { (sourceId ?: "").plus('\u0000').plus(it) }
+
+    private fun rememberRuleData(sourceId: String?, key: String?, vars: Map<String, String>) {
+        val k = ruleDataKey(sourceId, key) ?: return
+        if (vars.isEmpty()) return
+        ruleData[k] = vars
     }
 
-    private fun recallRuleData(key: String?): Map<String, String> = key?.let { ruleData[it] } ?: emptyMap()
+    private fun recallRuleData(sourceId: String?, key: String?): Map<String, String> =
+        ruleDataKey(sourceId, key)?.let { ruleData[it] } ?: emptyMap()
 
     fun search(sourceJson: String, keyword: String): List<SearchResult> =
         Metrics.timed(STAGE_SEARCH) { searchWithReason(sourceJson, keyword).first }
@@ -270,7 +286,7 @@ class RuleRunner(
                 sourceType = sourceType,
             )
             // 这一条解析里 `@put` 下的变量（漫画源典型是 comic_id）留一份，给后面的详情/目录/正文用
-            rememberRuleData(url, item.snapshotVariables())
+            rememberRuleData(sourceUrl, url, item.snapshotVariables())
             result
         }
     }
@@ -644,7 +660,7 @@ class RuleRunner(
         }
 
         // 搜索/发现时 `@put` 下的变量灌回来：`tocUrl` 常写成 `@get:{bid}`（漫画源就是这样）
-        val seedVars = recallRuleData(bookUrl)
+        val seedVars = recallRuleData(sourceUrl, bookUrl)
         baseDoc.seedVariables(seedVars)
 
         // init 常写成「JS + 后置取值路径」的规则链（如 <js>…</js>$.data）：必须求值，不能当路径用。
@@ -687,7 +703,7 @@ class RuleRunner(
         // `@put:{cid:$.comic_id}` 存下的 cid 就到不了目录，chapterUrl 里的 `@get:{cid}`
         // 会解成空串，拼出 `comic_id=&chapter_id=…` 这种请求 —— 上游回 422，
         // 界面上只看到「上游返回 HTTP 422」，看不出是变量没传过去（漫画源实测）。
-        rememberRuleData(tocUrl, recallRuleData(bookUrl) + root.snapshotVariables())
+        rememberRuleData(sourceUrl, tocUrl, recallRuleData(sourceUrl, bookUrl) + root.snapshotVariables())
         return BookDetails(
             sourceId = source.string("bookSourceUrl")!!,
             name = name.ifBlank { "未命名书籍" },
@@ -811,7 +827,7 @@ class RuleRunner(
     ): Pair<List<Triple<String, String, Boolean>>, List<String>> {
         val dataPayload = dataUrlPayload(pageUrl)
         // `chapterUrl` 常写 `@get:{bid}`（漫画源就是这样）：把搜索/详情那一次 @put 的变量灌进来
-        val seedVars = recallRuleData(pageUrl)
+        val seedVars = recallRuleData(sourceUrl, pageUrl)
         val body: String
         val chapterNodes: List<NodeValue>
         if (dataPayload != null) {
@@ -954,7 +970,7 @@ class RuleRunner(
             var firstBody: String? = null
             while (queue.isNotEmpty() && pageTexts.size < MAX_CONTENT_PAGES) {
                 val pageUrl = queue.removeFirst()
-                val (root, body) = contentPage(source, sourceUrl, pageUrl, recallRuleData(bookUrl))
+                val (root, body) = contentPage(source, sourceUrl, pageUrl, recallRuleData(sourceUrl, bookUrl))
                 if (firstRoot == null) { firstRoot = root; firstBody = body }
                 var pageText = root.value(contentRule, jsSandbox, body, pageUrl)?.preserveContentImages(pageUrl)?.cleanContent().orEmpty()
                 // 「段落兜底」只给**规则没给出内容**的文本站救场。媒体源（音频/视频/文件）的正文
