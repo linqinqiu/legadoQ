@@ -961,12 +961,20 @@ class RuleRunner(
                 // 常态就是**一行短短的地址**，长度必然 < 500 —— 不加这道判断就会被整页段落顶掉：
                 // 实测番茄短剧正文规则明明取到了 `https:\/\/…\/master.m3u8`（88 字），
                 // 结果界面显示的是 368 字的页脚（「合作伙伴：腾讯视频 优酷视频 爱奇艺…」）。
+                // 站点自己声明「本章节内容正在手打中」时页面里确实没有正文，整页段落全是页脚与版权
+                // 声明（实测 3 个 xs777 源：候选 447/460 字，逐段是「主题模式：」「字体大小：」
+                // 「Copyright ©」）。这种情况兜底只会把页脚当正文，不如留着空输出、让上层如实报
+                // 「未提取到内容」。
                 if (pageText.length < 500 && sniffMediaUrl(pageText, source.sourceType()) == null &&
-                    !pageText.isBareUrlLine()
+                    !pageText.isBareUrlLine() && !NO_CONTENT_PAGE.containsMatchIn(body)
                 ) {
                     val paragraphs = Regex("(?i)<p[^>]*>([\\s\\S]*?)</p>").findAll(body)
+                        // 导航条 / 推荐位 / 网盘广告的文字几乎全在 `<a>` 里，先按链接密度剔掉；
+                        // 相同文案重复出现（「请退出浏览器阅读模式」贴两遍）只算一次。
+                        .filter { it.groupValues[1].linkTextRatio() <= PARAGRAPH_FALLBACK_MAX_LINK_RATIO }
                         .map { it.groupValues[1].cleanContent() }
                         .filter { it.length > 2 && !it.contains("按←键返回") && !it.contains("加入书签") && !it.contains("仅放置最近浏览") }
+                        .distinct()
                         .toList()
                     if (paragraphs.size >= 5) {
                         val candidate = paragraphs.joinToString("\n\n")
@@ -1513,6 +1521,25 @@ class RuleRunner(
         return raw
     }
 
+    /**
+     * 段落里「链接文字」占全部文字的比例。
+     *
+     * 导航条、推荐位、网盘广告的文字几乎全包在 `<a>` 里；真正文的段落只有零星链接。
+     * 实测 56 个真实章节页：941 个 ≥20 字的 `<p>` 里只有 17 个比例 > 0.35，且这 17 个
+     * 全部不在规则给出的正文里 —— 所以 0.35 是能分开「正文」与「链接堆」的界线。
+     */
+    private fun String.linkTextRatio(): Double {
+        // 先解实体再数：`&nbsp;` 是空白，按原文数会把它当成 6 个字符，链接占比被稀释
+        // （一整段用 `&nbsp;&nbsp;` 分隔的网盘广告会从 0.9 掉到 0.3，正好漏过门槛）。
+        fun textLength(html: String) =
+            org.jsoup.parser.Parser.unescapeEntities(ANY_TAG.replace(html, ""), false)
+                .count { !it.isWhitespace() }
+        val total = textLength(this)
+        if (total == 0) return 0.0
+        val linked = ANCHOR_BLOCK.findAll(this).sumOf { textLength(it.value) }
+        return linked.toDouble() / total
+    }
+
     private fun String.cleanContent(): String {
         // 漫画正文的图是 `![图片](…)` 占位行，而占位行由 `preserveContentImages` 生成在
         // **`<div>` 内部**（漫画页几乎普遍是"每页图包在一个 div 单元里"）。
@@ -1614,6 +1641,13 @@ class RuleRunner(
 
         /** 「段落兜底」相对规则输出的倍数下限：只多一点点说明规则已选中页面的一部分。 */
         const val PARAGRAPH_FALLBACK_RATIO = 3
+
+        /** 「段落兜底」候选段落允许的链接文字占比上限：超过就是导航/推荐位/网盘广告。 */
+        const val PARAGRAPH_FALLBACK_MAX_LINK_RATIO = 0.35
+
+        /** 站点自己声明「本章节内容正在手打中」：页面确实没有正文，兜底只会捞到页脚。 */
+        val NO_CONTENT_PAGE = Regex("本章节内容正在手打中")
+
         /** ruleData（跨调用复用的 @put 变量）的键上限：超了按最近使用淘汰最旧那条（见 [newRuleDataCache]），不再整表清空。 */
         const val MAX_RULE_DATA_KEYS = 4096
         /** Java HttpClient 的受限请求头（设了会抛 IllegalArgumentException，见 request()）。 */
@@ -1644,6 +1678,9 @@ class RuleRunner(
         val BR_TAG = Regex("(?i)<br\\s*/?>")
         val P_TAG = Regex("(?i)</?p[^>]*>")
         val ANY_TAG = Regex("<[^>]+>")
+
+        /** 一个 `<a>` 元素（含内部标签）：[linkTextRatio] 用它量「链接文字」有多少。 */
+        val ANCHOR_BLOCK = Regex("(?i)<a\\b[\\s\\S]*?</a>")
 
         /**
          * 续取页数上限。上游只靠 visited 集合防回环，服务端替用户发请求，

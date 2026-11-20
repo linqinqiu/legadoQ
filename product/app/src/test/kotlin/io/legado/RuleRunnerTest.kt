@@ -1500,4 +1500,72 @@ class RuleRunnerTest {
 
         RuleRunner { _ -> body }.content(source, "https://nav.example/1/2.html")
     }
+
+    @Test
+    fun `链接堆段落不参与兜底`() {
+        // 规则为空、页面正文是 5 个标准段落，末尾挂着一大段「推荐/网盘」链接堆。
+        // 兜底必须只收正文，不能把链接堆一起拼进去。
+        val source = """{
+            "bookSourceUrl":"https://adfarm.example",
+            "ruleContent":{"content":"class.gone@text"}
+        }"""
+        val links = (1..20).joinToString("&nbsp;&nbsp;") {
+            """<a href="https://pan.example/$it">网盘资源$it</a>"""
+        }
+        val body = """<html><body>
+            <p>第一段正文，雨停以后他沿着河岸慢慢走，路灯把水面照得一片碎金，远处有人在收摊。</p>
+            <p>第二段正文，他想起白天那本书里的句子，忽然觉得有些话只有在夜里才读得懂，白天太亮了。</p>
+            <p>第三段正文，手机在口袋里震了一下，是编辑发来的消息，问他稿子改到哪一步了，他还没回。</p>
+            <p>第四段正文，走到桥头的时候他停下来，看着水流发了会儿呆，然后转身往回走，步子比来时慢。</p>
+            <p>第五段正文，楼道的灯坏了，他摸黑上了四层，开门的时候手有点抖，屋里还是走时那个样子。</p>
+            <p>$links</p>
+            </body></html>"""
+
+        val chapter = RuleRunner { _ -> body }.content(source, "https://adfarm.example/1/2.html")
+
+        assertTrue(chapter.content.contains("第一段正文"))
+        assertFalse("链接堆被当成正文: ${chapter.content}", chapter.content.contains("网盘资源"))
+    }
+
+    @Test(expected = RuleExecutionException::class)
+    fun `整页只有重复提示和链接堆时不冒充正文`() {
+        // 规则为空，页面上只有两遍「请退出浏览器阅读模式」和一段链接堆：
+        // 去重后只剩一句提示，远不够 200 字，应当如实报「未提取到内容」。
+        val source = """{
+            "bookSourceUrl":"https://notice.example",
+            "ruleContent":{"content":"class.gone@text"}
+        }"""
+        val links = (1..30).joinToString("&nbsp;&nbsp;") {
+            """<a href="https://pan.example/$it">小说$it</a>"""
+        }
+        val body = """<html><body>
+            <p>请退出浏览器阅读模式，否则将导致章节内容缺失及无法阅读下一章。</p>
+            <p>请退出浏览器阅读模式，否则将导致章节内容缺失及无法阅读下一章。</p>
+            <p>$links</p>
+            </body></html>"""
+
+        RuleRunner { _ -> body }.content(source, "https://notice.example/1/2.html")
+    }
+
+    @Test(expected = RuleExecutionException::class)
+    fun `站点声明本章节正在手打中时不拿页脚当正文`() {
+        // xs777 一类站点：章节还没录入，页面只有页脚（主题模式/字体大小/更新时间/Copyright）。
+        // 候选有 400+ 字，旧逻辑会把整块页脚当正文交给用户。
+        val source = """{
+            "bookSourceUrl":"https://xs777.example",
+            "ruleContent":{"content":"class.gone@text"}
+        }"""
+        val body = """<html><body>
+            <p>www.xs777.example</p><p>主题模式：</p><p>字体大小：</p><p>作者：野秋行</p>
+            <p>更新时间：26-11-19 23:57</p>
+            <p>本章节内容正在手打中，当您看到这段文字，请您稍后刷新页面看是否已经更新，如果长久未更新，请通过下面反馈联系我们！</p>
+            <p>特殊时刻,请大家多多收藏支持：(www.xs777.example)重回八零，老太甜品摊开业了 小说旗</p>
+            <p>如有问题请点击此处反馈给我们 《重回八零，老太甜品摊开业了》情节跌宕起伏、扣人心弦，是一本情节与文笔俱佳的小说。</p>
+            <p>重回八零，老太甜品摊开业了内容由网友收集并提供，转载至小说旗只是为了宣传《重回八零，老太甜品摊开业了第85章 明算账》让更多书友知晓。</p>
+            <p>如果对重回八零，老太甜品摊开业了作品浏览，或对作品内容、版权等方面有质疑，或对本站有意见建议请联系本站，感谢您的合作与支持！</p>
+            <p>Copyright &copy; 2023 小说旗 All Rights Reserved.</p>
+            </body></html>"""
+
+        RuleRunner { _ -> body }.content(source, "https://xs777.example/1/2.html")
+    }
 }
