@@ -1,10 +1,16 @@
 # legadoQ 自定义接入面 `/api/agent/*`
 
+> **⚠ 这份文档描述的是「挪走前」的接口，当前构建里没有这些端点。**
+> 2026-11-17 按「附属额外功能暂且移除」的决定，AI 那一整套（`ai/` 包 + `/api/agent` 路由 + 前端 AI 面板）
+> 已整体移到 `product/experimental/ai/`，不在任何 Gradle / 前端源码集里，`./gradlew build` 与 `npm run build`
+> 都不碰它；`resources/agent-api.json` 里的 agent 端点也已同步删除（现为 144 条，全是阅读器主线）。
+> 恢复步骤见 [`experimental/README.md`](../experimental/README.md)。下面内容只在把 AI 挪回源码树之后才成立。
+
 > 本文原名 `product/AGENTS.md`，2026-11-11 迁入 `product/docs/`，以免被 AI 工具按目录自动加载
 > （约 890 行，日常编码用不到）。**端点与字段以 `GET /api/catalog` 与 `resources/agent-api.json` 为准**；
 > 文中部分历史表述可能已过时，冲突时以代码与运行时为准。
 
-本文件给需要把 legadoQ 接入外部系统 / AI 客户端的开发者与智能体看。它描述的是**真实已在 127.0.0.1:1234 跑起来的 HTTP 接口**，不是设计稿。
+本文件给需要把 legadoQ 接入外部系统 / AI 客户端的开发者与智能体看。它描述的是 AI 模块挪走前、**真实在 127.0.0.1:1234 跑起来过的 HTTP 接口**，不是设计稿。
 
 > 安全模型：本服务没有账号、没有 token。写操作（登记/删除连接、新建书源）受**同源写门**保护：`POST/PUT/DELETE` **只有在带了 `Origin` 头**时才检查它是否指向服务自己（`ServerIdentity` 的绑定 host+port），带了跨站 Origin 就 403；**不带 Origin 的请求直接放行**（本机 curl / 脚本 / AI 客户端都属于这一类）。`GET/HEAD/OPTIONS` 无论带什么都放行。唯一反向例外是 WebSocket：那条把「没有 Origin」当作跨站拒掉。服务**仅绑定 127.0.0.1，绝不绑定 0.0.0.0**。所有外部 HTTP 调用走 JDK `java.net.http.HttpClient`；受控实例由 `NetworkSecurity.newHttpClient()` 签发，
 `send/sendAsync` 前会**重解析 DNS 并复查回环/私网**（防 DNS 重绑定）。

@@ -38,7 +38,7 @@
 
 **AI 与扩展**
 
-- [../product/docs/agent-api.md](../product/docs/agent-api.md) — `/api/agent/*` 自定义接入面（**现行**扩展方式：内置工具 / LLM 协议 / 连接选择策略都在 `ai/` 注册）
+- [../product/docs/agent-api.md](../product/docs/agent-api.md) — `/api/agent/*` 自定义接入面（**实验型，2026-11-17 起移出编译路径**：代码在 `product/experimental/ai/`，当前构建不含这些端点，恢复步骤见 [`experimental/README.md`](../product/experimental/README.md)）
 - 插件系统已移除（2026-10-26）：`plugin-framework.md` 与 `plugin-development-guide.md` 已归到 [`archive/plugins/`](archive/plugins/)，两份开头都有逐项核对表，说明文中路径与端点数为什么不能照着用
 
 **开发与验证**

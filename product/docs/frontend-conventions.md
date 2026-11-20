@@ -77,7 +77,6 @@ web/src/
 ├── app/          shell / 组合根：路由表与页面分派（`pages.tsx`）+ 全局顶栏（`AppHeader.tsx`）
 │                 这里的东西**只许被 `main.tsx` 引用**，不许被 shared 或 features 反向 import
 ├── features/     产品自带内容，按业务域纵向切分
-│   ├── ai/            AI 接入
 │   ├── bookshelf/     书架与书库（含 LibraryPage）
 │   ├── explore/       发现页
 │   ├── reader/        阅读器内核

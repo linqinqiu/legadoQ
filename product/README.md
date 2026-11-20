@@ -68,44 +68,17 @@ Kotlin JVM 17 + Ktor 3.4 + SQLite（WAL）。前端 React 19 + TypeScript + Vite
 - **本地书**：TXT / EPUB 导入，26 条分章规则可选、可新建、可编辑，也能让程序读文件头打分自动挑一条；已经在读的那本可以换规则重切目录。
 - **手机备份包**：见下面单独一节。
 - **写操作保护**：浏览器发出的跨站写请求一定带 `Origin`，与本机 Host 不一致就 403。抓取侧对重定向后的地址复验，拒绝内网与链路本地目标；正文进界面前做净化，图片走代理。
-- **AI 接入**：程序内部的 AI 网关（22 个端点，`GET /api/agent/manifest` 可查能力清单）。**要先登记一个外部模型**（任何 openai-compatible 的地址：本机 Ollama、各家 API、自建网关都行）才能用；没登记就是明确报「未连接」，不会拿本地规则拼一段话冒充模型回答。接上之后它能做两类事，见下面单独一节。
+- **AI（实验型，当前构建不含）**：AI 网关（对话 / 工具调用 / 外部模型接入 / MCP）2026-11-17 已整体移出主线，代码在 `experimental/ai/`，不参与编译与打包，界面上也没有入口。见下面单独一节。
 
-## AI 能帮你做什么
+## AI 相关能力（实验型，当前构建不含）
 
-先说清楚它**是什么**：一个**进程内**的 AI 网关，不是外挂的聊天框。
-它拿到的服务和界面用的是同一批 —— 所以它知道你在哪一页、在看哪本书、读到第几章，
-也能调用程序自己的 55 个内置能力（查书源、搜书、改净化规则、读正文……），
-外加按 MCP 配置动态发现的工具。
+AI 那一套（进程内网关、内置工具、openai-compatible 连接、MCP、技能与提示词）2026-11-17 按
+「附属额外功能暂且移除」的决定整体挪到 `experimental/ai/`：不在任何 Gradle / 前端源码集里，
+`./gradlew build` 与 `npm run build` 都不碰它 —— 所以**当前这个包没有 AI 面板，也没有相应端点**。
 
-**用法**：设置 → 接入与扩展 → AI 接入 → 登记一个 openai-compatible 连接。
-登记完输入框才可用；面板顶部有两个状态，别混：「已连接」说的是**配没配**，
-「实测可达」说的是**此刻通不通** —— 只有实测 ok 才代表真能对话。
-
-### 能做的事（都是真的，不是设想）
-
-| 你想问的 | 它会怎么做 |
-|---|---|
-| 「这本书讲了什么」 | 从界面上下文知道是哪本书，用工具去取目录与正文，再回答 —— 不是凭空猜 |
-| 「这个书源为什么搜不出书」 | 调 `source.debug` 逐阶段跑（结构/搜索/详情/目录/正文），告诉你坏在哪一步 |
-| 「帮我看看哪些书源已经废了」 | 调 `source.health` 实跑体检，按结果分档 |
-| 「把正文里那些广告行去掉」 | 调 `replace.list` / `replace.save` 直接改净化规则，改完你可以在设置里看到 |
-| 「搜一下《×××》」 | 调 `search.run` 真去各书源搜，把结果带回来 |
-
-它**不会**做的事：不联网查资料、不生成图片、不碰书架之外的文件。
-所有写操作都过护栏（批量删除要显式确认），失败时明确报错而不是编一个结果。
-
-### 没有外部模型时
-
-AI 面板显示「未连接外部模型，AI 不可用」，输入框禁用。
-**这是设计如此**：0.8.3 删掉了「本地关键词抽取兜底」——
-拿正则抽出来的东西冒充模型回答，会让人分不清哪句是真模型说的。宁可明确说不可用。
-
-### 接别的模型 / 给 AI 加能力
-
-- 想接 Anthropic、Ollama、自建服务：实现 `LlmProvider` 注册进 `providerRegistry`（在 `ai/` 下），接入面见 [`docs/agent-api.md`](docs/agent-api.md)。
-- 想给 AI 加自己的工具：往 `ToolRegistry` 注册，AI 立刻能调 —— 不用改框架。
-- 多连接时默认只走**第一个**，不自动顺延（这是已确认的行为，不是 bug）。
-- 完整接入说明见 [`docs/agent-api.md`](docs/agent-api.md)。
+想恢复：按 [`experimental/README.md`](experimental/README.md) 的「当前内容」表把后端与前端各挪回源码树、
+接回装配（`Application.kt` 与 `Routes.kt` 各留了一行注释指路），再把对应端点加回 `agent-api.json`。
+历史接口说明仍在 [`docs/agent-api.md`](docs/agent-api.md)，但那是**挪走前**的口径，不能照着调。
 
 ## 环境要求
 
@@ -222,12 +195,11 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     ops/                    NetworkSecurity.kt 出站 SSRF 闸门 · PinnedProxy.kt 连接级 IP 固定 · GuardedHttpClient.kt · ProxyHeaders.kt · ServerIdentity.kt · LogService.kt · UpdateCheck.kt · Metrics.kt · UiPrefsStore.kt
     port/                   规则内核需要的窄接口（PortBundle 等），把 rules → data 的横穿收成一组访问器
     model/                  纯请求 / 响应数据类型，按系统、书源、发现、阅读、书架、替换规则、备份分文件
-    ai/                     进程内 AI 网关：Agent.kt · AgentConnection.kt 句柄 · AgentRoutes.kt 薄收口 · LlmProvider.kt / ToolRegistry.kt / ConnectionSelector.kt 扩展点 · Guardrails.kt · BuiltinTools.kt（55 个内置工具）· McpBridge.kt · AgentCatalog.kt 契约
-  src/main/resources/       agent-api.json（165 条端点契约）· assets/txtTocRule.json
+  src/main/resources/       agent-api.json（144 条端点契约）· assets/txtTocRule.json
 web/                        前端（React 19 + TS + Vite，构建产物进同一个 jar）
   src/main.tsx              应用外壳 + hash 路由 + 全局快捷键
   src/app/                  AppHeader.tsx 顶栏 · pages.tsx 页面注册表（导航项在 lib/nav.ts）
-  src/features/             按业务域分：reader（正文画布/目录/笔记/TTS/排版/分页/手势）· bookshelf · explore · source-editor · settings · ai · rss
+  src/features/             按业务域分：reader（正文画布/目录/笔记/TTS/排版/分页/手势）· bookshelf · explore · source-editor · settings · rss
   src/plugins/              页面级内置插件：about · backup · changelog · reading-log · source-health
   src/components/           通用浮层与控件（Select / Toast / 右键菜单 / 各类 Modal）
   src/lib/                  跨域工具：api/（client.ts + domains/*，统一传输层）· 导航 · 离线存储 · 拖拽排序 · 字体库 · 性能采集
@@ -251,8 +223,8 @@ Dockerfile           多阶段构建（前端 + 服务端）
 | 我的书源能不能跑、哪些字段真被执行、和上游 App 差在哪 | [`docs/compatibility.md`](docs/compatibility.md) |
 | 整体架构与模块边界 | [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) |
 | 部署（jar / Docker / Compose / 桌面程序） | [`docs/deploy.md`](docs/deploy.md) |
-| AI 接入：能干什么、怎么接模型、自定义接入面 `/api/agent/*` | [`docs/agent-api.md`](docs/agent-api.md) · 机器可读目录是 `GET /api/catalog` |
-| 插件系统长什么样（**已移除**，仅历史参考） | [`../docs/archive/plugins/`](../docs/archive/plugins/)（两份文档开头都有逐项核对表：`io.legado.plugin.*` 已删，示例照抄编译不过；加能力走 `ai/ToolRegistry`） |
+| AI 接入（**实验型，当前构建不含**）：为什么挪走、怎么恢复 | [`experimental/README.md`](experimental/README.md) · 挪走前的接口说明在 [`docs/agent-api.md`](docs/agent-api.md) |
+| 插件系统长什么样（**已移除**，仅历史参考） | [`../docs/archive/plugins/`](../docs/archive/plugins/)（两份文档开头都有逐项核对表：`io.legado.plugin.*` 已删，示例照抄编译不过） |
 | **反代书源**（自有中转服务访问目标站） | [docs/reverse-proxy-source-guide.md](docs/reverse-proxy-source-guide.md) |
 | 前端命名与文件组织规范 | [docs/frontend-conventions.md](docs/frontend-conventions.md) |
 | 门禁怎么跑、CI 里跑哪些 | [docs/gates-guide.md](docs/gates-guide.md) |

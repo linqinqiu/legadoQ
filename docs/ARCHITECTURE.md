@@ -555,6 +555,11 @@ pageSpans（章节 → 页区间） + pageFillers（双栏奇偶垫白）→ pag
 
 ## 7. AI 网关（进程内）
 
+> **当前构建不含这一段。** 2026-11-17 按「附属额外功能暂且移除」的决定，AI 整套（`ai/` 包 +
+> `/api/agent` 路由 + 前端 AI 面板）已移到 `product/experimental/ai/`，不在任何 Gradle / 前端源码集里，
+> `agent-api.json` 里的 agent 端点也已删除。下面描述的是**挪走前**的实现；恢复步骤见
+> [`product/experimental/README.md`](../product/experimental/README.md)。
+
 `ai/Agent.kt` 是**网关实现**，`AgentConnection` 是句柄，`AgentRoutes` 只是薄收口（解析 HTTP → 委派 → 包响应）。它不开端口、不注册路由，与 `/api/agent/*` 是一对一映射。
 
 ```
