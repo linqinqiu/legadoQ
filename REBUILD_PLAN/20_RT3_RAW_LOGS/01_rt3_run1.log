@@ -1,0 +1,39 @@
+RT3-BEGIN|java=17.0.19|cwd=E:\legadoQ-runtime\rt3
+STRUCT|E5|thread=main|search.name(带 @get 的 URL)=http://stub.test/n/A-tag
+STRUCT|E5|thread=main|VERDICT=SHARED_OK
+STRUCT|E1|thread=main|A.search.size=1
+STRUCT|E1|thread=main|A.search.bookUrl(键)=http://stub.test/book/1
+STRUCT|E1|thread=main|B.details.name(自己的选择器)=detail-page
+STRUCT|E1|thread=main|B.details.tocUrl(@get:{tag})=http://stub.test/toc/A-tag
+STRUCT|E1|thread=main|B.details.intro(@get:{tag})=http://stub.test/i/A-tag
+STRUCT|E1|thread=main|VERDICT=POLLUTED
+STRUCT|E1b|thread=main|A.details.tocUrl(A 的第二个键)=http://stub.test/toc/A-tag
+STRUCT|E1b|thread=main|B.details(bookUrl=A.tocUrl).intro=http://stub.test/i/A-tag
+STRUCT|E1b|thread=main|B.details(bookUrl=A.tocUrl).tocUrl=http://stub.test/toc/A-tag
+STRUCT|E1b|thread=main|VERDICT=POLLUTED
+STRUCT|E2|thread=main|A.details(book/2).intro=http://stub.test/i/
+STRUCT|E2|thread=main|A.details(book/1).intro=http://stub.test/i/A-tag
+STRUCT|E2|thread=main|VERDICT=clean
+STRUCT|E3#1|thread=main|finished=true / intro=http://stub.test/i/A-tag
+STRUCT|E3#1|thread=main|VERDICT=LAST_WRITER_WINS:A-tag
+STRUCT|E3#2|thread=main|finished=true / intro=http://stub.test/i/A-tag
+STRUCT|E3#2|thread=main|VERDICT=LAST_WRITER_WINS:A-tag
+STRUCT|E3#3|thread=main|finished=true / intro=http://stub.test/i/A-tag
+STRUCT|E3#3|thread=main|VERDICT=LAST_WRITER_WINS:A-tag
+STRUCT|E4|thread=main|C.search.size=0
+STRUCT|E4|thread=main|C.search.reason=HTML 响应 56 字节
+STRUCT|E4|thread=main|C.details.intro=http://stub.test/i/
+STRUCT|E4|thread=main|VERDICT=NOT_RESIDUAL
+STRUCT|E6|thread=main|写入线程=rt3-writer
+STRUCT|E6|thread=main|读取线程=main
+STRUCT|E6|thread=main|B.details.intro=http://stub.test/i/A-tag
+STRUCT|E6|thread=main|VERDICT=SHARED_ACROSS_THREADS
+STRUCT|E7|thread=main|A.details.tocUrl=http://stub.test/toc/A-tag
+STRUCT|E7|thread=main|A.chapters.size=1
+STRUCT|E7|thread=main|A.chapters[0].url=http://stub.test/c/A-tag
+STRUCT|E7|thread=main|B.chapters(on A's tocUrl)[0].url=http://stub.test/c/A-tag
+STRUCT|E7|thread=main|VERDICT=POLLUTED
+STRUCT|E8|thread=main|同实例写入→另一实例读取 intro=http://stub.test/i/
+STRUCT|E8|thread=main|VERDICT=per-instance
+STRUCT|E9|thread=main|MAX_RULE_DATA_KEYS=4096
+RT3-END

@@ -1,0 +1,75 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.14.4/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:generateBuildInfo
+> Task :app:processResources
+> Task :app:processTestResources
+> Task :app:compileKotlin
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/Application.kt:181:17 'val monitor: Events' is deprecated. Moved to Application.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/Application.kt:185:17 'val monitor: Events' is deprecated. Moved to Application.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/Application.kt:201:21 'val monitor: Events' is deprecated. Moved to Application.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/Application.kt:212:21 'val monitor: Events' is deprecated. Moved to Application.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/StaticWeb.kt:205:68 'val PartData.FileItem.streamProvider: () -> InputStream' is deprecated. This API uses blocking InputStream. Please use provider() directly.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/content/ContentProcessor.kt:154:49 Redundant call of conversion method.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/content/ContentProcessor.kt:170:37 Redundant call of conversion method.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/content/ContentProcessor.kt:177:37 Redundant call of conversion method.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/http/BackupRoutes.kt:121:122 'val PartData.FileItem.streamProvider: () -> InputStream' is deprecated. This API uses blocking InputStream. Please use provider() directly.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/http/SearchRoutes.kt:108:73 Unnecessary non-null assertion (!!) on a non-null receiver of type 'SearchRequest'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/http/ShelfRoutes.kt:101:52 'val PartData.FileItem.streamProvider: () -> InputStream' is deprecated. This API uses blocking InputStream. Please use provider() directly.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/http/StrictRequestText.kt:23:55 Unnecessary safe call on a non-null receiver of type 'ContentType'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/localbook/LocalBookParser.kt:436:61 Unnecessary safe call on a non-null receiver of type 'Element'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JavaPackages.kt:712:64 Redundant call of conversion method.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JavaPackages.kt:816:81 No cast needed.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsGuard.kt:26:32 'constructor(): Context' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsGuard.kt:63:9 'var optimizationLevel: Int' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsGuard.kt:110:32 'fun enter(): Context!' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsSandbox.kt:302:16 'var optimizationLevel: Int' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsSandbox.kt:1299:36 Unnecessary safe call on a non-null receiver of type 'JsExecutionContext'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsSandbox.kt:1301:77 Unnecessary safe call on a non-null receiver of type 'JsExecutionContext'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsSandbox.kt:1301:100 Unnecessary safe call on a non-null receiver of type 'JsExecutionContext'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/JsSandbox.kt:1326:40 Unnecessary safe call on a non-null receiver of type 'JsExecutionContext'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleLogin.kt:161:26 No cast needed.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleLogin.kt:162:30 No cast needed.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleRunner.kt:1356:34 Unnecessary safe call on a non-null receiver of type 'RuleRunner.UrlOptions'.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleRunner.kt:1667:21 'var optimizationLevel: Int' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleValue.kt:772:30 'class JXDocument : Any' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleValue.kt:773:20 'constructor(p0: Document!): JXDocument' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleValue.kt:774:19 'constructor(p0: Elements!): JXDocument' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/RuleValue.kt:775:13 'constructor(p0: String!): JXDocument' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/main/kotlin/io/legado/rules/ScriptConvert.kt:58:49 Unnecessary non-null assertion (!!) on a non-null receiver of type 'StringBuilder'.
+
+> Task :app:compileJava NO-SOURCE
+> Task :app:classes
+> Task :app:jar
+> Task :app:compileTestKotlin
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:89:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:124:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:161:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:186:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:284:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:314:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:339:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/DatabaseLifecycleTest.kt:368:9 Expression is unused.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/JsGuardLimitsTest.kt:158:16 'var optimizationLevel: Int' is deprecated. Deprecated in Java.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/JsSandboxHostAmplificationTest.kt:59:40 Check for instance is always 'true'. This will become an error in language version 2.4. See https://youtrack.jetbrains.com/issue/KTLC-365.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/SourceLoginTest.kt:250:63 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/SourceLoginTest.kt:254:78 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/SourceLoginTest.kt:482:41 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/SubscriptionServiceHttpTest.kt:44:87 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///E:/legadoQ/product/app/src/test/kotlin/io/legado/rules/JavaPackagesEntryBaselineTest.kt:38:16 'var optimizationLevel: Int' is deprecated. Deprecated in Java.
+
+> Task :app:compileTestJava NO-SOURCE
+> Task :app:testClasses
+> Task :app:test
+> Task :app:jacocoTestReport
+
+[Incubating] Problems report is available at: file:///E:/legadoQ/product/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.4/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 12m 27s
+8 actionable tasks: 8 executed

@@ -1,0 +1,237 @@
+import io.legado.model.BookDetails;
+import io.legado.model.Chapter;
+import io.legado.model.SearchResult;
+import io.legado.rules.RuleRunner;
+import kotlin.Pair;
+import kotlin.jvm.functions.Function1;
+
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * RT-3 验证驱动 v2：ruleData 跨源变量污染。
+ *
+ * v1 的教训（已写进报告）：`@get:{k}` 不是"返回变量值"，而是**把变量替换进规则串后继续求值**。
+ * 真实书源都写成 `https://host/api?bid=@get:{bid}` 这种形状；单独一个 `@get:{k}` 会被当成
+ * CSS/JSON 路径再求值一次，必然取空。所以本版所有可观察点都做成 **URL 里带变量**：
+ * 变量有没有传过去，直接体现在"最终请求的 URL"上（tocUrl / chapterUrl / name）。
+ *
+ * 约束：不修改产品源码；只通过公开构造函数注入 responseFetcher 替身；不联网；不使用真实 Cookie。
+ */
+public final class Rt3 {
+
+    static final String SEARCH_A =
+        "<html><body><ul><li><a href=\"/book/1\">t1</a><span class=\"m\">A-tag</span></li></ul></body></html>";
+    static final String SEARCH_B =
+        "<html><body><ul><li><a href=\"/book/1\">t1</a><span class=\"m\">B-tag</span></li></ul></body></html>";
+    static final String PAGE = "<html><body><h1 class=\"h\">detail-page</h1></body></html>";
+    static final String TOC =
+        "<html><body><ul><li><a href=\"/c/1\">c1</a></li><li><a href=\"/c/2\">c2</a></li></ul></body></html>";
+
+    static String htmlFor(String url) {
+        if (url.contains("/A/search")) return SEARCH_A;
+        if (url.contains("/B/search")) return SEARCH_B;
+        if (url.contains("/toc")) return TOC;
+        return PAGE;
+    }
+
+    static final Function1<String, String> STUB = Rt3::htmlFor;
+
+    /** 每个源都在搜索里 @put:{tag:...}；tocUrl / chapterUrl / name 都用 @get 拼进 URL。 */
+    static String src(String host) {
+        return """
+            {
+              "bookSourceUrl": "http://stub.test/%s",
+              "bookSourceName": "RT3-%s",
+              "searchUrl": "http://stub.test/%s/search?q={{key}}",
+              "ruleSearch": {
+                "bookList": "@css:li",
+                "bookUrl": "@put:{tag:@css:span.m@text}http://stub.test/book/1",
+                "name": "http://stub.test/n/@get:{tag}"
+              },
+              "ruleBookInfo": {
+                "name": "@css:h1.h@text",
+                "intro": "http://stub.test/i/@get:{tag}",
+                "tocUrl": "http://stub.test/toc/@get:{tag}"
+              },
+              "ruleToc": {
+                "chapterList": "@css:li",
+                "chapterName": "@css:a@text",
+                "chapterUrl": "http://stub.test/c/@get:{tag}"
+              },
+              "ruleContent": { "content": "@css:body@text" }
+            }
+            """.formatted(host, host, host);
+    }
+
+    static final String SRC_A = src("A");
+    static final String SRC_B = src("B");
+
+    /** C：bookUrl 里 @put 之后，name 用非法 JSONPath 让这次搜索失败（验证失败是否残留变量）。 */
+    static final String SRC_C = """
+        {
+          "bookSourceUrl": "http://stub.test/C",
+          "bookSourceName": "RT3-C",
+          "searchUrl": "http://stub.test/C/search?q={{key}}",
+          "ruleSearch": {
+            "bookList": "@css:li",
+            "bookUrl": "@put:{tag:C-tag}http://stub.test/book/9",
+            "name": "@json:$.nope.nope"
+          },
+          "ruleBookInfo": { "name": "@css:h1.h@text", "intro": "http://stub.test/i/@get:{tag}", "tocUrl": "http://stub.test/toc/x" },
+          "ruleToc": { "chapterList": "@css:li", "chapterName": "@css:a@text", "chapterUrl": "http://stub.test/c/@get:{tag}" },
+          "ruleContent": { "content": "@css:body@text" }
+        }
+        """;
+
+    static void rec(String exp, String k, String v) {
+        System.out.println("STRUCT|" + exp + "|thread=" + Thread.currentThread().getName() + "|" + k + "=" + (v == null ? "<null>" : v));
+    }
+
+    static RuleRunner fresh() { return new RuleRunner(STUB); }
+
+    static String tagOf(String url) {
+        if (url == null) return "<null>";
+        int i = url.lastIndexOf('/');
+        return i < 0 ? url : url.substring(i + 1);
+    }
+
+    // ------------------------------------------------------------------ 实验
+
+    /** E5 对照组：同一次执行内 @put → @get 是否正常（证明机制本身可用）。 */
+    static void e5() {
+        RuleRunner r = fresh();
+        Pair<List<SearchResult>, String> p = r.searchWithReason(SRC_A, "kw");
+        String name = p.getFirst().isEmpty() ? "<dropped>" : p.getFirst().get(0).getName();
+        rec("E5", "search.name(带 @get 的 URL)", name);
+        rec("E5", "VERDICT", "http://stub.test/n/A-tag".equals(name) ? "SHARED_OK" : "BROKEN");
+    }
+
+    /** E1：A 源搜索写入 tag，B 源对同一 bookUrl 取详情——B 的 tocUrl 会带上谁的 tag？ */
+    static void e1() {
+        RuleRunner r = fresh();
+        Pair<List<SearchResult>, String> a = r.searchWithReason(SRC_A, "kw");
+        rec("E1", "A.search.size", String.valueOf(a.getFirst().size()));
+        String bookUrl = a.getFirst().isEmpty() ? "http://stub.test/book/1" : a.getFirst().get(0).getBookUrl();
+        rec("E1", "A.search.bookUrl(键)", bookUrl);
+        BookDetails b = r.details(SRC_B, bookUrl);
+        rec("E1", "B.details.name(自己的选择器)", b.getName());
+        rec("E1", "B.details.tocUrl(@get:{tag})", b.getTocUrl());
+        rec("E1", "B.details.intro(@get:{tag})", b.getIntro());
+        rec("E1", "VERDICT", tagOf(b.getTocUrl()).equals("A-tag") ? "POLLUTED" : "clean");
+    }
+
+    /** E1b：跨阶段键碰撞——A 的 tocUrl 恰好被 B 当作 bookUrl 使用。 */
+    static void e1b() {
+        RuleRunner r = fresh();
+        r.search(SRC_A, "kw");
+        BookDetails a = r.details(SRC_A, "http://stub.test/book/1");
+        rec("E1b", "A.details.tocUrl(A 的第二个键)", a.getTocUrl());
+        BookDetails b = r.details(SRC_B, a.getTocUrl());
+        rec("E1b", "B.details(bookUrl=A.tocUrl).intro", b.getIntro());
+        rec("E1b", "B.details(bookUrl=A.tocUrl).tocUrl", b.getTocUrl());
+        rec("E1b", "VERDICT", tagOf(b.getIntro()).equals("A-tag") ? "POLLUTED" : "clean");
+    }
+
+    /** E2：同一书源，不同书——变量是否串到另一本。 */
+    static void e2() {
+        RuleRunner r = fresh();
+        r.search(SRC_A, "kw");
+        BookDetails other = r.details(SRC_A, "http://stub.test/book/2");
+        BookDetails same = r.details(SRC_A, "http://stub.test/book/1");
+        rec("E2", "A.details(book/2).intro", other.getIntro());
+        rec("E2", "A.details(book/1).intro", same.getIntro());
+        rec("E2", "VERDICT", tagOf(other.getIntro()).equals("A-tag") ? "POLLUTED" : "clean");
+    }
+
+    /** E3：两个源并发搜索同一 bookUrl，各自写不同 tag；之后详情读到谁。 */
+    static void e3() throws Exception {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            RuleRunner r = fresh();
+            CountDownLatch go = new CountDownLatch(1);
+            CountDownLatch done = new CountDownLatch(2);
+            Thread ta = new Thread(() -> { try { go.await(); r.search(SRC_A, "kw"); } catch (Exception ignored) {} finally { done.countDown(); } }, "rt3-A" + attempt);
+            Thread tb = new Thread(() -> { try { go.await(); r.search(SRC_B, "kw"); } catch (Exception ignored) {} finally { done.countDown(); } }, "rt3-B" + attempt);
+            ta.start(); tb.start(); go.countDown();
+            boolean finished = done.await(60, TimeUnit.SECONDS);
+            BookDetails d = r.details(SRC_A, "http://stub.test/book/1");
+            String tag = tagOf(d.getIntro());
+            rec("E3#" + attempt, "finished", String.valueOf(finished) + " / intro=" + d.getIntro());
+            rec("E3#" + attempt, "VERDICT", ("A-tag".equals(tag) || "B-tag".equals(tag)) ? "LAST_WRITER_WINS:" + tag : "UNEXPECTED:" + tag);
+        }
+    }
+
+    /** E4：搜索执行失败后，失败前 @put 的变量是否残留。 */
+    static void e4() {
+        RuleRunner r = fresh();
+        Pair<List<SearchResult>, String> c = r.searchWithReason(SRC_C, "kw");
+        rec("E4", "C.search.size", String.valueOf(c.getFirst().size()));
+        rec("E4", "C.search.reason", c.getSecond());
+        BookDetails d = r.details(SRC_C, "http://stub.test/book/1");
+        rec("E4", "C.details.intro", d.getIntro());
+        rec("E4", "VERDICT", tagOf(d.getIntro()).equals("C-tag") ? "RESIDUAL:C-tag" : "NOT_RESIDUAL");
+    }
+
+    /** E6：线程级隔离——T1 写入，主线程读取。 */
+    static void e6() throws Exception {
+        RuleRunner r = fresh();
+        Thread w = new Thread(() -> r.search(SRC_A, "kw"), "rt3-writer");
+        w.start(); w.join(60_000);
+        rec("E6", "写入线程", "rt3-writer");
+        BookDetails d = r.details(SRC_B, "http://stub.test/book/1");
+        rec("E6", "读取线程", Thread.currentThread().getName());
+        rec("E6", "B.details.intro", d.getIntro());
+        rec("E6", "VERDICT", tagOf(d.getIntro()).equals("A-tag") ? "SHARED_ACROSS_THREADS" : "thread-isolated");
+    }
+
+    /** E7：目录链路——A 的变量是否被 B 在**同一个 tocUrl** 上读到（漫画源 src 就是这个形状）。 */
+    static void e7() {
+        RuleRunner r = fresh();
+        r.search(SRC_A, "kw");
+        BookDetails a = r.details(SRC_A, "http://stub.test/book/1");
+        String tocUrl = a.getTocUrl();
+        rec("E7", "A.details.tocUrl", tocUrl);
+        List<Chapter> ca = r.chapters(SRC_A, tocUrl);
+        rec("E7", "A.chapters.size", String.valueOf(ca.size()));
+        rec("E7", "A.chapters[0].url", ca.isEmpty() ? "<empty>" : ca.get(0).getUrl());
+        List<Chapter> cb = r.chapters(SRC_B, tocUrl);
+        rec("E7", "B.chapters(on A's tocUrl)[0].url", cb.isEmpty() ? "<empty>" : cb.get(0).getUrl());
+        rec("E7", "VERDICT", (!cb.isEmpty() && cb.get(0).getUrl().endsWith("/A-tag")) ? "POLLUTED" : "clean");
+    }
+
+    /** E8：两个 RuleRunner 实例之间是否共享（回答"谁持有这份表"）。 */
+    static void e8() {
+        RuleRunner writer = fresh();
+        writer.search(SRC_A, "kw");
+        RuleRunner reader = fresh();
+        BookDetails d = reader.details(SRC_B, "http://stub.test/book/1");
+        rec("E8", "同实例写入→另一实例读取 intro", d.getIntro());
+        rec("E8", "VERDICT", tagOf(d.getIntro()).equals("A-tag") ? "SHARED_ACROSS_INSTANCES" : "per-instance");
+    }
+
+    /** E9：键上限常量（LRU 阈值）——用反射读公开静态常量。 */
+    static void e9() {
+        try {
+            java.lang.reflect.Field f = RuleRunner.class.getField("MAX_RULE_DATA_KEYS");
+            rec("E9", "MAX_RULE_DATA_KEYS", String.valueOf(f.getInt(null)));
+        } catch (Throwable t) {
+            rec("E9", "MAX_RULE_DATA_KEYS", "read-failed:" + t);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        System.out.println("RT3-BEGIN|java=" + System.getProperty("java.version") + "|cwd=" + System.getProperty("user.dir"));
+        e5();
+        e1();
+        e1b();
+        e2();
+        e3();
+        e4();
+        e6();
+        e7();
+        e8();
+        e9();
+        System.out.println("RT3-END");
+    }
+}
