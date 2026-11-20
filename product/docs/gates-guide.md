@@ -5,6 +5,10 @@
 >
 > 数字会随脚本增删漂移。**权威清单永远是 `node scripts/run-all-gates.mjs --list` 的输出**，
 > 本文的数字是 2026-10-21 的实测值，对不上时以命令输出为准。
+>
+> 改的是**规则引擎**（`RuleRunner` / `RuleValue` / 正文清洗 / 兜底）时，先看
+> [rule-regression-guide.md](rule-regression-guide.md)：那类改动靠「真实抓取重放 + 新旧 A/B」，
+> 这里的浏览器门禁测不到。
 
 ## 0. 一条命令跑完全部（**先跑这个**）
 

@@ -45,6 +45,7 @@
 
 - [frontend-conventions.md](../product/docs/frontend-conventions.md) — 前端命名与文件组织
 - [gates-guide.md](../product/docs/gates-guide.md) — 门禁怎么跑、怎么接 CI
+- [rule-regression-guide.md](../product/docs/rule-regression-guide.md) — 规则引擎改动怎么验：真实抓取重放 + 新旧 A/B（含临时夹具与口径陷阱）
 - [coverage-guide.md](../product/docs/coverage-guide.md) — 覆盖率怎么看、先补哪里
 - [changelog-guide.md](../product/docs/changelog-guide.md) — 更新日志细则
 - [import-conflict-policy.md](../product/docs/import-conflict-policy.md) — 备份导入冲突策略（与 ImportConflictPolicyTest 同步）
