@@ -1196,8 +1196,7 @@ class RuleRunner(
                 else -> raw.toString()
             },
             headers = headerMapOf(options["headers"]),
-            charset = options.string("charset")?.trim()?.takeIf { it.isNotEmpty() }
-                ?.let { runCatching { Charset.forName(it) }.getOrNull() },
+            charset = io.legado.charsetByName(options.string("charset")),
             webView = when (val raw = options["webView"]) {
                 null, JsonNull -> false
                 is JsonPrimitive -> raw.contentOrNull?.trim()?.lowercase()?.let { it.isNotEmpty() && it != "false" } ?: false

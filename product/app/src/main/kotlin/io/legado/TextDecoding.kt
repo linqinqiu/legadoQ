@@ -38,7 +38,7 @@ fun charsetOf(contentType: String?): Charset? {
         if (!part.substring(0, eq).trim().equals("charset", ignoreCase = true)) continue
         val name = part.substring(eq + 1).trim().trim('"', '\'')
         if (name.isEmpty()) return null
-        return runCatching { Charset.forName(name) }.getOrNull()
+        return charsetByName(name)
     }
     return null
 }
@@ -101,3 +101,40 @@ private fun tryDecode(bytes: ByteArray, charset: Charset): String? =
     }
 
 private val GB18030: Charset = Charset.forName("GB18030")
+
+/**
+ * 容错地把名字解析成 [Charset]：空/非法名字返回 null（不回退 UTF-8，交给调用方决策）。
+ * 全仓以前散落着 `runCatching { Charset.forName(name) }.getOrNull()` 片段（WebViewProxy / JavaPackages /
+ * JsSandbox / ScriptCrypto / RuleRunner），统一收口到这里（阶段 3.1）。
+ */
+fun charsetByName(name: String?): Charset? {
+    if (name.isNullOrBlank()) return null
+    return runCatching { Charset.forName(name.trim().trim('"', '\'')) }.getOrNull()
+}
+
+/**
+ * 统一字符集判定（阶段 3.1：把 WebViewProxy / ResponseBody / JavaPackages 的分散实现收敛成一份）。
+ * 优先级与 `ResponseCharsetTest` 已钉死的一致：
+ * 1. 请求里声明的 [declared]（书源作者最清楚自家站编码）；
+ * 2. 页面 `<meta charset>` 嗅探（只看前 4KB 的标记文档，避免 JSON 接口里的 HTML 片段误判）；
+ * 3. 响应头 `Content-Type` 的 charset；
+ * 4. UTF-8。
+ */
+fun detectCharset(bytes: ByteArray, declared: Charset?, contentType: String?): Charset {
+    declared?.let { return it }
+    metaCharset(bytes)?.let { return it }
+    charsetOf(contentType)?.let { return it }
+    return Charsets.UTF_8
+}
+
+/** 从页面头部嗅 `<meta>` 声明的字符集（同 ResponseBody 既有逻辑）。 */
+private val META_CHARSET = Regex("""(?i)<meta[^>]{0,300}?charset\s*=\s*["']?([a-z][\w-]{1,20})""")
+
+private fun metaCharset(bytes: ByteArray): Charset? {
+    if (bytes.isEmpty()) return null
+    val first = bytes.firstOrNull { it.toInt() > 0x20 } ?: return null
+    if (first != '<'.code.toByte()) return null // 只嗅标记文档，JSON 接口的 HTML 片段不误判
+    val head = String(bytes, 0, minOf(bytes.size, 4096), Charsets.ISO_8859_1)
+    val name = META_CHARSET.find(head)?.groupValues?.getOrNull(1) ?: return null
+    return charsetByName(name)
+}

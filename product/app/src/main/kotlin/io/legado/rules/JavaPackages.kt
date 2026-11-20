@@ -678,7 +678,7 @@ internal class JavaPackages(
 
     private fun charsetOf(value: Any?): Charset {
         val name = value?.toString()?.trim()?.takeIf { it.isNotEmpty() } ?: return Charsets.UTF_8
-        return runCatching { Charset.forName(name) }.getOrDefault(Charsets.UTF_8)
+        return io.legado.charsetByName(name) ?: Charsets.UTF_8
     }
 
     private fun isByteLike(value: Any?): Boolean = when {

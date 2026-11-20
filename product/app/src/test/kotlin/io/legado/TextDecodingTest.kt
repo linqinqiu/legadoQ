@@ -82,4 +82,36 @@ class TextDecodingTest {
         assertNull(charsetOf(null))
         assertNull(charsetOf("text/plain; charset=not-a-real-charset"))
     }
+
+    @Test
+    fun `charsetByName 容错解析名字`() {
+        assertEquals(StandardCharsets.UTF_8, charsetByName("utf-8"))
+        assertEquals(StandardCharsets.UTF_8, charsetByName(" UTF-8 ")) // 前后空格
+        assertEquals(StandardCharsets.UTF_8, charsetByName("\"utf-8\"")) // 带引号
+        assertEquals(gbk, charsetByName("gbk"))
+        assertNull(charsetByName(null))
+        assertNull(charsetByName(""))
+        assertNull(charsetByName("   "))
+        assertNull(charsetByName("not-a-real-charset"))
+    }
+
+    @Test
+    fun `detectCharset 四级优先级`() {
+        val metaGbk = """<html><head><meta charset="gbk">""".toByteArray(gbk)
+        // 1. 声明（书源作者）优先于一切
+        assertEquals(gbk, detectCharset(metaGbk, gbk, "text/html; charset=utf-8"))
+        // 2. meta 胜过响应头
+        assertEquals(gbk, detectCharset(metaGbk, null, "text/html; charset=iso-8859-1"))
+        // 3. 无 meta 时才用响应头
+        val noMeta = """<html><body>正文</body></html>""".toByteArray(gbk)
+        assertEquals(gbk, detectCharset(noMeta, null, "text/html; charset=gbk"))
+        // 4. 都没有 → UTF-8
+        assertEquals(StandardCharsets.UTF_8, detectCharset(noMeta, null, "text/html"))
+    }
+
+    @Test
+    fun `detectCharset 不把 JSON 里的 HTML 片段当声明`() {
+        val json = """{"html":"<meta charset=\"gbk\"><div>剑来</div>"}""".toByteArray(StandardCharsets.UTF_8)
+        assertEquals(StandardCharsets.UTF_8, detectCharset(json, null, "application/json"))
+    }
 }

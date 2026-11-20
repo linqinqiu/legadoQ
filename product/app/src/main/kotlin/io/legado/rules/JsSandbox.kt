@@ -1886,14 +1886,14 @@ class JsSandbox(
         ScriptableObject.putProperty(api, "strToBytes", bytesResult("strToBytes") { args ->
             val text = args.getOrNull(0)?.toString() ?: ""
             val charset = args.getOrNull(1)?.toString()?.takeIf { it.isNotBlank() }
-            text.toByteArray(charset?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8)
+            text.toByteArray(charset?.let { io.legado.charsetByName(it) } ?: Charsets.UTF_8)
         })
         // java.bytesToStr(字节数组[, 字符集])：把上面那三类数组还原成文本
         ScriptableObject.putProperty(api, "bytesToStr", simpleCrypto("bytesToStr") { args ->
             val charset = args.getOrNull(1)?.toString()?.takeIf { it.isNotBlank() }
             String(
                 ScriptCrypto.toBytes(args.getOrNull(0)),
-                charset?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8,
+                charset?.let { io.legado.charsetByName(it) } ?: Charsets.UTF_8,
             )
         })
 

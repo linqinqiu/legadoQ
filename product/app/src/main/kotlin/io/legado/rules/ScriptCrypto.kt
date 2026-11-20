@@ -106,7 +106,7 @@ internal object ScriptCrypto {
         fun encrypt(data: ByteArray): ByteArray = cipher(Cipher.ENCRYPT_MODE).doFinal(data)
 
         fun encrypt(data: String, charset: String? = null): ByteArray =
-            encrypt(data.toByteArray(charset?.let { runCatching { java.nio.charset.Charset.forName(it) }.getOrNull() } ?: Charsets.UTF_8))
+            encrypt(data.toByteArray(charset?.let { io.legado.charsetByName(it) } ?: Charsets.UTF_8))
 
         fun encryptBase64(data: String, charset: String? = null): String = bytesToBase64(encrypt(data, charset))
 

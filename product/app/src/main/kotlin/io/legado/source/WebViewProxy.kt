@@ -485,21 +485,13 @@ class WebViewProxy(private val database: Database) {
             return if (charset != null) "$mime; charset=${charset.lowercase()}" else mime
         }
 
-        private fun detectCharset(contentType: String, body: ByteArray): Charset {
-            val declared = Regex("charset=\"?([A-Za-z0-9_\\-]+)\"?", RegexOption.IGNORE_CASE)
-                .find(contentType)?.groupValues?.get(1)
-            if (!declared.isNullOrBlank()) {
-                runCatching { Charset.forName(declared) }.getOrNull()?.let { return it }
-            }
-            // 中文小说站大量使用 GBK/GB2312，Content-Type 常常不带 charset，需从 meta 嗅探
-            val head = String(body, 0, minOf(body.size, 4096), Charsets.ISO_8859_1)
-            val sniffed = Regex("""charset\s*=\s*["']?([A-Za-z0-9_\-]+)""", RegexOption.IGNORE_CASE)
-                .find(head)?.groupValues?.get(1)
-            if (!sniffed.isNullOrBlank()) {
-                runCatching { Charset.forName(sniffed) }.getOrNull()?.let { return it }
-            }
-            return Charsets.UTF_8
-        }
+        /**
+         * 字符集判定（阶段 3.1 收敛到 `io.legado.detectCharset`）：
+         * 响应头声明的 charset → 页面 meta 嗅探 → UTF-8。
+         * 这里没有"书源声明"这一层，所以把响应头当作 declared 传入，保持既有优先级不变。
+         */
+        private fun detectCharset(contentType: String, body: ByteArray): Charset =
+            io.legado.detectCharset(body, io.legado.charsetOf(contentType), null)
 
         private fun decodeBody(bytes: ByteArray, contentEncoding: String, charset: Charset): String {
             val decoded = when (contentEncoding.lowercase()) {
