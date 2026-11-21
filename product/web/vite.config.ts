@@ -8,7 +8,7 @@ import { VitePWA } from 'vite-plugin-pwa'
  * 显示上一版图形。改这一个常量等于给所有图标 URL 换指纹，客户端必然重取。
  * 每次动 `web/public` 下的图标就 +1。
  */
-const ICON_VERSION = '4'
+const ICON_VERSION = '5'
 /**
  * dev server 把 `/api` 转给谁。默认打在**本机日常那个实例**（`start.mjs` 起的 1234）——
  * 先前这里写死 8081，那是双 AI 三棵工作树时代 AI-1 后端端口，那棵树 2026-10-14 实测已不存在，
@@ -87,6 +87,9 @@ export default defineConfig({
         // 浏览器一次都不会请求它们，收进预缓存只是白搬 ~170KB。
         globIgnores: [
           'brand-icon.png',
+          // 9 套 MD3 预设图标（brand-presets/）：只在设置弹窗里按需取，
+          // 交互时才用得上，浏览器一次都不会主动请求，收进预缓存只是白搬 ~130KB。
+          'brand-presets/**',
           'favicon-16.png',
           'favicon-24.png',
           'favicon-64.png',

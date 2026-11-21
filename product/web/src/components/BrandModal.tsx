@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { zh } from '../i18n/zh'
 import { api, type BrandInfo } from '../lib/api'
 import { reportBrand } from '../lib/brandStore'
+import { BRAND_PRESETS, fetchPresetFile, presetUrl, type BrandPreset } from '../lib/brandPresets'
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -45,6 +46,8 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  /** 当前选中的预设（点预设才有；上传自定义图或换回默认都清空）。 */
+  const [activePresetId, setActivePresetId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -86,6 +89,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
     try {
       const next = await api.resetBrand()
       setBrand(next); setName(''); setShortName(''); setThemeColor('')
+      setActivePresetId(null)
       apply(next, '已恢复默认的名称与图标。')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '没恢复成')
@@ -100,6 +104,7 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
     setError('')
     try {
       const next = await api.uploadBrandIcon(file)
+      setActivePresetId(null)
       apply(next, '图标已换。已装到桌面的应用要等浏览器同步清单（或重装）才更新。')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '图标没存上')
@@ -109,11 +114,35 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  /**
+   * 换成本机内置的一张预设图标。
+   *
+   * 走的是**上传**那条路：预设 PNG 随包发在 `/brand-presets/`，取到字节后当成用户上传的
+   * 文件交给同一个 `POST /brand/icon`。这样服务端完全不需要知道「预设」这个概念 ——
+   * 图标字节一样落盘到安装根 `brand/`，随目录搬盘/改名/重启仍在（BrandStore 的设计意图），
+   * 魔数校验、5MB 上限、同源写闸门、ETag 缓存这些既有纪律也一条不落。
+   */
+  const applyPreset = async (preset: BrandPreset) => {
+    setBusy(true)
+    setError('')
+    try {
+      const file = await fetchPresetFile(preset)
+      const next = await api.uploadBrandIcon(file)
+      setActivePresetId(preset.id)
+      apply(next, `图标已换成「${preset.label}」。已装到桌面的应用要等浏览器同步清单（或重装）才更新。`)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '没换成这张预设图标')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const dropIcon = async () => {
     setBusy(true)
     setError('')
     try {
       const next = await api.clearBrandIcon()
+      setActivePresetId(null)
       apply(next, '已换回默认图标。')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '没换回去')
@@ -173,6 +202,30 @@ export function BrandModal({ onClose }: { onClose: () => void }) {
             />
             {brand?.hasIcon && <button type="button" className="subtle-button" onClick={() => void dropIcon()}>换回默认</button>}
           </div>
+
+          {/* 预设图标：上游 legado 自己那 9 套（猫头/卷轴/书签…）。
+              点一下就换，走的是和「上传」完全相同的那条路（取字节 → POST /brand/icon），
+              所以服务端不需要认识「预设」这个东西。 */}
+          <div className="customize-section">
+            <h3>预设图标</h3>
+            <div className="brand-preset-grid">
+              {BRAND_PRESETS.map(preset => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`brand-preset${activePresetId === preset.id ? ' selected' : ''}`}
+                  aria-pressed={activePresetId === preset.id}
+                  disabled={busy}
+                  onClick={() => void applyPreset(preset)}
+                  title={preset.label}
+                >
+                  <img src={presetUrl(preset)} alt={preset.label} />
+                  <span>{preset.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <p className="customize-note">
             只收 PNG / JPEG / WebP，单个不超过 5 MB。图标会被本机所有页面当成本站资源取用，
             所以<b>不收 SVG</b>（那种格式里能带脚本）。

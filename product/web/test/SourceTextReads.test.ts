@@ -113,6 +113,11 @@ const BASELINE: Record<string, number> = {
   'src/lib/api/domains/system.ts': 3,
   'src/lib/api/index.ts': 1,
   'src/lib/api/types.ts': 5,
+  // 2026-11-21：预设图标（用户切图标功能）的接线与架构断言，沿用 BrandStore.test.ts 的「读源码文本」风格。
+  // 钉的是：点预设走既有上传 API（不新开端点）、取字节用 requestBlob 而非裸 fetch、不建 blob URL、MIME 正确。
+  'src/components/BrandModal.tsx': 1,
+  'src/lib/brandPresets.ts': 1,
+  'src/lib/api/domains/brand.ts': 1,
 
   'src/lib/nav.ts': 1,
   'src/lib/pageMeta.ts': 2,
