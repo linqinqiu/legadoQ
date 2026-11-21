@@ -21,12 +21,12 @@ import kotlinx.serialization.json.jsonObject
  * 搜索编排真正需要的**原语**都在 [RuleRunner] 里（URL 脚本、选项拆分、渲染、抓取、列表解析、
  * 响应线索）。如果把它们逐个传进来，Host 会膨胀到 12 个方法 —— 那说明切分点还不在这一层。
  * 这里先把 Host 收成**粗粒度步骤**：每个方法对应流程上的一站，而不是一个工具函数。
- * 后续要接 `RuleDispatcher` 时，替换的是 Host 的 `parseSearchItems`，不是整个 SearchFlow。
+ * 搜索编排的扩展点（处理器认领机制）已从规则引擎移除，这里只需对接 [RuleRunner] 的内建原语。
  *
  * ## 不负责什么
  *
  * 不解析 HTML/JSON、不拼 URL、不发请求、不读写变量表。这些仍在 [RuleRunner]，
- * 等 `RuleProcessor` 接入时再逐个迁走。
+ * 这些仍在 [RuleRunner]，由规则引擎统一处理。
  */
 internal class SearchFlow(private val host: Host) {
 

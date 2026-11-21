@@ -13,7 +13,6 @@ import org.jsoup.Jsoup
  * 调用方只需要给两样东西：求值运行时（日志 + 扩展点调度）和 JS 列表求值函数。
  */
 internal class RuleNodeSelection(
-    private val runtime: RuleRuntime,
     private val jsList: (base: NodeValue, listRule: String, body: String, baseUrl: String) -> List<NodeValue>,
 ) {
 
@@ -25,7 +24,7 @@ internal class RuleNodeSelection(
     fun listItemsByRule(content: String, rule: String, baseUrl: String?): List<String> {
         val listRule = stripListPrefixMarkers(rule)
         if (listRule.isEmpty()) return emptyList()
-        val base = NodeValue.document(content, runtime)
+        val base = NodeValue.document(content)
         val nodes = if (isJsRule(listRule)) jsList(base, listRule, content, baseUrl ?: "") else nodes(content, listRule)
         return nodes.map { it.bridgeText() }
     }
@@ -41,21 +40,6 @@ internal class RuleNodeSelection(
         // `@css:` 是显式前缀（值规则那一侧早就认它，见 RuleValue.valuePlain）：列表这一侧以前不认，
         // 于是 `@css:.librarylist li` 被整串喂给选择器方言，报一句看不懂的解析异常、整源 0 条。
         if (rule.startsWith("@css:", ignoreCase = true)) return nodes(body, rule.substringAfter(':').trim())
-        // 扩展点：列表规则只问声明了 producesNodes 的处理器；没人认领就落回内建链路。
-        runtime.dispatcher.claimNodeRule(rule)?.let { processor ->
-            val document = NodeValue.document(body, runtime)
-            val result = runCatching { processor.execute(rule, document.inputFor(body), runtime) }
-                .getOrElse { error ->
-                    runtime.log("规则处理器 ${processor.type} 执行列表失败：${error.message ?: error::class.simpleName}")
-                    return emptyList()
-                }
-            if (!result.ok) {
-                runtime.log("规则处理器 ${processor.type} 报告列表失败：${result.error ?: "未给原因"}")
-                return emptyList()
-            }
-            // 认领即拥有：条目为空就是「这个源确实没有条目」，不再退回内建链路。
-            return result.nodes.map { NodeValue.json(it, runtime) }
-        }
         // AllInOne 正则列表（上游 `splitSourceRule(ruleStr, allInOne = true)` 的「首字符是 `:`」分支）：
         // 整条规则是正则，一个条目 = 一次匹配的**全部分组**，字段规则用 `$1`/`$2` 取分组。
         // 必须排在 `&&` 分支切分**之前** —— 正则模式里 `&&` 是「多级正则」的分隔符
@@ -66,7 +50,7 @@ internal class RuleNodeSelection(
         // @json: 前缀（对齐原版 ruleStr.startsWith("@Json:")）：去前缀后按 JSONPath 读列表
         if (isJsonPrefixedRule(rule)) {
             val path = stripJsonPrefix(rule)
-            return runCatching { (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList() }.getOrDefault(emptyList())
+            return runCatching { (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it) } ?: emptyList() }.getOrDefault(emptyList())
         }
         val (branchSeparator, branches) = splitLegadoBranches(rule)
         if (branches.size > 1) {
@@ -80,7 +64,7 @@ internal class RuleNodeSelection(
             }
         }
         return when {
-            rule.startsWith("$") -> (JsonPath.read<Any>(body, rule) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList()
+            rule.startsWith("$") -> (JsonPath.read<Any>(body, rule) as? List<*>)?.map { NodeValue.json(it) } ?: emptyList()
             else -> {
                 // JSON 响应上的「裸键」列表规则（`bookList: list`）：字段规则早就会把裸键补成 `$.list`
                 // （见 RuleValue.valueJson），列表这一路却没补 —— 于是 `list` 被当成 CSS 标签名，
@@ -88,7 +72,7 @@ internal class RuleNodeSelection(
                 // 站点本身 200 正常，界面上只有一句"一条都没有"。
                 bareJsonListPath(body, rule)?.let { path ->
                     val viaJson = runCatching {
-                        (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it, runtime) } ?: emptyList()
+                        (JsonPath.read<Any>(body, path) as? List<*>)?.map { NodeValue.json(it) } ?: emptyList()
                     }.getOrDefault(emptyList())
                     if (viaJson.isNotEmpty()) return viaJson
                 }
@@ -96,7 +80,7 @@ internal class RuleNodeSelection(
                 // 原来这里只把各段用空格拼成一条 CSS，`tag.` / `id.` 段被当成标签名，整条规则一条都选不出来。
                 val document = Jsoup.parse(body)
                 val (base, ops) = splitIndexSuffix(rule)
-                val selected = selectLegadoSegments(document, base).map({ element -> NodeValue.html(element, runtime) })
+                val selected = selectLegadoSegments(document, base).map({ element -> NodeValue.html(element) })
                 if (ops.isEmpty()) selected else applyIndexTokens(selected, ops)
             }
         }
@@ -129,7 +113,7 @@ internal class RuleNodeSelection(
     private fun regexNodes(body: String, rule: String): List<NodeValue> {
         val levels = rule.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
         if (levels.isEmpty()) return emptyList()
-        return regexMatches(body, levels, 0).map { NodeValue.regexItem(it, runtime) }
+        return regexMatches(body, levels, 0).map { NodeValue.regexItem(it) }
     }
 
     private fun regexMatches(text: String, levels: List<String>, index: Int): List<List<String>> {

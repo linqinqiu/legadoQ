@@ -85,7 +85,7 @@
 
 ## 切片 2 · 给 RuleProcessor 找真实使用者（或砍掉它）
 
-**状态**：spike 已做（2026-11-18），结论是「没有真实使用者」；删除/降级待单独决策，未在本次执行。
+**状态**：已删除（2026-11-21）。spike（2026-11-18）结论「没有真实使用者」；本次按做法第 3 步物理删除扩展点，落地记录见 §落地记录。
 
 ### 问题
 
@@ -164,6 +164,16 @@ GROUP BY p ORDER BY 2 DESC;"
 3. 因此「搬三个处理器」不成立。按本切片第 3 步，应删除扩展点或降级为 `internal` demo。
 4. 删除会动规则求值热路径与后端 993 项测试，**本次未执行**；需单独立切片、跑全量后端测试、
    并在 `DECISIONS.md` 留一条记录。spike 只负责给出「没有真实使用者」这个前提。
+
+### 落地记录（2026-11-21）
+
+按做法第 3 步物理删除扩展点（「删掉它同样是证明它不是装饰」）。
+
+- **删除**：`rules/RuleProcessor.kt`（六个类型 `RuleProcessor`/`RuleInput`/`RuleContext`/`RuleResult`/`RuleDispatcher`/`RuleRuntime`）、`rules/processor/demo/` 两个 demo、测试 `RuleProcessorTest.kt`（192 行）。
+- **接线移除**：`RuleRunner` 去掉 `dispatcher` 构造参数、`ruleDispatcher` 次构造器与 `runtime` 字段；`RuleNodeSelection` 去掉 `runtime` 参数；`NodeValue` 值类型去掉 `runtime` 字段与扩展点分支（`value()` 的 `claim`、列表的 `claimNodeRule`）；`SearchFlow` 注释更新；`tools/verify/depth-check.mjs` 去掉两个 demo 白名单。
+- **行为零变化证据**：生产路径 `dispatcher` 永远是空 `RuleDispatcher()`，`RuleValue.value()` 的 `size > 0` 守卫使 `claim` 分支恒不执行、`claimNodeRule` 在空表上返回 null —— 删除只是移除了一个恒为假的短路判断。全量后端测试 `BUILD SUCCESSFUL`、前端 `1,118` 项全绿、`CompatGoldenTest` 6/6 零 diff 验证规则求值行为未变。
+- **判据达成**：`RuleRunner` 行数下降；后端全量测试零回归；`RuleProcessor` 已从热路径移除。
+- **决策记录落点**：原文档要求「在 `DECISIONS.md` 留一条记录」，但 `E:\legadoQ` 已归档（`DECISIONS.md` 现位于 `E:\_legado-attic-2026-11-18\legadoQ\docs\`，不可再改）；`E:\legado` 为唯一活跃仓，决策记录改落此处。
 
 ---
 

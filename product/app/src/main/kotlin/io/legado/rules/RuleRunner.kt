@@ -80,31 +80,16 @@ import io.legado.model.SearchResult
 class RuleRunner(
     private val responseFetcher: ((String) -> String)? = null,
     internal var database: PortBundle? = null,
-    /**
-     * 规则处理器调度器：**真的会被读到**（0.2.34 起）。
-     *
-     * 从前这个参数存在但没人读 —— 注册进去的处理器一条规则都接不到，扩展点是装饰。
-     * 现在每次取值（`NodeValue.value`）与每次取列表（[nodes]）都先问它「有处理器认领吗」，
-     * 没人认领才落回内建链路。默认空调度器 = 行为与从前完全一致。
-     *
-     * 想在运行时加一种规则类型：`runner.dispatcher.register(MyProcessor())`。
-     */
-    val dispatcher: RuleDispatcher = RuleDispatcher(),
 ) {
-    constructor(database: PortBundle) : this(null, database, RuleDispatcher())
-    constructor(responseFetcher: (String) -> String) : this(responseFetcher, null, RuleDispatcher())
-    constructor(database: PortBundle, ruleDispatcher: RuleDispatcher) : this(null, database, ruleDispatcher)
+    constructor(database: PortBundle) : this(null, database)
+    constructor(responseFetcher: (String) -> String) : this(responseFetcher, null)
 
-    /** 把调度器与日志出口绑好，随每个解析出的节点往下传。 */
-    private val runtime = RuleRuntime(dispatcher) { message ->
-        logRuleExecution(message, level = io.legado.port.LogLevel.WARN)
-    }
 
     /**
      * 列表规则 → 节点列表。整段逻辑已搬到 `RuleNodeSelection`（`nodes` / 正则 / `%%` 交错），
      * 这里只保留一个出口；JS 列表求值仍由本类的 [jsListNodes] 提供（它要用 [jsSandbox]）。
      */
-    private val nodeSelection = RuleNodeSelection(runtime) { base, rule, body, url ->
+    private val nodeSelection = RuleNodeSelection() { base, rule, body, url ->
         jsListNodes(base, rule, body, url)
     }
 
@@ -265,7 +250,7 @@ class RuleRunner(
         val listRule = stripListPrefixMarkers(rawListRule)
         // 与 chapters() 一致：`<js>…</js>` 形式的列表规则要先过沙箱预处理，直接丢给 Jsoup/json-path 会解析失败
         val items = try {
-            if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, sourceUrl) else nodeSelection.nodes(body, listRule)
+            if (isJsRule(listRule)) jsListNodes(NodeValue.document(body), listRule, body, sourceUrl) else nodeSelection.nodes(body, listRule)
         } catch (error: RuleExecutionException) {
             throw error
         } catch (error: Exception) {
@@ -381,7 +366,7 @@ class RuleRunner(
             }
             val reverse = rawListRule.startsWith("-")
             val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
-            val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
+            val nodes0 = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body), listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
             val items = nodes0.mapNotNull { item ->
                 val title = item.value(source.string("ruleTitle"), jsSandbox, body, pageUrl)?.trim().orEmpty()
                 if (title.isBlank()) return@mapNotNull null
@@ -427,7 +412,7 @@ class RuleRunner(
             val body = fetchUrl(pageUrl, mergedOptions, null, sourceUrl, database)
             val reverse = rawListRule.startsWith("-")
             val listRule = stripListPrefixMarkers(rawListRule.removePrefix("-"))
-            val nodes = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body, runtime), listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
+            val nodes = if (isJsRule(listRule)) jsListNodes(NodeValue.document(body), listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
             val items = nodes.mapNotNull { item ->
                 val content = parseReviewContent(item.value(review.string("detailContentRule"), jsSandbox, body, pageUrl))
                 if (content.text.isBlank() && content.img == null) return@mapNotNull null
@@ -481,7 +466,7 @@ class RuleRunner(
             val (path, options) = splitUrlOptions(link)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             val body = fetchUrl(path.absolute(sourceUrl), mergedOptions, null, sourceUrl, database)
-            val root = NodeValue.document(body, runtime)
+            val root = NodeValue.document(body)
             val text = root.value(ruleContent, jsSandbox, body, link)?.preserveContentImages(link)?.cleanContent().orEmpty()
             if (text.isBlank()) {
                 val detail = jsSandbox.lastError?.let { "，脚本异常：$it" } ?: ""
@@ -512,7 +497,7 @@ class RuleRunner(
             val (path, options) = splitUrlOptions(rendered)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             val body = fetchUrl(path.absolute(sourceUrl), mergedOptions, keyword, sourceUrl.ifEmpty { null }, database)
-            val root = NodeValue.document(body, runtime)
+            val root = NodeValue.document(body)
             root.value(showRule, jsSandbox, body, path)
                 ?.preserveContentImages(path)
                 ?.cleanContent()
@@ -680,12 +665,12 @@ class RuleRunner(
         val baseDoc: NodeValue
         if (dataPayload != null) {
             body = dataPayload
-            baseDoc = NodeValue.json(dataPayload, runtime)
+            baseDoc = NodeValue.json(dataPayload)
         } else {
             val (url, options) = splitUrlOptions(bookUrl)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             body = fetchUrl(url, mergedOptions, null, sourceUrl, database)
-            baseDoc = NodeValue.document(body, runtime)
+            baseDoc = NodeValue.document(body)
         }
 
         // 搜索/发现时 `@put` 下的变量灌回来：`tocUrl` 常写成 `@get:{bid}`（漫画源就是这样）
@@ -699,7 +684,7 @@ class RuleRunner(
             initRule.isNullOrBlank() -> baseDoc
             initRule.contains("<js>") || initRule.trimStart().startsWith("@js:") || initRule.trimStart().startsWith("js:") ->
                 runCatching { baseDoc.value(initRule, jsSandbox, body, bookUrl) }.getOrNull()
-                    ?.takeIf { it.isNotBlank() }?.let { NodeValue.document(it, runtime) } ?: baseDoc
+                    ?.takeIf { it.isNotBlank() }?.let { NodeValue.document(it) } ?: baseDoc
             else -> baseDoc.at(initRule)
         }
         // `at()` / `NodeValue.document()` 会另起一个节点，变量得再灌一次
@@ -878,12 +863,12 @@ class RuleRunner(
         if (dataPayload != null) {
             // 聚合源的目录地址同样是参数载体，由 chapterList 的 JS 自行取回目录
             body = dataPayload
-            chapterNodes = jsListNodes(NodeValue.json(dataPayload, runtime), listRule, body, pageUrl)
+            chapterNodes = jsListNodes(NodeValue.json(dataPayload), listRule, body, pageUrl)
         } else {
             val (url, options) = splitUrlOptions(pageUrl)
             val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
             body = fetchUrl(url, mergedOptions, null, sourceUrl, database)
-            val baseDoc = NodeValue.document(body, runtime)
+            val baseDoc = NodeValue.document(body)
             chapterNodes = if (isJsRule(listRule)) jsListNodes(baseDoc, listRule, body, pageUrl) else nodeSelection.nodes(body, listRule)
         }
         // 条目节点是现造的，变量得逐个灌（`@get:{bid}` 就写在 chapterUrl 里）
@@ -906,7 +891,7 @@ class RuleRunner(
                 ?.trim()?.takeIf { it.isNotEmpty() }
             TocEntry(name, chapterHref ?: "", isVolume, isVip, updateTime)
         }
-        val nextRaw = if (!followNext || nextRule.isEmpty()) "" else NodeValue.document(body, runtime)
+        val nextRaw = if (!followNext || nextRule.isEmpty()) "" else NodeValue.document(body)
             .also { it.seedVariables(seedVars) }
             .value(nextRule, jsSandbox, body, pageUrl)
             .orEmpty()
@@ -942,7 +927,7 @@ class RuleRunner(
         val produced = base.value(jsOnly, jsSandbox, body, baseUrl) ?: return emptyList()
         if (postRule.isNotBlank()) return nodeSelection.nodes(produced, postRule)
         val parsed = runCatching { Json.parseToJsonElement(produced) }.getOrNull() as? JsonArray ?: return emptyList()
-        return parsed.map { NodeValue.json(it.toPlainJava(), runtime) }
+        return parsed.map { NodeValue.json(it.toPlainJava()) }
     }
 
     // toPlainJava 已抽到 RuleUrlSupport.kt（同包顶层扩展）
@@ -1128,11 +1113,11 @@ class RuleRunner(
     /** 取正文的一页，返回（可继续取值的根节点，原始响应体）。聚合源的 `data:` 章节地址由规则自己取回正文。 */
     private fun contentPage(source: JsonObject, sourceUrl: String?, pageUrl: String, vars: Map<String, String> = emptyMap()): Pair<NodeValue, String> {
         val dataPayload = dataUrlPayload(pageUrl)
-        if (dataPayload != null) return NodeValue.json(dataPayload, runtime).also { it.seedVariables(vars) } to dataPayload
+        if (dataPayload != null) return NodeValue.json(dataPayload).also { it.seedVariables(vars) } to dataPayload
         val (url, options) = splitUrlOptions(pageUrl)
         val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
         val body = fetchUrl(url, mergedOptions, null, sourceUrl, database)
-        return NodeValue.document(body, runtime).also { it.seedVariables(vars) } to body
+        return NodeValue.document(body).also { it.seedVariables(vars) } to body
     }
 
     // sniffMediaUrl 已抽到 RuleUrlSupport.kt（同包顶层）

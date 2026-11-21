@@ -54,8 +54,6 @@ const KNOWN_DEEP = new Set([
   'app/src/main/kotlin/io/legado/data/db/Migration.kt',
   'app/src/main/kotlin/io/legado/data/db/Schema.kt',
   'app/src/main/kotlin/io/legado/http/system/SystemRoutes.kt',
-  'app/src/main/kotlin/io/legado/rules/processor/demo/DemoHelloProcessor.kt',
-  'app/src/main/kotlin/io/legado/rules/processor/demo/DemoMarkdownProcessor.kt',
 
   // ---- 前端：2026-11-06 上限改到 3 层后，原来的 16 条（lib/api/domains、reader/{typeset,settingsPanel,dict}）
   //      全部落进合法区间，基线清空。往后再出现过深文件，就是真的新嵌深。----
