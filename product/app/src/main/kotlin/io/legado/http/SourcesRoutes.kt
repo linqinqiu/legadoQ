@@ -30,6 +30,8 @@ import io.legado.data.setCookieForUrl
 import io.legado.data.VersionConflict
 import io.legado.model.ApiError
 import io.legado.model.BatchSourceRequest
+import io.legado.model.DictLookupRequest
+import io.legado.model.DictLookupResponse
 import io.legado.model.ExternalLoginStatus
 import io.legado.model.GlobalCookieEntry
 import io.legado.model.GlobalCookieListResponse
@@ -308,6 +310,21 @@ fun Route.sourcesRoutes(
                 val result = repositoryFor(call).validate(call.parameters["id"]!!, draft)
                     ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
                 call.respond(result)
+            }
+            post("/dict") {
+                // 字典是只读查询（不落库），所以不走同源写门；出站仍由 RuleRunner 的 fetch 过 SSRF 闸门。
+                val source = repositoryFor(call).get(call.parameters["id"]!!)
+                    ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@post }
+                val text = runCatching { call.receive<DictLookupRequest>().text }.getOrNull()?.trim().orEmpty()
+                if (text.isEmpty()) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("bad_request", "要查询的文字不能为空")); return@post
+                }
+                val result = runner.dict(source.json, text)
+                if (result == null) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("no_dict_rule", "该书源没有配置字典规则（dictRule）"))
+                } else {
+                    call.respond(DictLookupResponse(result))
+                }
             }
             get("/debug") {
                 val source = repositoryFor(call).get(call.parameters["id"]!!) ?: run { call.respond(HttpStatusCode.NotFound, ApiError("not_found", "书源不存在")); return@get }

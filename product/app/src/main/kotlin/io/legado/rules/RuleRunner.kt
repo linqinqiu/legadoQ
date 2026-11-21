@@ -491,6 +491,35 @@ class RuleRunner(
         }
     }
 
+    /**
+     * 字典规则（上游 MD3 分支 `dictRule`）：选中文字 → `urlRule` 的 `{{key}}` → `showRule`。
+     *
+     * 与 `rssContent` 同形：发一次请求，把响应按普通源规则取值。
+     * 没配置 `dictRule`（或只配了一半）返回 null，由 HTTP 层给出「该书源没有字典」的明确提示，
+     * 不静默返回空串 —— 否则界面只能显示一条没有缘由的空白弹窗。
+     */
+    fun dict(sourceJson: String, text: String): String? {
+        val source = sourceJson.objectValue()
+        val rule = source.objectValue("dictRule") ?: return null
+        val urlRule = rule.string("urlRule")?.trim().orEmpty()
+        val showRule = rule.string("showRule")?.trim().orEmpty()
+        if (urlRule.isEmpty() || showRule.isEmpty()) return null
+        val keyword = text.trim()
+        if (keyword.isEmpty()) return null
+        val sourceUrl = source.string("bookSourceUrl").orEmpty()
+        return jsSandbox.withSourceContext(sourceContext(source, sourceUrl.ifEmpty { null })) {
+            val rendered = renderUrl(urlRule, keyword, sourceUrl, page = null)
+            val (path, options) = splitUrlOptions(rendered)
+            val mergedOptions = mergeOptions(parseSourceHeaders(source), options)
+            val body = fetchUrl(path.absolute(sourceUrl), mergedOptions, keyword, sourceUrl.ifEmpty { null }, database)
+            val root = NodeValue.document(body, runtime)
+            root.value(showRule, jsSandbox, body, path)
+                ?.preserveContentImages(path)
+                ?.cleanContent()
+                ?.takeIf { it.isNotBlank() }
+        }
+    }
+
     private fun evalRuleJs(rule: String, bindings: Map<String, Any?>): String? {
         val trimmed = rule.trim()
         val code = if (trimmed.contains("<js>")) trimmed.substringAfter("<js>").substringBefore("</js>") else trimmed.removePrefix("@js:").removePrefix("js:")
@@ -754,6 +783,15 @@ class RuleRunner(
     fun chapters(sourceJson: String, tocUrl: String): List<Chapter> =
         Metrics.timed(STAGE_TOC) { chaptersImpl(sourceJson, tocUrl) }
 
+    /** 目录一页里的一条章节；`isVip/updateTime` 是 2026-11 对齐上游 MD3 分支补的目录元数据。 */
+    private data class TocEntry(
+        val name: String,
+        val url: String,
+        val isVolume: Boolean,
+        val isVip: Boolean,
+        val updateTime: String?,
+    )
+
     private fun chaptersImpl(sourceJson: String, tocUrl: String): List<Chapter> {
         val source = sourceJson.objectValue()
         source.string("mainJs")?.takeIf { it.isNotBlank() }?.let { return JsSourceRunner(this, source).chapters(tocUrl) }
@@ -773,11 +811,11 @@ class RuleRunner(
             //   喜马拉雅（音频源）就是这种写法：第一页把 2..9 页一起推过来，而在第 2 页上同一条脚本
             //   会算出 `…/2/2002/200`（`split('1/200')` 不命中，原样拼接）—— 以前递归翻页会去请求它，
             //   一个 404 把整本目录带崩（实测「目录总页数」本该是 9 页、章节上千章，结果 0 章）。
-            val collected = LinkedHashMap<String, Triple<String, String, Boolean>>()
-            fun addPage(chapters: List<Triple<String, String, Boolean>>) {
-                chapters.forEach { (name, url, isVolume) ->
-                    val key = if (url.isNotBlank()) url else "vol:$name"
-                    if (!collected.containsKey(key)) collected[key] = Triple(name, url, isVolume)
+            val collected = LinkedHashMap<String, TocEntry>()
+            fun addPage(entries: List<TocEntry>) {
+                entries.forEach { entry ->
+                    val key = if (entry.url.isNotBlank()) entry.url else "vol:${entry.name}"
+                    if (!collected.containsKey(key)) collected[key] = entry
                 }
             }
             val (firstChapters, firstNextUrls) = parseTocPage(source, sourceUrl, rule, listRule, nextRule, tocUrl)
@@ -804,8 +842,15 @@ class RuleRunner(
                 }
             }
             val ordered = if (reverse) collected.values.reversed() else collected.values.toList()
-            ordered.mapIndexed { index, (name, url, isVolume) ->
-                Chapter(index, name.ifBlank { if (isVolume) "" else "第 ${index + 1} 章" }, url, isVolume)
+            ordered.mapIndexed { index, entry ->
+                Chapter(
+                    index = index,
+                    title = entry.name.ifBlank { if (entry.isVolume) "" else "第 ${index + 1} 章" },
+                    url = entry.url,
+                    isVolume = entry.isVolume,
+                    isVip = entry.isVip,
+                    updateTime = entry.updateTime,
+                )
             }
         }
     }
@@ -824,7 +869,7 @@ class RuleRunner(
         nextRule: String,
         pageUrl: String,
         followNext: Boolean = true,
-    ): Pair<List<Triple<String, String, Boolean>>, List<String>> {
+    ): Pair<List<TocEntry>, List<String>> {
         val dataPayload = dataUrlPayload(pageUrl)
         // `chapterUrl` 常写 `@get:{bid}`（漫画源就是这样）：把搜索/详情那一次 @put 的变量灌进来
         val seedVars = recallRuleData(sourceUrl, pageUrl)
@@ -844,6 +889,8 @@ class RuleRunner(
         // 条目节点是现造的，变量得逐个灌（`@get:{bid}` 就写在 chapterUrl 里）
         if (seedVars.isNotEmpty()) chapterNodes.forEach { it.seedVariables(seedVars) }
         val isVolumeRule = rule.string("isVolume")?.trim()
+        val isVipRule = rule.string("isVip")?.trim()?.takeIf { it.isNotEmpty() }
+        val updateTimeRule = rule.string("updateTime")?.trim()?.takeIf { it.isNotEmpty() }
         val items = chapterNodes.mapNotNull { node ->
             val isVolume = isVolumeRule?.let { node.value(it, jsSandbox, body, pageUrl) }
                 ?.trim()?.let { it.isNotEmpty() && it != "0" && it != "false" } ?: false
@@ -851,7 +898,13 @@ class RuleRunner(
             val name = node.value(rule.string("chapterName"), jsSandbox, body, pageUrl).orEmpty()
             // 卷分组头可无正文地址；普通章节没有地址则丢弃（维持原行为）。
             if (chapterHref == null && !isVolume) return@mapNotNull null
-            Triple(name, chapterHref ?: "", isVolume)
+            // 上游语义：isVip 取不到 / null / false / 0 / "" 都算非 VIP。
+            val vipText = isVipRule?.let { node.value(it, jsSandbox, body, pageUrl) }?.trim()
+            val isVip = vipText != null && vipText.isNotEmpty() && vipText != "0" &&
+                !vipText.equals("false", ignoreCase = true) && !vipText.equals("null", ignoreCase = true)
+            val updateTime = updateTimeRule?.let { node.value(it, jsSandbox, body, pageUrl) }
+                ?.trim()?.takeIf { it.isNotEmpty() }
+            TocEntry(name, chapterHref ?: "", isVolume, isVip, updateTime)
         }
         val nextRaw = if (!followNext || nextRule.isEmpty()) "" else NodeValue.document(body, runtime)
             .also { it.seedVariables(seedVars) }

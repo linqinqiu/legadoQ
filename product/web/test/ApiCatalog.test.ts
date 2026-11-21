@@ -188,7 +188,8 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 新增 GET /api/ui-prefs、PUT /api/ui-prefs/{key}、DELETE /api/ui-prefs/{key}（系统组，写门）→ 162 → 165，系统组 8 → 11。
   // 2026-11-16：备份导出第一域（书源），新增 GET /api/backup/export（备份组，只读）→ 165 → 166。
   // 2026-11-17：AI 那一整套挪到 product/experimental/ai/，/api/agent 那组不再注册 → 166 → 144。
-  assert.equal(catalog.endpoints.length, 144, `端点总数必须为 144，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-11-21：补全书源字典规则（上游 dictRule）`POST /api/sources/{id}/dict`（只读查询，归入书源组，不新增分组）→ 144 → 145。
+  assert.equal(catalog.endpoints.length, 145, `端点总数必须为 145，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   // 2026-11-17：AI 那组随代码挪走后 19 → 18。
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 18, '分组数应为 18')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')

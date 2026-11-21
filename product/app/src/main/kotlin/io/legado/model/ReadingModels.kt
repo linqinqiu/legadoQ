@@ -18,7 +18,16 @@ import kotlinx.serialization.Serializable
     /** 书源 `ruleContent.imageStyle`：`FULL` 表示正文图片铺满阅读区；缺省为普通版心宽度。 */
     val imageStyle: String? = null,
 )
-@Serializable data class Chapter(val index: Int, val title: String, val url: String, val isVolume: Boolean = false)
+@Serializable data class Chapter(
+    val index: Int,
+    val title: String,
+    val url: String,
+    val isVolume: Boolean = false,
+    /** `ruleToc.isVip`：null / false / 0 / "" 都按非 VIP 处理（与上游一致）。 */
+    val isVip: Boolean = false,
+    /** `ruleToc.updateTime` 的原文；源没配置或取不到时为 null。 */
+    val updateTime: String? = null,
+)
 @Serializable data class ContentRequest(
     val sourceId: String,
     val chapterUrl: String = "",

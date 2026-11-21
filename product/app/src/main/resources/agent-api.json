@@ -1624,7 +1624,18 @@
       "group": "系统",
       "purpose": "删掉一个界面偏好（界面「恢复默认」用）。幂等：key 本来不存在也回 204。",
       "response": "204；key 非法 400 invalid_prefs_key"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sources/{id}/dict",
+      "write": false,
+      "purpose": "字典规则查询（上游 dictRule）：选中文字 → urlRule 的 {{key}} → showRule，返回展开后的结果；该书源没配 dictRule 时返回 no_dict_rule 错误。只读、不落库，出站 fetch 仍过 SSRF 闸门",
+      "body": {
+        "text": "要查字典的选中文字"
+      },
+      "response": "{text: 字典规则展开后的结果}",
+      "group": "书源"
     }
   ],
-  "count": 144
+  "count": 145
 }

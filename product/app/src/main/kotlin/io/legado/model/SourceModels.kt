@@ -330,6 +330,10 @@ data class SourceLoginStateRecord(
 )
 @Serializable data class ValidateResponse(val valid: Boolean, val errors: List<String>, val warnings: List<String>)
 @Serializable data class DebugRequest(val keyword: String = "测试")
+
+/** 字典查询：选中文字 → `dictRule.urlRule` → `dictRule.showRule`。 */
+@Serializable data class DictLookupRequest(val text: String)
+@Serializable data class DictLookupResponse(val text: String)
 @Serializable data class SearchRequest(val keyword: String, val sourceIds: List<String>? = null)
 @Serializable data class ExploreTab(val title: String, val url: String, val supportsPaging: Boolean = true)
 @Serializable data class ExploreRequest(val sourceId: String, val url: String, val page: Int = 1)
