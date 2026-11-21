@@ -49,7 +49,7 @@
 
 桌面壳 `DesktopLauncher.kt` 负责窗口、启动画面、托盘与安装目录解析。插件装载机制已整体移除（代码里没有 `plugin/` 包），保留的是工具 / 协议 / 连接选择策略三类**运行时注册表**扩展点。
 
-### 2.2 端点分布（144 条 / 18 组）
+### 2.2 端点分布（145 条 / 18 组）
 
 | 组 | 条数 | 组 | 条数 |
 |---|---:|---|---:|
@@ -124,7 +124,7 @@
 | Web 测试 | `web: npm test` | **1,157 项 / 0 失败**（146 个测试文件；2026-11-15 本轮全量实测，typeset 分页簇两份判据删除后） |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-13 本轮实测） |
 | 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 最近一次实测（2026-11-09）：后端行 **70.04%**，前端行 **63.51%**；重跑 `npm run coverage` 取当次值 |
-| 端点文档一致 | `cd product && npm run docs:api-check` | 通过：144 条端点、18 个分组与文档一致（并核对本文与 ARCHITECTURE/ROADMAP 里手写的端点数） |
+| 端点文档一致 | `cd product && npm run docs:api-check` | 通过：145 条端点、18 个分组与文档一致（并核对本文与 ARCHITECTURE/ROADMAP 里手写的端点数） |
 | 更新日志 | `cd product && npm run changelog:check` | 通过：无待记录改动（自查 1 条提交） |
 | 版本单一来源 | `cd product && npm run version:check` | 通过：8 处版本均为 0.2.42，build 55 |
 | 真浏览器门禁 | `product/tools/verify/*-check.mjs` | **47** 个 `*-check.mjs`（该目录下共 79 个 `.mjs`，约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |

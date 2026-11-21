@@ -19,7 +19,7 @@ flowchart LR
 
     subgraph PROC["单个 JVM 进程 · Ktor CIO 3.4.3 · 默认 127.0.0.1:1234"]
         GUARD["同源写门<br/>http/Guard.kt<br/>只拦跨站写"]
-        ROUTE["路由层<br/>http/Routes.kt 装配点 + 15 个组文件<br/>144 个端点 / 18 组<br/>WS /api/search/stream"]
+        ROUTE["路由层<br/>http/Routes.kt 装配点 + 15 个组文件<br/>145 个端点 / 18 组<br/>WS /api/search/stream"]
         STATIC["静态资源<br/>StaticWeb.kt<br/>SPA 壳 + /next 挂载点"]
 
         subgraph DOMAIN["业务模块"]
@@ -252,7 +252,7 @@ flowchart TB
 
 ## 8. 接口分组
 
-`/api/catalog` 当前返回 144 条，按 18 组分布（2026-11-17 快照）：
+`/api/catalog` 当前返回 145 条，按 18 组分布（2026-11-17 快照）：
 
 | 分组 | 条数 | 分组 | 条数 |
 |---|---:|---|---:|
@@ -406,7 +406,7 @@ Ktor Call
 
 ### 3.3 端点契约与门禁
 
-- 契约文件：`product/app/src/main/resources/agent-api.json`（144 条 / 18 组）。
+- 契约文件：`product/app/src/main/resources/agent-api.json`（145 条 / 18 组）。
 - `web/test/ApiCatalog.test.ts` 双向核对：源码里多一条 / 目录里少一条都红。
 - `npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 与契约一致。
 - ⚠️ 目录是**扫源码文本**得出的，不是运行时路由表 —— 曾经因此漏过「路由写进别的 handler 里、启动后 404」的缺陷。现在有 `RouteCatalogTest` 真起服务打一发的判据兜底。

@@ -28,8 +28,9 @@ class ApiContractTest {
         // count 字段必须等于实际条数（防手写数字漂移）
         assertEquals("count 必须等于 endpoints 实际条数", endpoints.size, root["count"]?.jsonPrimitive?.int)
 
-        // 2026-11-17：AI 自定义接入那 22 条随代码挪进 product/experimental/ai/ → 166 - 22 = 144。
-        assertEquals("端点总数必须是 144", 144, endpoints.size)
+        // 2026-11-17：AI 自定义接入那 22 条随代码挪进 product/experimental/ai/ → 166 - 22 = 144；
+        // 2026-11-21：补全书源字典规则 POST /api/sources/{id}/dict（归入书源组，不新增分组）→ 144 → 145。
+        assertEquals("端点总数必须是 145", 145, endpoints.size)
 
         val groups = endpoints.map { it.jsonObject["group"]!!.jsonPrimitive.content }
         assertEquals("组数必须是 18", 18, groups.toSet().size)
