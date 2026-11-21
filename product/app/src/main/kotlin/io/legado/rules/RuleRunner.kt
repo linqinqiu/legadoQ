@@ -126,7 +126,7 @@ class RuleRunner(
      * 于是目录取不到（0 章，用户 2026-10-09 报的「漫画打不开」的根因之一）。
      *
      * 键是 `(sourceId, bookUrl/tocUrl/pageUrl)` 复合键（见 [ruleDataKey]）：sourceId 必须是键的一部分，
-     * 否则两个书源指向同一 URL 会互相读到对方 `@put` 的变量（RT-3 跨源污染，详见 REBUILD_PLAN/20）。
+     * 否则两个书源指向同一 URL 会互相读到对方 `@put` 的变量（RT-3 跨源污染）。
      * 搜索/发现时以 bookUrl 存，详情解析出 tocUrl 之后再补一份 tocUrl 的键（`chapters()` 拿到的是 tocUrl）。
      *
      * 上限用**按最近使用淘汰**（LRU）来守，不是整表清空：从前超过上限就 `clear()`，长跑进程 +
@@ -139,7 +139,7 @@ class RuleRunner(
      * RT-3（2026-11-20）：`ruleData` 的键必须带书源身份。
      *
      * 原来键是纯 URL（bookUrl/tocUrl/pageUrl），两个书源指向同一 URL 时会互相读到对方 `@put` 的
-     * 变量——跨源污染（换源、镜像站、A.tocUrl 撞 B.bookUrl 都会触发，规则详情见 REBUILD_PLAN/20）。
+     * 变量——跨源污染（换源、镜像站、A.tocUrl 撞 B.bookUrl 都会触发）。
      * 这里把键改成 `(sourceId, url)` 复合键： NUL（`\u0000`）做分隔符，URL 与 sourceId 都不含该字符，
      * 不会歧义。sourceId 为 null 时归一到空串，与搜索侧（非空 String）保持同一合成规则。
      *
