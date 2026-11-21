@@ -15,7 +15,6 @@ import io.legado.model.SourceHealthCheckItem
  */
 fun Database.saveHealthResults(results: List<SourceHealthCheckItem>): Int = write { db ->
     val now = System.currentTimeMillis()
-    db.autoCommit = false
     var written = 0
     try {
         db.prepareStatement("""insert into source_health(source_id,name,ok,latency_ms,status_category,error,checked_at)
@@ -34,12 +33,10 @@ fun Database.saveHealthResults(results: List<SourceHealthCheckItem>): Int = writ
             }
             written = st.executeBatch().count { it >= 0 }
         }
-        db.commit()
     } catch (error: Throwable) {
-        runCatching { db.rollback() }
+        runCatching {  }
         throw error
     } finally {
-        db.autoCommit = true
     }
     written
 }

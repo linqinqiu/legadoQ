@@ -56,7 +56,6 @@ private fun Database.listSourcesFromDb(query: String?): List<SourceSummary> = co
 
 /** 自定义排序：按给定的顺序写 `sort_order`（1 起），只写点到的那些；不在库里的 id 跳过。 */
 fun Database.reorderSources(ids: List<String>): Int = write { db ->
-    db.autoCommit = false
     try {
         var written = 0
         db.prepareStatement("update source set sort_order=? where id=?").use { statement ->
@@ -66,13 +65,11 @@ fun Database.reorderSources(ids: List<String>): Int = write { db ->
                 written += statement.executeUpdate()
             }
         }
-        db.commit()
         written
     } catch (error: Exception) {
-        runCatching { db.rollback() }
+        runCatching {  }
         throw error
     } finally {
-        db.autoCommit = true
     }
 }
 
@@ -164,7 +161,6 @@ fun Database.listSourceRecords(ids: List<String>?): Map<String, SourceRecord> = 
 }
 
 fun Database.saveSource(parsed: ParsedSource, expectedVersion: Long?): SourceRecord = write { db ->
-    db.autoCommit = false
     try {
         val current = db.prepareStatement("select version from source where id = ?").use { it.setString(1, parsed.id); it.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else null } }
         if (expectedVersion != null && current != expectedVersion) throw VersionConflict()
@@ -173,15 +169,14 @@ fun Database.saveSource(parsed: ParsedSource, expectedVersion: Long?): SourceRec
             values(?,?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set name=excluded.name,source_url=excluded.source_url,source_group=excluded.source_group,enabled=excluded.enabled,is_js=excluded.is_js,payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,has_login=excluded.has_login,has_rules=excluded.has_rules""").use {
             it.setString(1, parsed.id); it.setString(2, parsed.name); it.setString(3, parsed.url); it.setString(4, parsed.group); it.setInt(5, if (parsed.enabled) 1 else 0); it.setInt(6, if (parsed.isJs) 1 else 0); it.setString(7, parsed.json); it.setLong(8, version); it.setLong(9, now); it.setInt(10, if (parsed.hasLogin) 1 else 0); it.setInt(11, if (parsed.hasRules) 1 else 0); it.executeUpdate()
         }
-        db.commit(); invalidateSourceCaches()
+        invalidateSourceCaches()
         SourceRecord(parsed.id, parsed.json, version, now)
-    } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+    } catch (error: Throwable) { throw error }
 }
 
 /** 删书源要连它的凭据一起删：`source_login_state` 里是登录头与 Cookie 罐，
  *  留着就是一个已经不再信任的站点的有效凭据。批量删除早就这么做了，单删漏了。 */
 fun Database.deleteSource(id: String): Boolean = write { db ->
-    db.autoCommit = false
     try {
         val removed = db.prepareStatement("delete from source where id = ?").use { stmt ->
             stmt.setString(1, id)
@@ -191,16 +186,14 @@ fun Database.deleteSource(id: String): Boolean = write { db ->
             stmt.setString(1, id)
             stmt.executeUpdate()
         }
-        db.commit()
         // 删除也是写入路径（第 239 行的规矩）：不失效的话，删除后 sourceSummariesCache
         // 还是旧清单 —— 界面上"删了还显示"，E2E 场景 5 的 95 断言逮到的就是它。
         invalidateSourceCaches()
         removed
     } catch (error: Exception) {
-        runCatching { db.rollback() }
+        runCatching {  }
         throw error
     } finally {
-        db.autoCommit = true
     }
 }
 
@@ -210,7 +203,6 @@ fun Database.batchUpdateSources(ids: List<String>, action: String, group: String
     val now = System.currentTimeMillis()
     var affectedTotal = 0
     write { db ->
-        db.autoCommit = false
         try {
             distinctIds.chunked(200).forEach { chunk ->
                 val placeholders = chunk.joinToString(",") { "?" }
@@ -297,12 +289,9 @@ fun Database.batchUpdateSources(ids: List<String>, action: String, group: String
                     else -> throw IllegalArgumentException("不支持的批量操作: $action")
                 }
             }
-            db.commit()
         } catch (error: Throwable) {
-            db.rollback()
             throw error
         } finally {
-            db.autoCommit = true
         }
     }
     invalidateSourceCaches()

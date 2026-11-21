@@ -217,6 +217,38 @@ GROUP BY p ORDER BY 2 DESC;"
 
 ---
 
+## 切片 4 · 阶段3.3 autoCommit 收口（已落地）
+
+**状态**：已落地（2026-11-21）。
+
+`Database.kt` 早先已提供 `transaction`/`write` 事务函数，并立下规矩「谁都不许自己动 `autoCommit`」；
+但 `ShelfDao`/`SourcesDao`/`SourceHealthDao`/`CacheDao` 约 18 处老函数仍在 `write { db -> }` 块内手动
+`autoCommit=false … commit() … autoCommit=true`，正是 0.2.35 批量删书事故的成因（内层 `finally` 把
+`autoCommit` 复位成 true，外层事务被提前提交）。
+
+本次把 4 个 DAO 文件里的手动事务管理（`db.autoCommit = false/true`、`db.commit()`、`db.rollback()`、
+空的 `catch/finally` 壳）全部去掉，语句自动并入 `write` 的外包事务；异常由 `write` 的 SAVEPOINT 机制回滚。
+
+- **验证**：全量后端测试 `BUILD SUCCESSFUL`（数据持久层行为零变化）；全仓仅 `Database.kt` 门面 2 处
+  `autoCommit` 合法留存。
+- **判据**：迁移路线图阶段3.3 的「G4 硬红 + 全量测试 + 回滚演练」中，全量测试已达成；**真实库回滚演练
+  （0.2.35 事故场景重放）在当前无真实用户库的环境下未做**，依赖全量单测 + 事务 API 既有 SAVEPOINT 语义兜底。
+
+## 阶段3.2 DTO 归位（已评估，推迟）
+
+迁移路线图阶段3.2 的「搬 `LogEntry` 出 `ops/` 以断 `data↔ops` 环」，在 2026-11-21 重新评估后**暂缓执行**，理由：
+
+- 原施工图（11-20 负责人签字）已在重建主线规划清理时随 `REBUILD_PLAN.md` 一并删除，失去权威依据；
+- `ops/LogService.kt` 源码注释（2026-11-05，负责人决策）明确反对搬 `LogEntry`：「`data→ops` 是合法方向，
+  搬走要多动十几个文件」；
+- `data↔ops` 环当前 4 对里，这一对是有意保留（11-05 决策），非意外漂移。
+
+结论：不强行搬 `LogEntry`；`data↔ops` 环基线维持 4 对、G5 门槛维持 11 容忍项。若后续确有解环必要，
+应先重新决策「断 `ops→data` 边」（让 `ops` 只依赖 `database` 暴露的端口，而非 `import io.legado.data.*`），
+而不是搬类型。
+
+---
+
 ## 与其它文档的关系
 
 - 重建期审计已清理（内容保留在 git 历史中），其中的「外科式重建」方案未被采纳，本文档不依赖它。

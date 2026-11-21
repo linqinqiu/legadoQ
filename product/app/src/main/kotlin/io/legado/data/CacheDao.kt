@@ -80,7 +80,6 @@ fun Database.importLocalBook(
     coverKey: String?,
     groupId: Long = 0,
 ): BookshelfItem = write { db ->
-    db.autoCommit = false
     try {
         val sourceId = LocalBookParser.LOC_BOOK_SOURCE_ID
         val bookUrl = "local://$bookId"
@@ -195,13 +194,10 @@ fun Database.importLocalBook(
             stmt.executeUpdate()
         }
 
-        db.commit()
         getBookshelf(db, sourceId, bookUrl)!!
     } catch (e: Throwable) {
-        db.rollback()
         throw e
     } finally {
-        db.autoCommit = true
     }
 }
 

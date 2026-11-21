@@ -22,7 +22,6 @@ internal const val SHELF_SELECT = "select s.source_id,s.book_url,s.name,s.author
 
 fun Database.saveBookshelf(request: BookshelfWriteRequest, cover: CachedCover?): BookshelfItem = write { db ->
     val now = System.currentTimeMillis()
-    db.autoCommit = false
     try {
         // 用户主动加回一本删过的书 = 比旧备份更新的意图：清墓碑，别让下一次导入继续跳过它。
         clearShelfTombstone(db, request.sourceId, request.bookUrl)
@@ -32,8 +31,8 @@ fun Database.saveBookshelf(request: BookshelfWriteRequest, cover: CachedCover?):
             on conflict(source_id,book_url) do update set name=excluded.name,author=excluded.author,toc_url=excluded.toc_url,cover_url=excluded.cover_url,cover_key=coalesce(excluded.cover_key,book_shelf.cover_key),last_read_at=excluded.last_read_at,alternate_sources=coalesce(excluded.alternate_sources,book_shelf.alternate_sources)""").use {
             it.setString(1, request.sourceId); it.setString(2, request.bookUrl); it.setString(3, request.name); it.setString(4, request.author); it.setString(5, request.tocUrl); it.setString(6, request.coverUrl); it.setString(7, cover?.key); it.setLong(8, now); it.setString(9, altJson); it.executeUpdate()
         }
-        db.commit(); getBookshelf(db, request.sourceId, request.bookUrl)!!
-    } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+        getBookshelf(db, request.sourceId, request.bookUrl)!!
+    } catch (error: Throwable) { throw error } finally {  }
 }
 
 fun Database.updateBookshelfCover(sourceId: String, bookUrl: String, coverKey: String, contentType: String = "image/*"): Boolean = write { db ->
@@ -183,7 +182,6 @@ private fun Database.countBooksInGroup(db: Connection, groupId: Long): Int =
     db.prepareStatement("select count(*) from book_shelf where group_id=?").use { it.setLong(1, groupId); it.executeQuery().use { rs -> rs.next(); rs.getInt(1) } }
 
 fun Database.updateBookshelfInfo(request: BookshelfInfoUpdateRequest, cover: CachedCover?): BookshelfItem? = write { db ->
-    db.autoCommit = false
     try {
         var found = false
         var oldCover: String? = null
@@ -222,17 +220,14 @@ fun Database.updateBookshelfInfo(request: BookshelfInfoUpdateRequest, cover: Cac
             }
         }
         orphan?.let { value -> db.prepareStatement("delete from cover_cache where cache_key=?").use { it.setString(1, value); it.executeUpdate() } }
-        db.commit()
         getBookshelf(db, request.sourceId, request.bookUrl)
     } catch (error: Throwable) {
-        db.rollback(); throw error
+        throw error
     } finally {
-        db.autoCommit = true
     }
 }
 
 fun Database.removeBookshelf(sourceId: String, bookUrl: String): String? = write { db ->
-    db.autoCommit = false
     try {
         val key = db.prepareStatement("select cover_key from book_shelf where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null } }
         val removed = db.prepareStatement("delete from book_shelf where source_id=? and book_url=?").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.executeUpdate() }
@@ -246,13 +241,12 @@ fun Database.removeBookshelf(sourceId: String, bookUrl: String): String? = write
         db.prepareStatement("delete from book_toc_cache where source_id=? and (toc_url=? or instr(toc_url, ?) > 0)").use { it.setString(1, sourceId); it.setString(2, bookUrl); it.setString(3, bookUrl); it.executeUpdate() }
         val orphan = key?.takeIf { value -> db.prepareStatement("select 1 from book_shelf where cover_key=?").use { it.setString(1, value); !it.executeQuery().next() } }
         orphan?.let { value -> db.prepareStatement("delete from cover_cache where cache_key=?").use { it.setString(1, value); it.executeUpdate() } }
-        db.commit(); orphan
-    } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+        orphan
+    } catch (error: Throwable) { throw error } finally {  }
 }
 
 /** 批量删除多本书籍（事务内执行，失败回滚） */
 fun Database.batchRemoveBookshelf(books: List<BookIdentifier>): Int = write { db ->
-    db.autoCommit = false
     var deletedCount = 0
     try {
         for (book in books) {
@@ -279,19 +273,15 @@ fun Database.batchRemoveBookshelf(books: List<BookIdentifier>): Int = write { db
             }
             deletedCount++
         }
-        db.commit()
     } catch (error: Throwable) { 
-        db.rollback()
         throw error 
     } finally { 
-        db.autoCommit = true 
     }
     deletedCount
 }
 
 /** 批量更新书籍分组 */
 fun Database.batchUpdateBookshelfGroup(books: List<BookIdentifier>, groupId: Long?): Int = write { db ->
-    db.autoCommit = false
     var updatedCount = 0
     try {
         for (book in books) {
@@ -303,19 +293,15 @@ fun Database.batchUpdateBookshelfGroup(books: List<BookIdentifier>, groupId: Lon
             }
             updatedCount++
         }
-        db.commit()
     } catch (error: Throwable) { 
-        db.rollback()
         throw error 
     } finally { 
-        db.autoCommit = true 
     }
     updatedCount
 }
 
 fun Database.switchBookshelf(oldSourceId: String, oldBookUrl: String, request: BookshelfWriteRequest, cover: CachedCover?, alternateSources: List<SearchResult>? = null): Pair<BookshelfItem, String?> = write { db ->
     val now = System.currentTimeMillis()
-    db.autoCommit = false
     try {
         val oldCover = db.prepareStatement("select cover_key from book_shelf where source_id=? and book_url=?").use { it.setString(1, oldSourceId); it.setString(2, oldBookUrl); it.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null } }
         val existingAlts = db.prepareStatement("select alternate_sources from book_shelf where source_id=? and book_url=?").use {
@@ -347,8 +333,8 @@ fun Database.switchBookshelf(oldSourceId: String, oldBookUrl: String, request: B
         }
         val orphan = oldCover?.takeIf { value -> value != newCoverKey && db.prepareStatement("select 1 from book_shelf where cover_key=?").use { it.setString(1, value); !it.executeQuery().next() } }
         orphan?.let { value -> db.prepareStatement("delete from cover_cache where cache_key=?").use { it.setString(1, value); it.executeUpdate() } }
-        db.commit(); getBookshelf(db, request.sourceId, request.bookUrl)!! to orphan
-    } catch (error: Throwable) { db.rollback(); throw error } finally { db.autoCommit = true }
+        getBookshelf(db, request.sourceId, request.bookUrl)!! to orphan
+    } catch (error: Throwable) { throw error } finally {  }
 }
 
 /** 记一条「用户主动删了这本书」的墓碑（备份导入据此别再把它复活）。 */
