@@ -119,7 +119,7 @@
 
 | 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **1,027 项 / 0 失败 / 0 跳过**（145 个 suite；2026-11-22 `--max-workers=2` 全量实测）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的 300ms 断言在默认并行度与 `--max-workers=2` 下均出现过抖动，单类复跑与再次全量均通过 |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **1,027 项 / 0 失败 / 0 跳过**（145 个 suite；2026-11-22 `--max-workers=2` 全量实测）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印，并行全量不再抖动 |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
 | Web 测试 | `web: npm test` | **1,118 项 / 0 失败**（2026-11-22 全量实测；`ChallengerEmpiricalStress` 曾因并行负载触发一次计时基准红，单文件与第二次全量均通过） |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-22 本轮实测，随 `build:fallback` 一起跑） |

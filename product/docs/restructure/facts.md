@@ -282,7 +282,7 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 对外版本 / 构建号 | 0.3.0 / 56 | `npm --prefix product run version:check` |
 | **前端测试实跑** | **1,118 项 / 0 失败** | `npm --prefix product/web test`；`ChallengerEmpiricalStress` 曾在并行负载下触发一次计时基准红，单文件与第二次全量均通过 |
 | 前端类型检查 | 通过 | `npm --prefix product/web run check`（`tsc -b`） |
-| **后端测试实跑** | **1,027 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 9m 39s`；`test-results/test/*.xml` 求和。首跑曾出现 `E2EScenariosTest` 300ms 计时抖动 1 项，单类复跑与再次全量均通过 |
+| **后端测试实跑** | **1,027 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 10m 37s`；`test-results/test/*.xml` 求和。`E2EScenariosTest` 的 1500ms/300ms/2500ms 墙钟阈值已移除，改为请求面与完整性判据（选中书源恰好 4 次请求、5000 章首尾完整），耗时只打印 |
 | **前端产物指纹** | **`index-Bl62g_P0.js`**（911,135 B） | `product/web/dist/index.html`；`build:fallback` 产出 |
 | 产物完整性门禁 | **11/11 通过** | `node product/tools/verify/dist-check.mjs`（新增：校验 index.html 引用资源真实存在） |
 | jar / dist / 活服务一致性 | **5/5 通过**（含活服务 `/assets/*.js → 200`） | `node product/tools/verify/bundled-ui-check.mjs`（启动 `product/start.mjs --no-open` 后实跑） |
