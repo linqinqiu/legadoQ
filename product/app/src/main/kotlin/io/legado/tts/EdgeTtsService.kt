@@ -9,7 +9,6 @@ import java.net.http.HttpResponse
 import java.net.http.WebSocket
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
@@ -45,16 +44,15 @@ class EdgeTtsService(
         private val RESTRICTED_CUSTOM_HEADERS = setOf(
             "host", "content-length", "connection", "upgrade", "expect", "transfer-encoding", "te", "keep-alive",
         )
-        private const val TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
+        private val TRUSTED_CLIENT_TOKEN = EdgeTtsToken.TRUSTED_CLIENT_TOKEN
         private const val WSS_BASE_URL = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1"
         // Chromium 版本可经 env(LEGADO_EDGE_TTS_CHROMIUM_VERSION) 覆盖；UA 与 Sec-MS-GEC-Version 据此派生。
         // 微软改协议时改这一个 env 即可，不必重编译（旧值会让合成静默返回 0 字节）。
         private val CHROMIUM_FULL_VERSION = AppConfig.edgeTtsChromiumVersion
         private val CHROMIUM_MAJOR_VERSION = CHROMIUM_FULL_VERSION.substringBefore('.')
         private val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$CHROMIUM_MAJOR_VERSION.0.0.0 Safari/537.36 Edg/$CHROMIUM_MAJOR_VERSION.0.0.0"
-        private val SEC_MS_GEC_VERSION = "1-$CHROMIUM_FULL_VERSION"
+        private val SEC_MS_GEC_VERSION = "2-$CHROMIUM_FULL_VERSION"
         private const val ORIGIN = "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold"
-        private const val WIN_EPOCH = 11644473600L
 
         val DEFAULT_VOICES = listOf(
             TtsVoice("zh-CN-XiaoxiaoNeural", "晓晓 (女声·温暖自然·推荐)", "zh-CN", "Female", "中文普通话", "edge", "适合小说叙述与日常对话"),
@@ -72,16 +70,8 @@ class EdgeTtsService(
             TtsVoice("en-US-GuyNeural", "Guy (英文·自然男声)", "en-US", "Male", "English (US)", "edge", "Natural American English Male"),
         )
 
-        fun generateSecMsGec(): String {
-            val nowSeconds = System.currentTimeMillis() / 1000L
-            var ticks = nowSeconds + WIN_EPOCH
-            ticks -= (ticks % 300L)
-            val fileTimeTicks = ticks * 10000000L
-            val strToHash = "$fileTimeTicks$TRUSTED_CLIENT_TOKEN"
-            val md = MessageDigest.getInstance("SHA-256")
-            val digest = md.digest(strToHash.toByteArray(StandardCharsets.US_ASCII))
-            return digest.joinToString("") { b -> "%02X".format(b) }
-        }
+        /** v2 令牌（`<CS64>-<SHA256>`）；算法与固定样本见 [EdgeTtsToken]。 */
+        fun generateSecMsGec(): String = EdgeTtsToken.generateSecMsGec()
 
         fun generateMuid(): String {
             val bytes = ByteArray(16)

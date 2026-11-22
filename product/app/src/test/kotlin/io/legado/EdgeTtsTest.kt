@@ -86,10 +86,11 @@ class EdgeTtsTest {
     }
 
     @Test
-    fun `sec ms gec token generation produces 64-char uppercase hex string`() {
+    fun `sec ms gec token generation produces v2 cs64-sha256 format`() {
+        // 2026-11 起服务端只认 v2：16 位 CS64 + '-' + 64 位 SHA256。
         val token = EdgeTtsService.generateSecMsGec()
-        assertEquals(64, token.length)
-        assertTrue(token.matches(Regex("^[0-9A-F]{64}$")))
+        assertEquals(81, token.length)
+        assertTrue("v2 格式不对：$token", token.matches(Regex("^[0-9A-F]{16}-[0-9A-F]{64}$")))
     }
 
     @Test
