@@ -92,21 +92,25 @@ compare(2, g2, new Set(), '（data/ 之外出现 SQL 执行）');
 
 // ---------------------------------------------------------------- G3 只有 app/ + kernel/fetch 能建 HTTP 客户端
 // R2b 的允许面原文是「只有 app/ + kernel/fetch 能建 HTTP 客户端」：
-//   - kernel/fetch 的当前载体 = NetworkSecurity.kt（唯一合法签发点）；
-//   - app/ 的当前载体 = 组合根（DesktopLauncher / Application / StaticWeb）。
+//   - kernel/fetch 的当前载体 = NetworkSecurity.kt（出站抓取唯一签发点）；
+//   - app/ 的当前载体 = 组合根（DesktopLauncher / Application / StaticWeb）；
+//   - 例外只开给 `LocalControlClient.kt`：本机控制面，只允许回环，见该文件注释。
 // 组合根里的两处是**回环健康探测**（1.2s / 2s 探 /healthz），不是出站抓取面，按规则本就不该计入。
 // 按**文件**登记（行号会漂移，文件稳定），与 depth-check.mjs 同款稳健模式。
 // 块注释里的 `HttpClient.newBuilder` 字样（如 GuardedHttpClient.kt:19 的类注释）不是代码，
 // 所以扫描前先剥块注释——只剥 `//` 会把 KDoc 当违规，逼着人为了消红去改注释。
 const G3_ALLOWED_ROOT = new Set(['DesktopLauncher.kt', 'Application.kt', 'StaticWeb.kt']);
+// 合法签发点只有两个，且都必须自带闸门：
+//   - NetworkSecurity.kt（目标态 kernel/fetch）：出站抓取，过 SSRF + PinnedProxy；
+//   - LocalControlClient.kt：本机控制面（Chromium DevTools），只放回环，非出站抓取。
+const G3_ISSUERS = new Set(['NetworkSecurity.kt', 'LocalControlClient.kt']);
 const g3 = new Set([
-  'app/src/main/kotlin/io/legado/source/ExternalBrowserLogin.kt',
   'app/src/main/kotlin/io/legado/source/WebViewProxy.kt',
   'app/src/main/kotlin/io/legado/tts/EdgeTtsService.kt',
 ]);
 const g3Observed = new Set();
 for (const f of ktFiles) {
-  if (f.endsWith('NetworkSecurity.kt')) continue; // 唯一合法签发点（目标态 kernel/fetch）
+  if (G3_ISSUERS.has(path.basename(f))) continue; // 合法签发点
   if (G3_ALLOWED_ROOT.has(path.basename(f))) continue; // 组合根：R2b 明确允许
   const code = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   for (const text of code.split(/\r?\n/)) {

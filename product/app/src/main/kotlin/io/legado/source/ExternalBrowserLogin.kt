@@ -20,6 +20,7 @@ import java.util.concurrent.CompletionStage
 import java.util.concurrent.TimeUnit
 import io.legado.data.Database
 import io.legado.data.setCookieForUrl
+import io.legado.ops.LocalControlClient
 
 /**
  * 基线对比的键：Cookie 的域（去前导点、小写）加名字。CDP 的 `domain` 在子域上带前导点
@@ -96,10 +97,12 @@ class ExternalBrowserLogin(
     /** 我们自己记的调试端口：Chromium 的 DevToolsActivePort 会被它自己增删，这份不受影响。 */
     private val stateFile get() = profileDir.resolve("legado-debug-port")
 
-    private val http = HttpClient.newBuilder()
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .connectTimeout(Duration.ofSeconds(5))
-        .build()
+    // 本机控制面：目标是 Chromium 的 DevTools 端口，不是出站抓取。走 `LocalControlClient`
+    // 而不是 `NetworkSecurity`（见该文件的注释），但每个 URL 发出前仍要过回环闸门。
+    private val http = LocalControlClient.newClient(
+        connectTimeout = Duration.ofSeconds(5),
+        followRedirects = HttpClient.Redirect.NEVER,
+    )
 
     /**
      * 我们拉起来的浏览器是否还活着；进程没了顺手清状态。
@@ -373,7 +376,7 @@ class ExternalBrowserLogin(
     private fun historyDomains(webSocketUrl: String): List<String> {
         val reply = CompletableFuture<String>()
         val socket = try {
-            http.newWebSocketBuilder().buildAsync(URI(webSocketUrl), BrowserFrameListener(reply, 1)).get(8, TimeUnit.SECONDS)
+            openWebSocket(webSocketUrl, BrowserFrameListener(reply, 1))
         } catch (error: Exception) {
             return emptyList()
         }
@@ -404,7 +407,7 @@ class ExternalBrowserLogin(
         val socketUrl = (version["webSocketDebuggerUrl"] as? JsonPrimitive)?.contentOrNull ?: return null
         val reply = CompletableFuture<String>()
         val socket = try {
-            http.newWebSocketBuilder().buildAsync(URI(socketUrl), BrowserFrameListener(reply, id)).get(8, TimeUnit.SECONDS)
+            openWebSocket(socketUrl, BrowserFrameListener(reply, id))
         } catch (error: Exception) {
             return null
         }
@@ -461,8 +464,17 @@ class ExternalBrowserLogin(
         }
     }
 
+    /** 本机控制面的 WS 开口：先验回环，再建连。CDP 的 `webSocketDebuggerUrl` 也来自浏览器，不默认可信。 */
+    private fun openWebSocket(url: String, listener: WebSocket.Listener): WebSocket {
+        val uri = URI(url)
+        LocalControlClient.requireLoopback(uri)
+        return http.newWebSocketBuilder().buildAsync(uri, listener).get(8, TimeUnit.SECONDS)
+    }
+
     private fun fetchJson(url: String) = runCatching {
-        val body = http.send(HttpRequest.newBuilder(URI(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
+        val uri = URI(url)
+        LocalControlClient.requireLoopback(uri)
+        val body = http.send(HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
         Json.parseToJsonElement(body)
     }.getOrNull()
 
