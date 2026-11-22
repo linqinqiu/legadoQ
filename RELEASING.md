@@ -80,8 +80,9 @@ npm --prefix product run test           # 前端 + 后端全量判据
 npm run build                           # 先 web/dist，再 fatJar（顺序不能倒）
 ```
 
-`npm run build` 走 `product/scripts/tasks.mjs build`：先 `npm --prefix web run build`，再
-`./gradlew :app:fatJar`。**不能反过来**，否则烤进 jar 的是上一份前端产物。构建完确认：
+`npm run build` 走 `product/scripts/tasks.mjs build`：先 `npm --prefix web run build`，再校验
+`web/dist` 确实是完整界面（`tools/verify/dist-check.mjs`），最后 `./gradlew :app:fatJar`。
+**不能反过来**，否则烤进 jar 的是上一份前端产物。构建完确认：
 
 ```bash
 unzip -p product/app/build/libs/legado-0.2.11-all.jar meta/build-info.properties

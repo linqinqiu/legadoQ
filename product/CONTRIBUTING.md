@@ -19,19 +19,27 @@ npm run dev          # 只起前端 dev server（热重载，不含后端）
 npm test             # 全部用例：前端 node:test + 后端 JUnit
 npm run check        # 前端类型检查（tsc）
 node stop.mjs        # 停掉本项目在端口上的那个 java 进程
-npm run build        # 见下面三步
+npm run build        # 见下面四步
 node start.mjs       # 起服务并自动开浏览器（默认 127.0.0.1:1234）
 ```
 
 ## 构建顺序：先停，再建，再起
 
-`npm run build` 是三步（`scripts/tasks.mjs`），顺序有意义：
+`npm run build` 是四步（`scripts/tasks.mjs`），顺序有意义：
 
 | 步 | 做什么 | 产出 |
 | --- | --- | --- |
-| 1/3 | `npm --prefix web run build` | `web/dist/`（文件名带内容哈希） |
-| 2/3 | `gradlew :app:fatJar` | `app/build/libs/legado-<版本>-all.jar`（把 `web/dist` 烤进 `static/`） |
-| 3/3 | `tools/verify/bundled-ui-check.mjs` | 断言「jar 内 == processResources == dist == 运行中的实例」四处前端一致 |
+| 1/4 | `npm --prefix web run build` | `web/dist/`（文件名带内容哈希） |
+| 2/4 | `tools/verify/dist-check.mjs` | 断言 `index.html` 与它引用的 `assets/` 真的存在（防"构建到一半"的残骸进包） |
+| 3/4 | `gradlew :app:fatJar` | `app/build/libs/legado-<版本>-all.jar`（把 `web/dist` 烤进 `static/`） |
+| 4/4 | `tools/verify/bundled-ui-check.mjs` | 断言「jar 内 == processResources == dist == 运行中的实例」四处前端一致 |
+
+**构建报 `[vite:esbuild-transpile] remove ... Access is denied` 时**：这是 esbuild 对 >1 MiB 的
+transform 输入改走临时文件、而本机删除临时文件被拒（Windows 环境问题，不是源码问题）。用
+`LEGADO_WEB_BUILD=fallback npm run build`（PowerShell：`$env:LEGADO_WEB_BUILD='fallback'; npm run build`）
+让整条链改走 `build:fallback`（`--target esnext --minify terser`，仍然压缩），并在提交说明里注明；
+**不要**把这条兜底当成发布默认值 —— 发布仍应在正常环境用标准 `npm run build`。两条路都会经过
+`2/4` 的 `dist-check`。
 
 **为什么必须先 `node stop.mjs`**：跑着的服务加载的是磁盘上那份 `-all.jar`。Windows 上覆盖它其实会成功（不是文件锁问题），但如果构建中途有东西把服务拉起来，那个进程读到的就是**写了一半的包** —— 表现是首页已经新了、`/healthz` 还报旧哈希。真正出过的事故是另一头：`fatJar` 一度只被 `npm run build` 调用，谁走 `gradlew build` / IDE 构建就只刷新普通 jar，`-all.jar` 静默留在过去，重启了也还是旧界面。现在两侧都有守卫：
 

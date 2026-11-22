@@ -1,6 +1,6 @@
 # 部署与运维
 
-> 最后核对：0.2.42 / 2026-11-14（发行资产口径以 `.github/workflows/build-jar.yml` 为准）
+> 最后核对：**0.3.0 / 2026-11-22**（本轮复核构建顺序与产物校验章节；发行资产口径以 `.github/workflows/build-jar.yml` 为准）
 
 这份文档说"怎么把它跑起来、怎么升级、跑坏了先看哪儿"。功能面看 [`../README.md`](../README.md)，
 内部结构看 [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)。
@@ -30,13 +30,14 @@
 
 ```bash
 npm --prefix web run build          # ① 前端产物 web/dist
-./gradlew :app:fatJar            # ② 把 ① 烤进 jar（app/build.gradle 的 processResources 把 web/dist 拷进 static/）
-node tools/make-cds.mjs             # ③ 可选：CDS 类归档，冷启动 ~8.3s → ~5.3s
-node scripts/package.mjs            # ④ 可选：整合包
-node scripts/package-desktop.mjs    # ⑤ 可选：桌面包
+node tools/verify/dist-check.mjs    # ② 断言 web/dist 里 index.html 与它引用的 assets 都在
+./gradlew :app:fatJar            # ③ 把 ① 烤进 jar（app/build.gradle 的 processResources 把 web/dist 拷进 static/）
+node tools/make-cds.mjs             # ④ 可选：CDS 类归档，冷启动 ~8.3s → ~5.3s
+node scripts/package.mjs            # ⑤ 可选：整合包
+node scripts/package-desktop.mjs    # ⑥ 可选：桌面包
 ```
 
-② 必须紧跟在 ① 之后。①②并发或顺序倒了，jar 里烤进去的是**上一份 bundle**，表现是"源码改了、界面无变化"，
+③ 必须紧跟在 ① 之后。①②③并发或顺序倒了，jar 里烤进去的是**上一份 bundle**，表现是"源码改了、界面无变化"，
 而 `version-check` / `ui-shell-check` 会三条一起红（服务端 bundle ≠ `web/dist`、顶栏版本不高亮、`build/libs` 里留着旧 all.jar）。
 `build/libs` 里同时有新旧两个 `*-all.jar` 时，挑错包的经验教训已经写过一次：先把旧包挪走再验。
 

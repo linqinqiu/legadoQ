@@ -1,5 +1,6 @@
 package io.legado.ops
 
+import io.legado.port.LocalControl
 import java.net.URI
 import java.net.http.HttpClient
 import java.time.Duration
@@ -17,15 +18,15 @@ import java.time.Duration
  * 但「只连本机」必须是**代码判据**，不能只写在注释里：所有 URL 在发出前都要过
  * [requireLoopback]，以后有人把参数接进来，也不会把这里变成第二个 SSRF 门。
  */
-object LocalControlClient {
+object LocalControlClient : LocalControl {
 
     /** 只认字面回环。`localhost` 保留是因为 Chromium 的 `webSocketDebuggerUrl` 会用它。 */
     private val LOOPBACK_HOSTS = setOf("127.0.0.1", "::1", "[::1]", "localhost")
     private val ALLOWED_SCHEMES = setOf("http", "https", "ws", "wss")
 
-    fun newClient(
+    override fun newClient(
         connectTimeout: Duration,
-        followRedirects: HttpClient.Redirect = HttpClient.Redirect.NEVER,
+        followRedirects: HttpClient.Redirect,
     ): HttpClient = HttpClient.newBuilder()
         .connectTimeout(connectTimeout)
         .followRedirects(followRedirects)
@@ -36,7 +37,7 @@ object LocalControlClient {
      *
      * @throws IllegalArgumentException 目标不是本机 —— 这是编程错误，不是网络错误
      */
-    fun requireLoopback(uri: URI) {
+    override fun requireLoopback(uri: URI) {
         val scheme = uri.scheme?.lowercase()
         require(scheme != null && scheme in ALLOWED_SCHEMES) {
             "本机控制面只允许 HTTP(S)/WS(S) 地址：$uri"

@@ -2,6 +2,7 @@ package io.legado
 
 import com.sun.net.httpserver.HttpServer
 import io.legado.data.Database
+import io.legado.ops.LocalControlClient
 import io.legado.source.ExternalBrowserLogin
 import io.legado.source.historyHosts
 import kotlinx.serialization.json.Json
@@ -50,7 +51,7 @@ class ExternalBrowserLoginTest {
         db.initialize()
         try {
             profileWithPort(dir, port)
-            val login = ExternalBrowserLogin(db, dir)
+            val login = ExternalBrowserLogin(db, dir, LocalControlClient)
 
             val running = login.status()
             assertNotNull("profile 里有活着的调试端口，就该附着成「已打开」", running)
@@ -70,7 +71,7 @@ class ExternalBrowserLoginTest {
         val db = Database(Files.createTempFile("legado-browser-db", ".sqlite").toString())
         db.initialize()
         try {
-            val login = ExternalBrowserLogin(db, dir)
+            val login = ExternalBrowserLogin(db, dir, LocalControlClient)
             assertNull("profile 里什么都没有时不该有状态", login.status())
 
             // 端口文件还在、但没人监听（浏览器已经退了）：同样算没开。
@@ -88,7 +89,7 @@ class ExternalBrowserLoginTest {
         val db = Database(Files.createTempFile("legado-browser-db", ".sqlite").toString())
         db.initialize()
         try {
-            val login = ExternalBrowserLogin(db, dir)
+            val login = ExternalBrowserLogin(db, dir, LocalControlClient)
             assertTrue(login.capture(listOf("fanqienovel.com")).isEmpty())
             assertTrue(login.peekDomains(listOf("fanqienovel.com")).isEmpty())
         } finally {
@@ -102,7 +103,7 @@ class ExternalBrowserLoginTest {
         val db = Database(Files.createTempFile("legado-browser-db", ".sqlite").toString())
         db.initialize()
         try {
-            val login = ExternalBrowserLogin(db, dir)
+            val login = ExternalBrowserLogin(db, dir, LocalControlClient)
             val cookies = listOf(
                 ExternalBrowserLogin.BrowserCookie(".books.example", "session", "s1"),
                 ExternalBrowserLogin.BrowserCookie(".passport.example", "sso", "token-new"),
@@ -135,7 +136,7 @@ class ExternalBrowserLoginTest {
         val db = Database(Files.createTempFile("legado-browser-db", ".sqlite").toString())
         db.initialize()
         try {
-            val login = ExternalBrowserLogin(db, dir)
+            val login = ExternalBrowserLogin(db, dir, LocalControlClient)
             val cookies = listOf(
                 ExternalBrowserLogin.BrowserCookie(".books.example", "session", "s1"),
                 ExternalBrowserLogin.BrowserCookie(".passport.example", "sso", "token-new"),
@@ -175,7 +176,7 @@ class ExternalBrowserLoginTest {
         val db = Database(Files.createTempFile("legado-browser-db", ".sqlite").toString())
         db.initialize()
         try {
-            val login = ExternalBrowserLogin(db, dir)
+            val login = ExternalBrowserLogin(db, dir, LocalControlClient)
             profileWithPort(dir, 51520)
             val marker = dir.resolve("DevToolsActivePort")
             val old = System.currentTimeMillis() - 60_000

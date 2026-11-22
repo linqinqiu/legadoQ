@@ -81,8 +81,8 @@ jobs:
           echo "LEGADO_CHROME=$CHROME" >> "$GITHUB_ENV"
 
       - name: 构建前端与 jar
-        # product 根的 `npm run build` 一次做完三步：web dist → :app:fatJar →
-        # bundled-ui-check（包内前端 == dist）。再单独跑一遍 fatJar 是重复。
+        # product 根的 `npm run build` 一次做完四步：web dist → dist-check →
+        # :app:fatJar → bundled-ui-check（包内前端 == dist）。再单独跑一遍 fatJar 是重复。
         run: |
           chmod +x gradlew
           npm run build
@@ -150,7 +150,7 @@ jobs:
           fi
           echo "LEGADO_CHROME=$CHROME" >> "$GITHUB_ENV"
           chmod +x gradlew
-          # 三步一体：web dist → :app:fatJar → bundled-ui-check
+          # 四步一体：web dist → dist-check → :app:fatJar → bundled-ui-check
           npm run build
 
       - name: 起服务

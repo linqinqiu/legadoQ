@@ -14,6 +14,7 @@ import io.legado.data.Database
 import io.legado.data.queryLogs
 import io.legado.localbook.TocRules
 import io.legado.model.ApiError
+import io.legado.ops.LocalControlClient
 import io.legado.ops.NetworkSecurity
 import io.legado.ops.UiPrefsStore
 import io.legado.port.LogLevel
@@ -65,7 +66,11 @@ fun Route.apiRoutes(
     // 它们原先在 localStorage，而 localStorage 按 origin 隔离，改端口等于换了个站点。
     val uiPrefs = UiPrefsStore(localBooksDirectory.resolveSibling(UiPrefsStore.FILE_NAME))
     // 真浏览器登录：profile 放在数据目录下（与 local_books 同级），登录态跨次启动保留。
-    val externalLogin = ExternalBrowserLogin(database, localBooksDirectory.resolveSibling("external-browser-profile"))
+    val externalLogin = ExternalBrowserLogin(
+        database,
+        localBooksDirectory.resolveSibling("external-browser-profile"),
+        LocalControlClient,
+    )
     val debugger = SourceDebugger(runner)
     route("/api") {
         // 系统域：目录 / 服务自身 / 日志 / 诊断 / 关于 / 更新日志

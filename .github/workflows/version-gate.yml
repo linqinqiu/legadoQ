@@ -194,7 +194,7 @@ jobs:
         run: |
           npm ci --prefix web
           chmod +x gradlew
-          # 三步一体：web dist → :app:fatJar → bundled-ui-check
+          # 四步一体：web dist → dist-check → :app:fatJar → bundled-ui-check
           npm run build
 
       - name: 起产物并断言版本与界面指纹

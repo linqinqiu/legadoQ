@@ -1,8 +1,8 @@
 import { zh } from '../../../i18n/zh'
 /**
  * 标记快捷条（MD3 MarkingSelectionMenu 形态，PROPOSAL 阅读器增强）：
- * 选中正文后先摆这一条，而不是立刻弹笔记输入框。四个动作：
- *   划线（仅高亮，不写备注）/ 笔记（展开 NoteToolbar 编辑器）/ 复制 / 发给 AI。
+ * 选中正文后先摆这一条，而不是立刻弹笔记输入框。五个动作：
+ *   划线（仅高亮，不写备注）/ 笔记（展开 NoteToolbar 编辑器）/ 复制 / 段评 / 关闭。
  *
  * 挂在 `<section class="reader-main">` **之外** —— 它自己的点击不该再触发 onReaderMouseUp，
  * 所以和 NoteToolbar 一样是独立的一块，只跟选区坐标与回调打交道。

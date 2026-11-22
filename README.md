@@ -25,10 +25,11 @@
 | **图片与媒体** | 漫画逐图、音频、视频、文件直链 |
 | **朗读** | Edge TTS、自定义 HTTP 音频接口、浏览器语音；跨章连播、定时 |
 | **RSS** | 订阅源与文章读取 |
-| **备份** | Legado 备份包导入（含 AES 凭据解密）；导出尚未支持 |
-| **AI** | 模型连接（OpenAI 兼容 / Responses / Anthropic）、流式对话、内置工具、技能与提示词、MCP 外部工具 |
+| **备份** | Legado 备份包导入（含 AES 凭据解密）；导出支持整包与按域（书源 / 替换规则 / 分组 / RSS / 书架含进度） |
 | **系统** | 服务端口、运行日志等 |
 | **PWA** | 可安装到桌面，支持离线壳 |
+
+> AI 相关代码已移到 `product/experimental/ai/`（2026-11-17），**不参与编译、打包，`/api/agent` 端点不注册**，界面也没有入口。
 
 ## 边界
 
@@ -106,7 +107,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 ├── product/             # 产品本体：Ktor 后端 + 内置 UI + 数据
 │   ├── app/             # 后端源码（Kotlin/Ktor）
 │   ├── web/             # 内置 Web UI 源码
-│   ├── docs/            # 产品手册（部署 / 兼容 / 插件框架 / 门禁 / AI 接入 agent-api.md 等）
+│   ├── docs/            # 产品手册（部署 / 兼容 / 插件框架 / 门禁等）
 │   ├── CONTRIBUTING.md  # 中文协作约定（权威版见仓库根 .github/）
 │   └── SECURITY.md      # 中文安全基线（权威版见仓库根 .github/）
 ├── docs/                # 唯一索引 + 架构/API/规划 + research/ 研究快照 + sessions/ 工程日志

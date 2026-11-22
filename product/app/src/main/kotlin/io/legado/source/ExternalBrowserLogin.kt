@@ -20,7 +20,7 @@ import java.util.concurrent.CompletionStage
 import java.util.concurrent.TimeUnit
 import io.legado.data.Database
 import io.legado.data.setCookieForUrl
-import io.legado.ops.LocalControlClient
+import io.legado.port.LocalControl
 
 /**
  * 基线对比的键：Cookie 的域（去前导点、小写）加名字。CDP 的 `domain` 在子域上带前导点
@@ -65,6 +65,7 @@ internal fun historyHosts(result: JsonObject?): List<String> {
 class ExternalBrowserLogin(
     private val database: Database,
     private val profileDir: Path,
+    private val control: LocalControl,
 ) {
     data class Running(
         val browser: String,
@@ -97,9 +98,9 @@ class ExternalBrowserLogin(
     /** 我们自己记的调试端口：Chromium 的 DevToolsActivePort 会被它自己增删，这份不受影响。 */
     private val stateFile get() = profileDir.resolve("legado-debug-port")
 
-    // 本机控制面：目标是 Chromium 的 DevTools 端口，不是出站抓取。走 `LocalControlClient`
-    // 而不是 `NetworkSecurity`（见该文件的注释），但每个 URL 发出前仍要过回环闸门。
-    private val http = LocalControlClient.newClient(
+    // 本机控制面：目标是 Chromium 的 DevTools 端口，不是出站抓取。走注入的 `LocalControl`
+    // 端口（实现是 `ops.LocalControlClient`，见该文件注释），每个 URL 发出前仍要过回环闸门。
+    private val http = control.newClient(
         connectTimeout = Duration.ofSeconds(5),
         followRedirects = HttpClient.Redirect.NEVER,
     )
@@ -467,13 +468,13 @@ class ExternalBrowserLogin(
     /** 本机控制面的 WS 开口：先验回环，再建连。CDP 的 `webSocketDebuggerUrl` 也来自浏览器，不默认可信。 */
     private fun openWebSocket(url: String, listener: WebSocket.Listener): WebSocket {
         val uri = URI(url)
-        LocalControlClient.requireLoopback(uri)
+        control.requireLoopback(uri)
         return http.newWebSocketBuilder().buildAsync(uri, listener).get(8, TimeUnit.SECONDS)
     }
 
     private fun fetchJson(url: String) = runCatching {
         val uri = URI(url)
-        LocalControlClient.requireLoopback(uri)
+        control.requireLoopback(uri)
         val body = http.send(HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofString()).body()
         Json.parseToJsonElement(body)
     }.getOrNull()

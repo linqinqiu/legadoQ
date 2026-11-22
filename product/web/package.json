@@ -16,6 +16,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:fallback": "tsc -b && vite build --target esnext --minify terser",
+    "verify:dist": "node ../tools/verify/dist-check.mjs",
     "check": "tsc -b --pretty false",
     "check:test": "tsc -p tsconfig.test.json --pretty false",
     "test": "tsx test/run-all.ts",

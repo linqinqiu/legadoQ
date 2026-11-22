@@ -269,3 +269,29 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 - 一类是**状态污染**：门禁之间共用服务端 ui-prefs，前一条点过「同意协议」后 `agreement-check` 就找不到弹层。跑全量前先 `DELETE /api/ui-prefs/<key>`。
 - 一类是**本机书源规模**（5,604 条）下的真实 UI 问题（手机档书源页撑破父容器等），属另一条整改线。
 - `source-editor-check` 的清理段找不到「删除书源」按钮，也是既有 UI 问题，与本轮改动无关。
+
+---
+
+## 10. 2026-11-22 复跑（0.3.0 / build 56，产物门禁加固后）
+
+> 上一节采集于 `98aed29`；本节是当前工作树（HEAD `f781eba`，rev **438**）的实测，旧节不回改。**现行数字以本节为准。**
+> 工作树含未提交的产物门禁/文档改动，以及并行会话的在改 TTS 源码；后端数字按当时源码实跑，不宣称这些改动已发布。
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| 对外版本 / 构建号 | 0.3.0 / 56 | `npm --prefix product run version:check` |
+| **前端测试实跑** | **1,118 项 / 0 失败** | `npm --prefix product/web test`；`ChallengerEmpiricalStress` 曾在并行负载下触发一次计时基准红，单文件与第二次全量均通过 |
+| 前端类型检查 | 通过 | `npm --prefix product/web run check`（`tsc -b`） |
+| **后端测试实跑** | **1,024 项 / 144 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 6m 30s`；`test-results/test/*.xml` 求和 |
+| **前端产物指纹** | **`index-Bl62g_P0.js`**（911,135 B） | `product/web/dist/index.html`；`build:fallback` 产出 |
+| 产物完整性门禁 | **11/11 通过** | `node product/tools/verify/dist-check.mjs`（新增：校验 index.html 引用资源真实存在） |
+| jar / dist / 活服务一致性 | **5/5 通过**（含活服务 `/assets/*.js → 200`） | `node product/tools/verify/bundled-ui-check.mjs`（启动 `product/start.mjs --no-open` 后实跑） |
+| 四步构建链（兜底分支） | **4/4 完成，`BUILD SUCCESSFUL in 4m 10s`** | `cd product; $env:LEGADO_WEB_BUILD='fallback'; npm run build` |
+| HTTP 端点 | 145 条 / 18 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
+
+**架构边界回归的处置（本轮已修）**：首次全量（默认并行度）暴露 2 项失败：
+
+1. `ArchitectureBoundaryTest > engine 不得依赖 infra` —— `d34af81` 让 `source/ExternalBrowserLogin.kt` 新增 `io.legado.ops.LocalControlClient` 依赖，却没有进 `ENGINE_TO_INFRA_BASELINE`。处置不是扩基线（违反「只许单调缩小」），而是新增 `port/LocalControl.kt` 端口，`ops.LocalControlClient` 实现它，`http/Routes.kt` 组合根注入。方向由 `engine → infra` 改为 `engine → port`；G3 签发点仍是 `LocalControlClient.kt`。
+2. `E2EScenariosTest > scenario 1` 的「Instant book open < 300ms」—— 默认并行度下的计时抖动，单类复跑与 `--max-workers=2` 全量均通过，与 2026-11-11 满负载假红同性质。
+
+**构建环境事实**：本机 Node **v24.18.0**（`product/.nvmrc` 要求 22，本机无 nvm），esbuild **0.25.12**。默认 `vite build` 在 transform 输入 >1 MiB 时会写临时文件，删除报 `Access is denied`，表现为 `[vite:esbuild-transpile] remove ... Access is denied`；提权、改 `TEMP/TMP` 均无效。`vite build --target esnext --minify terser` 可稳定出包（仅跳过语法降级，仍压缩），故 `web:build:fallback` 与 `LEGADO_WEB_BUILD=fallback` 作为本机兜底；CI/发布仍用默认 `build`。

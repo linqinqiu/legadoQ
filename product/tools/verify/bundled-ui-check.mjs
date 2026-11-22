@@ -25,8 +25,11 @@ const record = (name, state, detail = '') => results.push({ name, state, detail 
 const fingerprint = bundleAssetName
 
 if (!fs.existsSync(DIST_INDEX)) {
-  console.log('bundled-ui-check: 前置不满足 —— 没有 web/dist/index.html（先跑 npm --prefix web run build），跳过断言')
-  process.exit(0)
+  // 缺 index.html 说明"根本没有前端可比"，不是"这条门禁不适用"。原来这里退出码 0，
+  // 结果一份构建到一半的 dist（只剩 sw.js / 图标）也能让整条链全绿 —— 见 dist-check.mjs 的来历。
+  console.log('FAIL  web/dist/index.html   [没有前端产物：先跑 npm --prefix web run build]')
+  console.log('\n1 项失败 —— 没有可比对的界面产物。')
+  process.exit(1)
 }
 
 const dist = fingerprint(fs.readFileSync(DIST_INDEX, 'utf8'))
@@ -41,21 +44,27 @@ if (fs.existsSync(RESOURCES_INDEX)) {
 
 const jar = newestFatJar(LIBS)
 if (!jar) {
+  // "没有可运行包"不是"这条门禁不适用"：dist 都已经在了，却没有 *-all.jar，
+  // 说明交付链断了（fatJar 没执行 / 版本改过没重打）。原来的 skip 会让这种断链保持绿灯。
   const want = declaredVersion()
   const have = fs.existsSync(LIBS) ? fs.readdirSync(LIBS).filter((n) => n.endsWith('-all.jar')).join(', ') : '(目录不存在)'
-  record('fatJar', 'skip', want
-    ? `没有 legado-${want}-all.jar；libs 里现有：${have || '（空）'} —— 版本改过就要重跑 npm run build`
-    : 'app/build/libs 里没有 *-all.jar（还没打过分发包）')
+  record('fatJar', false, want
+    ? `没有 legado-${want}-all.jar；libs 里现有：${have || '（空）'} —— 重跑 npm run build`
+    : 'app/build/libs 里没有 *-all.jar —— fatJar 没产出可运行包')
 } else {
-  let inside = null
+  let inside
   try {
-    inside = fingerprint(readJarEntry(path.join(LIBS, jar)) || '')
+    inside = fingerprint(readJarEntry(path.join(LIBS, jar)) || '') || ''
   } catch (error) {
     record('fatJar 内前端', 'skip', `读不出包内 static/index.html：${error instanceof Error ? error.message.split('\n')[0] : error}`)
-    inside = ''
+    inside = undefined
   }
-  if (inside !== null && inside !== '') record(`fatJar（${jar}）内前端与 dist 一致`, inside === dist, `dist=${dist} jar=${inside}`)
-  else if (inside === '') record('fatJar 内前端', 'skip', '包里没有 static/index.html 或工具不可用')
+  if (inside !== undefined) {
+    // 包里有 jar、但没有 static/index.html，正是"只有后端、没有界面"的那种包。
+    // 原来这一格什么都不记，等于把最该拦的情况漏掉了。
+    record(`fatJar（${jar}）内前端与 dist 一致`, !!inside && inside === dist,
+      inside ? `dist=${dist} jar=${inside}` : '包里没有 static/index.html —— 不是可运行界面包')
+  }
 }
 
 /**
