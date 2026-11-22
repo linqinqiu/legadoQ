@@ -8,6 +8,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.net.http.WebSocket
 import java.time.Duration
 import java.util.Optional
 import java.util.concurrent.CompletableFuture
@@ -62,6 +63,48 @@ internal class GuardedHttpClient(
             failIfProxyCouldNotConnect(req.uri(), response)
             response
         }
+    }
+
+    /**
+     * WebSocket 也必须过闸门。
+     *
+     * 只放 `wss://`：JDK 17 的 WebSocket 握手同样读取 client 的 `ProxySelector`
+     * （`jdk.internal.net.http.websocket.OpeningHandshake` 会 `request.setProxy(...)`），
+     * 所以 `wss` 会先经 PinnedProxy 的 `CONNECT` 盲隧道，握手头原样到达源站。
+     * 明文 `ws://` 走的是代理的绝对形式转发，而 PinnedProxy 会把 `Upgrade` / `Connection`
+     * 当逐跳头剥掉（`PinnedProxy.HOP_BY_HOP`），握手必失败——这里直接给出明确错误，
+     * 而不是让调用方看到一个莫名其妙的 101/400。
+     */
+    override fun newWebSocketBuilder(): WebSocket.Builder = GuardedWebSocketBuilder(delegate.newWebSocketBuilder())
+
+    private inner class GuardedWebSocketBuilder(
+        private val builder: WebSocket.Builder,
+    ) : WebSocket.Builder {
+        override fun header(name: String, value: String): WebSocket.Builder =
+            apply { builder.header(name, value) }
+
+        override fun subprotocols(mostPreferred: String, vararg lesserPreferred: String): WebSocket.Builder =
+            apply { builder.subprotocols(mostPreferred, *lesserPreferred) }
+
+        override fun connectTimeout(timeout: Duration): WebSocket.Builder =
+            apply { builder.connectTimeout(timeout) }
+
+        override fun buildAsync(uri: URI, listener: WebSocket.Listener): CompletableFuture<WebSocket> =
+            try {
+                guardWebSocket(uri)
+                builder.buildAsync(uri, listener)
+            } catch (error: Throwable) {
+                // buildAsync 的契约是返回 future；闸门拒绝也要走 failedFuture，不能同步抛。
+                CompletableFuture.failedFuture(error)
+            }
+    }
+
+    private fun guardWebSocket(uri: URI) {
+        require(uri.scheme?.lowercase() == "wss") {
+            "受控出站只支持 wss://（明文 ws 的 Upgrade 头会被出站代理剥掉）"
+        }
+        // 复用 HTTP 的解析/私网判定：wss 的地址规则与 https 完全一致。
+        guard(URI("https", uri.userInfo, uri.host, uri.port, uri.path, uri.query, uri.fragment))
     }
 
     override fun cookieHandler(): Optional<CookieHandler> = delegate.cookieHandler()
