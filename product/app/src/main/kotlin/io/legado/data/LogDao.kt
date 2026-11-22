@@ -1,6 +1,6 @@
 package io.legado.data
 
-import io.legado.ops.LogEntry
+import io.legado.model.LogEntry
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 

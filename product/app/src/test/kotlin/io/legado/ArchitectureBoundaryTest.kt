@@ -45,8 +45,9 @@ import kotlin.io.path.readText
  * 6. **包之间不得存在双向依赖（2-环）** —— 前五条都是**单向**的，而单向判据天然看不见环：
  *    `a→b` 合法、`b→a` 也合法，两条各自都过，合起来却是"这两个包其实是一个模块"。
  *    这是 `backend-layering.md` 点出的最大盲区。组合根（`package io.legado` 顶层文件）整包排除 ——
- *    它装配一切是职责，计入会得到 7 对 `root↔X` 假环。实测 **4 对**进 [PACKAGE_CYCLE_BASELINE]：
- *    `data<->source`（唯一的跨层真环）、`cache<->data`、`data<->ops`、`content<->rules`。
+ *    它装配一切是职责，计入会得到 7 对 `root↔X` 假环。实测 **3 对**进 [PACKAGE_CYCLE_BASELINE]：
+ *    `data<->source`（唯一的跨层真环）、`cache<->data`、`content<->rules`（`data<->ops`
+ *    已随阶段 3.2 把 `LogEntry` 搬进 `model/` 断开）。
  *    ⚠️ 本判据自带**空转哨兵**（边数 < 20 即红）：空集合永远满足"没有 2-环"，
  *    而它第一次写完时正因为正则少了 `(?m)` 而一条边都没扫到、报了个假绿。
  *
@@ -347,7 +348,7 @@ class ArchitectureBoundaryTest {
             "data<->source",
             // infra ↔ infra：同层内的双向依赖，说明这两个包该合成一个或重新划线。
             "cache<->data",
-            "data<->ops",
+            // data<->ops 已于阶段 3.2 断开：`LogEntry` 搬到 `model/`，data 不再反向 import ops。
             // engine ↔ engine：规则内核与内容处理互相够。
             "content<->rules",
         )

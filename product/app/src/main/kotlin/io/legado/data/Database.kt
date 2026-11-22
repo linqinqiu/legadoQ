@@ -31,7 +31,6 @@ import io.legado.model.LibraryImportResult
 import io.legado.model.ReplaceRule
 import io.legado.model.ReplaceRuleImportResponse
 import io.legado.model.SourceLoginStateRecord
-import io.legado.ops.LogEntry
 import io.legado.port.CookieStore
 import io.legado.port.KernelReader
 import io.legado.port.LoginStateStore

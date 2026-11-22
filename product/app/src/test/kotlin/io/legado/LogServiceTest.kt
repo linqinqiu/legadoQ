@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import io.legado.port.LogCategory
-import io.legado.ops.LogEntry
+import io.legado.model.LogEntry
 import io.legado.port.LogLevel
 import io.legado.ops.LogService
 import io.legado.port.LogSink

@@ -135,7 +135,6 @@ const g5 = new Set([
   'app/src/main/kotlin/io/legado/http/BackupRoutes.kt',
   'app/src/main/kotlin/io/legado/http/SourcesRoutes.kt',
   'app/src/main/kotlin/io/legado/localbook/TxtTocRule.kt',
-  'app/src/main/kotlin/io/legado/ops/LogService.kt',
   'app/src/main/kotlin/io/legado/ops/Metrics.kt',
   'app/src/main/kotlin/io/legado/rules/RuleRunner.kt',
   'app/src/main/kotlin/io/legado/source/SourceDebugger.kt',

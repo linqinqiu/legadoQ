@@ -1,6 +1,5 @@
 package io.legado.ops
 
-import kotlinx.serialization.Serializable
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -14,6 +13,7 @@ import io.legado.data.clearLogEntries
 import io.legado.data.ensureLogTable
 import io.legado.data.insertLog
 import io.legado.data.queryLogs
+import io.legado.model.LogEntry
 import io.legado.port.LogCategory
 import io.legado.port.LogLevel
 import io.legado.port.LogSink
@@ -174,24 +174,10 @@ object LogService : LogSink {
     }
 }
 
-@Serializable
-data class LogEntry(
-    /** SQLite 的 rowid。界面按它做行标识与"展开的是哪一条"，没有它只能按数组下标，一刷新就串行。 */
-    val id: Long = 0,
-    val timestamp: String,
-    val category: String,
-    val level: String,
-    val message: String,
-    val context: Map<String, String> = emptyMap(),
-    val stackTrace: String? = null,
-    /** 合并窗口内同类日志的条数；1 表示就这一条。界面上念成「×N」。 */
-    val count: Int = 1,
-)
-
 // `LogCategory` / `LogLevel` 与八个 `logXxx` 便捷函数已下沉到 `port/Logging.kt` ——
 // 原先它们长在这里，导致 rules / content / localbook 三个 engine 包**仅仅为了打一行日志**
 // 就反向够 infra（判据 5 上 4 条 engine → infra 里有 3 条是这个原因）。
 // 日志是横切关注点，门面归域层、实现留 infra，装配走 `install()`。
 //
-// `LogEntry` 仍留在这里：它是本服务自己的记录类型，只有 data 与 http 会读它，
-// 而 data → ops 是合法方向（infra 向下够），搬走它反而要多动十几个文件。
+// `LogEntry` 已搬到 `model/LogModels.kt`（阶段 3.2）：它留在 ops 时，`data/` 为了这个
+// 记录类型反向 import `ops/`，与 `ops/ → data/` 凑成 2-环；归位后 data → model ← ops。
