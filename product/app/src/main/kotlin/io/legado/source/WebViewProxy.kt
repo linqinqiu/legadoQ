@@ -57,10 +57,13 @@ class WebViewProxy(private val database: Database) {
 
     private val tickets = ConcurrentHashMap<String, Ticket>()
     private val random = SecureRandom()
-    private val client: HttpClient = HttpClient.newBuilder()
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .connectTimeout(Duration.ofSeconds(10))
-        .build()
+    // 阶段 3.5：出站统一走唯一原语。入口与每一跳重定向本来就有 `validateTarget` 的
+    // SSRF 校验；换成受控 client 后，连接由 PinnedProxy 解析一次并连同一地址，补上
+    // 「校验完到 JDK 真正发包之间」的 DNS TOCTOU 窗口。
+    private val client: HttpClient = NetworkSecurity.newHttpClient(
+        connectTimeout = Duration.ofSeconds(10),
+        followRedirects = HttpClient.Redirect.NEVER,
+    )
 
     // ---------------------------------------------------------------- 令牌
 

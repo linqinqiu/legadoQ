@@ -105,7 +105,6 @@ const G3_ALLOWED_ROOT = new Set(['DesktopLauncher.kt', 'Application.kt', 'Static
 //   - LocalControlClient.kt：本机控制面（Chromium DevTools），只放回环，非出站抓取。
 const G3_ISSUERS = new Set(['NetworkSecurity.kt', 'LocalControlClient.kt']);
 const g3 = new Set([
-  'app/src/main/kotlin/io/legado/source/WebViewProxy.kt',
   'app/src/main/kotlin/io/legado/tts/EdgeTtsService.kt',
 ]);
 const g3Observed = new Set();
