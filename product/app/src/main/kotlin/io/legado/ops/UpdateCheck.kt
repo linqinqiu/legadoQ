@@ -39,10 +39,12 @@ object UpdateCheck {
 
     val repository: String = System.getenv("LEGADO_REPO")?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_REPOSITORY
 
-    private val client = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(8))
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .build()
+    // 走唯一出站原语（阶段 3.5）：`LEGADO_REPO` 可被改成任意 slug，URL 虽是拼出来的，
+    // 但没有理由让它绕过 SSRF 闸门；经 PinnedProxy 一跳对 GitHub 公共 API 无行为影响。
+    private val client = NetworkSecurity.newHttpClient(
+        connectTimeout = Duration.ofSeconds(8),
+        followRedirects = HttpClient.Redirect.NEVER,
+    )
 
     /**
      * 请求头前缀，**只能是 ASCII**：JDK 的 HttpClient 在建请求时就拒掉非 ISO-8859-1 的头值。
@@ -130,9 +132,24 @@ object UpdateCheck {
             return UpdateCheckResult(current, repository = "", status = "not_configured",
                 message = "这个构建没有配置发布地址，所以没有可查的发布记录")
         }
+        return checkAgainst(
+            current = current,
+            repository = repository,
+            apiUrl = "https://api.github.com/repos/$repository/releases?per_page=100",
+        )
+    }
+
+    /**
+     * 真正发请求的那一段，URL 由调用方给。
+     *
+     * 抽出来的目的不是"支持别的 GitHub"，而是让判据能在**不联网**的情况下证明
+     * 「默认 client 确实过了 SSRF 闸门」：指向 `127.0.0.1` 的假发布页必须被拒，
+     * 而不是被本地 `HttpServer` 正常响应。生产入口 [check] 永远只拼 api.github.com。
+     */
+    internal fun checkAgainst(current: String, repository: String, apiUrl: String): UpdateCheckResult {
         return runCatching {
             // User-Agent 必须是 ASCII：JDK 的 HttpClient 在建请求时就拒掉非 ISO-8859-1 的头值。
-            val request = HttpRequest.newBuilder(URI.create("https://api.github.com/repos/$repository/releases?per_page=100"))
+            val request = HttpRequest.newBuilder(URI.create(apiUrl))
                 .timeout(Duration.ofSeconds(12))
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", userAgentPrefix + current)

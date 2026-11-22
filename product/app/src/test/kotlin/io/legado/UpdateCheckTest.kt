@@ -1,9 +1,12 @@
 package io.legado
 
+import com.sun.net.httpserver.HttpServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicBoolean
 import io.legado.ops.UpdateCheck
 
 /**
@@ -50,6 +53,38 @@ class UpdateCheckTest {
         assertTrue("默认仓库不能是空的，否则检查更新出厂即死", UpdateCheck.repository.isNotBlank())
         assertFalse("默认仓库不许是 clone 来的别人家仓库", UpdateCheck.repository.contains("lukelzlz"))
         assertEquals("linqinqiu/legadoQ", UpdateCheck.DEFAULT_REPOSITORY)
+    }
+
+    @Test
+    fun `默认 client 走 SSRF 闸门：回环地址在发请求前就被拒`() {
+        // 阶段 3.5：`LEGADO_REPO` 可控，检查更新也必须走唯一出站原语。
+        // 这里起一个真在 127.0.0.1 上的假发布页——如果 client 还是裸的，它会正常返回 200，
+        // 结果会是 available；走闸门则连请求都发不出去（hit=false）。
+        val hit = AtomicBoolean(false)
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/releases") { exchange ->
+            hit.set(true)
+            val body = """[{"tag_name":"v9.9.9","html_url":"http://example.com","published_at":"2026-01-01"}]"""
+                .toByteArray()
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+        try {
+            val result = UpdateCheck.checkAgainst(
+                current = "1.0.0",
+                repository = "owner/repo",
+                apiUrl = "http://127.0.0.1:${server.address.port}/releases",
+            )
+            assertFalse("请求不该真的发到回环地址", hit.get())
+            assertEquals("被闸门拒绝应归为 unreachable", "unreachable", result.status)
+            assertTrue(
+                "错误类型应是被闸门拒绝而不是连不上：${result.message}",
+                result.message.orEmpty().contains("BlockedAddressException"),
+            )
+        } finally {
+            server.stop(0)
+        }
     }
 
     @Test

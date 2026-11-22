@@ -100,7 +100,6 @@ compare(2, g2, new Set(), '（data/ 之外出现 SQL 执行）');
 // 所以扫描前先剥块注释——只剥 `//` 会把 KDoc 当违规，逼着人为了消红去改注释。
 const G3_ALLOWED_ROOT = new Set(['DesktopLauncher.kt', 'Application.kt', 'StaticWeb.kt']);
 const g3 = new Set([
-  'app/src/main/kotlin/io/legado/ops/UpdateCheck.kt',
   'app/src/main/kotlin/io/legado/source/ExternalBrowserLogin.kt',
   'app/src/main/kotlin/io/legado/source/WebViewProxy.kt',
   'app/src/main/kotlin/io/legado/tts/EdgeTtsService.kt',
