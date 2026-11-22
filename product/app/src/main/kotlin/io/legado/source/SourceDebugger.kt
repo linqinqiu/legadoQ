@@ -1,26 +1,15 @@
 package io.legado.source
 
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.contentOrNull
-import io.legado.rules.DebugTrace
 import io.legado.rules.RuleExecutionException
 import io.legado.rules.RuleRunner
 import io.legado.model.Chapter
+import io.legado.model.DebugStep
 import io.legado.model.SearchResult
-
-@Serializable
-data class DebugStep(
-    val stage: String,
-    val label: String,
-    val detail: String = "",
-    val ok: Boolean = true,
-    val elapsedMs: Long = 0,
-    val traces: List<DebugTrace> = emptyList(),
-)
 
 /**
  * 分阶段把一本书源跑一遍：结构 → 搜索 → 详情 → 目录 → 正文，每一步给出实际地址、

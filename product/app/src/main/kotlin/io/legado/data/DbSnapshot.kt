@@ -1,6 +1,6 @@
 package io.legado.data
 
-import kotlinx.serialization.Serializable
+import io.legado.model.SnapshotInfo
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -8,16 +8,6 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.sql.Connection
 import java.util.Comparator
-
-/** 一份快照的清单条目：字节数、sidecar 记录的 SHA-256、实测是否吻合（完整性判定）、创建时刻。 */
-@Serializable
-data class SnapshotInfo(
-    val name: String,
-    val bytes: Long,
-    val sha256: String?,
-    val verified: Boolean,
-    val createdAt: Long,
-)
 
 /**
  * 启动时给 SQLite 库做一份**文件级一致性快照**（`VACUUM INTO`），落在 `<库同目录>/backups/`，

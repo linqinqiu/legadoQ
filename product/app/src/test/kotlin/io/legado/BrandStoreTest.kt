@@ -1,5 +1,7 @@
 package io.legado
 
+import io.legado.model.Brand
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

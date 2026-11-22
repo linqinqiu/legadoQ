@@ -1,7 +1,7 @@
 package io.legado
 
 import io.legado.rules.RuleRunner
-import io.legado.source.DebugStep
+import io.legado.model.DebugStep
 import io.legado.source.SourceDebugger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

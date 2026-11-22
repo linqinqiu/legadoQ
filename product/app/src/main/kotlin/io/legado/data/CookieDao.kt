@@ -1,9 +1,9 @@
 package io.legado.data
 
 import io.legado.model.CookieBucket
+import io.legado.model.CookieBucketState
 import io.legado.source.WebViewProxy
 import java.nio.file.Path
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -101,23 +101,6 @@ fun Database.getCookieForUrl(url: String): String? {
     val kept = composeCookieHeader(merged).kept
     return kept.joinToString("; ") { "$it=${merged[it]}" }.takeIf { it.isNotBlank() }
 }
-
-/**
- * 一个凭据桶的完整状态，给「凭据管理」界面如实交代：哪些来自库里、哪些只是本次会话、
- * 实际会发出哪几条、哪几条因为超过 4096 被丢下。
- */
-@Serializable
-data class CookieBucketState(
-    val domain: String,
-    val persistentKeys: List<String> = emptyList(),
-    val sessionKeys: List<String> = emptyList(),
-    val sentKeys: List<String> = emptyList(),
-    val droppedKeys: List<String> = emptyList(),
-    /** 实际会发出去的那条 `Cookie` 头有多少字符。 */
-    val headerChars: Int = 0,
-    /** 只剩一条仍然超过 [MAX_COOKIE_HEADER_CHARS]（照发，但要告诉用户）。 */
-    val oversized: Boolean = false,
-)
 
 /** 算一个桶的状态。持久层由调用方给（列表接口一次扫全表，不逐桶查库）。 */
 private fun bucketState(domain: String, persistent: Map<String, String>): CookieBucketState {

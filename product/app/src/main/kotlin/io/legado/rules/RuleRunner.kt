@@ -4,7 +4,7 @@ import io.legado.ops.Metrics
 
 import cn.wanghaomiao.xpath.model.JXDocument
 import com.jayway.jsonpath.JsonPath
-import kotlinx.serialization.Serializable
+import io.legado.model.DebugTrace
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -1816,15 +1816,6 @@ private class JsSourceRunner(private val runner: RuleRunner, private val source:
 }
 
 class RuleExecutionException(message: String) : RuntimeException(message)
-
-/** 调试链路里的一条规则追溯：字段、规则原文、取到的值，以及取不到时的原因。 */
-@Serializable
-data class DebugTrace(
-    val field: String,
-    val rule: String,
-    val value: String,
-    val failure: String = "",
-)
 
 // ---------------------------------------------------------------- 裸键列表规则（JSON 响应）
 

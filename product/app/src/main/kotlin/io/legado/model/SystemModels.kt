@@ -134,3 +134,56 @@ data class TtsSessionEvent(
     val durationMs: Long? = null,
     val message: String? = null,
 )
+
+/**
+ * 自定义品牌（用户 2026-10-23：「允许自定义图标和名称」）。阶段 3.2 从 `BrandStore.kt` 归位：
+ * 它是 `GET /api/brand` 的响应体，派生属性（`displayName` 等）留在 `io.legado.BrandStore.kt`
+ * 做扩展，model 包保持零依赖。
+ */
+@Serializable
+data class Brand(
+    /** PWA 安装名与界面标题；空 = 用内置的「legadoQ」。 */
+    val name: String = "",
+    /** 桌面/手机主屏幕上那格空间不够时用的短名；空 = 回落 [name]。 */
+    val shortName: String = "",
+    /** 主题色（状态栏与 PWA 底色）。留空则沿用内置皮肤的取值。 */
+    val themeColor: String = "",
+    /** 自定义图标的文件名（存在 `brand/` 下）；空 = 用随包图标。 */
+    val iconFile: String = "",
+)
+
+/** 单书源的聚合指标；`avgLatencyMs` 为累计均值。 */
+@Serializable
+data class SourceMetricSnapshot(
+    val sourceId: String,
+    val calls: Long,
+    val failures: Long,
+    val timeouts: Long,
+    val matched: Long,
+    val avgLatencyMs: Long,
+    val lastLatencyMs: Long,
+    val updatedAt: Long,
+)
+
+/** 单个阶段的耗时与失败率（解析 / 脚本 / 出站 HTTP 各算一个阶段）。 */
+@Serializable
+data class StageMetricSnapshot(
+    val stage: String,
+    val calls: Long,
+    val failures: Long,
+    /** 累计均值：够看出"这一阶段是不是普遍慢"，不需要保留样本。 */
+    val avgLatencyMs: Long,
+    val lastLatencyMs: Long,
+    val maxLatencyMs: Long,
+)
+
+/** `GET /api/diagnostics` 的响应体；字段与 agent-api.json 声明的形状一致。 */
+@Serializable
+data class DiagnosticsSnapshot(
+    val searchRequests: Long,
+    val truncatedSearchRequests: Long,
+    val trackedSources: Int,
+    val topSources: List<SourceMetricSnapshot>,
+    /** 分阶段耗时：`search` / `details` / `toc` / `content` / `js` / `http`。 */
+    val stages: List<StageMetricSnapshot> = emptyList(),
+)

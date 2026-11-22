@@ -337,3 +337,23 @@ data class SourceLoginStateRecord(
 @Serializable data class SearchRequest(val keyword: String, val sourceIds: List<String>? = null)
 @Serializable data class ExploreTab(val title: String, val url: String, val supportsPaging: Boolean = true)
 @Serializable data class ExploreRequest(val sourceId: String, val url: String, val page: Int = 1)
+
+/** 调试链路里的一条规则追溯：字段、规则原文、取到的值，以及取不到时的原因。 */
+@Serializable
+data class DebugTrace(
+    val field: String,
+    val rule: String,
+    val value: String,
+    val failure: String = "",
+)
+
+/** 书源调试的一步（阶段 / 标签 / 详情 / 成败 / 耗时 / 规则追溯）。 */
+@Serializable
+data class DebugStep(
+    val stage: String,
+    val label: String,
+    val detail: String = "",
+    val ok: Boolean = true,
+    val elapsedMs: Long = 0,
+    val traces: List<DebugTrace> = emptyList(),
+)

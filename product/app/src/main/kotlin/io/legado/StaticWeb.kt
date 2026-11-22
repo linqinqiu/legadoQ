@@ -10,6 +10,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.http.content.*
 import io.legado.http.requireSameOriginWrite
+import io.legado.model.Brand
 import io.legado.model.ApiError
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files

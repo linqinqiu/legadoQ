@@ -128,17 +128,7 @@ for (const f of ktFiles) {
 compare(4, g4Observed, g4, '（事务门面之外手动 autoCommit）');
 
 // ---------------------------------------------------------------- G5 DTO 只允许在 model/
-const g5 = new Set([
-  'app/src/main/kotlin/io/legado/BrandStore.kt',
-  'app/src/main/kotlin/io/legado/data/CookieDao.kt',
-  'app/src/main/kotlin/io/legado/data/DbSnapshot.kt',
-  'app/src/main/kotlin/io/legado/http/BackupRoutes.kt',
-  'app/src/main/kotlin/io/legado/http/SourcesRoutes.kt',
-  'app/src/main/kotlin/io/legado/localbook/TxtTocRule.kt',
-  'app/src/main/kotlin/io/legado/ops/Metrics.kt',
-  'app/src/main/kotlin/io/legado/rules/RuleRunner.kt',
-  'app/src/main/kotlin/io/legado/source/SourceDebugger.kt',
-]);
+const g5 = new Set(); // 2026-11-22 阶段 3.2 收尾后清零（原 10 个文件全部归位 model/）
 const g5Observed = new Set();
 for (const f of ktFiles) {
   if (f.includes(`${path.sep}model${path.sep}`)) continue;

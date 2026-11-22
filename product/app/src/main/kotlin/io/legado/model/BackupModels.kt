@@ -79,3 +79,19 @@ data class LocalBookImportResponse(
     val failed: Int,
     val results: List<LocalBookImportItem> = emptyList(),
 )
+
+/** 一份快照的清单条目：字节数、sidecar 记录的 SHA-256、实测是否吻合（完整性判定）、创建时刻。 */
+@Serializable
+data class SnapshotInfo(
+    val name: String,
+    val bytes: Long,
+    val sha256: String?,
+    val verified: Boolean,
+    val createdAt: Long,
+)
+
+/** 排定恢复的请求体：只要一个快照名。 */
+@Serializable data class SnapshotRestoreRequest(val name: String)
+
+/** 排定恢复的回包：只说"已排定、需重启"，不代表已改库。 */
+@Serializable data class SnapshotRestoreScheduled(val scheduled: Boolean, val restartRequired: Boolean, val name: String)

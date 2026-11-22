@@ -1,44 +1,10 @@
 package io.legado.ops
 
-import kotlinx.serialization.Serializable
+import io.legado.model.DiagnosticsSnapshot
+import io.legado.model.SourceMetricSnapshot
+import io.legado.model.StageMetricSnapshot
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-
-/** 单书源的聚合指标；`avgLatencyMs` 为累计均值。 */
-@Serializable
-data class SourceMetricSnapshot(
-    val sourceId: String,
-    val calls: Long,
-    val failures: Long,
-    val timeouts: Long,
-    val matched: Long,
-    val avgLatencyMs: Long,
-    val lastLatencyMs: Long,
-    val updatedAt: Long,
-)
-
-/** 单个阶段的耗时与失败率（解析 / 脚本 / 出站 HTTP 各算一个阶段）。 */
-@Serializable
-data class StageMetricSnapshot(
-    val stage: String,
-    val calls: Long,
-    val failures: Long,
-    /** 累计均值：够看出"这一阶段是不是普遍慢"，不需要保留样本。 */
-    val avgLatencyMs: Long,
-    val lastLatencyMs: Long,
-    val maxLatencyMs: Long,
-)
-
-/** `GET /api/diagnostics` 的响应体；字段与 agent-api.json 声明的形状一致。 */
-@Serializable
-data class DiagnosticsSnapshot(
-    val searchRequests: Long,
-    val truncatedSearchRequests: Long,
-    val trackedSources: Int,
-    val topSources: List<SourceMetricSnapshot>,
-    /** 分阶段耗时：`search` / `details` / `toc` / `content` / `js` / `http`。 */
-    val stages: List<StageMetricSnapshot> = emptyList(),
-)
 
 /**
  * 进程内的轻量运行指标：给 `GET /api/diagnostics` 读数用，回答"到底是哪个书源在拖慢搜索"

@@ -45,7 +45,7 @@
 | `tts/` | Edge TTS 与朗读会话 |
 | `ops/` | 运维与出站面：`NetworkSecurity.kt`（出站 SSRF 闸门）、`PinnedProxy.kt`（连接级 IP 固定）、`GuardedHttpClient.kt`、`ProxyHeaders.kt`（反代头）、`ServerIdentity.kt`、`LogService.kt`、`UpdateCheck.kt`、`Metrics.kt`、`UiPrefsStore.kt` |
 | `backup/` | 备份包导入（zip 与裸 JSON，兼容兄弟项目扩展条目）；导出尚未支持 |
-| `model/` | 纯请求 / 响应 DTO，按系统、书源、发现、阅读、书架、替换规则、备份拆分为七个同包文件；不依赖其他领域实现 |
+| `model/` | 纯请求 / 响应 DTO，按系统、书源、发现、阅读、书架、替换规则、备份、日志、凭据、本地书拆为十个同包文件；不依赖其他领域实现（G5 已零基线） |
 
 桌面壳 `DesktopLauncher.kt` 负责窗口、启动画面、托盘与安装目录解析。插件装载机制已整体移除（代码里没有 `plugin/` 包），保留的是工具 / 协议 / 连接选择策略三类**运行时注册表**扩展点。
 

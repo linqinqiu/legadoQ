@@ -1,7 +1,7 @@
 package io.legado
 
 import io.legado.ops.Metrics
-import io.legado.ops.SourceMetricSnapshot
+import io.legado.model.SourceMetricSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before

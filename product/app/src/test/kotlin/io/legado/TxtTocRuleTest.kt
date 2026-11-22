@@ -5,7 +5,7 @@ import org.junit.Test
 import java.nio.charset.StandardCharsets
 import io.legado.localbook.LocalBookParser
 import io.legado.localbook.TocRules
-import io.legado.localbook.TxtTocRule
+import io.legado.model.TxtTocRule
 
 /**
  * TXT 目录规则表（用户 2026-10-02：「txt目录规则，这个可以放到阅读设置里」）。

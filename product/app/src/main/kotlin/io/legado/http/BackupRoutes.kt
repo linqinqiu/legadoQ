@@ -16,11 +16,12 @@ import io.legado.backup.BackupStore
 import io.legado.data.Database
 import io.legado.data.DbSnapshot
 import io.legado.model.ApiError
+import io.legado.model.SnapshotRestoreRequest
+import io.legado.model.SnapshotRestoreScheduled
 import java.nio.file.Files
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
@@ -166,12 +167,6 @@ fun Route.backupRoutes(
 
 /** 上传上限按原始字节算；zip 解包后的限额仍由 `BackupImporter` 按条目把关。 */
 private const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
-
-/** 排定恢复的请求体：只要一个快照名。 */
-@Serializable data class SnapshotRestoreRequest(val name: String)
-
-/** 排定恢复的回包：只说"已排定、需重启"，不代表已改库。 */
-@Serializable data class SnapshotRestoreScheduled(val scheduled: Boolean, val restartRequired: Boolean, val name: String)
 
 /**
  * 导出包统一回包：定 `Content-Disposition`，再把 body 交给各域自己写 zip。

@@ -1,9 +1,9 @@
 package io.legado
 
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
+import io.legado.model.Brand
 
 /**
  * 自定义品牌（用户 2026-10-23：「允许自定义图标和名称」）。
@@ -17,22 +17,12 @@ import java.nio.file.Path
  * （`isLegadoQOn`），改 title 会让改名后的壳认为端口上是别人的服务、再起第二个进程。
  * 品牌名只影响 PWA 的安装名、标签页标题与应用内显示。
  */
-@Serializable
-data class Brand(
-    /** PWA 安装名与界面标题；空 = 用内置的「legadoQ」。 */
-    val name: String = "",
-    /** 桌面/手机主屏幕上那格空间不够时用的短名；空 = 回落 [name]。 */
-    val shortName: String = "",
-    /** 主题色（状态栏与 PWA 底色）。留空则沿用内置皮肤的取值。 */
-    val themeColor: String = "",
-    /** 自定义图标的文件名（存在 `brand/` 下）；空 = 用随包图标。 */
-    val iconFile: String = "",
-) {
-    val displayName: String get() = name.ifBlank { BuildInfo.title }
-    val displayShortName: String get() = shortName.ifBlank { name.ifBlank { BuildInfo.title } }
-    /** 图标是否真的可用：文件名在，且文件还在磁盘上（手动删过文件也不算有）。 */
-    val hasIcon: Boolean get() = iconFile.isNotBlank()
-}
+// `Brand` 数据类已搬到 `model/SystemModels.kt`（阶段 3.2）；派生属性留在这里做扩展，
+// 因为 model/ 不许 import `BuildInfo`（纯数据包零依赖）。
+val Brand.displayName: String get() = name.ifBlank { BuildInfo.title }
+val Brand.displayShortName: String get() = shortName.ifBlank { name.ifBlank { BuildInfo.title } }
+/** 图标是否真的可用：文件名在，且文件还在磁盘上（手动删过文件也不算有）。 */
+val Brand.hasIcon: Boolean get() = iconFile.isNotBlank()
 
 /**
  * 品牌的读写。图标字节走白名单魔数校验，**不收 SVG** ——

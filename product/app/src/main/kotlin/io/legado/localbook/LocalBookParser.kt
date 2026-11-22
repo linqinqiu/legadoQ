@@ -1,6 +1,7 @@
 package io.legado.localbook
 
 import io.legado.decodeTextAuto
+import io.legado.model.TxtTocRule
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
