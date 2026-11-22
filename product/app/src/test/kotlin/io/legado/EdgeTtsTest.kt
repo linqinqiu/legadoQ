@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream
 import java.net.http.HttpClient
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import io.legado.model.TtsSessionChunkRequest
 import io.legado.model.TtsSessionInfo
 import io.legado.model.TtsSpeakRequest
@@ -80,6 +81,46 @@ class EdgeTtsTest {
             } catch (error: IllegalArgumentException) {
                 assertTrue(error.message!!.contains("audio/mpeg"))
             }
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `custom tts forwards configured headers and drops smuggling attempts`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val seen = ConcurrentHashMap<String, String>()
+        val audio = "header-ok".toByteArray(StandardCharsets.UTF_8)
+        server.createContext("/tts") { exchange ->
+            seen["authorization"] = exchange.requestHeaders.getFirst("Authorization") ?: ""
+            seen["x-bad"] = exchange.requestHeaders.getFirst("X-Bad") ?: ""
+            seen["x-injected"] = exchange.requestHeaders.getFirst("X-Injected") ?: ""
+            if (seen["authorization"] != "Bearer test-key") {
+                exchange.sendResponseHeaders(401, 0)
+                exchange.close()
+                return@createContext
+            }
+            exchange.responseHeaders.add("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        server.start()
+        try {
+            val service = EdgeTtsService(customClient = HttpClient.newHttpClient())
+            val request = TtsSessionChunkRequest(
+                chunkId = "chunk-header",
+                text = "测试请求头",
+                engine = "custom",
+                customUrl = "http://127.0.0.1:${server.address.port}/tts",
+                customHeader = """{"Authorization":"Bearer test-key","X-Bad":"a\r\nX-Injected: 1","Host":"evil.example"}""",
+            )
+            val received = ByteArrayOutputStream()
+            val contentType = service.synthesizeCustomStream(request) { received.write(it) }
+            assertEquals("audio/mpeg", contentType)
+            assertArrayEquals(audio, received.toByteArray())
+            assertEquals("Bearer test-key", seen["authorization"])
+            assertEquals("", seen["x-bad"])
+            assertEquals("", seen["x-injected"])
         } finally {
             server.stop(0)
         }

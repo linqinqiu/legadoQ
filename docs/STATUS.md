@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-22 实测**：前端 **1,118 项全绿**，`tsc -b` 通过；后端 **1,027 项全绿**（145 个 suite，`--max-workers=2`）。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §10。
+> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-22 实测**：前端 **1,118 项全绿**，`tsc -b` 通过；后端 **1,028 项全绿**（145 个 suite，`--max-workers=2`）。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §10。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -119,7 +119,7 @@
 
 | 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **1,027 项 / 0 失败 / 0 跳过**（145 个 suite；2026-11-22 `--max-workers=2` 全量实测）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印，并行全量不再抖动 |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **1,028 项 / 0 失败 / 0 跳过**（145 个 suite；2026-11-22 `--max-workers=2` 全量实测）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印；自定义 TTS 请求头新增端到端判据（`Authorization` 转发、CRLF 注入头与 `Host` 丢弃） |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
 | Web 测试 | `web: npm test` | **1,118 项 / 0 失败**（2026-11-22 全量实测；`ChallengerEmpiricalStress` 曾因并行负载触发一次计时基准红，单文件与第二次全量均通过） |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-22 本轮实测，随 `build:fallback` 一起跑） |
@@ -222,7 +222,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，端点契约由源码、测试与 API 文档共同校验。当前版本为 **0.3.0 / build 56**；前端全量 **1,118 项通过**、后端全量 **1,027 项全绿**（2026-11-22 实测）。历史规模和覆盖率数字以各自日期快照理解，不与当前混淆。当前 ReaderScreen 交互编排仍较集中，详见已知缺口；`RuleRunner` 拆分状态应以当前源码核实后再列入行动项。
+后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，端点契约由源码、测试与 API 文档共同校验。当前版本为 **0.3.0 / build 56**；前端全量 **1,118 项通过**、后端全量 **1,028 项全绿**（2026-11-22 实测）。历史规模和覆盖率数字以各自日期快照理解，不与当前混淆。当前 ReaderScreen 交互编排仍较集中，详见已知缺口；`RuleRunner` 拆分状态应以当前源码核实后再列入行动项。
 
 ---
 ## 9. 数字口径
