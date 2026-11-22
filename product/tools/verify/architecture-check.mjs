@@ -117,12 +117,7 @@ compare(3, g3Observed, g3, '（NetworkSecurity 之外 new HttpClient）');
 // ---------------------------------------------------------------- G4 禁止手动 autoCommit
 // 注意：代码用 `db.autoCommit = false/true` 赋值形式，不是 setAutoCommit() 方法——
 // 按后者写正则会永远绿（假绿）。Database.kt 是事务门面（目标态 kernel/db），其内部合法。
-const g4 = new Set([
-  'app/src/main/kotlin/io/legado/data/ShelfDao.kt',
-  'app/src/main/kotlin/io/legado/data/SourcesDao.kt',
-  'app/src/main/kotlin/io/legado/data/SourceHealthDao.kt',
-  'app/src/main/kotlin/io/legado/data/CacheDao.kt',
-]);
+const g4 = new Set(); // 2026-11-21 阶段 3.3 收口后清零（原 4 条：Shelf/Sources/SourceHealth/Cache）
 const g4Observed = new Set();
 for (const f of ktFiles) {
   if (f.endsWith('Database.kt')) continue; // 门面内合法
@@ -142,7 +137,6 @@ const g5 = new Set([
   'app/src/main/kotlin/io/legado/localbook/TxtTocRule.kt',
   'app/src/main/kotlin/io/legado/ops/LogService.kt',
   'app/src/main/kotlin/io/legado/ops/Metrics.kt',
-  'app/src/main/kotlin/io/legado/rules/RuleProcessor.kt',
   'app/src/main/kotlin/io/legado/rules/RuleRunner.kt',
   'app/src/main/kotlin/io/legado/source/SourceDebugger.kt',
 ]);
@@ -184,7 +178,7 @@ for (const f of ktFiles) {
 compare(7, g7, new Set(), '（跨域直接 import 对方 data/ 包）');
 
 // ---------------------------------------------------------------- G8 新样式不进全局 CSS（行数只许单调下降）
-const STYLE_CAP = 6760; // 2026-11-20 实测；目标单调下降
+const STYLE_CAP = 6760; // 2026-11-22：品牌预设样式迁到 components/brand.css 后实测 6,760；目标单调下降
 const styleFile = path.join(WEB_BASE, 'styles.css');
 const styleLines = fs.existsSync(styleFile) ? fs.readFileSync(styleFile, 'utf8').split(/\r?\n/).length : 0;
 if (styleLines < 50) { fail++; console.error(`\n[G8] styles.css 扫描异常（${styleLines} 行），假绿。`); }

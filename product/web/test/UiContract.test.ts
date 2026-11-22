@@ -15,7 +15,13 @@ import path from 'node:path'
  * 父选择器用），全量判会逼着人往样式表里塞空规则来消红。判的是**这一批已经确认坏过的**，
  * 它们删掉就会立刻回到裸样式。
  */
-const css = fs.readFileSync(path.resolve(import.meta.dirname, '../src/styles.css'), 'utf8')
+// G8 之后新样式允许落在组件级 CSS（如 components/brand.css），所以判据扫全部样式表，
+// 不再只读全局 styles.css —— 否则组件样式一迁出，这里就误报"类名挂着没规则"。
+const srcDir = path.resolve(import.meta.dirname, '../src')
+const css = fs.readdirSync(srcDir, { recursive: true, encoding: 'utf8' })
+  .filter(name => name.endsWith('.css'))
+  .map(name => fs.readFileSync(path.join(srcDir, name), 'utf8'))
+  .join('\n')
 const hasRule = (name: string) => new RegExp(`\\.${name}\\s*[,{:\\s]`).test(css)
 
 test('浮层那一档有真实规则（不是靠 UA 默认长相）：一档外壳 / 一条遮罩 / 一颗关闭键 / 一行页头', () => {

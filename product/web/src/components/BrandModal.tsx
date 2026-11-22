@@ -6,6 +6,7 @@ import { BRAND_PRESETS, fetchPresetFile, presetUrl, type BrandPreset } from '../
 import { Icon } from '../icons'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import './brand.css'
 
 /**
  * 「应用名称与图标」（用户 2026-10-23：「允许自定义图标和名称」）。

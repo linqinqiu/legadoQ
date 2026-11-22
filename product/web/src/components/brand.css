@@ -1,0 +1,16 @@
+/* 「应用名称与图标」浮层的组件级样式（G8：新样式不进全局 styles.css）。
+ * 预设图标网格：9 张缩略图，点一下就换。选中态沿用 .customize-skin.selected 那套视觉语言。 */
+.brand-preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+.brand-preset {
+  display: grid; gap: 4px; justify-items: center;
+  padding: 6px 4px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-muted); color: var(--muted);
+  font-size: 11px; line-height: 1.3;
+  transition: border-color .15s ease, background .15s ease;
+}
+.brand-preset:hover:not(:disabled) { border-color: var(--accent); }
+.brand-preset:disabled { opacity: .55; cursor: default; }
+.brand-preset img { width: 44px; height: 44px; border-radius: 6px; object-fit: contain; }
+.brand-preset span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.brand-preset.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink, var(--accent)); font-weight: 600; }
