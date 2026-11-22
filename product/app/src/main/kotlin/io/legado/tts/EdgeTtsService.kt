@@ -19,19 +19,29 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import io.legado.AppConfig
+import io.legado.ops.CustomTtsClient
+import io.legado.ops.NetworkSecurity
 import io.legado.model.TtsSessionChunkRequest
 import io.legado.model.TtsSpeakRequest
 import io.legado.model.TtsVoice
 
 class EdgeTtsService(
-    private val client: HttpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(10))
-        // 自定义 TTS 的地址由用户填，跟其它出站 client 一样不自动跟随重定向：
-        // NORMAL 会把请求跟到 Location 指向的任意地址（含内网/云元数据端点），
-        // 而事后检查 response.uri() 时请求已经发出去了。改由 followCustomTtsRedirects
-        // 手动逐跳跟随，每跳都重新校验协议。Edge TTS 自身的 WSS 不走这个 client。
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .build()
+    /**
+     * Edge 官方 WSS：目标固定为 `speech.platform.bing.com`，走唯一出站原语。
+     * `GuardedHttpClient` 的 WebSocket 包装只放 wss，经 PinnedProxy 的 CONNECT 盲隧道。
+     */
+    private val wssClient: HttpClient = NetworkSecurity.newHttpClient(
+        connectTimeout = Duration.ofSeconds(10),
+        followRedirects = HttpClient.Redirect.NEVER,
+    ),
+    /**
+     * 自定义 TTS：地址由用户填，按方案 A 放行本机/局域网，但封掉链路本地与云元数据段。
+     * 不自动跟随重定向：`followCustomTtsRedirects` 手动逐跳跟随并重新过策略。
+     */
+    private val customClient: HttpClient = CustomTtsClient.newClient(
+        connectTimeout = Duration.ofSeconds(10),
+        followRedirects = HttpClient.Redirect.NEVER,
+    ),
 ) {
     private val cache = ConcurrentHashMap<String, ByteArray>()
     private val maxCacheSize = AppConfig.edgeTtsCacheMax
@@ -160,7 +170,7 @@ class EdgeTtsService(
         val muid = generateMuid()
         val wssUrl = "$WSS_BASE_URL?TrustedClientToken=$TRUSTED_CLIENT_TOKEN&Sec-MS-GEC=$secMsGec&Sec-MS-GEC-Version=$SEC_MS_GEC_VERSION&ConnectionId=$connectionId"
 
-        val ws = client.newWebSocketBuilder()
+        val ws = wssClient.newWebSocketBuilder()
             .header("User-Agent", USER_AGENT)
             .header("Origin", ORIGIN)
             .header("Pragma", "no-cache")
@@ -280,7 +290,7 @@ class EdgeTtsService(
             var ws: WebSocket? = null
 
             try {
-                ws = client.newWebSocketBuilder()
+                ws = wssClient.newWebSocketBuilder()
                     .header("User-Agent", USER_AGENT)
                     .header("Origin", ORIGIN)
                     .header("Pragma", "no-cache")
@@ -320,19 +330,14 @@ class EdgeTtsService(
 
     /**
      * 自定义 TTS 的地址由用户在朗读设置里填，最常见的用法就是指向本机的自建合成服务，
-     * 所以这里**不能**套用封面/书源抓取那套内网拦截。跨站风险由写操作的同源闸门挡住
-     * （`POST /api/tts/speak` 带外站 `Origin` 会被判 403，见 Guard.kt），这里只保证协议合法、体积可控。
+     * 所以**不能**套用封面/书源抓取那套内网拦截；但也不能什么都不拦 —— 策略在
+     * [CustomTtsClient]：放行本机与 RFC1918/ULA，封掉链路本地、云元数据、CGNAT、组播/保留段。
      *
-     * 注意：**放行内网是有意的，但重定向必须逐跳复查** —— 客户端配的是
-     * `Redirect.NORMAL`（见构造参数），它会把「用户填的公网地址」自动跟到 `Location`
-     * 指向的任意地址上，包括 `169.254.169.254` 这类云元数据端点，而事后检查
-     * `response.uri()` 时请求早就发出去了。所以 `followCustomTtsRedirects` 里手动跟跳，
-     * 每跳都回到这里过一遍。
+     * 注意：**重定向必须逐跳复查** —— 客户端配的是 `Redirect.NEVER`，3xx 原样返回，
+     * `followCustomTtsRedirects` 手动跟跳，每跳都回到这里过一遍策略。
      */
     private fun assertSafeTtsTarget(uri: URI) {
-        require(uri.scheme.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()) {
-            "自定义 TTS 只支持 HTTP(S) 地址"
-        }
+        CustomTtsClient.requireAllowed(uri)
     }
 
     /**
@@ -348,7 +353,7 @@ class EdgeTtsService(
         handler: HttpResponse.BodyHandler<T>,
     ): HttpResponse<T> {
         var current = initial
-        var response = client.send(current, handler)
+        var response = customClient.send(current, handler)
         var hops = 0
         while (response.statusCode() in 300..399 && hops < MAX_CUSTOM_TTS_REDIRECTS) {
             val location = response.headers().firstValue("location").orElse(null) ?: break
@@ -357,7 +362,7 @@ class EdgeTtsService(
             // 被丢弃的那一跳响应体必须关掉，否则流式响应会漏文件描述符。
             runCatching { response.body()?.let { (it as? java.io.Closeable)?.close() } }
             current = rebuild(next)
-            response = client.send(current, handler)
+            response = customClient.send(current, handler)
             hops++
         }
         require(hops < MAX_CUSTOM_TTS_REDIRECTS) { "自定义 TTS 重定向超过 $MAX_CUSTOM_TTS_REDIRECTS 次" }

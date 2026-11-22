@@ -38,7 +38,7 @@ class TtsSessionServiceTest {
         server.start()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val output = ByteChannel(autoFlush = true)
-        val session = TtsSession("session-1", "owner-1", EdgeTtsService(HttpClient.newHttpClient()), scope) { }
+        val session = TtsSession("session-1", "owner-1", EdgeTtsService(customClient = HttpClient.newHttpClient()), scope) { }
         val audioJob = scope.launch { session.streamAudio(output) }
         try {
             session.start()
@@ -76,7 +76,7 @@ class TtsSessionServiceTest {
         server.start()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val output = ByteChannel(autoFlush = true)
-        val session = TtsSession("session-2", "owner-1", EdgeTtsService(HttpClient.newHttpClient()), scope) { }
+        val session = TtsSession("session-2", "owner-1", EdgeTtsService(customClient = HttpClient.newHttpClient()), scope) { }
         val audioJob = scope.launch { session.streamAudio(output) }
         val eventWriter = java.io.StringWriter()
         val eventJob = scope.launch { session.streamEvents(eventWriter) }
@@ -121,7 +121,7 @@ class TtsSessionServiceTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val output1 = ByteChannel(autoFlush = true)
         val output2 = ByteChannel(autoFlush = true)
-        val session = TtsSession("session-multi", "owner-1", EdgeTtsService(HttpClient.newHttpClient()), scope) { }
+        val session = TtsSession("session-multi", "owner-1", EdgeTtsService(customClient = HttpClient.newHttpClient()), scope) { }
         val audioJob1 = scope.launch { session.streamAudio(output1) }
         val audioJob2 = scope.launch { session.streamAudio(output2) }
         try {

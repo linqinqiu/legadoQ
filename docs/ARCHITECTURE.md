@@ -614,7 +614,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 异常分两类：`BlockedAddressException`（客户端可修 → 4xx）与 `UnreachableTargetException`（网络/上游问题 → 502）。
 
-**调用点**：书源抓取、封面、媒体代理、订阅、AI 外呼、登录页、自定义 TTS 逐跳重定向。自定义 TTS **有意**放行内网（常见用法就是指向本机合成服务），跨站风险由写门兜住。
+**调用点**：书源抓取、封面、媒体代理、订阅、AI 外呼、登录页走 `NetworkSecurity`；自定义 TTS 走 `ops/CustomTtsClient.kt`（独立签发点：**有意**放行本机/RFC1918/ULA，但逐跳拦截 `169.254/16`、`fe80::/10`、CGNAT、组播/保留段）。跨站风险由写门兜住。
 
 ### 8.3 边界与开关
 

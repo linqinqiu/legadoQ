@@ -61,7 +61,7 @@ class EdgeTtsTest {
         }
         server.start()
         try {
-            val service = EdgeTtsService(HttpClient.newHttpClient())
+            val service = EdgeTtsService(customClient = HttpClient.newHttpClient())
             val request = TtsSessionChunkRequest(
                 chunkId = "chunk-1",
                 text = "测试自定义流",

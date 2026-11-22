@@ -35,7 +35,7 @@ class TtsSessionLifecycleTest {
         val session = TtsSession(
             sessionId = "s-lifecycle",
             ownerId = "owner",
-            edgeTts = EdgeTtsService(HttpClient.newHttpClient()),
+            edgeTts = EdgeTtsService(customClient = HttpClient.newHttpClient()),
             parentScope = scope,
             onClosed = { closedCount.incrementAndGet() },
         )

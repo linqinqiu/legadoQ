@@ -272,17 +272,17 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 ---
 
-## 10. 2026-11-22 复跑（0.3.0 / build 56，产物门禁加固后）
+## 10. 2026-11-22 复跑（0.3.0 / build 56，产物门禁加固 + 自定义 TTS 签发点）
 
-> 上一节采集于 `98aed29`；本节是当前工作树（HEAD `f781eba`，rev **438**）的实测，旧节不回改。**现行数字以本节为准。**
-> 工作树含未提交的产物门禁/文档改动，以及并行会话的在改 TTS 源码；后端数字按当时源码实跑，不宣称这些改动已发布。
+> 上一节采集于 `98aed29`；本节是当前工作树（基于 `cf64f88`，rev **438**）的实测，旧节不回改。**现行数字以本节为准。**
+> 产物门禁/文档改动已提交为 `cf64f88`；TTS 切片（Edge WSS 与自定义 TTS 分成两个 client，新增 `ops/CustomTtsClient.kt` 与 3 条策略测试）随本节一并提交，后端数字按含该切片的源码实跑。
 
 | 项 | 数值 | 命令/口径 |
 |---|---|---|
 | 对外版本 / 构建号 | 0.3.0 / 56 | `npm --prefix product run version:check` |
 | **前端测试实跑** | **1,118 项 / 0 失败** | `npm --prefix product/web test`；`ChallengerEmpiricalStress` 曾在并行负载下触发一次计时基准红，单文件与第二次全量均通过 |
 | 前端类型检查 | 通过 | `npm --prefix product/web run check`（`tsc -b`） |
-| **后端测试实跑** | **1,024 项 / 144 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 6m 30s`；`test-results/test/*.xml` 求和 |
+| **后端测试实跑** | **1,027 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 9m 39s`；`test-results/test/*.xml` 求和。首跑曾出现 `E2EScenariosTest` 300ms 计时抖动 1 项，单类复跑与再次全量均通过 |
 | **前端产物指纹** | **`index-Bl62g_P0.js`**（911,135 B） | `product/web/dist/index.html`；`build:fallback` 产出 |
 | 产物完整性门禁 | **11/11 通过** | `node product/tools/verify/dist-check.mjs`（新增：校验 index.html 引用资源真实存在） |
 | jar / dist / 活服务一致性 | **5/5 通过**（含活服务 `/assets/*.js → 200`） | `node product/tools/verify/bundled-ui-check.mjs`（启动 `product/start.mjs --no-open` 后实跑） |
