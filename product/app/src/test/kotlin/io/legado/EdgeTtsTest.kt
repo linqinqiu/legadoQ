@@ -400,4 +400,86 @@ class EdgeTtsTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun `custom tts drops configured headers on cross-origin redirects`() {
+        val origin = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val target = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val seen = ConcurrentHashMap<String, String>()
+        val audio = "cross-origin-ok".toByteArray(StandardCharsets.UTF_8)
+
+        origin.createContext("/start") { exchange ->
+            seen["origin-auth"] = exchange.requestHeaders.getFirst("Authorization") ?: ""
+            exchange.responseHeaders.add("Location", "http://127.0.0.1:${target.address.port}/audio")
+            exchange.sendResponseHeaders(302, -1)
+            exchange.close()
+        }
+        target.createContext("/audio") { exchange ->
+            seen["target-auth"] = exchange.requestHeaders.getFirst("Authorization") ?: ""
+            seen["target-cookie"] = exchange.requestHeaders.getFirst("Cookie") ?: ""
+            seen["target-key"] = exchange.requestHeaders.getFirst("X-Api-Key") ?: ""
+            exchange.responseHeaders.add("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        origin.start()
+        target.start()
+        try {
+            val service = EdgeTtsService(customClient = HttpClient.newHttpClient())
+            val (contentType, bytes) = service.synthesizeCustom(
+                TtsSpeakRequest(
+                    text = "跨源跳转",
+                    engine = "custom",
+                    customUrl = "http://127.0.0.1:${origin.address.port}/start",
+                    customHeader = """{"Authorization":"Bearer secret","Cookie":"sid=1","X-Api-Key":"k-1"}""",
+                )
+            )
+            assertEquals("audio/mpeg", contentType)
+            assertArrayEquals(audio, bytes)
+            assertEquals("Bearer secret", seen["origin-auth"])
+            assertEquals("", seen["target-auth"])
+            assertEquals("", seen["target-cookie"])
+            assertEquals("", seen["target-key"])
+        } finally {
+            origin.stop(0)
+            target.stop(0)
+        }
+    }
+
+    @Test
+    fun `custom tts keeps configured headers across same-origin redirects`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val seen = ConcurrentHashMap<String, String>()
+        val audio = "same-origin-ok".toByteArray(StandardCharsets.UTF_8)
+        server.createContext("/start") { exchange ->
+            exchange.responseHeaders.add("Location", "/audio")
+            exchange.sendResponseHeaders(302, -1)
+            exchange.close()
+        }
+        server.createContext("/audio") { exchange ->
+            seen["auth"] = exchange.requestHeaders.getFirst("Authorization") ?: ""
+            exchange.responseHeaders.add("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        server.start()
+        try {
+            val service = EdgeTtsService(customClient = HttpClient.newHttpClient())
+            val received = ByteArrayOutputStream()
+            val contentType = service.synthesizeCustomStream(
+                TtsSessionChunkRequest(
+                    chunkId = "chunk-same-origin",
+                    text = "同源跳转",
+                    engine = "custom",
+                    customUrl = "http://127.0.0.1:${server.address.port}/start",
+                    customHeader = """{"Authorization":"Bearer same-origin"}""",
+                )
+            ) { received.write(it) }
+            assertEquals("audio/mpeg", contentType)
+            assertArrayEquals(audio, received.toByteArray())
+            assertEquals("Bearer same-origin", seen["auth"])
+        } finally {
+            server.stop(0)
+        }
+    }
 }

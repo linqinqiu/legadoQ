@@ -349,7 +349,7 @@ class EdgeTtsService(
      */
     private fun <T> followCustomTtsRedirects(
         initial: HttpRequest,
-        rebuild: (URI) -> HttpRequest,
+        rebuild: (from: URI, to: URI) -> HttpRequest,
         handler: HttpResponse.BodyHandler<T>,
     ): HttpResponse<T> {
         var current = initial
@@ -367,11 +367,30 @@ class EdgeTtsService(
             assertSafeTtsTarget(next)
             // 被丢弃的那一跳响应体必须关掉，否则流式响应会漏文件描述符。
             runCatching { response.body()?.let { (it as? java.io.Closeable)?.close() } }
-            current = rebuild(next)
+            current = rebuild(current.uri(), next)
             response = customClient.send(current, handler)
             hops++
         }
         return response
+    }
+
+    /**
+     * 跳转前后是否同源（scheme / host / 端口任一不同都算跨源，默认端口归一化）。
+     *
+     * 跨源时 [followCustomTtsRedirects] 的调用方**不再重放用户自定义请求头**：
+     * 那些头里通常放的是第三方服务的 key，而跳转目标是上游自己选的，
+     * 不能把用户的凭据发给用户没配置过的主机。
+     */
+    private fun isSameOrigin(from: URI, to: URI): Boolean =
+        from.scheme.equals(to.scheme, ignoreCase = true) &&
+            from.host.equals(to.host, ignoreCase = true) &&
+            effectivePort(from) == effectivePort(to)
+
+    private fun effectivePort(uri: URI): Int = when {
+        uri.port != -1 -> uri.port
+        uri.scheme.equals("http", ignoreCase = true) -> 80
+        uri.scheme.equals("https", ignoreCase = true) -> 443
+        else -> -1
     }
 
     private fun customTtsUri(raw: String): URI {
@@ -424,7 +443,8 @@ class EdgeTtsService(
             .replace("{{speakPitch}}", request.pitch.toString())
         val reqBuilder = HttpRequest.newBuilder().timeout(Duration.ofSeconds(timeoutSeconds))
 
-        customHeaders(request.customHeader).forEach { (name, value) -> reqBuilder.header(name, value) }
+        val headers = customHeaders(request.customHeader)
+        headers.forEach { (name, value) -> reqBuilder.header(name, value) }
 
         if (method == "POST") {
             reqBuilder.uri(customTtsUri(resolvedUrl))
@@ -434,9 +454,11 @@ class EdgeTtsService(
             reqBuilder.GET()
         }
 
-        val response = followCustomTtsRedirects(reqBuilder.build(), { uri ->
-            val rebuilt = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeoutSeconds))
-            customHeaders(request.customHeader).forEach { (name, value) -> rebuilt.header(name, value) }
+        val response = followCustomTtsRedirects(reqBuilder.build(), { from, to ->
+            val rebuilt = HttpRequest.newBuilder(to).timeout(Duration.ofSeconds(timeoutSeconds))
+            if (isSameOrigin(from, to)) {
+                headers.forEach { (name, value) -> rebuilt.header(name, value) }
+            }
             if (method == "POST") {
                 rebuilt.POST(HttpRequest.BodyPublishers.ofString(resolvedBody, StandardCharsets.UTF_8))
             } else {
@@ -488,7 +510,8 @@ class EdgeTtsService(
             .replace("{{speakSpeed}}", speedMultiplier.toString())
             .replace("{{speakPitch}}", request.pitch.toString())
         val reqBuilder = HttpRequest.newBuilder().timeout(Duration.ofSeconds(timeoutSeconds))
-        customHeaders(request.customHeader).forEach { (name, value) -> reqBuilder.header(name, value) }
+        val headers = customHeaders(request.customHeader)
+        headers.forEach { (name, value) -> reqBuilder.header(name, value) }
         if (method == "POST") {
             reqBuilder.uri(customTtsUri(resolvedUrl))
             reqBuilder.POST(HttpRequest.BodyPublishers.ofString(resolvedBody, StandardCharsets.UTF_8))
@@ -497,9 +520,11 @@ class EdgeTtsService(
             reqBuilder.GET()
         }
 
-        val response = followCustomTtsRedirects(reqBuilder.build(), { uri ->
-            val rebuilt = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeoutSeconds))
-            customHeaders(request.customHeader).forEach { (name, value) -> rebuilt.header(name, value) }
+        val response = followCustomTtsRedirects(reqBuilder.build(), { from, to ->
+            val rebuilt = HttpRequest.newBuilder(to).timeout(Duration.ofSeconds(timeoutSeconds))
+            if (isSameOrigin(from, to)) {
+                headers.forEach { (name, value) -> rebuilt.header(name, value) }
+            }
             if (method == "POST") {
                 rebuilt.POST(HttpRequest.BodyPublishers.ofString(resolvedBody, StandardCharsets.UTF_8))
             } else {

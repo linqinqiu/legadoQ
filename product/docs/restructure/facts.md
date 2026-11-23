@@ -316,3 +316,30 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 - 错误语义向 `MediaRoutes`/`SearchRoutes` 的既有约定对齐：调用方输入问题（地址策略拒绝、响应超限）→ **400** `tts_invalid_request`；上游失败 → **502** `tts_failed`；不再是所有异常统一 500。
 
 第三条 `custom tts allows three redirect hops and rejects the fourth` 修掉重定向判据的 off-by-one：上限是“最多跟 3 跳”，原实现用 `while (... && hops < MAX)` 再配 `require(hops < MAX)`，导致**恰好 3 跳**在成功后仍被判超限；现改为循环内“还有下一跳且已到上限才拒绝”，第 3 跳允许、第 4 跳拒绝，报错前也关闭当前跳的响应体。
+
+## 12. 2026-11-23 复跑（跨源跳转凭据 + 打包产物活服务冒烟）
+
+> 本节采集于 `d88b2ed` 之上的未提交改动（跨源重定向不再重放自定义头）。**现行数字以本节为准**；§11 的 1,031 项是更早的快照，不回改。
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| **后端测试实跑** | **1,033 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 4m 44s`；`test-results/test/*.xml` 求和 |
+| **后端行覆盖率** | **74.22%**（11,379/15,331）；`tts` **75.30%**（622/826） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；不要用 CSV 求和（内部类行会被内外层重复计） |
+| **EdgeTtsTest** | **11/11 通过** | 新增跨源/同源两条跳转判据 |
+
+跨源凭据修复：`followCustomTtsRedirects` 的 `rebuild` 改为接收 `(from, to)` 两个 URI，调用方按 `scheme / host / 端口`（默认端口归一化）判同源——**跨源时不再重放用户配置的附加请求头**，同源跳转保留。此前每跳都无条件重加全部自定义头，上游一个 302 就能把 `Authorization` / `Cookie` / `X-Api-Key` 送到用户没配置过的主机。判据：
+
+- `custom tts drops configured headers on cross-origin redirects`：两台本机 `HttpServer`（端口不同即跨源），起点收到 `Authorization`，302 目标收到空 `Authorization`/`Cookie`/`X-Api-Key`，音频仍原样返回。
+- `custom tts keeps configured headers across same-origin redirects`：同端口 `/start → /audio`，目标仍收到 `Authorization`。
+
+打包产物活服务冒烟（重打 `:app:fatJar` 后，`node product/start.mjs --port 18089 --no-open`，临时库）：
+
+| 断言 | 结果 |
+|---|---|
+| `/healthz` | `version=0.3.0` / `build=56` / `rev=rev-446` / `ui=index-Bl62g_P0.js`（jar 由工作树打，HEAD 为 `d88b2ed`） |
+| 直连 custom TTS（带 `Authorization`） | **200** `audio/mpeg`，字节 `SMOKE-AUDIO-A` |
+| 跨源 302（A:59605 → B:59606） | **200** `audio/mpeg` 字节 `SMOKE-AUDIO-B`；起点收到 `Bearer cross-key`/`sid=9`/`key-9`，目标三项全空 |
+| 同源 302（`/same → /tts`） | **200** `audio/mpeg`；目标仍收到 `Bearer same-key` |
+| `http://169.254.169.254/latest/meta-data/` | **400** `tts_invalid_request`（“拒绝访问链路本地/元数据/保留地址”） |
+
+门禁同轮全绿：`version:check`（8 处 0.3.0 / build 56）、`docs:api-check`（145 端点 / 18 组）、`changelog:check`（64 条提交，边界 `771b311`）、`architecture-check` G1–G8、`depth-check`（过深 5 个基线内）、`dist-check` 11/11、`bundled-ui-check` 4/4（运行实例一项因已停服 SKIP）。

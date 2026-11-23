@@ -422,7 +422,7 @@ Ktor Call
 | `content/` | `ContentProcessor` | 正文净化、标题处理、脏 JSON 兜底 |
 | `localbook/` | `LocalBookParser`、`TxtTocRule` | TXT 分章（全角空格规则）、EPUB 解压（带体积闸门） |
 | `cache/` | `BookCacheService`、`CoverCache` | 整书缓存（协程 + 信号量 + 断点续传）、封面落盘 |
-| `tts/` | `EdgeTtsService`、`TtsSessionService` | Edge TTS 合成、会话流、自定义 TTS（逐跳复查重定向） |
+| `tts/` | `EdgeTtsService`、`TtsSessionService` | Edge TTS 合成、会话流、自定义 TTS（逐跳复查重定向，跨源跳转丢弃自定义头） |
 | `subscription/` | `SubscriptionService` | 书源订阅、RSS 拉取 |
 | `backup/` | `BackupStore` | 备份包导入导出、无归宿条目的保留区 |
 | `ops/` | `LogService`、`UpdateCheck` | 结构化日志落库、更新检查 |
@@ -615,6 +615,8 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 异常分两类：`BlockedAddressException`（客户端可修 → 4xx）与 `UnreachableTargetException`（网络/上游问题 → 502）。
 
 **调用点**：书源抓取、封面、媒体代理、订阅、AI 外呼、登录页走 `NetworkSecurity`；自定义 TTS 走 `ops/CustomTtsClient.kt`（独立签发点：**有意**放行本机/RFC1918/ULA，但逐跳拦截 `169.254/16`、`fe80::/10`、CGNAT、组播/保留段）。跨站风险由写门兜住。
+
+自定义 TTS 的附加请求头按跳转同源判定：**scheme / host / 端口任一变化即视为跨源，重建请求时不再重放用户配置的头**（`Authorization`、`Cookie`、`X-Api-Key` 等通常就是第三方服务的 key），避免上游用一个 302 把凭据带到用户没配置过的主机；同源跳转（含默认端口归一化）照常保留。
 
 ### 8.3 边界与开关
 
