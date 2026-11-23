@@ -304,8 +304,8 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 项 | 数值 | 命令/口径 |
 |---|---|---|
-| **后端测试实跑** | **1,030 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 9m 13s`；`test-results/test/*.xml` 求和 |
-| **后端行覆盖率** | **74.12%**（11,352/15,316）；`tts` **73.37%**（595/811） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；2026-11-09 旧快照是整体 70.04%、`tts` 56.6% |
+| **后端测试实跑** | **1,031 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 6m 16s`；`test-results/test/*.xml` 求和 |
+| **后端行覆盖率** | **74.17%**（11,362/15,318）；`tts` **74.66%**（607/813） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；2026-11-09 旧快照是整体 70.04%、`tts` 56.6% |
 
 `EdgeTtsTest` 新增 `speak route serves custom tts audio and blocks metadata targets`：真实 `testApplication` + 本机 `HttpServer`，从 `/api/tts/speak` 入口验证 `engine=custom` 分支——`Authorization` 附加头转发、`{{speakText}}` 替换、上游 `Content-Type` 透传、字节流原样返回；同一入口对 `169.254.169.254` 在发请求前拒绝并返回 400 `tts_invalid_request`。此前这条链路只有 `EdgeTtsService` 服务层单测，路由层没有判据。
 
@@ -314,3 +314,5 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 - 一次性 `/api/tts/speak` 的自定义分支此前**不检查上游状态码**，401/500 的错误 JSON 会被当音频回 200（用户侧表现为“合成成功但没声音”）；现在非 2xx 一律报错。
 - 8MB 上限改为**边读边判**（`BodyHandlers.ofInputStream()` + 16KB 缓冲），不再先 `ofByteArray()` 读完再判——超大响应不会先把内存吃满。
 - 错误语义向 `MediaRoutes`/`SearchRoutes` 的既有约定对齐：调用方输入问题（地址策略拒绝、响应超限）→ **400** `tts_invalid_request`；上游失败 → **502** `tts_failed`；不再是所有异常统一 500。
+
+第三条 `custom tts allows three redirect hops and rejects the fourth` 修掉重定向判据的 off-by-one：上限是“最多跟 3 跳”，原实现用 `while (... && hops < MAX)` 再配 `require(hops < MAX)`，导致**恰好 3 跳**在成功后仍被判超限；现改为循环内“还有下一跳且已到上限才拒绝”，第 3 跳允许、第 4 跳拒绝，报错前也关闭当前跳的响应体。

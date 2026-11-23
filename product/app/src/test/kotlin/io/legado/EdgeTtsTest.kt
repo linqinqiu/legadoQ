@@ -352,4 +352,52 @@ class EdgeTtsTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun `custom tts allows three redirect hops and rejects the fourth`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val audio = "redirect-ok".toByteArray(StandardCharsets.UTF_8)
+        fun redirect(from: String, to: String) {
+            server.createContext(from) { exchange ->
+                exchange.responseHeaders.add("Location", to)
+                exchange.sendResponseHeaders(302, -1)
+                exchange.close()
+            }
+        }
+        redirect("/r1", "/r2")
+        redirect("/r2", "/r3")
+        redirect("/r3", "/mp3")
+        redirect("/d1", "/d2")
+        redirect("/d2", "/d3")
+        redirect("/d3", "/d4")
+        redirect("/d4", "/mp3")
+        server.createContext("/mp3") { exchange ->
+            exchange.responseHeaders.add("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        server.start()
+        try {
+            val service = EdgeTtsService(customClient = HttpClient.newHttpClient())
+            fun speak(path: String) = service.synthesizeCustom(
+                TtsSpeakRequest(
+                    text = "重定向",
+                    engine = "custom",
+                    customUrl = "http://127.0.0.1:${server.address.port}$path",
+                )
+            )
+
+            // 3 跳应成功（上限是 3，不是 2）。
+            val (contentType, bytes) = speak("/r1")
+            assertEquals("audio/mpeg", contentType)
+            assertArrayEquals(audio, bytes)
+
+            // 第 4 跳必须拒绝，防止 A→B→A 把线程挂住。
+            val tooMany = runCatching { speak("/d1") }.exceptionOrNull()
+            assertTrue("4 跳应被拒，实际 $tooMany", tooMany is IllegalArgumentException)
+            assertTrue(tooMany?.message?.contains("重定向超过") == true)
+        } finally {
+            server.stop(0)
+        }
+    }
 }

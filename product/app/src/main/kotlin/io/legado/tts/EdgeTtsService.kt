@@ -355,9 +355,15 @@ class EdgeTtsService(
         var current = initial
         var response = customClient.send(current, handler)
         var hops = 0
-        while (response.statusCode() in 300..399 && hops < MAX_CUSTOM_TTS_REDIRECTS) {
+        while (response.statusCode() in 300..399) {
             val location = response.headers().firstValue("location").orElse(null) ?: break
             val next = runCatching { current.uri().resolve(location) }.getOrNull() ?: break
+            if (hops >= MAX_CUSTOM_TTS_REDIRECTS) {
+                // 判据是「最多跟 N 跳」：第 N 跳本身合法，再下一跳才拒绝。
+                // 报错前也要关掉手里这一跳的响应体，否则流式响应漏文件描述符。
+                runCatching { response.body()?.let { (it as? java.io.Closeable)?.close() } }
+                throw IllegalArgumentException("自定义 TTS 重定向超过 $MAX_CUSTOM_TTS_REDIRECTS 次")
+            }
             assertSafeTtsTarget(next)
             // 被丢弃的那一跳响应体必须关掉，否则流式响应会漏文件描述符。
             runCatching { response.body()?.let { (it as? java.io.Closeable)?.close() } }
@@ -365,7 +371,6 @@ class EdgeTtsService(
             response = customClient.send(current, handler)
             hops++
         }
-        require(hops < MAX_CUSTOM_TTS_REDIRECTS) { "自定义 TTS 重定向超过 $MAX_CUSTOM_TTS_REDIRECTS 次" }
         return response
     }
 
