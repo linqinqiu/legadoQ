@@ -23,6 +23,7 @@ import io.legado.data.Database
 import io.legado.data.DbSnapshot
 import io.legado.data.MentionsWarmer
 import io.legado.data.getCookieForUrl
+import io.legado.http.BodyLimits
 import io.legado.http.PayloadTooLargeException
 import io.legado.http.RequestBodyLimit
 import io.legado.http.SameOriginWriteGate
@@ -112,6 +113,14 @@ internal fun applyIoParallelism() {
 
 /** kotlinx.coroutines 读并行度用的那个系统属性名。 */
 private const val IO_PARALLELISM_PROPERTY = "kotlinx.coroutines.io.parallelism"
+
+/**
+ * 请求体超限的根因判定：S2c 在 receive pipeline 边读边计数，超限抛的自定义 `PayloadTooLargeException`
+ * 会被 receive 机制包进 `BadRequestException` / `ContentTransformationException`，这里沿 cause 链找回来归位成 413。
+ * 也覆盖 S2b 的 `PayloadTooLargeException`（路由处理器里直接抛，通常不包）。
+ */
+private fun isBodyLimitOverflow(cause: Throwable): Boolean =
+    generateSequence(cause) { it.cause }.any { it is PayloadTooLargeException }
 
 fun main(args: Array<String>) {
     // 必须在任何协程/调度器被创建之前调（见 applyIoParallelism 的说明）。
@@ -244,13 +253,19 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     }
     install(WebSockets)
     install(StatusPages) {
-        // 请求体超限（全局声明长度闸 + multipart 流式闸）。抛异常而非直接 respond：
-        // onCall 不阻断 pipeline，只有抛异常才会让路由处理器根本不跑（body 一个字节都不读）。
+        // 请求体超限（S2a 声明长度闸在 onCall 直接抛；S2b multipart 流式闸在路由处理器里抛）：携带具体错误码。
         exception<PayloadTooLargeException> { call, cause ->
             call.respond(HttpStatusCode.PayloadTooLarge, ApiError(cause.errorCode, cause.message ?: "请求体过大"))
         }
         // 请求体解析失败是客户端错误。没有这几条时它落进下面的 Throwable 分支 → 500 + 整段堆栈刷日志。
         exception<BadRequestException> { call, cause ->
+            // S2c chunked 流式闸的超限异常也会落到这条：receive pipeline 边读边计数，超限抛的
+            // PayloadTooLargeException 会被 receive 机制包进 BadRequestException。沿 cause 链找回来归位成 413。
+            if (isBodyLimitOverflow(cause)) {
+                val path = call.request.local.uri.substringBefore('?')
+                call.respond(HttpStatusCode.PayloadTooLarge, ApiError(BodyLimits.limitFor(path).errorCode, "请求体过大"))
+                return@exception
+            }
             // Ktor 的 ContentNegotiation 会把转换阶段抛出的任何异常包成
             // BadRequestException("Failed to convert request body to …")（实测两层），
             // 内层才是真正的原因：① StrictJsonConverter 的编码错误（"请按 UTF-8 发送"）；
@@ -260,6 +275,12 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
             call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", detail ?: cause.message ?: "请求内容无法解析"))
         }
         exception<ContentTransformationException> { call, cause ->
+            // 与上面同一条根因的另一种包法（ContentTransformationException）。沿 cause 链找回来归位成 413。
+            if (isBodyLimitOverflow(cause)) {
+                val path = call.request.local.uri.substringBefore('?')
+                call.respond(HttpStatusCode.PayloadTooLarge, ApiError(BodyLimits.limitFor(path).errorCode, "请求体过大"))
+                return@exception
+            }
             // 转换失败的原因有时是**我们想让人看到**的（如 StrictJsonConverter 判定请求体编码不对，
             // 报错里写着"请按 UTF-8 发送"）；Ktor 会把它包一层 ContentTransformationException，
             // 原样回 cause.message 只剩一句 "Failed to convert..."，所以先把内层的 BadRequest 捞出来。
@@ -276,8 +297,10 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
             call.respond(HttpStatusCode.InternalServerError, ApiError("internal_error", "服务器内部错误"))
         }
     }
-    // 请求体声明长度闸：全局拦 POST/PUT/PATCH 的超大 Content-Length，超限在 onCall 抛异常 → 上面的 413。
-    // 装在 StatusPages 之后，异常才会被那条专门 handler 接走（catch-all 在更下面）。
+    // 请求体上限（S2a 声明长度闸 + S2c chunked 流式计数）：在 onCall 看 Content-Length 拦声明长度超限，
+    // 在 receive pipeline 的 BeforeReceive hook 边读边计拦无声明长度的 chunked 大 body；两者都抛
+    // PayloadTooLargeException，由 StatusPages 转 413（错误码按路径分档，与 S2b 一致）。
+    // 装在 StatusPages 之后，异常才会被上面那条 handler 接走。
     install(RequestBodyLimit)
     // 同源写门：全局拦所有写方法，路由不必再各自记得调一次（只读 POST 走插件内的白名单）。
     install(SameOriginWriteGate)

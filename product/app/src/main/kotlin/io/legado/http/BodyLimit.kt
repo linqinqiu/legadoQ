@@ -2,17 +2,31 @@ package io.legado.http
 
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import io.ktor.server.application.Hook
+import io.ktor.server.application.PipelineCall
 import io.ktor.server.application.createApplicationPlugin
+import io.ktor.server.request.ApplicationReceivePipeline
 import io.ktor.server.request.contentLength
 import io.legado.BrandStore
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readAvailable
+import io.ktor.utils.io.writeFully
+import io.ktor.utils.io.writer
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 /**
- * 请求体超限异常：由 `StatusPages` 统一转成 413 + `ApiError(code, message)`。
+ * 请求体超限异常：multipart 流式闸（S2b）与 chunked 流式闸（S2c）都抛它，由 `StatusPages` 转 413。
  *
- * 刻意继承 `RuntimeException` 而不是 `BadRequestException` —— 后者会被 `Application.kt` 里
- * 那条 400 handler 先接走；也不该落进 catch-all 的 `Throwable` 分支刷一整段 error 堆栈。
+ * 刻意继承 `RuntimeException` 而不是 `BadRequestException` —— 后者会被 ContentNegotiation 包掉；
+ * 也不该落进 catch-all 的 `Throwable` 分支刷一整段 error 堆栈。
+ *
+ * 为什么是自定义类而不是 Ktor 的 `io.ktor.server.plugins.PayloadTooLargeException`：后者会在 receive
+ * pipeline 边上溢出时被 ContentNegotiation 包进 `BadRequestException`/`ContentTransformationException`，
+ * 且**根因被吞掉**（`isBodyLimitOverflow` 沿 cause 链都找不到），导致只能回 400 而非 413。自定义类
+ * 不会被 Ktor 特殊对待，作为 cause 原样保留，StatusPages 的 `isBodyLimitOverflow` 能把它认回来转 413。
  */
 internal class PayloadTooLargeException(
     val errorCode: String,
@@ -20,7 +34,7 @@ internal class PayloadTooLargeException(
 ) : RuntimeException(message)
 
 /**
- * 请求体上限的**单一真源**：声明长度闸（S2a）与 multipart 流式闸（S2b）共用同一组数字。
+ * 请求体上限的**单一真源**：声明长度闸（S2a）、chunked 流式计数（S2c）与 multipart 流式闸（S2b）共用同一组数字。
  *
  * 没有放进 `AppConfig` / 环境变量：这几档是产品口径（备份 64MB、图标 5MB），不是部署旋钮，
  * 也不该因为改了配置就悄悄放宽一道安全闸。
@@ -38,10 +52,8 @@ internal object BodyLimits {
     data class Limit(val maxBytes: Long, val errorCode: String)
 
     /**
-     * 写端点的声明长度上限与 413 错误码。
-     *
-     * 按路径分档是为了让前端能区分"备份太大"和"请求体太大"，也为了**不误伤**：
-     * 备份导入本来就该收 64MB，若跟 JSON 共用 8MB 就会把正常备份挡在门外。
+     * 写端点的请求体上限与 413 错误码（按路径分档，前端可区分"备份太大 / 图标太大 / 请求体太大"，也不误伤备份）。
+     * `Long.MAX_VALUE` 表示不限制（chunked 闸对这类路径不介入）。
      */
     fun limitFor(path: String): Limit = when (path) {
         "/api/backup/import" -> Limit(BACKUP_BYTES, "backup_too_large")
@@ -51,15 +63,15 @@ internal object BodyLimits {
 }
 
 /**
- * 全局声明长度闸（S2a）：对写方法先看 `Content-Length`，超上限直接抛
- * [PayloadTooLargeException]，由 `StatusPages` 转 413 —— **不读 body**。
+ * 全局请求体上限闸（S2a 声明长度 + S2c chunked 流式计数）。
  *
- * 这是它跟 multipart 流式闸（S2b）的分工：声明长度可信时零成本挡掉；
- * chunked / 伪造声明时，才轮到流式闸在读取过程中兜底。
+ * - `onCall`：声明长度（Content-Length）超限直接抛，pipeline 中断，路由处理器不跑、body 一个字节都不读。
+ * - `on(BeforeReceive)`：无声明长度的 chunked body 在 receive pipeline 上边读边计数，超限即抛。
+ *   形状照 Ktor 官方 `ktor-server-body-limit` 插件的 `BeforeReceive` hook，但其抛的是自定义
+ *   `PayloadTooLargeException`（见类注释），这样 StatusPages 能把 chunked 的超限也归位成 413。
  *
- * 为什么**抛异常**而不是 `call.respond(413, …)`：Ktor 的 `onCall` 不阻断后续 pipeline，
- * respond 之后 routing 仍会执行、路由里的 `receive<T>()` 仍会把 body 读进内存 —— 那就白挡了。
- * 抛异常真正中止 pipeline，路由处理器不会跑，body 一个字节都不读。
+ * 抛异常而非 `call.respond(413, …)`：Ktor 的 `onCall` 不阻断后续 pipeline，respond 之后路由仍会
+ * `receive<T>()` 把 body 读进内存 —— 那就白挡了。抛异常真正中止 pipeline。
  */
 val RequestBodyLimit = createApplicationPlugin("RequestBodyLimit") {
     onCall { call ->
@@ -67,11 +79,10 @@ val RequestBodyLimit = createApplicationPlugin("RequestBodyLimit") {
         if (method != HttpMethod.Post && method != HttpMethod.Put && method != HttpMethod.Patch) return@onCall
         // WS 升级握手是 GET（上面已排除），这里再显式挡一次非标准实现。
         if (call.request.headers[HttpHeaders.Upgrade]?.equals("websocket", ignoreCase = true) == true) return@onCall
-        // chunked / 未知长度：没有声明可判，交给 S2b 的流式闸。
+        // chunked / 未知长度：没有声明可判，交给下面的 BeforeReceive 流式闸。
         val declared = call.request.contentLength() ?: return@onCall
         if (declared <= 0) return@onCall
-        val path = call.request.local.uri.substringBefore('?')
-        val limit = BodyLimits.limitFor(path)
+        val limit = BodyLimits.limitFor(call.request.local.uri.substringBefore('?'))
         if (declared > limit.maxBytes) {
             throw PayloadTooLargeException(
                 limit.errorCode,
@@ -79,7 +90,50 @@ val RequestBodyLimit = createApplicationPlugin("RequestBodyLimit") {
             )
         }
     }
+    on(BeforeReceive) { call, content ->
+        val limit = BodyLimits.limitFor(call.request.local.uri.substringBefore('?'))
+        if (limit.maxBytes == Long.MAX_VALUE) return@on null
+        content.applyLimit(limit.maxBytes, limit.errorCode)
+    }
 }
+
+/**
+ * receive pipeline 的 hook：在 `ApplicationReceivePipeline.Before` 阶段把原始 `ByteReadChannel` 替换成
+ * 一个边读边计数的包装。copy 自 Ktor 官方 `body-limit` 插件的 `BeforeReceive`（该符号是私有的，这里复刻）。
+ */
+private object BeforeReceive : Hook<(PipelineCall, ByteReadChannel) -> ByteReadChannel?> {
+    override fun install(
+        pipeline: io.ktor.server.application.ApplicationCallPipeline,
+        handler: (PipelineCall, ByteReadChannel) -> ByteReadChannel?,
+    ) {
+        pipeline.receivePipeline.intercept(ApplicationReceivePipeline.Before) {
+            if (subject !is ByteReadChannel) return@intercept
+            val result = handler(context, subject as ByteReadChannel)
+            if (result != null) proceedWith(result)
+        }
+    }
+}
+
+/**
+ * 边读边计数的 channel 包装（S2c）：超限立即抛 [PayloadTooLargeException]，不把超限字节读进内存。
+ * 形状照 Ktor 官方 `body-limit` 插件的 `ByteReadChannel.applyLimit`，但抛的是自定义异常（见类注释）。
+ */
+@OptIn(DelicateCoroutinesApi::class)
+private fun ByteReadChannel.applyLimit(limit: Long, code: String): ByteReadChannel =
+    GlobalScope.writer {
+        val buffer = ByteArray(8192)
+        var total = 0L
+        while (!isClosedForRead) {
+            val read = readAvailable(buffer, 0, buffer.size)
+            if (read <= 0) continue
+            channel.writeFully(buffer, 0, read)
+            total += read
+            if (total > limit) {
+                throw PayloadTooLargeException(code, "请求体超过 ${limit / 1024 / 1024} MB 上限")
+            }
+        }
+        closedCause?.let { throw it }
+    }.channel
 
 /**
  * 边读边计数的 multipart 文件读取（S2b），形状对齐 `tts/EdgeTtsService` 的 8MB 循环：
