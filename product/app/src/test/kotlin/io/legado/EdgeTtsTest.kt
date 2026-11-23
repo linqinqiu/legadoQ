@@ -198,4 +198,85 @@ class EdgeTtsTest {
             runCatching { tempDir.toFile().deleteRecursively() }
         }
     }
+
+    @Test
+    fun `speak route serves custom tts audio and blocks metadata targets`() = testApplication {
+        // 路由层判据：前面的单测只到 EdgeTtsService，这里是真正从 HTTP 入口进来的那一层——
+        // JSON 解析、engine 分支、附加头转发、Content-Type 透传、地址策略拒绝，全都要成立。
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val audio = "route-layer-mp3-payload".toByteArray(StandardCharsets.UTF_8)
+        val seen = ConcurrentHashMap<String, String>()
+        server.createContext("/tts") { exchange ->
+            seen["authorization"] = exchange.requestHeaders.getFirst("Authorization") ?: ""
+            seen["query"] = exchange.requestURI.rawQuery ?: ""
+            if (seen["authorization"] != "Bearer route-key") {
+                exchange.sendResponseHeaders(401, 0)
+                exchange.close()
+                return@createContext
+            }
+            exchange.responseHeaders.add("Content-Type", "audio/mpeg; charset=binary")
+            exchange.sendResponseHeaders(200, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        server.start()
+
+        val dbPath = Files.createTempFile("legado-tts-route", ".sqlite").toString()
+        val tempDir = Files.createTempDirectory("legado-tts-route-covers")
+        try {
+            val config = ServerConfig(
+                host = "0.0.0.0", port = 8080, databasePath = dbPath, allowExternalBind = true,
+                coverCacheDirectory = tempDir
+            )
+            application {
+                legadoApplication(config)
+                monitor.subscribe(io.ktor.server.application.ApplicationStopped) {
+                    runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+                    runCatching { tempDir.toFile().deleteRecursively() }
+                }
+            }
+            val client = createClient {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            }
+
+            val resp = client.post("/api/tts/speak") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    TtsSpeakRequest(
+                        text = "路由层冒烟",
+                        engine = "custom",
+                        customUrl = "http://127.0.0.1:${server.address.port}/tts?text={{speakText}}",
+                        customHeader = """{"Authorization":"Bearer route-key"}""",
+                    )
+                )
+            }
+            assertEquals(HttpStatusCode.OK, resp.status)
+            assertTrue(
+                "路由应把上游 Content-Type 原样带回，实际 ${resp.headers[HttpHeaders.ContentType]}",
+                resp.headers[HttpHeaders.ContentType]?.startsWith("audio/mpeg") == true,
+            )
+            assertArrayEquals(audio, resp.body<ByteArray>())
+            assertEquals("Bearer route-key", seen["authorization"])
+            assertTrue("{{speakText}} 未被替换，实际 query=${seen["query"]}", seen["query"]?.contains("text=") == true)
+            assertFalse("原文不应原样出现在 query 中", seen["query"]!!.contains("路由层冒烟"))
+
+            // 同一个入口再打一次元数据地址：必须在发请求之前拒掉，返回 tts_failed 而不是超时或放行。
+            val blocked = client.post("/api/tts/speak") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    TtsSpeakRequest(
+                        text = "元数据探测",
+                        engine = "custom",
+                        customUrl = "http://169.254.169.254/latest/meta-data",
+                    )
+                )
+            }
+            assertEquals(HttpStatusCode.InternalServerError, blocked.status)
+            val blockedBody = blocked.bodyAsText()
+            assertTrue("应带明确拒绝原因，实际 $blockedBody", blockedBody.contains("拒绝访问"))
+        } finally {
+            server.stop(0)
+            runCatching { Files.deleteIfExists(Path.of(dbPath)) }
+            runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
 }

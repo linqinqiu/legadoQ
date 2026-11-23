@@ -295,3 +295,15 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 2. `E2EScenariosTest > scenario 1` 的「Instant book open < 300ms」—— 默认并行度下的计时抖动，单类复跑与 `--max-workers=2` 全量均通过，与 2026-11-11 满负载假红同性质。
 
 **构建环境事实**：本机 Node **v24.18.0**（`product/.nvmrc` 要求 22，本机无 nvm），esbuild **0.25.12**。默认 `vite build` 在 transform 输入 >1 MiB 时会写临时文件，删除报 `Access is denied`，表现为 `[vite:esbuild-transpile] remove ... Access is denied`；提权、改 `TEMP/TMP` 均无效。`vite build --target esnext --minify terser` 可稳定出包（仅跳过语法降级，仍压缩），故 `web:build:fallback` 与 `LEGADO_WEB_BUILD=fallback` 作为本机兜底；CI/发布仍用默认 `build`。
+
+---
+
+## 11. 2026-11-23 复跑（自定义 TTS 路由层判据）
+
+> 本节采集于 `c28895a` 之上未提交的路由层测试改动。**现行数字以本节为准**；§10 的 1,028 项是加该判据之前的快照，不回改。
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| **后端测试实跑** | **1,029 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 5m 28s`；`test-results/test/*.xml` 求和 |
+
+`EdgeTtsTest` 新增 `speak route serves custom tts audio and blocks metadata targets`：真实 `testApplication` + 本机 `HttpServer`，从 `/api/tts/speak` 入口验证 `engine=custom` 分支——`Authorization` 附加头转发、`{{speakText}}` 替换、上游 `Content-Type` 透传、字节流原样返回；同一入口对 `169.254.169.254` 在发请求前拒绝并返回 `tts_failed`。此前这条链路只有 `EdgeTtsService` 服务层单测，路由层没有判据。
