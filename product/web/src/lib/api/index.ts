@@ -14,6 +14,7 @@
  */
 
 import { request } from './client'
+import { withTokenQuery } from '../accessToken'
 import { sources } from './domains/sources'
 import { cookies } from './domains/sources'
 import { sourceLogin } from './domains/sources'
@@ -95,7 +96,7 @@ export function streamSearch(
   onClose: () => void,
 ): WebSocket {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const socket = new WebSocket(`${protocol}//${location.host}/api/search/stream`)
+  const socket = new WebSocket(withTokenQuery(`${protocol}//${location.host}/api/search/stream`))
   let reported = false
   socket.addEventListener('open', () =>
     queueMicrotask(() => {

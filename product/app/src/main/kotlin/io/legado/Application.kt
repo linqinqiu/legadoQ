@@ -23,8 +23,10 @@ import io.legado.data.Database
 import io.legado.data.DbSnapshot
 import io.legado.data.MentionsWarmer
 import io.legado.data.getCookieForUrl
+import io.legado.http.AccessTokenGate
 import io.legado.http.BodyLimits
 import io.legado.http.PayloadTooLargeException
+import io.legado.http.UnauthorizedException
 import io.legado.http.RequestBodyLimit
 import io.legado.http.SameOriginWriteGate
 import io.legado.ops.ServerIdentity
@@ -257,6 +259,11 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
         exception<PayloadTooLargeException> { call, cause ->
             call.respond(HttpStatusCode.PayloadTooLarge, ApiError(cause.errorCode, cause.message ?: "请求体过大"))
         }
+        // 可选 token 鉴权失败（S3-B）：非回环来源缺 bearer/query token。不加 WWW-Authenticate，
+        // 否则浏览器会弹原生 Basic 认证框；这个服务是 SPA，401 由前端 fetch 封装识别并提示。
+        exception<UnauthorizedException> { call, _ ->
+            call.respond(HttpStatusCode.Unauthorized, ApiError("unauthorized", "需要访问令牌"))
+        }
         // 请求体解析失败是客户端错误。没有这几条时它落进下面的 Throwable 分支 → 500 + 整段堆栈刷日志。
         exception<BadRequestException> { call, cause ->
             // S2c chunked 流式闸的超限异常也会落到这条：receive pipeline 边读边计数，超限抛的
@@ -301,6 +308,13 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     // 在 receive pipeline 的 BeforeReceive hook 边读边计拦无声明长度的 chunked 大 body；两者都抛
     // PayloadTooLargeException，由 StatusPages 转 413（错误码按路径分档，与 S2b 一致）。
     // 装在 StatusPages 之后，异常才会被上面那条 handler 接走。
+    // 可选 token 鉴权闸（S3-B）：config.accessToken 未设时是空操作；设了则非回环来源须带
+    // Bearer 头或 ?token=。装在 StatusPages 之后让 401 被接走；装在 body 闸之前让无凭据请求
+    // 连 body 都不读。回环判定注入的是 ServerConfig.isLoopbackRemote（判据可换成假判定）。
+    install(AccessTokenGate) {
+        token = config.accessToken
+        isLoopback = ServerConfig::isLoopbackRemote
+    }
     install(RequestBodyLimit)
     // 同源写门：全局拦所有写方法，路由不必再各自记得调一次（只读 POST 走插件内的白名单）。
     install(SameOriginWriteGate)

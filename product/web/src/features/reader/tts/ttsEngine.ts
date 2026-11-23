@@ -1,4 +1,5 @@
 import { api, TtsSessionChunkRequest } from '../../../lib/api'
+import { withTokenQuery } from '../../../lib/accessToken'
 import { effectiveTtsVoice, ReaderSettings, ttsSessionKey } from '../settingsPanel/readerSettings'
 
 export type TtsPlayState = 'idle' | 'buffering' | 'playing' | 'paused'
@@ -452,7 +453,8 @@ export class HttpAudioTtsEngine implements ITtsEngine {
   }
 
   private openEvents(url: string, generation: number): EventSource {
-    const source = new EventSource(url)
+    // EventSource 原生不能自定义请求头，S3-B 的 token 只能走 query。
+    const source = new EventSource(withTokenQuery(url))
     for (const type of ['chunk_end', 'tts_error', 'stopped']) {
       source.addEventListener(type, event => {
         if (generation !== this.generation) return

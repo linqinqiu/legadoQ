@@ -1,5 +1,6 @@
 /** 搜索、发现、书籍详情、目录、正文相关 API。 */
 import { request } from '../client'
+import { withTokenQuery } from '../../accessToken'
 import { putOfflineChapter, getOfflineChapter } from '../../offlineStorage'
 import type {
   BookDetails,
@@ -36,7 +37,7 @@ export const search = {
     onClose: () => void,
   ): WebSocket => {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const socket = new WebSocket(`${protocol}//${location.host}/api/search/stream`)
+    const socket = new WebSocket(withTokenQuery(`${protocol}//${location.host}/api/search/stream`))
     let reported = false
     socket.addEventListener('open', () => {
       queueMicrotask(() => {

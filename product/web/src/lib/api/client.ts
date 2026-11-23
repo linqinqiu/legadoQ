@@ -1,8 +1,13 @@
 /** 统一 fetch 基础客户端：所有域 API 客户端复用此 request。 */
 
 import { fetchWithMetrics } from '../performance'
+import { clearAccessToken, getAccessToken, signalUnauthorized } from '../accessToken'
 
-/** 不设身份：写操作由服务端的同源闸门把关，浏览器自己带 Origin，这里不注入任何令牌。 */
+/**
+ * 写操作仍由服务端的同源闸门把关（浏览器自带 Origin）。这里唯一注入的是可选的对外访问
+ * token（S3-B）：服务端未设 `LEGADO_ACCESS_TOKEN` 时 getAccessToken() 为 null，一个头都不加，
+ * 行为与历史逐字节一致；设了且当前是非回环访问时，服务端会校验这个 Bearer 头。
+ */
 
 type RequestOptions = { timeoutMs?: number }
 
@@ -22,12 +27,22 @@ async function requestResponse(
   if (init.body && !(typeof FormData !== 'undefined' && init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
+  // S3-B：本地存了 token 就带上；没存（单机默认）一个头都不加。
+  const token = getAccessToken()
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
   // 走性能监控版 fetch：慢请求（>300ms）会进 collector，`__legadoPerf.report()` 能查。
   const response = await fetchWithMetrics(
     path,
     { ...init, headers, credentials: 'same-origin' },
     opts.timeoutMs,
   )
+  if (response.status === 401) {
+    // token 缺失/失效：清掉可能过期的旧值并弹输入框（复用已有 token 却仍 401 说明它错了）。
+    clearAccessToken()
+    signalUnauthorized()
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string }
     throw new Error(body.message ?? '请求失败')

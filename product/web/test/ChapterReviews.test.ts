@@ -133,7 +133,7 @@ test('可能还有下一页时给「再取一页」，且不承诺是最后一�
 test('选中浮层里多了一个「段评」入口，其余四个动作照旧', () => {
   const html = renderToStaticMarkup(React.createElement(MarkingMenu, {
     x: 10, y: 20,
-    onHighlight: () => {}, onNote: () => {}, onCopy: () => {}, onAi: () => {}, onReviews: () => {}, onDismiss: () => {},
+    onHighlight: () => {}, onNote: () => {}, onCopy: () => {}, onReviews: () => {}, onDismiss: () => {},
   }))
   assert.match(html, /aria-label="段评"/)
   for (const label of ['划线', '笔记', '复制', '段评']) {

@@ -1,5 +1,6 @@
 /** 书源、Cookie、登录、内置浏览器、发现页相关 API。 */
 import { request } from '../client'
+import { withTokenQuery } from '../../accessToken'
 import type {
   BatchSourceAction,
   BatchSourceResponse,
@@ -79,11 +80,13 @@ export const sources = {
       method: 'POST',
       body: JSON.stringify(draftJson ? { json: draftJson } : {}),
     }),
-  /** 分阶段调试是 SSE 流，交给 EventSource 自己开，这里只负责拼地址。 */
+  /** 分阶段调试是 SSE 流，交给 EventSource 自己开，这里只负责拼地址（含 S3-B 的 ?token=）。 */
   debugStreamUrl: (id: string, keyword: string, bookUrl?: string, chapterIndex?: number) =>
-    `/api/sources/${encodeURIComponent(id)}/debug?keyword=${encodeURIComponent(keyword)}` +
-    (bookUrl ? `&bookUrl=${encodeURIComponent(bookUrl)}` : '') +
-    (chapterIndex ? `&chapterIndex=${chapterIndex}` : ''),
+    withTokenQuery(
+      `/api/sources/${encodeURIComponent(id)}/debug?keyword=${encodeURIComponent(keyword)}` +
+      (bookUrl ? `&bookUrl=${encodeURIComponent(bookUrl)}` : '') +
+      (chapterIndex ? `&chapterIndex=${chapterIndex}` : ''),
+    ),
 }
 
 /** 登录与凭据。 */

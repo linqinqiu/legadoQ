@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { api, BookDetails, BookshelfItem, SearchResult, SourceSummary } from './lib/api'
+import { getAccessToken } from './lib/accessToken'
 import { performanceMonitor } from './lib/performance' // 性能监控初始化
 import { reportBrand } from './lib/brandStore'
 import { ContextMenuLayer } from './components/ContextMenu'
@@ -15,6 +16,7 @@ import { getWallpaperSnapshot, resolveWallpaperImageUrl, subscribeWallpaper } fr
 import { hydrateUiPrefs } from './lib/uiPrefs'
 import { AppHeader } from './app/AppHeader'
 import { FirstRunAgreement } from './components/FirstRunAgreement'
+import { AccessTokenPrompt } from './components/AccessTokenPrompt'
 import { SkinModal } from './features/reader/settingsPanel/SkinModal'
 import { WallpaperModal } from './features/settings/WallpaperModal'
 import { ServerPortModal } from './components/ServerPortModal'
@@ -370,7 +372,16 @@ function App() {
       const controller = new AbortController()
       const probeTimeout = window.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
       try {
-        const response = await fetch('/healthz', { signal: controller.signal })
+        const savedToken = getAccessToken()
+        const response = await fetch('/healthz', {
+          signal: controller.signal,
+          headers: savedToken ? { Authorization: `Bearer ${savedToken}` } : undefined,
+        })
+        // 401 = 服务端要 token 而这次没带对：别耗满 60s 重试，直接进界面让 API 请求弹 token 输入框。
+        if (response.status === 401) {
+          setReady(true)
+          return
+        }
         if (!response.ok) throw new Error(`healthz ${response.status}`)
         // 版本号只认服务端报的这一个来源：Gradle 写进清单、/healthz 报出来、界面显示它。
         // 三处同一个数，不会出现"改了 build.gradle 忘了改界面"的假版本号。
@@ -698,6 +709,8 @@ function App() {
       <ContextMenuLayer />
       <PwaManager />
       <FirstRunAgreement />
+      {/* S3-B：服务端设了访问令牌、非回环访问缺/错 token 时弹输入框（单机用户永不出现）。 */}
+      <AccessTokenPrompt />
       <AppHeader
         page={page}
         settings={settings}

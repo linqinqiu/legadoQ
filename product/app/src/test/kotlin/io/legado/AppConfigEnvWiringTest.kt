@@ -53,6 +53,7 @@ class AppConfigEnvWiringTest {
         Binding("LEGADO_AI_ENABLED") { AppConfig.aiEnabled.toString() },
         Binding("LEGADO_AI_ALLOW_REMOVING_BUILTIN_TOOLS") { AppConfig.aiAllowRemovingBuiltinTools.toString() },
         Binding("LEGADO_ALLOW_EXTERNAL_BIND") { AppConfig.allowExternalBind.toString() },
+        Binding("LEGADO_ACCESS_TOKEN") { AppConfig.accessToken ?: "" },
         Binding("LEGADO_AI_ALLOW_LOOPBACK_BASEURL") { AppConfig.aiAllowLoopbackBaseUrl.toString() },
         Binding("LEGADO_AI_FORCE_TEXT_FALLBACK") { AppConfig.aiForceTextFallback.toString() },
         Binding("LEGADO_AI_NEVER_DOWNGRADE_PROTOCOL") { AppConfig.aiNeverDowngradeProtocol.toString() },

@@ -24,6 +24,12 @@ data class ServerConfig(
      */
     val allowExternalBind: Boolean = AppConfig.allowExternalBind,
     /**
+     * 可选的对外访问 token。null / 空 = 不鉴权（历史默认行为）；设了则非回环来源须带此 token。
+     * 放进配置对象而非插件现读环境变量：测试要能显式声明"我就是验设了 token 时的行为"。
+     * 见 [AppConfig.accessToken] 与 http/AccessTokenGate.kt。
+     */
+    val accessToken: String? = AppConfig.accessToken,
+    /**
      * AI 能力面是否启用（默认 false，见 [AppConfig.aiEnabled]）。关着时不注册 `/api/agent` 那一组、
      * 界面也没有对话入口；测试直接构造 `ServerConfig(...)` 时默认 true，保持既有用例不动。
      */
@@ -56,6 +62,7 @@ data class ServerConfig(
                 nextDirectory = Path.of(env["LEGADO_NEXT_DIR"] ?: "next"),
                 homeDirectory = Path.of(env["LEGADO_HOME"] ?: ".").toAbsolutePath(),
                 allowExternalBind = AppConfig.allowExternalBind,
+                accessToken = AppConfig.accessToken,
                 aiEnabled = AppConfig.aiEnabled,
             )
         }

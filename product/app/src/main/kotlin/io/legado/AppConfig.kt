@@ -225,6 +225,21 @@ object AppConfig {
         get() = flag("LEGADO_ALLOW_EXTERNAL_BIND")
 
     /**
+     * 可选的对外访问 token（默认未设 = 服务完全不设身份，行为与历史版本逐字节一致）。
+     *
+     * 设了之后：来源不是回环的请求必须带 `Authorization: Bearer <token>` 或 `?token=<token>`；
+     * 回环来源（本机界面、容器内自连）豁免。这是「不设身份」产品决策的增量补充而非推翻：
+     * 单机用户永远无感，只有显式要对外提供服务的人才承担鉴权义务。
+     *
+     * 只从环境变量读，不自动生成、不落盘（负责人 2026-11-23 决策取"只认环境变量"）：
+     * 与 `LEGADO_ALLOW_EXTERNAL_BIND` 并列，`AppConfigEnvWiringTest` 可断言这个键被读过。
+     * 未设/空串都当作未设。token 值不写进任何日志（S1 的 LogRedaction 会擦 Authorization 与 ?token=）。
+     */
+    val accessToken: String?
+        get() = record("LEGADO_ACCESS_TOKEN", env["LEGADO_ACCESS_TOKEN"]?.trim() ?: "")
+            .takeIf { it.isNotEmpty() }
+
+    /**
      * 是否允许 AI 连接的 `baseUrl` 指向**回环地址**（默认 false）。
      *
      * 为什么需要这个口子：这台软件只跑在本机，而想接的模型也常常就在本机 ——
