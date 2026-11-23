@@ -9,6 +9,8 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.http.content.*
+import io.legado.http.BodyLimits
+import io.legado.http.readBounded
 import io.legado.http.requireSameOriginWrite
 import io.legado.model.Brand
 import io.legado.model.ApiError
@@ -197,20 +199,23 @@ fun Route.staticWeb(homeDirectory: Path = Path.of(".")) {
         val multipart = runCatching { call.receiveMultipart() }.getOrElse {
             call.respond(HttpStatusCode.BadRequest, ApiError("invalid_request", "要 multipart/form-data，字段名 file")); return@post
         }
-        // 形状照 `BackupRoutes` 那一条：先收成 Pair，循环外再判（那里还漏了 import
-        // `io.ktor.http.content.streamProvider` —— 它是扩展函数，不跟着 import 就报 Unresolved）。
         var upload: Pair<String, ByteArray>? = null
         multipart.forEachPart { part ->
-            val file = part as? PartData.FileItem
-            if (file != null && upload == null) {
-                upload = (file.originalFileName ?: "icon") to file.streamProvider().readBytes()
+            try {
+                val file = part as? PartData.FileItem
+                if (file != null && upload == null) {
+                    // 边读边判：超限在读取过程中就抛 PayloadTooLargeException（→ 413），
+                    // 与备份导入同一把尺子、同一个错误码口径。
+                    upload = (file.originalFileName ?: "icon") to
+                        readBounded(file.streamProvider(), BodyLimits.ICON_BYTES, "icon_too_large", "图标")
+                }
+            } finally {
+                part.dispose()
             }
-            part.dispose()
         }
         val raw = upload?.second
         val reject: String? = when {
             raw == null || raw.isEmpty() -> "没收到图标文件"
-            raw.size.toLong() > BrandStore.MAX_ICON_BYTES -> "图标太大（上限 ${BrandStore.MAX_ICON_BYTES / 1024 / 1024} MB）"
             // 只按魔数认图、不收 SVG：品牌图标会被浏览器当"本站自己的资源"取用，
             // 放进一张能带脚本的 SVG 等于自己开一条同源脚本执行面
             // （与 CoverCache 拒 image/svg+xml、MediaRoutes 把同源 SVG 降级同一纪律）。

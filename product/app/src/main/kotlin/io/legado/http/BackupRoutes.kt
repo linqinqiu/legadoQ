@@ -117,27 +117,30 @@ fun Route.backupRoutes(
             var password: String? = null
             var upload: Pair<String, ByteArray>? = null
             multipart.forEachPart { part ->
-                when (part) {
-                    is PartData.FormItem -> if (part.name == "password") password = part.value
-                    is PartData.FileItem -> if (upload == null) upload = (part.originalFileName ?: "backup.zip") to part.streamProvider().readBytes()
-                    else -> {}
+                try {
+                    when (part) {
+                        is PartData.FormItem -> if (part.name == "password") password = part.value
+                        // 边读边判：超限在读取过程中就抛 PayloadTooLargeException（→ 413），
+                        // 不再先 readBytes() 把 10GB 吃满内存再回头看大小。
+                        is PartData.FileItem -> if (upload == null) {
+                            upload = (part.originalFileName ?: "backup.zip") to
+                                readBounded(part.streamProvider(), BodyLimits.BACKUP_BYTES, "backup_too_large", "备份包")
+                        }
+                        else -> {}
+                    }
+                } finally {
+                    // 超限抛异常时也要 dispose，避免 multipart 临时文件残留（判据：失败后 data/ 无残留）。
+                    part.dispose()
                 }
-                part.dispose()
             }
             val (filename, bytes) = upload
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ApiError("no_file", "没有收到备份包"))
             if (bytes.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", "备份包是空的"))
             /*
              * 不再按扩展名挑：兄弟项目与分享链接常见的裸 JSON（书源数组、合并导出）也要能导，
-             * 而转存工具经常把 zip 改成 .json。容器由 BackupImporter 按内容（zip 头 PK）判别，
-             * 这里只限制大小，避免把超大文件整个读进内存。
+             * 而转存工具经常把 zip 改成 .json。容器由 BackupImporter 按内容（zip 头 PK）判别。
+             * 64MB 原始字节上限已由 readBounded 在读取过程中执行，超限直接 413，不进导入器。
              */
-            if (bytes.size > MAX_BACKUP_BYTES) {
-                return@post call.respond(
-                    HttpStatusCode.PayloadTooLarge,
-                    ApiError("backup_too_large", "备份包超过 ${MAX_BACKUP_BYTES / 1024 / 1024} MiB，已拒绝"),
-                )
-            }
             val staged = Files.createTempFile("legado-backup-", ".bin")
             try {
                 Files.write(staged, bytes)
@@ -164,9 +167,6 @@ fun Route.backupRoutes(
             }
         }
 }
-
-/** 上传上限按原始字节算；zip 解包后的限额仍由 `BackupImporter` 按条目把关。 */
-private const val MAX_BACKUP_BYTES = 64L * 1024 * 1024
 
 /**
  * 导出包统一回包：定 `Content-Disposition`，再把 body 交给各域自己写 zip。

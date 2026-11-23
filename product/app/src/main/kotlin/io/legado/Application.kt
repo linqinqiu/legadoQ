@@ -23,6 +23,8 @@ import io.legado.data.Database
 import io.legado.data.DbSnapshot
 import io.legado.data.MentionsWarmer
 import io.legado.data.getCookieForUrl
+import io.legado.http.PayloadTooLargeException
+import io.legado.http.RequestBodyLimit
 import io.legado.http.SameOriginWriteGate
 import io.legado.ops.ServerIdentity
 import io.legado.http.StrictJsonConverter
@@ -242,6 +244,11 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     }
     install(WebSockets)
     install(StatusPages) {
+        // 请求体超限（全局声明长度闸 + multipart 流式闸）。抛异常而非直接 respond：
+        // onCall 不阻断 pipeline，只有抛异常才会让路由处理器根本不跑（body 一个字节都不读）。
+        exception<PayloadTooLargeException> { call, cause ->
+            call.respond(HttpStatusCode.PayloadTooLarge, ApiError(cause.errorCode, cause.message ?: "请求体过大"))
+        }
         // 请求体解析失败是客户端错误。没有这几条时它落进下面的 Throwable 分支 → 500 + 整段堆栈刷日志。
         exception<BadRequestException> { call, cause ->
             // Ktor 的 ContentNegotiation 会把转换阶段抛出的任何异常包成
@@ -269,6 +276,9 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
             call.respond(HttpStatusCode.InternalServerError, ApiError("internal_error", "服务器内部错误"))
         }
     }
+    // 请求体声明长度闸：全局拦 POST/PUT/PATCH 的超大 Content-Length，超限在 onCall 抛异常 → 上面的 413。
+    // 装在 StatusPages 之后，异常才会被那条专门 handler 接走（catch-all 在更下面）。
+    install(RequestBodyLimit)
     // 同源写门：全局拦所有写方法，路由不必再各自记得调一次（只读 POST 走插件内的白名单）。
     install(SameOriginWriteGate)
     routing {

@@ -233,7 +233,7 @@ flowchart TB
 | 目录 | 职责 | 关键文件 |
 |---|---|---|
 | `product/app/src/main/kotlin/io/legado/` | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`AppConfig.kt`、`StaticWeb.kt`、`BuildInfo.kt`、`DesktopLauncher.kt` |
-| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、目录生成 | `Routes.kt` 装配点 + 15 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`PrefsRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`）、`Guard.kt`、`RouteCatalog.kt` |
+| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、目录生成 | `Routes.kt` 装配点 + 15 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`PrefsRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`）、`Guard.kt`、`BodyLimit.kt`（请求体上限）、`RouteCatalog.kt` |
 | `product/app/src/main/kotlin/io/legado/rules/` | 规则解析与求值 | `RuleRunner.kt`、`RuleSplit.kt`、`RuleValue.kt`、`RuleNodeSelection.kt`、`ResponseBody.kt`、`JsSandbox.kt`、`JavaPackages.kt` |
 | `product/app/src/main/kotlin/io/legado/source/` | 书源、登录、体检、调试 | `SourceCodec.kt`、`SourceHealth.kt`、`SourceDebugger.kt`、`WebViewProxy.kt`、`ExternalBrowserLogin.kt` |
 | `product/app/src/main/kotlin/io/legado/content/` | 正文净化 | `ContentPipeline.kt`、`ContentProcessor.kt`、`LooseJson.kt` |
@@ -283,6 +283,7 @@ flowchart TB
 ┌──────────────────────────────────────────────────────────────┐
 │ 单个 JVM 进程（Ktor CIO 3.4.3）                              │
 │                                                              │
+│  RequestBodyLimit（全局插件，声明长度超限 → 413）            │
 │  SameOriginWriteGate（全局插件，拦跨站写）                    │
 │  ─────────────────────────────────────────────────────────  │
 │  Routes.kt 装配点 + 15 个域路由文件（165 端点 / 19 组）        │
@@ -319,8 +320,9 @@ flowchart TB
 | 7 | `AgentModule.connect(...)` | 进程内 AI 网关，**不开端口、不注册路由**；注入的是与 HTTP 端点**同一份**服务实例 |
 | 8 | 订阅 `ApplicationStarted`，挂后台任务 | 端口就绪**不等**订阅同步 / 缓存续跑 / 封面回收，避免启动被外部网络拖住 |
 | 9 | `install(ContentNegotiation / WebSockets / StatusPages)` | 序列化、WS、异常映射 |
-| 10 | `install(SameOriginWriteGate)` | 全局写门，必须在 `routing {}` 之前 |
-| 11 | `routing { get("/healthz"); apiRoutes(...) }` | 全部业务端点 |
+| 10 | `install(RequestBodyLimit)` | 请求体声明长度闸，装在 StatusPages 之后（异常才被 413 handler 接走） |
+| 11 | `install(SameOriginWriteGate)` | 全局写门，必须在 `routing {}` 之前 |
+| 12 | `routing { get("/healthz"); apiRoutes(...) }` | 全部业务端点 |
 
 **线程模型**：Ktor CIO 协程调度；阻塞式 I/O（SQLite、文件、`java.net.http`）用 `withContext(Dispatchers.IO)` 切走；缓存任务用协程 + `Semaphore` 限并发；前端排版用 Web Worker（另一条线，见 §6）。
 
@@ -726,7 +728,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 非文本与本地书 | `localbook/LocalBookParser.kt`、`localbook/TxtTocRule.kt` | TXT / EPUB 解析入库、分章规则表与打分 | 本地书走虚拟书源 `loc_book` + `local://<id>`，与网络书同一套表，不另开接口；解压有上限 |
 | 备份 | `backup/BackupImporter.kt`、`backup/LegacyBackup.kt` | 手机备份包按需流式读取 | 纯内存流式，不落盘；没有原生归宿的个性化条目原样收下（`KEEP_NAMES`），不整包拒收 |
 | 体检与登录 | `source/SourceHealth.kt`、`source/WebViewProxy.kt`、`source/ExternalBrowserLogin.kt`、`source/SourceDebugger.kt` | 分档体检、内置浏览器代理、凭据回捞 | 体检**在读到 searchUrl 为空时就定档**，一次请求都不发 |
-| 守护与日志 | `http/Guard.kt`、`ops/LogService.kt`、`ops/LogRedaction.kt`、`ops/UpdateCheck.kt` | 同源闸门、日志落库（凭据在出口擦除）、检查更新 | 闸门比的是 `ServerIdentity`（绑定 host/port/回环/私有 IP 字面量），不是 Origin 与 Host 互比 |
+| 守护与日志 | `http/Guard.kt`、`http/BodyLimit.kt`、`ops/LogService.kt`、`ops/LogRedaction.kt`、`ops/UpdateCheck.kt` | 同源闸门、请求体两道闸（声明 + 流式）、日志落库（凭据在出口擦除）、检查更新 | 闸门比的是 `ServerIdentity`（绑定 host/port/回环/私有 IP 字面量），不是 Origin 与 Host 互比 |
 
 ## 3. 数据模型
 
