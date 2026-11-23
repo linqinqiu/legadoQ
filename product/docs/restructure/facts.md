@@ -298,12 +298,18 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 ---
 
-## 11. 2026-11-23 复跑（自定义 TTS 路由层判据）
+## 11. 2026-11-23 复跑（自定义 TTS 路由层判据 + 出站健壮性）
 
-> 本节采集于 `c28895a` 之上未提交的路由层测试改动。**现行数字以本节为准**；§10 的 1,028 项是加该判据之前的快照，不回改。
+> 本节采集于 `c28895a` 之上未提交的路由层测试与出站健壮性改动（同日第二次复跑）。**现行数字以本节为准**；§10 的 1,028 项是更早的快照，不回改。
 
 | 项 | 数值 | 命令/口径 |
 |---|---|---|
-| **后端测试实跑** | **1,029 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 5m 28s`；`test-results/test/*.xml` 求和 |
+| **后端测试实跑** | **1,030 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 9m 13s`；`test-results/test/*.xml` 求和 |
 
-`EdgeTtsTest` 新增 `speak route serves custom tts audio and blocks metadata targets`：真实 `testApplication` + 本机 `HttpServer`，从 `/api/tts/speak` 入口验证 `engine=custom` 分支——`Authorization` 附加头转发、`{{speakText}}` 替换、上游 `Content-Type` 透传、字节流原样返回；同一入口对 `169.254.169.254` 在发请求前拒绝并返回 `tts_failed`。此前这条链路只有 `EdgeTtsService` 服务层单测，路由层没有判据。
+`EdgeTtsTest` 新增 `speak route serves custom tts audio and blocks metadata targets`：真实 `testApplication` + 本机 `HttpServer`，从 `/api/tts/speak` 入口验证 `engine=custom` 分支——`Authorization` 附加头转发、`{{speakText}}` 替换、上游 `Content-Type` 透传、字节流原样返回；同一入口对 `169.254.169.254` 在发请求前拒绝并返回 400 `tts_invalid_request`。此前这条链路只有 `EdgeTtsService` 服务层单测，路由层没有判据。
+
+同日第二条 `custom tts reports upstream errors and caps response size while reading` 与路由错误语义调整一并落地：
+
+- 一次性 `/api/tts/speak` 的自定义分支此前**不检查上游状态码**，401/500 的错误 JSON 会被当音频回 200（用户侧表现为“合成成功但没声音”）；现在非 2xx 一律报错。
+- 8MB 上限改为**边读边判**（`BodyHandlers.ofInputStream()` + 16KB 缓冲），不再先 `ofByteArray()` 读完再判——超大响应不会先把内存吃满。
+- 错误语义向 `MediaRoutes`/`SearchRoutes` 的既有约定对齐：调用方输入问题（地址策略拒绝、响应超限）→ **400** `tts_invalid_request`；上游失败 → **502** `tts_failed`；不再是所有异常统一 500。

@@ -218,6 +218,12 @@ class EdgeTtsTest {
             exchange.sendResponseHeaders(200, audio.size.toLong())
             exchange.responseBody.use { it.write(audio) }
         }
+        server.createContext("/unauthorized") { exchange ->
+            val body = """{"error":"bad key"}""".toByteArray(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(401, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
         server.start()
 
         val dbPath = Files.createTempFile("legado-tts-route", ".sqlite").toString()
@@ -259,7 +265,7 @@ class EdgeTtsTest {
             assertTrue("{{speakText}} 未被替换，实际 query=${seen["query"]}", seen["query"]?.contains("text=") == true)
             assertFalse("原文不应原样出现在 query 中", seen["query"]!!.contains("路由层冒烟"))
 
-            // 同一个入口再打一次元数据地址：必须在发请求之前拒掉，返回 tts_failed 而不是超时或放行。
+            // 同一个入口再打一次元数据地址：必须在发请求之前拒掉，按输入错误报 400 而不是 500。
             val blocked = client.post("/api/tts/speak") {
                 contentType(ContentType.Application.Json)
                 setBody(
@@ -270,13 +276,80 @@ class EdgeTtsTest {
                     )
                 )
             }
-            assertEquals(HttpStatusCode.InternalServerError, blocked.status)
+            assertEquals(HttpStatusCode.BadRequest, blocked.status)
             val blockedBody = blocked.bodyAsText()
             assertTrue("应带明确拒绝原因，实际 $blockedBody", blockedBody.contains("拒绝访问"))
+            assertTrue("错误码应为 tts_invalid_request，实际 $blockedBody", blockedBody.contains("tts_invalid_request"))
+
+            // 上游自己失败（401）时不能再 200 把 JSON 当音频返回，走网关错误语义。
+            val upstream = client.post("/api/tts/speak") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    TtsSpeakRequest(
+                        text = "上游鉴权失败",
+                        engine = "custom",
+                        customUrl = "http://127.0.0.1:${server.address.port}/unauthorized",
+                    )
+                )
+            }
+            assertEquals(HttpStatusCode.BadGateway, upstream.status)
+            val upstreamBody = upstream.bodyAsText()
+            assertTrue("应带上游状态码，实际 $upstreamBody", upstreamBody.contains("HTTP 401"))
         } finally {
             server.stop(0)
             runCatching { Files.deleteIfExists(Path.of(dbPath)) }
             runCatching { tempDir.toFile().deleteRecursively() }
+        }
+    }
+
+    @Test
+    fun `custom tts reports upstream errors and caps response size while reading`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val json = """{"error":"bad key"}""".toByteArray(StandardCharsets.UTF_8)
+        server.createContext("/unauthorized") { exchange ->
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(401, json.size.toLong())
+            exchange.responseBody.use { it.write(json) }
+        }
+        server.createContext("/huge") { exchange ->
+            exchange.responseHeaders.add("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, 9L * 1024 * 1024)
+            val chunk = ByteArray(64 * 1024)
+            try {
+                exchange.responseBody.use { body -> repeat(9 * 16) { body.write(chunk) } }
+            } catch (_: java.io.IOException) {
+                // 客户端读满上限后主动断开，服务端写失败是预期结果
+            }
+        }
+        server.start()
+        try {
+            val service = EdgeTtsService(customClient = HttpClient.newHttpClient())
+
+            val unauthorized = runCatching {
+                service.synthesizeCustom(
+                    TtsSpeakRequest(
+                        text = "鉴权失败",
+                        engine = "custom",
+                        customUrl = "http://127.0.0.1:${server.address.port}/unauthorized",
+                    )
+                )
+            }.exceptionOrNull()
+            assertTrue("401 应报错而不是当音频返回，实际 $unauthorized", unauthorized is IllegalStateException)
+            assertTrue(unauthorized?.message?.contains("HTTP 401") == true)
+
+            val oversized = runCatching {
+                service.synthesizeCustom(
+                    TtsSpeakRequest(
+                        text = "超大响应",
+                        engine = "custom",
+                        customUrl = "http://127.0.0.1:${server.address.port}/huge",
+                    )
+                )
+            }.exceptionOrNull()
+            assertTrue("超过 8MB 应被拒，实际 $oversized", oversized is IllegalArgumentException)
+            assertTrue(oversized?.message?.contains("上限") == true)
+        } finally {
+            server.stop(0)
         }
     }
 }

@@ -378,8 +378,8 @@ class EdgeTtsService(
     /**
      * 自定义 TTS 的附加请求头。界面上以前没有这一栏，"第三方 TTS 基本都要一个 key"这条路是断的；
      * 补上入口的同时把口子收住：值或名字里带 CR/LF 的丢掉（那是请求走私与头注入的原料），
-     * `Host` / `Content-Length` 这类由 HttpClient 自己管理的字段丢掉（硬塞上去 JDK 客户端直接抛
-     * IllegalArgumentException，用户看到的是一句 500）。
+     * `Host` / `Content-Length` 这类由 HttpClient 自己管理的字段丢掉（硬塞上去 JDK 客户端会直接抛
+     * IllegalArgumentException，整条请求就废了）。
      */
     private fun customHeaders(raw: String?): List<Pair<String, String>> {
         val text = raw?.trim().orEmpty()
@@ -438,12 +438,28 @@ class EdgeTtsService(
                 rebuilt.GET()
             }
             rebuilt.build()
-        }, HttpResponse.BodyHandlers.ofByteArray())
+        }, HttpResponse.BodyHandlers.ofInputStream())
         assertSafeTtsTarget(response.uri())
-        val bytes = response.body()
-        require(bytes.size <= MAX_CUSTOM_TTS_BYTES) { "自定义 TTS 响应超过 ${MAX_CUSTOM_TTS_BYTES / 1024 / 1024}MB 上限" }
         val contentType = response.headers().firstValue("Content-Type").orElse("audio/mpeg")
-        return Pair(contentType, bytes)
+        response.body().use { input ->
+            // 上游失败必须报错。之前直接把 401/500 的响应体当音频回 200，
+            // 用户看到的是"合成成功但没声音"，比明确报错难查得多。
+            if (response.statusCode() !in 200..299) {
+                throw IllegalStateException("自定义 TTS 返回 HTTP ${response.statusCode()}")
+            }
+            // 边读边卡上限：先 ofByteArray() 读完再判，超大响应会先把内存吃满。
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                if (output.size() + read > MAX_CUSTOM_TTS_BYTES) {
+                    throw IllegalArgumentException("自定义 TTS 响应超过 ${MAX_CUSTOM_TTS_BYTES / 1024 / 1024}MB 上限")
+                }
+                output.write(buffer, 0, read)
+            }
+            return Pair(contentType, output.toByteArray())
+        }
     }
 
     fun synthesizeCustomStream(

@@ -120,11 +120,16 @@ fun Route.ttsRoutes(
                 try {
                     if (req.engine == "custom" && !req.customUrl.isNullOrBlank()) {
                         val (contentType, audioBytes) = edgeTts.synthesizeCustom(req)
-                        call.respondBytes(
-                            bytes = audioBytes,
-                            contentType = ContentType.parse(contentType),
-                            status = HttpStatusCode.OK,
-                        )
+                        // Content-Type 来自上游，解析失败是对方的问题，不能让整条请求变成 500 的"内部错误"。
+                        val parsedType = runCatching { ContentType.parse(contentType) }.getOrNull()
+                            ?: run {
+                                call.respond(
+                                    HttpStatusCode.BadGateway,
+                                    ApiError("tts_failed", "自定义 TTS 返回了无效的 Content-Type：$contentType"),
+                                )
+                                return@post
+                            }
+                        call.respondBytes(bytes = audioBytes, contentType = parsedType, status = HttpStatusCode.OK)
                     } else {
                         val audioBytes = edgeTts.synthesize(
                             text = text,
@@ -138,9 +143,13 @@ fun Route.ttsRoutes(
                             status = HttpStatusCode.OK,
                         )
                     }
+                } catch (e: IllegalArgumentException) {
+                    // 地址被策略拒绝、响应超限这类是调用方输入问题，报 400 才有可操作性。
+                    call.application.log.warn("TTS request rejected: {}", e.message)
+                    call.respond(HttpStatusCode.BadRequest, ApiError("tts_invalid_request", e.message ?: "语音合成请求无效"))
                 } catch (e: Exception) {
                     call.application.log.warn("TTS synthesis failed for voice={}: {}", req.voice, e.message)
-                    call.respond(HttpStatusCode.InternalServerError, ApiError("tts_failed", e.message ?: "语音合成失败"))
+                    call.respond(HttpStatusCode.BadGateway, ApiError("tts_failed", e.message ?: "语音合成失败"))
                 }
             }
             get("/speak") {
@@ -161,7 +170,7 @@ fun Route.ttsRoutes(
                     )
                 } catch (e: Exception) {
                     call.application.log.warn("TTS get speak failed: {}", e.message)
-                    call.respond(HttpStatusCode.InternalServerError, ApiError("tts_failed", e.message ?: "语音合成失败"))
+                    call.respond(HttpStatusCode.BadGateway, ApiError("tts_failed", e.message ?: "语音合成失败"))
                 }
             }
         }
