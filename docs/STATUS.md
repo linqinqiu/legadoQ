@@ -123,7 +123,7 @@
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
 | Web 测试 | `web: npm test` | **1,118 项 / 0 失败**（2026-11-22 全量实测；`ChallengerEmpiricalStress` 曾因并行负载触发一次计时基准红，单文件与第二次全量均通过） |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-22 本轮实测，随 `build:fallback` 一起跑） |
-| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 最近一次实测（2026-11-09）：后端行 **70.04%**，前端行 **63.51%**；重跑 `npm run coverage` 取当次值 |
+| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **74.12%**（11,352/15,316；2026-11-23 随全量 `:app:test` 产出的 `jacocoTestReport`，其中 `tts` 73.37% = 595/811）；前端行 **63.51%**（2026-11-09 快照，本轮未重跑 `npm run coverage`） |
 | 端点文档一致 | `cd product && npm run docs:api-check` | 通过：145 条端点、18 个分组与文档一致（并核对本文与 ARCHITECTURE/ROADMAP 里手写的端点数） |
 | 更新日志 | `cd product && npm run changelog:check` | 通过：无待记录改动（自查至边界 `771b311`） |
 | 版本单一来源 | `cd product && npm run version:check` | 通过：8 处版本均为 **0.3.0**，build **56** |
@@ -211,7 +211,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 | 缺口 | 现状 | 影响 |
 |---|---|---|
 | ReaderScreen 未拆完 | 已拆出 TTS、目录（`ReaderCatalog`）、设置（`settingsPanel/`）、缓存状态与章节加载、笔记状态（`useReaderNotes`）、划线高亮（`NoteHighlights`）、正文画布（`ReaderBody`）、分页测量（`usePaginationMeasurement`）与跳转原语（`useReaderPositionJump`）；`ReaderScreen.tsx` 仍有 **2,346 行**，剩下的是跨模块状态编排与交互接线（段落点击 / 划词 / 图片放大 / 翻页落点） | 剩下这块是交互核心，拆它要先补交互判据，否则改坏了静态测试看不见 |
-| 后端覆盖率偏低的大包 | 2026-11-09 覆盖率快照：整体行覆盖 **70.04%**；最薄的是 `http`（2,388 行 49.3%）、`ai`（3,987 行 65.8%）、`tts`（601 行 56.6%） | `tts` 与 `data.db` 的纯逻辑部分已补到 56.6% / 89.8%；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
+| 后端覆盖率偏低的大包 | 2026-11-23 覆盖率快照（随全量 `:app:test`）：整体行覆盖 **74.12%**，`tts` 已从 2026-11-09 的 **56.6%**（601 行）升到 **73.37%**（811 行）；`http` / `ai` 仍是最薄的两块（旧快照 49.3% / 65.8%，本轮未单独复核） | `tts` 的纯逻辑与路由层已补判据；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
 | 书源宿主 API 与字段缺口 | `java.t2s`/`s2t` **已实现**（2026-11-16，`rules/ScriptConvert.kt` + `/dict/opencc.txt`，与前端「简繁转换」同一份 OpenCC 表；判据 `ScriptConvertTest` 6 项 + `JsScriptConvertBridgeTest` 3 项）；`preUpdateJs` 36 / `formatJs` 6 / `concurrentRate` 42 / `webJs` 8 条非空但零执行，现已在校验里逐项告警。（`globalThis.environment` 已实现，2cdf9d8） | 受影响的是具体源，不是整条链路；排序与证据见 `docs/research/研究-书源JS与字段缺口实测-2026-11-13.md` |
 | 图标小尺寸清晰度 | 512 插画细分多，16–24px 仍糊；ICO 尺寸声明已修（按档渲染 16/24/32/48/64/128/256） | 任务栏/托盘辨识度（要根治得换扁平标记，待定） |
 | 可观测性 | 解析/规则求值/出站抓取已有分阶段耗时与失败率（`GET /api/diagnostics` 的 `stages`，运行日志页可展开）；前端已接 `fetchWithMetrics` 与 `pagination_measure`，但只有控制台 `__legadoPerf.report()`，没有界面与持久化 | 界面卡顿能取到原始数据，但仍靠控制台手查，没形成产品化观测 |

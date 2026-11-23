@@ -305,6 +305,7 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 项 | 数值 | 命令/口径 |
 |---|---|---|
 | **后端测试实跑** | **1,030 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 9m 13s`；`test-results/test/*.xml` 求和 |
+| **后端行覆盖率** | **74.12%**（11,352/15,316）；`tts` **73.37%**（595/811） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；2026-11-09 旧快照是整体 70.04%、`tts` 56.6% |
 
 `EdgeTtsTest` 新增 `speak route serves custom tts audio and blocks metadata targets`：真实 `testApplication` + 本机 `HttpServer`，从 `/api/tts/speak` 入口验证 `engine=custom` 分支——`Authorization` 附加头转发、`{{speakText}}` 替换、上游 `Content-Type` 透传、字节流原样返回；同一入口对 `169.254.169.254` 在发请求前拒绝并返回 400 `tts_invalid_request`。此前这条链路只有 `EdgeTtsService` 服务层单测，路由层没有判据。
 
