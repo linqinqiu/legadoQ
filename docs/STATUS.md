@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-22 实测**：前端 **1,118 项全绿**，`tsc -b` 通过；**2026-11-23 实测**：后端 **1,034 项全绿**（145 个 suite，`--max-workers=2`）。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §12。
+> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-22 实测**：前端 **1,118 项全绿**，`tsc -b` 通过；**2026-11-23 实测**：后端 **1,041 项全绿**（146 个 suite，`--max-workers=2`）。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §12。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -105,7 +105,7 @@
 
 ## 4. 安全模型
 
-这台服务**不设身份**（无账号、无 token、无会话），安全边界靠四条：
+这台服务**不设身份**（无账号、无 token、无会话），安全边界靠五条：
 
 1. **只绑回环**：默认 `127.0.0.1:1234`，不对外监听。
 2. **同源写门（全局 Ktor 插件）**：所有 `POST/PUT/PATCH/DELETE` 统一拦截，`Origin` 必须是服务自己；不带 `Origin` 的本机客户端放行。两类显式例外：只读 POST 白名单、书源登录 Cookie 同步（自己判来源）。
@@ -113,17 +113,19 @@
 4. **一个默认关闭的开关**：AI 接内网/回环 baseURL 默认拒绝（`LEGADO_AI_ALLOW_LOOPBACK_BASEURL=1` 才放行，且仍硬拒打回服务自己）。
    （历史上还有一个 `LEGADO_PLUGIN_JAR_SCAN` 开关控制插件 jar 装载 —— **插件装载机制已整体移除**，该环境变量在代码里已不存在，不要再按它配置。）
 
+5. **日志出口脱敏**：`ops/LogRedaction` 在 `LogService` 落库/写文件/打 stdout **之前**按敏感键名擦除凭据——查询串里的 `token`/`key`/`sign`/`password`/`session`/`code` 等、`Authorization`/`Cookie`/`X-Api-Key` 头、裸 `Bearer`/`Basic`、URL 里的 `user:pass@`；`GET /api/logs` 读到的也是擦过的版本，`host`/`path`/`page` 等排障字段原样保留。
+
 ---
 
 ## 5. 质量门禁
 
 | 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **1,034 项 / 0 失败 / 0 跳过**（145 个 suite；2026-11-23 `--max-workers=2` 全量实测）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印；自定义 TTS 判据覆盖到路由层：`/api/tts/speak` 的 `Authorization` 转发、`{{speakText}}` 替换、`Content-Type` 透传、字节流原样返回，元数据地址发送前拒绝（400 `tts_invalid_request`），上游 401/500 不再被当音频回 200（502 `tts_failed`），8MB 上限边读边判，重定向上限改为“3 跳允许、第 4 跳拒绝”，跨源重定向不再重放自定义头（同源跳转保留），跟跳方法按 RFC 9110 归一（`303`/`301`/`302` 的 POST 降为 GET、不带 body，`307`/`308` 保留方法与 body）；服务层另有 CRLF 注入头与 `Host` 丢弃判据 |
+| 后端测试 | `npm test`（`gradlew :app:test`） | **1,041 项 / 0 失败 / 0 跳过**（146 个 suite；2026-11-23 `--max-workers=2` 全量实测）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印；自定义 TTS 判据覆盖到路由层：`/api/tts/speak` 的 `Authorization` 转发、`{{speakText}}` 替换、`Content-Type` 透传、字节流原样返回，元数据地址发送前拒绝（400 `tts_invalid_request`），上游 401/500 不再被当音频回 200（502 `tts_failed`），8MB 上限边读边判，重定向上限改为“3 跳允许、第 4 跳拒绝”，跨源重定向不再重放自定义头（同源跳转保留），跟跳方法按 RFC 9110 归一（`303`/`301`/`302` 的 POST 降为 GET、不带 body，`307`/`308` 保留方法与 body）；服务层另有 CRLF 注入头与 `Host` 丢弃判据 |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
 | Web 测试 | `web: npm test` | **1,118 项 / 0 失败**（2026-11-22 全量实测；`ChallengerEmpiricalStress` 曾因并行负载触发一次计时基准红，单文件与第二次全量均通过） |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-22 本轮实测，随 `build:fallback` 一起跑） |
-| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **74.24%**（11,385/15,336；2026-11-23 随全量 `:app:test` 产出的 `jacocoTestReport`，其中 `tts` 75.81% = 630/831）；前端行 **63.51%**（2026-11-09 快照，本轮未重跑 `npm run coverage`） |
+| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **74.31%**（11,408/15,351；2026-11-23 随全量 `:app:test` 产出的 `jacocoTestReport`，其中 `tts` 75.81% = 630/831、`ops` 82.47% = 560/679）；前端行 **63.51%**（2026-11-09 快照，本轮未重跑 `npm run coverage`） |
 | 端点文档一致 | `cd product && npm run docs:api-check` | 通过：145 条端点、18 个分组与文档一致（并核对本文与 ARCHITECTURE/ROADMAP 里手写的端点数） |
 | 更新日志 | `cd product && npm run changelog:check` | 通过：无待记录改动（自查至边界 `771b311`） |
 | 版本单一来源 | `cd product && npm run version:check` | 通过：8 处版本均为 **0.3.0**，build **56** |
@@ -211,7 +213,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 | 缺口 | 现状 | 影响 |
 |---|---|---|
 | ReaderScreen 未拆完 | 已拆出 TTS、目录（`ReaderCatalog`）、设置（`settingsPanel/`）、缓存状态与章节加载、笔记状态（`useReaderNotes`）、划线高亮（`NoteHighlights`）、正文画布（`ReaderBody`）、分页测量（`usePaginationMeasurement`）与跳转原语（`useReaderPositionJump`）；`ReaderScreen.tsx` 仍有 **2,346 行**，剩下的是跨模块状态编排与交互接线（段落点击 / 划词 / 图片放大 / 翻页落点） | 剩下这块是交互核心，拆它要先补交互判据，否则改坏了静态测试看不见 |
-| 后端覆盖率偏低的大包 | 2026-11-23 覆盖率快照（随全量 `:app:test`）：整体行覆盖 **74.24%**，`tts` 已从 2026-11-09 的 **56.6%**（601 行）升到 **75.81%**（831 行）；`http` / `ai` 仍是最薄的两块（旧快照 49.3% / 65.8%，本轮未单独复核） | `tts` 的纯逻辑与路由层已补判据；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
+| 后端覆盖率偏低的大包 | 2026-11-23 覆盖率快照（随全量 `:app:test`）：整体行覆盖 **74.31%**，`tts` 已从 2026-11-09 的 **56.6%**（601 行）升到 **75.81%**（831 行）；`http` / `ai` 仍是最薄的两块（旧快照 49.3% / 65.8%，本轮未单独复核） | `tts` 的纯逻辑与路由层已补判据；剩下的缺口几乎都在真网络与 WS 协议路径上，要覆盖得先改设计（把端点做成可注入），不是补测试能解决的 |
 | 书源宿主 API 与字段缺口 | `java.t2s`/`s2t` **已实现**（2026-11-16，`rules/ScriptConvert.kt` + `/dict/opencc.txt`，与前端「简繁转换」同一份 OpenCC 表；判据 `ScriptConvertTest` 6 项 + `JsScriptConvertBridgeTest` 3 项）；`preUpdateJs` 36 / `formatJs` 6 / `concurrentRate` 42 / `webJs` 8 条非空但零执行，现已在校验里逐项告警。（`globalThis.environment` 已实现，2cdf9d8） | 受影响的是具体源，不是整条链路；排序与证据见 `docs/research/研究-书源JS与字段缺口实测-2026-11-13.md` |
 | 图标小尺寸清晰度 | 512 插画细分多，16–24px 仍糊；ICO 尺寸声明已修（按档渲染 16/24/32/48/64/128/256） | 任务栏/托盘辨识度（要根治得换扁平标记，待定） |
 | 可观测性 | 解析/规则求值/出站抓取已有分阶段耗时与失败率（`GET /api/diagnostics` 的 `stages`，运行日志页可展开）；前端已接 `fetchWithMetrics` 与 `pagination_measure`，但只有控制台 `__legadoPerf.report()`，没有界面与持久化 | 界面卡顿能取到原始数据，但仍靠控制台手查，没形成产品化观测 |
@@ -222,7 +224,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，端点契约由源码、测试与 API 文档共同校验。当前版本为 **0.3.0 / build 56**；前端全量 **1,118 项通过**（2026-11-22）、后端全量 **1,034 项全绿**（2026-11-23 实测）。历史规模和覆盖率数字以各自日期快照理解，不与当前混淆。当前 ReaderScreen 交互编排仍较集中，详见已知缺口；`RuleRunner` 拆分状态应以当前源码核实后再列入行动项。
+后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，端点契约由源码、测试与 API 文档共同校验。当前版本为 **0.3.0 / build 56**；前端全量 **1,118 项通过**（2026-11-22）、后端全量 **1,041 项全绿**（2026-11-23 实测）。历史规模和覆盖率数字以各自日期快照理解，不与当前混淆。当前 ReaderScreen 交互编排仍较集中，详见已知缺口；`RuleRunner` 拆分状态应以当前源码核实后再列入行动项。
 
 ---
 ## 9. 数字口径

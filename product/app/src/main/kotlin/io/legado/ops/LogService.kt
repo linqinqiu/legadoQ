@@ -79,11 +79,11 @@ object LogService : LogSink {
         context: Map<String, String>,
         exception: Throwable?,
     ) {
-        val message = oneLine(rawMessage, MESSAGE_MAX)
+        val message = oneLine(LogRedaction.redact(rawMessage), MESSAGE_MAX)
         val cleanContext = context
             .filterKeys { it.isNotBlank() }
             .entries.take(CONTEXT_MAX_PAIRS)
-            .associate { (key, value) -> key to oneLine(value, CONTEXT_VALUE_MAX) }
+            .associate { (key, value) -> key to oneLine(LogRedaction.redact(value), CONTEXT_VALUE_MAX) }
         val now = System.currentTimeMillis()
         val stamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
@@ -107,7 +107,7 @@ object LogService : LogSink {
             level = level.name,
             message = message,
             context = cleanContext,
-            stackTrace = exception?.stackTraceToString()?.let { oneLine(it, 4000) },
+            stackTrace = exception?.stackTraceToString()?.let { oneLine(LogRedaction.redact(it), 4000) },
             count = 1,
         )
         val id = database?.let { db -> runCatching { db.insertLog(entry, now) }.getOrNull() } ?: 0L

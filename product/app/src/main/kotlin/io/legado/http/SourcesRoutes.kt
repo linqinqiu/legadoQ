@@ -28,6 +28,7 @@ import io.legado.data.saveSourceLoginHeader
 import io.legado.data.saveSourceLoginInfo
 import io.legado.data.setCookieForUrl
 import io.legado.data.VersionConflict
+import io.legado.ops.LogRedaction
 import io.legado.model.ApiError
 import io.legado.model.BatchSourceRequest
 import io.legado.model.DictLookupRequest
@@ -441,7 +442,7 @@ fun Route.sourcesRoutes(
                         val headerMap = mapOf("Cookie" to cookieStr)
                         database.saveSourceLoginHeader(resolvedSourceId, Json.encodeToString(headerMap))
                     }
-                    call.application.log.info("cookie synchronized for source: {}, count: {}, url: {}", resolvedSourceId, savedCount, req.url)
+                    call.application.log.info("cookie synchronized for source: {}, count: {}, url: {}", resolvedSourceId, savedCount, LogRedaction.redact(req.url ?: ""))
                 }
                 call.respond(SourceLoginCookieResponse(ok = true, message = "Cookie 同步成功", count = savedCount))
             }

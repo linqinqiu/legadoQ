@@ -7,6 +7,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import io.legado.ops.LogRedaction
 import io.legado.model.ApiError
 import io.legado.model.TtsSessionAck
 import io.legado.model.TtsSessionChunkRequest
@@ -145,10 +146,10 @@ fun Route.ttsRoutes(
                     }
                 } catch (e: IllegalArgumentException) {
                     // 地址被策略拒绝、响应超限这类是调用方输入问题，报 400 才有可操作性。
-                    call.application.log.warn("TTS request rejected: {}", e.message)
+                    call.application.log.warn("TTS request rejected: {}", LogRedaction.redact(e.message ?: ""))
                     call.respond(HttpStatusCode.BadRequest, ApiError("tts_invalid_request", e.message ?: "语音合成请求无效"))
                 } catch (e: Exception) {
-                    call.application.log.warn("TTS synthesis failed for voice={}: {}", req.voice, e.message)
+                    call.application.log.warn("TTS synthesis failed for voice={}: {}", req.voice, LogRedaction.redact(e.message ?: ""))
                     call.respond(HttpStatusCode.BadGateway, ApiError("tts_failed", e.message ?: "语音合成失败"))
                 }
             }
@@ -169,7 +170,7 @@ fun Route.ttsRoutes(
                         status = HttpStatusCode.OK,
                     )
                 } catch (e: Exception) {
-                    call.application.log.warn("TTS get speak failed: {}", e.message)
+                    call.application.log.warn("TTS get speak failed: {}", LogRedaction.redact(e.message ?: ""))
                     call.respond(HttpStatusCode.BadGateway, ApiError("tts_failed", e.message ?: "语音合成失败"))
                 }
             }

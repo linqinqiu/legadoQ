@@ -245,7 +245,7 @@ flowchart TB
 | `product/app/src/main/kotlin/io/legado/reading/` | 阅读域收口 | `ReadingRepository.kt`（进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口） |
 | `product/app/src/main/kotlin/io/legado/ai/` | 进程内 AI 网关 | `Agent.kt` 实现 · `AgentConnection.kt` 句柄 · `AgentRoutes.kt` 薄收口 · `LlmProvider.kt` / `ToolRegistry.kt` / `ConnectionSelector.kt` 扩展点 · `Guardrails.kt` · `BuiltinTools.kt` · `McpBridge.kt` · `AgentCatalog.kt` 契约 |
 | `product/app/src/main/kotlin/io/legado/port/` | 规则内核窄接口 | `PortBundle.kt`、`StorePorts.kt`（`rules/` 不直接依赖 `data/`） |
-| `product/app/src/main/kotlin/io/legado/ops/` | 出站闸门与运维面 | `NetworkSecurity.kt`、`PinnedProxy.kt`、`GuardedHttpClient.kt`、`ProxyHeaders.kt`、`ServerIdentity.kt`、`LogService.kt`、`UpdateCheck.kt`、`Metrics.kt`、`UiPrefsStore.kt` |
+| `product/app/src/main/kotlin/io/legado/ops/` | 出站闸门与运维面 | `NetworkSecurity.kt`、`PinnedProxy.kt`、`GuardedHttpClient.kt`、`ProxyHeaders.kt`、`ServerIdentity.kt`、`LogService.kt`、`LogRedaction.kt`、`UpdateCheck.kt`、`Metrics.kt`、`UiPrefsStore.kt` |
 | `product/app/src/main/kotlin/io/legado/data/` | 建表、迁移、连接池 + 各数据面 | `Database.kt` 装配点 + 13 个 `<面>Dao.kt`（同包扩展函数）+ `SourceRepository.kt` |
 | `product/app/src/main/kotlin/io/legado/model/` | 纯请求 / 响应数据类型；按系统、书源、发现、阅读、书架、替换规则、备份分文件，同属 `io.legado.model` 包 | `SystemModels.kt`、`SourceModels.kt`、`DiscoveryModels.kt`、`ReadingModels.kt`、`BookshelfModels.kt`、`ReplaceRuleModels.kt`、`BackupModels.kt` |
 | `product/web/src/` | 内置 UI | `main.tsx` · `app/`（`AppHeader.tsx`、`pages.tsx`）· `features/`（reader/bookshelf/explore/source-editor/settings/ai/rss）· `plugins/`（about/backup/changelog/reading-log/source-health）· `components/` · `lib/`（`api/`、`nav.ts`、`pageMeta.ts`、`offlineStorage.ts` 等）· `ui/`（设计内核：`color/` `motion/` `material/` `theme/`）· `i18n/` |
@@ -425,7 +425,7 @@ Ktor Call
 | `tts/` | `EdgeTtsService`、`TtsSessionService` | Edge TTS 合成、会话流、自定义 TTS（逐跳复查重定向，跨源跳转丢弃自定义头，跳转方法按 RFC 9110 归一） |
 | `subscription/` | `SubscriptionService` | 书源订阅、RSS 拉取 |
 | `backup/` | `BackupStore` | 备份包导入导出、无归宿条目的保留区 |
-| `ops/` | `LogService`、`UpdateCheck` | 结构化日志落库、更新检查 |
+| `ops/` | `LogService`、`LogRedaction`、`UpdateCheck` | 结构化日志落库（出口统一脱敏）、更新检查 |
 | `ai/` | `Agent`、`ToolRegistry`、`LlmProvider`、`ConnectionSelector` | 进程内 AI 网关（§7） |
 | `reading/` | `ReadingRepository` | 阅读域收口：进度、阅读记录、笔记/划线/书签、本书检索、章节窗口 |
 | `port/` | `PortBundle`、`StorePorts` | 规则内核需要的窄接口，`rules/` 只依赖它而不依赖 `data/` |
@@ -726,7 +726,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 非文本与本地书 | `localbook/LocalBookParser.kt`、`localbook/TxtTocRule.kt` | TXT / EPUB 解析入库、分章规则表与打分 | 本地书走虚拟书源 `loc_book` + `local://<id>`，与网络书同一套表，不另开接口；解压有上限 |
 | 备份 | `backup/BackupImporter.kt`、`backup/LegacyBackup.kt` | 手机备份包按需流式读取 | 纯内存流式，不落盘；没有原生归宿的个性化条目原样收下（`KEEP_NAMES`），不整包拒收 |
 | 体检与登录 | `source/SourceHealth.kt`、`source/WebViewProxy.kt`、`source/ExternalBrowserLogin.kt`、`source/SourceDebugger.kt` | 分档体检、内置浏览器代理、凭据回捞 | 体检**在读到 searchUrl 为空时就定档**，一次请求都不发 |
-| 守护与日志 | `http/Guard.kt`、`ops/LogService.kt`、`ops/UpdateCheck.kt` | 同源闸门、日志落库、检查更新 | 闸门比的是 `ServerIdentity`（绑定 host/port/回环/私有 IP 字面量），不是 Origin 与 Host 互比 |
+| 守护与日志 | `http/Guard.kt`、`ops/LogService.kt`、`ops/LogRedaction.kt`、`ops/UpdateCheck.kt` | 同源闸门、日志落库（凭据在出口擦除）、检查更新 | 闸门比的是 `ServerIdentity`（绑定 host/port/回环/私有 IP 字面量），不是 Origin 与 Host 互比 |
 
 ## 3. 数据模型
 

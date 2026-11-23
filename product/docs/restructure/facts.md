@@ -323,8 +323,8 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 项 | 数值 | 命令/口径 |
 |---|---|---|
-| **后端测试实跑** | **1,034 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 4m 15s`（13:35 复跑）；`test-results/test/*.xml` 求和。更早一轮曾 1 项环境级失败（`BookCacheServiceTest` 在 `finally` 删临时库时撞 Windows 文件占用），单跑该 suite 通过、重跑全量转绿 |
-| **后端行覆盖率** | **74.24%**（11,385/15,336）；`tts` **75.81%**（630/831） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；不要用 CSV 求和（内部类行会被内外层重复计）。13:35 复跑比 12:28 那轮少 2 行（`tts` 632→630），差额来自当时已删的临时探针，不是代码回退 |
+| **后端测试实跑** | **1,041 项 / 146 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 10m 3s`（15:39 全量复跑，含日志脱敏 7 项新判据）；`test-results/test/*.xml` 求和。更早一轮曾 2 项环境级失败（`BookCacheServiceTest` / `CrossFeatureBackendTest` 在 `finally` 删临时库时撞 Windows 文件占用），单跑两个 suite 均通过、重跑全量转绿 |
+| **后端行覆盖率** | **74.31%**（11,408/15,351）；`tts` **75.81%**（630/831）、`ops` **82.47%**（560/679） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；不要用 CSV 求和（内部类行会被内外层重复计）。13:35 复跑比 12:28 那轮少 2 行（`tts` 632→630），差额来自当时已删的临时探针，不是代码回退 |
 | **EdgeTtsTest** | **12/12 通过** | 跨源/同源跳转 + 跳转方法语义判据 |
 
 跨源凭据修复：`followCustomTtsRedirects` 的 `rebuild` 改为接收 `(from, to)` 两个 URI，调用方按 `scheme / host / 端口`（默认端口归一化）判同源——**跨源时不再重放用户配置的附加请求头**，同源跳转保留。此前每跳都无条件重加全部自定义头，上游一个 302 就能把 `Authorization` / `Cookie` / `X-Api-Key` 送到用户没配置过的主机。判据：
