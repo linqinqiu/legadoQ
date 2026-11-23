@@ -323,23 +323,27 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 
 | 项 | 数值 | 命令/口径 |
 |---|---|---|
-| **后端测试实跑** | **1,033 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 4m 44s`；`test-results/test/*.xml` 求和 |
-| **后端行覆盖率** | **74.22%**（11,379/15,331）；`tts` **75.30%**（622/826） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；不要用 CSV 求和（内部类行会被内外层重复计） |
-| **EdgeTtsTest** | **11/11 通过** | 新增跨源/同源两条跳转判据 |
+| **后端测试实跑** | **1,034 项 / 145 suite / 0 失败 / 0 跳过** | `./gradlew :app:test --no-daemon --max-workers=2`，`BUILD SUCCESSFUL in 4m 15s`（13:35 复跑）；`test-results/test/*.xml` 求和。更早一轮曾 1 项环境级失败（`BookCacheServiceTest` 在 `finally` 删临时库时撞 Windows 文件占用），单跑该 suite 通过、重跑全量转绿 |
+| **后端行覆盖率** | **74.24%**（11,385/15,336）；`tts` **75.81%**（630/831） | 同一次全量运行的 `app/build/reports/jacoco/test/jacocoTestReport.xml`；不要用 CSV 求和（内部类行会被内外层重复计）。13:35 复跑比 12:28 那轮少 2 行（`tts` 632→630），差额来自当时已删的临时探针，不是代码回退 |
+| **EdgeTtsTest** | **12/12 通过** | 跨源/同源跳转 + 跳转方法语义判据 |
 
 跨源凭据修复：`followCustomTtsRedirects` 的 `rebuild` 改为接收 `(from, to)` 两个 URI，调用方按 `scheme / host / 端口`（默认端口归一化）判同源——**跨源时不再重放用户配置的附加请求头**，同源跳转保留。此前每跳都无条件重加全部自定义头，上游一个 302 就能把 `Authorization` / `Cookie` / `X-Api-Key` 送到用户没配置过的主机。判据：
 
 - `custom tts drops configured headers on cross-origin redirects`：两台本机 `HttpServer`（端口不同即跨源），起点收到 `Authorization`，302 目标收到空 `Authorization`/`Cookie`/`X-Api-Key`，音频仍原样返回。
 - `custom tts keeps configured headers across same-origin redirects`：同端口 `/start → /audio`，目标仍收到 `Authorization`。
 
+跳转方法语义（同一条 follow 链路）：`rebuild` 现在还收到 `status`，按 RFC 9110 §15.4 决定跟跳方法——`303` 一律 GET，`301`/`302` 把 POST 降为 GET 且不带 body，`307`/`308` 保留方法与 body。原实现每跳重发 POST，上游 302/303 到静态文件或 CDN 时会 405 或重复合成。判据 `custom tts applies rfc redirect method semantics` 用一台本机 `HttpServer` 覆盖 301/302/303/307/308：前三个目标端收到 `GET`+空 body，307/308 收到 `POST`+`payload`。
+
 打包产物活服务冒烟（重打 `:app:fatJar` 后，`node product/start.mjs --port 18089 --no-open`，临时库）：
 
 | 断言 | 结果 |
 |---|---|
-| `/healthz` | `version=0.3.0` / `build=56` / `rev=rev-446` / `ui=index-Bl62g_P0.js`（jar 由工作树打，HEAD 为 `d88b2ed`） |
+| `/healthz` | `version=0.3.0` / `build=56` / `rev=rev-447` / `sha=97ea109` / `ui=index-Bl62g_P0.js`（jar 与 HEAD 一致） |
 | 直连 custom TTS（带 `Authorization`） | **200** `audio/mpeg`，字节 `SMOKE-AUDIO-A` |
 | 跨源 302（A:59605 → B:59606） | **200** `audio/mpeg` 字节 `SMOKE-AUDIO-B`；起点收到 `Bearer cross-key`/`sid=9`/`key-9`，目标三项全空 |
 | 同源 302（`/same → /tts`） | **200** `audio/mpeg`；目标仍收到 `Bearer same-key` |
 | `http://169.254.169.254/latest/meta-data/` | **400** `tts_invalid_request`（“拒绝访问链路本地/元数据/保留地址”） |
+| POST 经 303（`/see → /tts`） | **200**；目标端收到 `GET` + 空 body |
+| POST 经 307（`/keep → /tts`） | **200**；目标端收到 `POST` + `payload` |
 
 门禁同轮全绿：`version:check`（8 处 0.3.0 / build 56）、`docs:api-check`（145 端点 / 18 组）、`changelog:check`（64 条提交，边界 `771b311`）、`architecture-check` G1–G8、`depth-check`（过深 5 个基线内）、`dist-check` 11/11、`bundled-ui-check` 4/4（运行实例一项因已停服 SKIP）。

@@ -482,4 +482,61 @@ class EdgeTtsTest {
             server.stop(0)
         }
     }
+
+    @Test
+    fun `custom tts applies rfc redirect method semantics`() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val seen = ConcurrentHashMap<String, String>()
+        val audio = "method-ok".toByteArray(StandardCharsets.UTF_8)
+        fun redirect(from: String, status: Int, to: String) {
+            server.createContext(from) { exchange ->
+                exchange.responseHeaders.add("Location", to)
+                exchange.sendResponseHeaders(status, -1)
+                exchange.close()
+            }
+        }
+        redirect("/r301", 301, "/record/301")
+        redirect("/r302", 302, "/record/302")
+        redirect("/r303", 303, "/record/303")
+        redirect("/r307", 307, "/record/307")
+        redirect("/r308", 308, "/record/308")
+        server.createContext("/record/") { exchange ->
+            val tag = exchange.requestURI.path.substringAfterLast('/')
+            seen["$tag-method"] = exchange.requestMethod
+            seen["$tag-body"] = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+            exchange.responseHeaders.add("Content-Type", "audio/mpeg")
+            exchange.sendResponseHeaders(200, audio.size.toLong())
+            exchange.responseBody.use { it.write(audio) }
+        }
+        server.start()
+        try {
+            val service = EdgeTtsService(customClient = HttpClient.newHttpClient())
+            fun speak(path: String): ByteArray = service.synthesizeCustom(
+                TtsSpeakRequest(
+                    text = "redirect method",
+                    engine = "custom",
+                    customUrl = "http://127.0.0.1:${server.address.port}$path",
+                    customMethod = "POST",
+                    customBody = "payload",
+                )
+            ).second
+
+            for (path in listOf("/r301", "/r302", "/r303", "/r307", "/r308")) {
+                assertArrayEquals(audio, speak(path))
+            }
+            // 301/302/303 依约定降为 GET，且不再带 body。
+            assertEquals("GET", seen["301-method"])
+            assertEquals("GET", seen["302-method"])
+            assertEquals("GET", seen["303-method"])
+            assertEquals("", seen["301-body"])
+            assertEquals("", seen["303-body"])
+            // 307/308 必须保留方法与 body。
+            assertEquals("POST", seen["307-method"])
+            assertEquals("POST", seen["308-method"])
+            assertEquals("payload", seen["307-body"])
+            assertEquals("payload", seen["308-body"])
+        } finally {
+            server.stop(0)
+        }
+    }
 }

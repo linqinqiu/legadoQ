@@ -349,7 +349,7 @@ class EdgeTtsService(
      */
     private fun <T> followCustomTtsRedirects(
         initial: HttpRequest,
-        rebuild: (from: URI, to: URI) -> HttpRequest,
+        rebuild: (from: URI, to: URI, status: Int) -> HttpRequest,
         handler: HttpResponse.BodyHandler<T>,
     ): HttpResponse<T> {
         var current = initial
@@ -367,11 +367,24 @@ class EdgeTtsService(
             assertSafeTtsTarget(next)
             // 被丢弃的那一跳响应体必须关掉，否则流式响应会漏文件描述符。
             runCatching { response.body()?.let { (it as? java.io.Closeable)?.close() } }
-            current = rebuild(current.uri(), next)
+            current = rebuild(current.uri(), next, response.statusCode())
             response = customClient.send(current, handler)
             hops++
         }
         return response
+    }
+
+    /**
+     * 跳转后的请求方法（RFC 9110 §15.4）：`303` 一律改 `GET`；`301`/`302` 按浏览器与 curl 的
+     * 历史约定把 `POST` 降为 `GET`；`307`/`308` 必须原样保留方法与 body。
+     *
+     * 原实现每跳都重发 `POST`：上游把合成请求 302/303 到静态文件或 CDN 时，常见结果是 405
+     * 或同一段文本被合成两次。
+     */
+    private fun redirectMethod(method: String, status: Int): String = when {
+        status == 303 -> "GET"
+        (status == 301 || status == 302) && method == "POST" -> "GET"
+        else -> method
     }
 
     /**
@@ -454,12 +467,12 @@ class EdgeTtsService(
             reqBuilder.GET()
         }
 
-        val response = followCustomTtsRedirects(reqBuilder.build(), { from, to ->
+        val response = followCustomTtsRedirects(reqBuilder.build(), { from, to, status ->
             val rebuilt = HttpRequest.newBuilder(to).timeout(Duration.ofSeconds(timeoutSeconds))
             if (isSameOrigin(from, to)) {
                 headers.forEach { (name, value) -> rebuilt.header(name, value) }
             }
-            if (method == "POST") {
+            if (redirectMethod(method, status) == "POST") {
                 rebuilt.POST(HttpRequest.BodyPublishers.ofString(resolvedBody, StandardCharsets.UTF_8))
             } else {
                 rebuilt.GET()
@@ -520,12 +533,12 @@ class EdgeTtsService(
             reqBuilder.GET()
         }
 
-        val response = followCustomTtsRedirects(reqBuilder.build(), { from, to ->
+        val response = followCustomTtsRedirects(reqBuilder.build(), { from, to, status ->
             val rebuilt = HttpRequest.newBuilder(to).timeout(Duration.ofSeconds(timeoutSeconds))
             if (isSameOrigin(from, to)) {
                 headers.forEach { (name, value) -> rebuilt.header(name, value) }
             }
-            if (method == "POST") {
+            if (redirectMethod(method, status) == "POST") {
                 rebuilt.POST(HttpRequest.BodyPublishers.ofString(resolvedBody, StandardCharsets.UTF_8))
             } else {
                 rebuilt.GET()
