@@ -110,7 +110,8 @@ fun Route.replaceRulesRoutes(
             }
             post("/preview") {
                 val req = call.receive<ReplaceRulePreviewRequest>()
-                val rules = if (req.rule != null) listOf(req.rule) else database.getEnabledReplaceRulesForScope(req.bookName, req.sourceUrl)
+                val previewRule = req.rule
+                val rules = if (previewRule != null) listOf(previewRule) else database.getEnabledReplaceRulesForScope(req.bookName, req.sourceUrl)
                 val jsSandbox = JsSandbox(runner)
                 val cleaned = ContentProcessor.processContent(req.text, rules, jsSandbox = jsSandbox, bookName = req.bookName)
                 val appliedNames = rules.filter { ContentProcessor.applyRule(req.text, it, jsSandbox = jsSandbox, bookName = req.bookName) != req.text }.map { it.name.ifBlank { it.pattern } }

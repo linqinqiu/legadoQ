@@ -202,7 +202,8 @@ fun Database.updateBookshelfInfo(request: BookshelfInfoUpdateRequest, cover: Cac
             }
         }
 
-        val newCoverKey = cover?.key ?: (if (request.coverUrl != null && request.coverUrl.isBlank()) null else oldCover)
+        val coverUrl = request.coverUrl
+        val newCoverKey = cover?.key ?: (if (coverUrl != null && coverUrl.isBlank()) null else oldCover)
 
         db.prepareStatement("update book_shelf set name=?, author=?, cover_url=?, cover_key=? where source_id=? and book_url=?").use {
             it.setString(1, request.name)

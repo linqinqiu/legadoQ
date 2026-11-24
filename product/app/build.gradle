@@ -315,6 +315,7 @@ processResources {
 }
 
 dependencies {
+    api project(':core:model')
     implementation "io.ktor:ktor-server-netty:3.4.3"
     // CIO 暂时留着：
     // - `stalled-client-check` 对照实验要用它证明「阻塞写」才是根因（2026-11-16 实测，见 docs/sessions）；

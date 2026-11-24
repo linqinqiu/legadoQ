@@ -98,9 +98,10 @@ fun Route.tocRulesRoutes(
                 )
             }
             // 不填 key = 新建；填了但不是数字要顶回去 —— 当成新建会把"改一条"变成"多一条"
+            val ruleKey = request.key
             val id = when {
-                request.key.isNullOrBlank() -> null
-                else -> request.key.trim().toIntOrNull()
+                ruleKey.isNullOrBlank() -> null
+                else -> ruleKey.trim().toIntOrNull()
                     ?: return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_rule", "key 要么不填（新建），要么是规则 id"))
             }
             val saved = TocRules.save(id, request.name, request.rule, request.example, request.enable)

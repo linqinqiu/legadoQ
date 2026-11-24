@@ -22,4 +22,5 @@ dependencyResolutionManagement {
 rootProject.name = 'legado'
 
 include ':app'
+include ':core:model'
 

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * 登录界面 v2 协议（`renderLoginUiV2` / `executeLoginUiActionV2` 及其行校验）从 `RuleRunner` 抽出
@@ -194,14 +195,15 @@ private fun RuleRunner.parseLoginUiV2Rows(raw: String?): List<SourceLoginUiItem>
 
 private fun SourceLoginUiItem.isValidLoginUiV2Row(): Boolean {
     if (name.isBlank() || (countdown ?: 0) < 0) return false
+    val rowAction = action
     return when (type) {
         "text", "password" -> !key.isNullOrBlank()
         "label" -> true
         "select" -> !key.isNullOrBlank() && !options.isNullOrEmpty()
         "toggle" -> !key.isNullOrBlank() &&
             (value == null || value == "true" || value == "false") &&
-            (action == null || action.isNotBlank())
-        "button" -> !action.isNullOrBlank()
+            (rowAction == null || rowAction.isNotBlank())
+        "button" -> !rowAction.isNullOrBlank()
         else -> false
     }
 }
@@ -213,7 +215,7 @@ private fun loginInfoFromJson(obj: JsonObject): Map<String, String> = buildMap {
             key,
             when (element) {
                 is JsonNull -> ""
-                is JsonPrimitive -> element.contentOrNull ?: ""
+                is JsonPrimitive -> element.jsonPrimitive.contentOrNull ?: ""
                 else -> element.toString()
             },
         )

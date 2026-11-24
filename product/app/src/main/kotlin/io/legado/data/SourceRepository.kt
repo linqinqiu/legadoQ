@@ -91,8 +91,9 @@ class SourceRepository(
     suspend fun healthCheck(request: SourceHealthCheckRequest): SourceHealthCheckResponse {
         val timeoutMs = request.timeoutMs.coerceIn(1000L, 10000L)
         val allSources = database.listSources(null)
-        val targetSources = if (!request.ids.isNullOrEmpty()) {
-            val idSet = request.ids.toSet()
+        val requestedIds = request.ids
+        val targetSources = if (!requestedIds.isNullOrEmpty()) {
+            val idSet = requestedIds.toSet()
             allSources.filter { it.id in idSet }
         } else {
             allSources.filter { it.enabled }
@@ -100,7 +101,7 @@ class SourceRepository(
 
         // 目标书源的完整记录一次性取回（键 = id）：原来是在并发闸门里逐个查库，
         // 属于 N+1 —— 几百个源挤在那 16 个并发槽里排队查库，跟真正的外呼抢时间。
-        val recordsById = withContext(Dispatchers.IO) { database.listSourceRecords(request.ids) }
+        val recordsById = withContext(Dispatchers.IO) { database.listSourceRecords(requestedIds) }
 
         val startTotalNs = System.nanoTime()
         val health = SourceHealth(runner)

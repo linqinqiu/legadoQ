@@ -78,12 +78,15 @@ class BookCacheService(private val database: Database, private val runner: RuleR
             }
 
             // Slice chapters by range if specified
-            val targetChapters = if (book.startIndex != null || book.endIndex != null || book.count != null) {
-                val start = (book.startIndex ?: 0).coerceIn(0, chapters.size)
-                val end = if (book.endIndex != null) {
-                    (book.endIndex + 1).coerceIn(start, chapters.size)
-                } else if (book.count != null) {
-                    (start + book.count).coerceIn(start, chapters.size)
+            val startIdx = book.startIndex
+            val endIdx = book.endIndex
+            val chapterCount = book.count
+            val targetChapters = if (startIdx != null || endIdx != null || chapterCount != null) {
+                val start = (startIdx ?: 0).coerceIn(0, chapters.size)
+                val end = if (endIdx != null) {
+                    (endIdx + 1).coerceIn(start, chapters.size)
+                } else if (chapterCount != null) {
+                    (start + chapterCount).coerceIn(start, chapters.size)
                 } else {
                     chapters.size
                 }
