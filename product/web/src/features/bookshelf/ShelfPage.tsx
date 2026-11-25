@@ -920,7 +920,6 @@ export function ShelfPage({
           currentBookUrl={switchingItem.bookUrl}
           currentChapterIndex={switchingItem.chapterIndex}
           knownAlternateSources={switchingItem.alternateSources}
-          sources={sources}
           onSwitch={handleSwitchShelfSource}
           onClose={() => setSwitchingItem(null)}
         />

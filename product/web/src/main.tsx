@@ -33,6 +33,7 @@ import type { UiContext } from './lib/uiContext'
 import { getSelection, subscribeSelection } from './lib/selectionStore'
 import { cleanAuthor, cleanTitle } from './lib/searchFilters'
 import { loadSourceBook, SourceChoice, SourceChoiceStatus, useSearchSlice } from './lib/searchStore'
+import { sourceCatalog } from './lib/sourceCatalog'
 import { ReplaceRulesModal } from './components/ReplaceRulesModal'
 import { PageDialog } from './components/PageDialog'
 import { Select } from './components/Select'
@@ -163,7 +164,12 @@ function App() {
   // 因为 AI 悬浮球与阅读器是两棵独立的树，靠 props 传要一路穿下来。
   const currentSelection = useSyncExternalStore(subscribeSelection, getSelection, getSelection)
   const [readerReturnPage, setReaderReturnPage] = useState<Page>('shelf')
-  const [sources, setSources] = useState<SourceSummary[]>([])
+  const sourceSnapshot = useSyncExternalStore(
+    sourceCatalog.subscribe,
+    sourceCatalog.getSnapshot,
+    sourceCatalog.getSnapshot,
+  )
+  const sources = sourceSnapshot.items
   /** 服务端 /healthz 报回来的版本号，显示在顶栏功能菜单里；构建清单是唯一来源。 */
   const [serverVersion, setServerVersion] = useState('')
   /** 同一份应答里的代码修订（`rev-<提交数>`）：没发版时靠它分清"跑的是哪一版代码"。 */
@@ -409,7 +415,7 @@ function App() {
         }
         setBootHint('')
         setReady(true)
-        void api.sources().then(list => { if (!cancelled) setSources(list) }).catch(() => undefined)
+        if (!cancelled) void sourceCatalog.load().catch(() => undefined)
       } catch {
         if (cancelled) return
         if (attempts === FAST_UNTIL) setReady(true) // 等够了先放行，别把人永远挡在加载页
@@ -682,7 +688,7 @@ function App() {
   }
 
   const refreshSources = () => {
-    void api.sources().then(setSources).catch(() => undefined)
+    void sourceCatalog.invalidate().catch(() => undefined)
   }
 
 
@@ -709,7 +715,6 @@ function App() {
     }),
     tocRulesSignal,
     onSelectSource: setSelected,
-    onSourcesChange: setSources,
     refreshSources,
     openBook: openReader,
     openShelfItem: item => void openShelfItem(item),
@@ -797,7 +802,7 @@ function App() {
       {openModal === 'source-health' && (
         <SourceHealthEntryModal
           sources={sources}
-          sourcesState={sources.length > 0 ? 'ready' : 'loading'}
+          sourcesState={sourceSnapshot.status === 'idle' ? 'loading' : sourceSnapshot.status}
           onClose={closeModal}
           onSourcesChange={refreshSources}
           onToast={(message: string) => toast.info(message)}

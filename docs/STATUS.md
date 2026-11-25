@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-25 实测**：前端 **1,143 项全绿**（147 个文件），`tsc -b` 通过；后端合计 **1,078 项全绿**（153 个 suite，其中 `:core:data` 10 项）。生产构建、体积门禁与新 jar 隔离启动冒烟通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §14。
+> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-26 实测**：前端 **1,156 项全绿**（149 个文件），`tsc -b` 与测试类型检查通过；后端合计 **1,078 项全绿**（153 个 suite，其中 `:core:data` 10 项）。生产构建、体积门禁、新 jar 隔离启动与 `SourceCatalog` 浏览器验收通过。现行前端口径见 `product/docs/restructure/facts.md` §15，后端口径见 §14。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -80,7 +80,7 @@
 
 ## 3. 前端结构（TypeScript / React 19）
 
-**规模**：202 个 ts/tsx / 38,361 行（`src/`，2026-11-11 实测），134 个测试文件 / 1,056 项。
+**规模**：211 个 ts/tsx / 38,045 行（`src/`，2026-11-26 实测），149 个测试文件 / 1,156 项。
 
 | 目录 | 内容 |
 |---|---|
@@ -93,7 +93,7 @@
 | `features/rss/` | RSS 页与文章阅读 |
 | `plugins/` | 页面级插件：`about` `backup` `changelog` `reading-log` `source-health`，以及 Slot/Extension 外壳（`slotRegistry`、`extensionRegistry`、`attachmentStore`、`ExtensionSlot`） |
 | `lib/api/` | 按域拆分的 API 客户端：`client.ts` + `types.ts` + `domains/*`；`lib/api.ts` 保留旧 `api` 对象形状作兼容层 |
-| `lib/` 其余 | 品牌 store、导航、离线存储、拖拽排序、字号/字体库、命名忙碌源与反馈令牌等 |
+| `lib/` 其余 | 品牌 store、导航、离线存储、拖拽排序、字号/字体库、命名忙碌源与反馈令牌等；`sourceCatalog` 统一持有书源全量清单、请求合流、缓存、失效与乐观排序 |
 | `components/` | 通用弹层与控件（ContextMenu、Select、Toast、各类 Modal），22 个文件 |
 
 **页面与业务的边界**：**没有 `pages/` 目录了** —— 路由级页面直接住在它自己的域里
@@ -127,7 +127,7 @@
 |---|---|---|
 | 后端测试 | `npm test`（`gradlew :app:test`）+ `./gradlew :core:data:test` | **1,078 项 / 153 suite / 0 失败 / 0 跳过**（2026-11-25 全量实测；`:app` 1,068 + `:core:data` 10，含匿名反馈中转、RLS 契约、日志脱敏与 AppContainer 生命周期判据）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印；自定义 TTS 判据覆盖到路由层：`/api/tts/speak` 的 `Authorization` 转发、`{{speakText}}` 替换、`Content-Type` 透传、字节流原样返回，元数据地址发送前拒绝（400 `tts_invalid_request`），上游 401/500 不再被当音频回 200（502 `tts_failed`），8MB 上限边读边判，重定向上限改为“3 跳允许、第 4 跳拒绝”，跨源重定向不再重放自定义头（同源跳转保留），跟跳方法按 RFC 9110 归一（`303`/`301`/`302` 的 POST 降为 GET、不带 body，`307`/`308` 保留方法与 body）；服务层另有 CRLF 注入头与 `Host` 丢弃判据 |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
-| Web 测试 | `web: npm test` | **1,143 项 / 147 个文件 / 0 失败**（2026-11-25 全量实测，含匿名反馈令牌、API 错误、PWA 忙碌刷新与契约判据） |
+| Web 测试 | `web: npm test` | **1,156 项 / 149 个文件 / 0 失败**（2026-11-26 全量实测，含 `SourceCatalog` 并发、缓存、失败与竞态判据，以及匿名反馈令牌、API 错误、后台更新提示节流、PWA 忙碌刷新与契约判据） |
 | 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-25 随 `build:fallback` 一起跑） |
 | 交付契约与工具脚本 | `node tools/verify/delivery-check.mjs` / `node --test scripts/*.test.mjs` | **SELF TEST 30/30、脚本用例 22/22**；CI 的 quality job 已纳入第六道脚本门禁，release 等待 quality → build → desktop 全链完成 |
 | 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **74.52%**（11,518/15,456；2026-11-23 随全量 `:app:test` 产出的 `jacocoTestReport`，其中 `tts` 75.81% = 630/831、`ops` 82.47% = 560/679）；前端行 **63.51%**（2026-11-09 快照，本轮未重跑 `npm run coverage`） |

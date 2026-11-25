@@ -84,7 +84,9 @@ test('卸载清理等待 timer，已排队回调与后续通知都不能再刷�
   assert.deepEqual(cleared, [7])
 
   busy = false
-  queued?.()
+  const queuedCallback = queued as (() => void) | null
+  assert.ok(queuedCallback, 'request 应排下一颗 idle timer')
+  queuedCallback()
   reloadWhenIdle.request()
   assert.equal(reloads, 0)
 })

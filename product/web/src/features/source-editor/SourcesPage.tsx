@@ -1,7 +1,7 @@
 // 书源页：清单、批量整理、编辑与调试的挂载点
 // 从 main.tsx 拆出（0.8.2 结构重排）：组件体逐字未动，import 由脚本按导出面索引补全。
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Icon } from '../../icons'
 import { Select } from '../../components/Select'
 import { SourceDebugModal } from './SourceDebugModal'
@@ -19,6 +19,7 @@ import { useDragSort } from '../../lib/dragSort'
 import { useHealthRun } from './sourceHealthRun'
 import { useSearchStore } from '../../lib/searchStore'
 import { splitSourceGroups } from '../../lib/sourceGrouping'
+import { sourceCatalog } from '../../lib/sourceCatalog'
 import { takePendingSourceFocus } from '../../lib/sourceFocus'
 import {
   SIDEBAR_WIDTH_DEFAULT,
@@ -34,16 +35,18 @@ export const SOURCE_PAGE_SIZE = 120
 
 /* 目录预览不再分水位：一次全给（用户 2026-10-09：「目录预览直接展示全部目录，不需要展开了」）。 */
 
-export function SourcesPage({ selected, onSelect, onSourcesChange, sources: hostedSources }: {
+export function SourcesPage({ selected, onSelect }: {
   selected: SourceSummary | null
   onSelect: (source: SourceSummary | null) => void
-  onSourcesChange: (sources: SourceSummary[]) => void
-  /** 宿主启动时已取过的整份清单（~1MB）：有就直接铺上，别再为同一份数据跑第二趟。 */
-  sources?: SourceSummary[]
 }) {
-  const [sources, setSources] = useState<SourceSummary[]>(hostedSources ?? [])
+  const sourceSnapshot = useSyncExternalStore(
+    sourceCatalog.subscribe,
+    sourceCatalog.getSnapshot,
+    sourceCatalog.getSnapshot,
+  )
+  const sources = sourceSnapshot.items
+  const sourcesState = sourceSnapshot.status === 'idle' ? 'loading' : sourceSnapshot.status
   const [query, setQuery] = useState('')
-  const loadGeneration = useRef(0)
   const [groupFilter, setGroupFilter] = useState('')
   const [notice, setNotice] = useState('')
   const [importing, setImporting] = useState(false)
@@ -72,14 +75,6 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
   }
   const [shareIds, setShareIds] = useState<string[] | null>(null)
   const [creating, setCreating] = useState(false)
-  /**
-   * 书源清单到没到手。体检弹窗要读这个：清单还在路上时 `sources` 是空数组，
-   * 于是界面会一本正经地写「探测『启用中』的 0 个书源」—— 把"还没取到"说成"一个都没有"。
-   */
-  const [sourcesState, setSourcesState] = useState<'loading' | 'ready' | 'failed'>(
-    hostedSources && hostedSources.length > 0 ? 'ready' : 'loading',
-  )
-
   /**
    * 左栏宽度（用户 2026-11-07：「书源管理界面，左侧位置太狭窄」）。
    *
@@ -179,51 +174,19 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     setQuery(name)
   }, [])
 
-  const load = useCallback(async () => {
-    // 防抖只挡键盘连击，不挡"慢的旧响应晚到"：'a' 的请求比 'ab' 的晚回来会把列表覆盖回旧结果
-    const generation = ++loadGeneration.current
-    try {
-      const values = await api.sources(query)
-      if (generation !== loadGeneration.current) return
-      setSources(values)
-      setSourcesState('ready')
-      onSourcesChange(values)
-    } catch (error) {
-      if (generation !== loadGeneration.current) return
-      setSourcesState('failed')
-      setNotice(error instanceof Error ? error.message : '无法载入书源')
-    }
-  }, [onSourcesChange, query])
+  const refreshSources = useCallback(() => sourceCatalog.invalidate().catch(error => {
+    setNotice(error instanceof Error ? error.message : '书源清单刷新失败')
+  }), [])
 
-  /*
-    首屏只取一次：宿主启动探活一过就取过整份清单（5,598 条、~1MB），书源页挂载时
-    如果那份已经到手，直接铺开就行 —— 再为同一份数据跑一趟，等于开机就多花一次
-    1MB 的传输与解析。搜索、增删改、保存后的刷新仍照常走 load()。
-  */
-  const skipFirstLoad = useRef((hostedSources?.length ?? 0) > 0)
-  const firstLoad = useRef(true)
   useEffect(() => {
-    if (skipFirstLoad.current) {
-      skipFirstLoad.current = false
-      firstLoad.current = false
-      return
-    }
-    // 挂载即取：宿主启动时那份整表请求通常还在路上，两处会合流成一次（api.sources）。
-    // 180ms 防抖只留给之后的输入，别让首屏白白多等一个防抖窗口。
-    if (firstLoad.current) {
-      firstLoad.current = false
-      void load()
-      return
-    }
-    const timer = window.setTimeout(() => { void load() }, 180)
-    return () => window.clearTimeout(timer)
-  }, [load])
+    void sourceCatalog.load().catch(() => undefined)
+  }, [])
 
   // 右键菜单走的是「单源」动作：复用批量接口，但只传一个 id，因此不需要批量确认框。
   const flipOne = async (source: SourceSummary) => {
     try {
       await api.batchSources(source.enabled ? 'disable' : 'enable', [source.id])
-      await load()
+      await refreshSources()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '操作失败')
     }
@@ -238,7 +201,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     try {
       await api.remove(source.id)
       if (selected?.id === source.id) onSelect(null)
-      await load()
+      await refreshSources()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '删除失败')
     }
@@ -300,19 +263,18 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     // 就地回填：可见那几条按新顺序换回来，没在这一列里的保持原位。
     // 这里**不写比较器** —— 顺序是服务端排的（`sort_order is null, sort_order, name`），
     // 客户端再排一遍就有两套规则，中文书名上 SQLite 的 nocase 与 localeCompare 本来就会分歧。
-    setSources(current => {
-      const queue = [...ordered]
-      return current.map(item => {
-        if (!rank.has(item.id)) return item
-        const next = queue.shift()
-        return next ? { ...next, sortOrder: rank.get(next.id) ?? null } : item
-      })
-    })
+    const current = sourceCatalog.getSnapshot().items
+    const queue = [...ordered]
+    sourceCatalog.replace(current.map(item => {
+      if (!rank.has(item.id)) return item
+      const next = queue.shift()
+      return next ? { ...next, sortOrder: rank.get(next.id) ?? null } : item
+    }))
     void api.reorderSources(ordered.map(item => item.id)).catch(() => {
       setNotice('书源顺序没能保存，刷新后会回到原来的顺序')
-      void load()
+      void refreshSources()
     })
-  }, [load])
+  }, [refreshSources])
   const { drag: sourceDrag, onPointerDown: onSourcePointerDown, onClickCapture: onSourceClickCapture } = useDragSort({
     enabled: () => !isBatchMode,
     gridRef: sourceListRef,
@@ -322,8 +284,8 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
   })
   const orderedCount = useMemo(() => sources.filter(item => item.sortOrder != null).length, [sources])
   const clearSourceOrder = () => {
-    setSources(current => current.map(item => ({ ...item, sortOrder: null })))
-    void api.clearSourceOrder().catch(() => { setNotice('自定义顺序没能清掉，刷新后会回到原样'); void load() })
+    sourceCatalog.replace(sourceCatalog.getSnapshot().items.map(item => ({ ...item, sortOrder: null })))
+    void api.clearSourceOrder().catch(() => { setNotice('自定义顺序没能清掉，刷新后会回到原样'); void refreshSources() })
   }
   /**
    * 统计带。「JS 书源」那一档量的是 `mainJs` 非空 —— 本机 5,574 份里 **0 份**带这个键，
@@ -379,7 +341,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     try {
       const resp = await api.batchSources('enable', Array.from(selectedIds))
       toast.success(resp.message || `已批量启用 ${resp.affected} 个书源`)
-      await load()
+      await refreshSources()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '启用失败')
     } finally {
@@ -394,7 +356,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     try {
       const resp = await api.batchSources('disable', Array.from(selectedIds))
       toast.success(resp.message || `已批量停用 ${resp.affected} 个书源`)
-      await load()
+      await refreshSources()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '停用失败')
     } finally {
@@ -415,7 +377,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
       if (selected && selectedIds.has(selected.id)) {
         onSelect(null)
       }
-      await load()
+      await refreshSources()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '删除失败')
     } finally {
@@ -454,7 +416,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     try {
       const resp = await api.batchSources('set_group', Array.from(selectedIds), newGroup ?? undefined)
       toast.success(resp.message || `已更新 ${resp.affected} 个书源的分组`)
-      await load()
+      await refreshSources()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '修改分组失败')
     } finally {
@@ -495,7 +457,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
     } else if (skippedCount > 0) {
       toast.error(result.errors?.[0] || '书源未能导入，请检查格式')
     }
-    await load()
+    await refreshSources()
   }
 
   const importSources = async (file: File | undefined) => {
@@ -562,6 +524,36 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
           </div>
         </div>
 
+        <div
+          className={`source-catalog-status is-${sourceSnapshot.status}`}
+          role="status"
+          aria-live="polite"
+          title={sourceSnapshot.error ?? undefined}
+        >
+          <span className="source-catalog-status-copy">
+            <span className="source-catalog-status-dot" />
+            <span>
+              {sourceSnapshot.status === 'loading'
+                ? (sources.length > 0 ? '正在刷新书源清单' : '正在载入书源清单')
+                : sourceSnapshot.status === 'failed'
+                  ? (sources.length > 0 ? '刷新失败，正在显示上次清单' : '书源清单载入失败')
+                  : query || groupFilter
+                    ? `${filteredSources.length} 个匹配 · 共 ${sources.length} 个`
+                    : `${sourceStats.enabled} 个启用 · 共 ${sources.length} 个`}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="source-catalog-refresh"
+            aria-label="刷新书源清单"
+            title="刷新书源清单"
+            disabled={sourceSnapshot.status === 'loading'}
+            onClick={() => void refreshSources()}
+          >
+            <Icon name="refresh" className={sourceSnapshot.status === 'loading' ? 'spin' : ''} />
+          </button>
+        </div>
+
         {(allGroups.length > 0 || noRulesCount > 0) && (
           <div className="source-group-filter-bar">
             <Select
@@ -582,7 +574,22 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
 
         <div className="source-filter">
           <Icon name="search" />
-          <input placeholder="筛选书源" value={query} onChange={event => setQuery(event.target.value)} />
+          <input
+            aria-label="筛选书源"
+            placeholder="筛选书源"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+          />
+          {query && (
+            <button
+              type="button"
+              className="source-filter-clear"
+              aria-label="清空书源筛选"
+              onClick={() => setQuery('')}
+            >
+              <Icon name="close" />
+            </button>
+          )}
         </div>
 
         {orderedCount > 0 && (
@@ -660,6 +667,34 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
         {notice && <p className="sidebar-notice">{notice}</p>}
 
         <nav ref={sourceListRef} className={`source-list ${isBatchMode ? '' : 'source-list-sortable'}`} aria-label="书源列表">
+          {sourcesState === 'loading' && sources.length === 0 && (
+            <div className="source-list-state" role="status">
+              <Icon name="refresh" className="spin" />
+              <span>正在载入书源…</span>
+            </div>
+          )}
+          {sourcesState === 'failed' && sources.length === 0 && (
+            <div className="source-list-state is-error" role="alert">
+              <Icon name="info" />
+              <span>暂时无法载入书源</span>
+              <button type="button" className="subtle-button" onClick={() => void refreshSources()}>重试</button>
+            </div>
+          )}
+          {sources.length > 0 && filteredSources.length === 0 && (
+            <div className="source-list-state">
+              <Icon name="search" />
+              <span>没有匹配的书源</span>
+              {(query || groupFilter) && (
+                <button
+                  type="button"
+                  className="subtle-button"
+                  onClick={() => { setQuery(''); setGroupFilter('') }}
+                >
+                  清除筛选
+                </button>
+              )}
+            </div>
+          )}
           {visibleSources.map((source, index) => {
             const isChecked = selectedIds.has(source.id)
             const isCurrent = selected?.id === source.id
@@ -779,7 +814,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
             selected={selected}
             creating={creating}
             summary={sourceStats}
-            onSaved={() => void load()}
+            onSaved={() => void refreshSources()}
             onCreateCancel={() => setCreating(false)}
             onCreated={source => {
               setCreating(false)
@@ -880,7 +915,7 @@ export function SourcesPage({ selected, onSelect, onSourcesChange, sources: host
           sources={sources}
           sourcesState={sourcesState}
           onClose={() => setShowHealthModal(false)}
-          onSourcesChange={() => void load()}
+          onSourcesChange={() => void refreshSources()}
           onToast={(msg, type) => {
             if (type === 'error') toast.error(msg)
             else if (type === 'success') toast.success(msg)

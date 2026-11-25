@@ -33,7 +33,6 @@ export type PageContext = {
   /** 「设置 → TXT 分章规则」的去开一下信号（0 = 还没人点过）。 */
   tocRulesSignal: number
   onSelectSource: (source: SourceSummary | null) => void
-  onSourcesChange: (sources: SourceSummary[]) => void
   refreshSources: () => void
   openBook: (book: OpenBook, index: number, origin: Page) => void
   openShelfItem: (item: BookshelfItem) => void
@@ -48,12 +47,7 @@ export function renderPage(page: Page, ctx: PageContext): React.ReactNode {
   switch (page) {
     case 'sources':
       return (
-        <SourcesPage
-          selected={ctx.selected}
-          onSelect={ctx.onSelectSource}
-          onSourcesChange={ctx.onSourcesChange}
-          sources={ctx.sources}
-        />
+        <SourcesPage selected={ctx.selected} onSelect={ctx.onSelectSource} />
       )
     case 'subscriptions':
       return <RssPage onOpenBackup={() => ctx.openModal('backup')} />

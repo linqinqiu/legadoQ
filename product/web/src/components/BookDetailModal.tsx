@@ -391,7 +391,6 @@ export function BookDetailModal({
           currentSourceId={book.details.sourceId}
           currentBookUrl={book.bookUrl}
           knownAlternateSources={book.details.alternateSources}
-          sources={sources}
           onSwitch={async chosen => {
             setOwnedSourceSearch(false)
             onChooseSource({ result: chosen.result, status: 'idle' })

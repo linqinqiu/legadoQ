@@ -1,9 +1,8 @@
 /**
  * 启动时那份书源清单（5,598 条、~1MB）只该取一次。
  *
- * 背景：启动探活一过，main.tsx 就为书库选源/书架取整份清单；如果落点正好是「书源」页，
- * SourcesPage 挂载后又会为同一份数据再取一遍 —— 一次开机两趟 1MB，手机上就是"功能加载慢"。
- * 现在：①宿主把已到手的清单交给书源页，首屏不再重复请求；②仍在路上的请求彼此合流。
+ * 宿主与书源页都订阅同一个 SourceCatalog：启动请求、书源页挂载和后续刷新共用一份
+ * 在途请求与缓存，页面不再持有第二份全量清单，也不能把筛选结果回写成全量数据。
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,22 +13,26 @@ import { api } from '../src/lib/api.ts'
 const here = import.meta.dirname
 const read = (...parts: string[]) => fs.readFileSync(path.resolve(here, '..', ...parts), 'utf8')
 
-test('书源页首屏：宿主把启动时取好的清单交给书源页，挂载后不再为同一份数据跑第二趟', () => {
+test('书源页与换源弹窗订阅统一 catalog，宿主不再传第二份清单', () => {
   const pages = read('src', 'app', 'pages.tsx')
   const mount = /<SourcesPage[\s\S]*?\/>/.exec(pages)?.[0] ?? ''
-  assert.match(mount, /sources=\{ctx\.sources\}/, 'pages.tsx 没把宿主已有的书源清单传给 SourcesPage')
+  assert.doesNotMatch(mount, /sources=|onSourcesChange=/, '宿主不应再把书源清单或写回回调传给书源页')
 
   const page = read('src', 'features', 'source-editor', 'SourcesPage.tsx')
-  const start = page.indexOf('export function SourcesPage')
-  const signature = page.slice(start, start + 700)
-  assert.match(signature, /\(\{[\s\S]*?sources:\s*hostedSources/, 'SourcesPage 没接收宿主给的初始清单')
-  assert.match(page, /useState<SourceSummary\[\]>\(hostedSources \?\? \[\]\)/, '书源页没有用宿主清单做初始状态')
-  assert.match(page, /skipFirstLoad/, '书源页缺少“首屏不重复请求”的跳过逻辑')
   assert.match(
     page,
-    /hostedSources && hostedSources\.length > 0 \? 'ready' : 'loading'/,
-    '带初始清单进场时清单状态应当是 ready，否则体检弹窗会说“0 个书源”',
+    /useSyncExternalStore\(\s*sourceCatalog\.subscribe,\s*sourceCatalog\.getSnapshot,\s*sourceCatalog\.getSnapshot,?\s*\)/,
+    '书源页应直接订阅 SourceCatalog',
   )
+  assert.doesNotMatch(page, /hostedSources|skipFirstLoad|api\.sources\(|onSourcesChange\(values\)/, '书源页不应保留第二份清单、旧 props 链或按关键词另拉全量数据')
+
+  const switchModal = read('src', 'components', 'SourceSwitchModal.tsx')
+  assert.match(
+    switchModal,
+    /useSyncExternalStore\(\s*sourceCatalog\.subscribe,\s*sourceCatalog\.getSnapshot,\s*sourceCatalog\.getSnapshot,?\s*\)/,
+    '换源弹窗也应直接订阅 SourceCatalog',
+  )
+  assert.doesNotMatch(switchModal, /api\.sources\(|ownSources/, '换源弹窗不应再维护自己的书源清单')
 })
 
 test('api.sources 并发请求合流：落地前共用一次，落地后再取会重新发', async () => {

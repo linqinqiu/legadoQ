@@ -95,7 +95,7 @@ test('体检弹窗不把"清单还没取到"写成"0 个书源"', () => {
   // 空数组有两种成因，只有一种该报数字
   assert.match(modal, /sourcesState: 'loading' \| 'ready' \| 'failed'/, '弹窗得知道清单到没到手')
   assert.match(page, /sourcesState=\{sourcesState\}/, '父组件得把它传进来')
-  assert.match(page, /setSourcesState\('failed'\)/, '取失败要记成 failed，不能停在 loading 上装"还在读"')
+  assert.match(page, /sourceSnapshot\.status === 'idle' \? 'loading' : sourceSnapshot\.status/, '清单状态必须来自 catalog，失败时不能停在 loading 上装"还在读"')
   assert.match(modal, /disabled=\{running \|\| busyAction !== null \|\| sourcesState !== 'ready'/,
     '没取到之前那颗「开始体检」不能点着')
   const countLine = /sourcesState !== 'ready'[\s\S]{0,200}开始体检/.exec(modal)

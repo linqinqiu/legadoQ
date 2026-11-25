@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { zh } from '../i18n/zh'
-import { api, Chapter, SearchResult, SearchStreamEvent, SourceSummary, streamSearch } from '../lib/api'
+import { api, Chapter, SearchResult, SearchStreamEvent, streamSearch } from '../lib/api'
 import { cleanTitle } from '../lib/searchFilters'
 import { sourceLabel, sourcePickerOptions } from '../lib/sourceOrder'
 import { splitSourceGroups } from '../lib/sourceGrouping'
+import { sourceCatalog } from '../lib/sourceCatalog'
 import { Icon } from '../icons'
 import { Select } from './Select'
 import { toast } from './Toast'
@@ -32,14 +33,6 @@ export type SourceSwitchModalProps = {
   currentChapterTitle?: string
   currentChapterIndex?: number
   knownAlternateSources?: SearchResult[]
-  /**
-   * 换源搜索的范围选择（用户 2026-10-23：「书籍内部换源允许指定书源和分组，像搜索页面一样」）。
-   * 传了就在弹窗里摆出与搜索页同款那条"全部书源 / 按分组 / 指定书源"；
-   * **没传时保持历史行为**：书架入口已经持有整张表，会传；
-   * 阅读器入口没有这张表（不为了一个弹窗把它塞进 2700 行的 ReaderScreen 与 main.tsx 的 props 链），
-   * 由弹窗自己拉 `api.sources()` —— 拉之前那一拍按老语义搜全库，拉到后换范围条接管。
-   */
-  sources?: SourceSummary[]
   onSwitch: (chosen: { result: SearchResult; chapters: Chapter[]; targetChapterIndex: number }) => Promise<void>
   onClose: () => void
 }
@@ -91,7 +84,6 @@ export function SourceSwitchModal({
   currentChapterTitle,
   currentChapterIndex,
   knownAlternateSources = [],
-  sources = [],
   onSwitch,
   onClose,
 }: SourceSwitchModalProps) {
@@ -112,16 +104,16 @@ export function SourceSwitchModal({
   const [scopeGroup, setScopeGroup] = useState('')
   const [scopeSourceId, setScopeSourceId] = useState('')
   const [includeDisabled, setIncludeDisabled] = useState(false)
-  /** 弹窗自己拉的那份书源表（调用方没传 sources 时用，见 props 注释）。 */
-  const [ownSources, setOwnSources] = useState<SourceSummary[]>([])
-  const table = sources.length > 0 ? sources : ownSources
+  const sourceSnapshot = useSyncExternalStore(
+    sourceCatalog.subscribe,
+    sourceCatalog.getSnapshot,
+    sourceCatalog.getSnapshot,
+  )
+  const table = sourceSnapshot.items
 
   useEffect(() => {
-    if (sources.length > 0) return
-    let cancelled = false
-    void api.sources().then(list => { if (!cancelled) setOwnSources(list) }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [sources.length])
+    void sourceCatalog.load().catch(() => undefined)
+  }, [])
 
   /** 分组下拉的候选：把每个源的标签串拆开聚合，与搜索页同一个算式。 */
   const groupOptions = useMemo(() => {

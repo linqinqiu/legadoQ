@@ -396,3 +396,21 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 本轮的 seam 是 `DatabaseEngine`：连接池、单写连接、嵌套事务、建表、启动快照、碎片回收和关闭语义留在核心模块；`app` 通过 `initialize { SchemaVersion.migrate(it) }` 注入业务迁移，13 个 DAO 与端口适配不搬。`ArchitectureBoundaryTest` 新增 `core:data` 反向依赖扫描，`depth-check.mjs` 把新模块纳入扫描并删掉两条过期基线。
 
 第一次定向回归因本机 JVM native memory allocation（`mmap` / `malloc`）失败，未产生用例结论；改为 `--max-workers=1`、Gradle 堆 1g 后，定向 60 项、核心 10 项及后续全量均通过。标准 Vite 构建的 Windows esbuild 删除权限限制、Docker CLI 缺失、Supabase 实连待办仍与 §13 相同，本轮没有把静态检查或 mock 验收冒充外部实连。
+
+## 15. 2026-11-25 前端 `SourceCatalog` 单一数据源
+
+> 采集于 HEAD `42473cf` 之上的未提交工作树；本轮只改前端，没有提交或推送。
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| **前端源码规模** | **211 个 ts/tsx / 38,045 行** | `product/web/src` 递归统计 `.ts` / `.tsx`（含后续 `updateHint.ts`） |
+| **前端测试实跑** | **1,156 项 / 149 文件 / 0 失败** | `npm --prefix product/web test`；含 `SourceCatalog` 6 项并发、缓存、失败与竞态判据，以及 `updateHint` 6 项节流/静默/通知判据 |
+| **前端类型** | **通过** | `npm --prefix product/web run check` 与 `run check:test` |
+| **生产构建** | **277 modules**；入口 JS **592.26 kB / gzip 176.79 kB**，CSS **241.93 kB / gzip 41.03 kB** | `npm --prefix product/web run build:fallback` |
+| **dist 与体积门禁** | **11/11、6/6 通过** | `verify:dist`、`budget` |
+| **真实浏览器验收** | **12/12 通过** | Playwright + 5174 新前端；首次清单 1 请求、本地筛选 0 新增、手动刷新 1 新增、跨页复用 0 新增、编辑器可打开、390px 无横向溢出、无未捕获运行时异常 |
+| **数据安全** | **未写入真实书源数据** | 本机 `/api/sources` 实测为空；浏览器用只读 route 拦截的两条测试清单，不执行保存、启停、删除、导入或体检 |
+
+`sourceCatalog` 的接口只有 `subscribe/getSnapshot/load/invalidate/replace`：全量请求合流、缓存、强制失效、generation 隔离旧响应和失败保留旧清单都在模块内部。`main.tsx`、`SourcesPage`、`SourceSwitchModal` 共同订阅同一快照；关键词与分组筛选完全在本地，拖拽排序通过 `replace` 先发布乐观清单，写盘失败再强制刷新回滚。书源页新增清单状态、刷新入口、失败重试与筛选空态，保持原有两栏布局和密度。
+
+浏览器验收阻塞了开发态 Service Worker，避免 `/sw.js` 被 Vite 回退成 HTML 的既有 MIME 噪音；控制台仍有一条与本轮无关的 `/api/ui-prefs/reader-settings` 403（直接请求后端为 404），没有把它算成 `SourceCatalog` 的运行结果。
