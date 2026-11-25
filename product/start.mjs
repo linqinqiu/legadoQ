@@ -2,7 +2,8 @@ import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, openSync, readFileSync, statSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { bundleAssetName, childEnvironment, declaredVersion, ensureDirectories, newestFatJar, readJarEntry, resolveRuntime } from './scripts/runtime.mjs';
+import { bundleAssetName, childEnvironment, ensureDirectories, resolveRuntime } from './scripts/runtime.mjs';
+import { ensureFatJar, isBundledUiStale } from './scripts/bootstrap.mjs';
 import { pickPort } from './scripts/port-select.mjs';
 
 /**
@@ -17,17 +18,18 @@ import { pickPort } from './scripts/port-select.mjs';
  * 传进来的值优先于 .env / 环境变量 / 默认值。
  */
 function parseArgs(argv) {
-  const out = { port: null, host: null, open: true, help: false, allowExternalBind: false };
+  const out = { port: null, host: null, open: true, help: false, allowExternalBind: false, noBuild: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') out.help = true;
     else if (arg === '--no-open') out.open = false;
+    else if (arg === '--no-build') out.noBuild = true;
     else if (arg === '--allow-external-bind') out.allowExternalBind = true;
     else if (arg === '--port') out.port = Number(argv[++i]);
     else if (arg.startsWith('--port=')) out.port = Number(arg.slice('--port='.length));
     else if (arg === '--host') out.host = argv[++i];
     else if (arg.startsWith('--host=')) out.host = arg.slice('--host='.length);
-    else if (arg.startsWith('-')) { console.error(`未知参数：${arg}（可用：--port N / --host H / --no-open / --allow-external-bind）`); process.exit(2); }
+    else if (arg.startsWith('-')) { console.error(`未知参数：${arg}（可用：--port N / --host H / --no-open / --no-build / --allow-external-bind）`); process.exit(2); }
     // 位置参数（如 `serve`）直接忽略，方便把它当子命令用
   }
   if (out.port !== null && (!Number.isInteger(out.port) || out.port < 1 || out.port > 65535)) {
@@ -45,8 +47,9 @@ function isLoopbackHost(host) {
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
-  console.log('用法：node start.mjs [--port N] [--host H] [--no-open] [--allow-external-bind]');
+  console.log('用法：node start.mjs [--port N] [--host H] [--no-open] [--no-build] [--allow-external-bind]');
   console.log('  默认端口来自 .env / LEGADO_PORT，缺省 1234；起来后自动打开浏览器。');
+  console.log('  缺少或界面陈旧的当前 fatJar 默认自动构建；--no-build / LEGADO_NO_AUTO_BUILD=1 可禁用。');
   console.log('  默认只绑 127.0.0.1。绑非回环地址（如 0.0.0.0）必须加 --allow-external-bind，');
   console.log('  同一网络中的其它设备会因此能访问本服务。只在可信网络中临时使用。');
   process.exit(0);
@@ -56,49 +59,31 @@ const runtime = resolveRuntime();
 if (args.port) runtime.port = args.port;
 if (args.host) runtime.host = args.host;
 
-const jar = newestFatJar(runtime.libs);
-if (!jar) {
-  const want = declaredVersion();
-  console.error(want
-    ? `没有 legado-${want}-all.jar（当前声明版本 ${want}）。先重建：node stop.mjs && npm run build`
-    : `没有 ${runtime.libs}\\*-all.jar，先跑 gradle :app:fatJar`);
-  process.exit(1);
+const prepared = ensureFatJar({ productRoot: runtime.root, noBuild: args.noBuild });
+if (!prepared.ok) {
+  console.error(prepared.error);
+  if (prepared.action === 'disabled') {
+    console.error('需要自动构建时去掉 --no-build，并确保未设置 LEGADO_NO_AUTO_BUILD=1。');
+  }
+  process.exit(prepared.exitCode ?? 1);
+}
+const jar = prepared.jar;
+if (prepared.action === 'built' || prepared.action === 'rebuilt') {
+  console.log(`当前 fatJar 已${prepared.action === 'built' ? '自动构建' : '自动重建'}：${jar}`);
 }
 
 /**
  * 启动前守卫：**包里的前端必须就是磁盘上刚构建的那一份**，否则不起。
- *
- * 判据用**内容指纹**（jar 内 `static/index.html` 的主 bundle 名 vs `web/dist/index.html`），
- * 不用 mtime —— Vite 每次重发 `web/dist` 都会刷新时间戳，而 Gradle 在内容没变时把
- * `fatJar` 判为 UP-TO-DATE、包的时间戳停在上一轮，只看 mtime 会把"内容完全一致的当前包"
- * 误判成旧包（2026-10-26 归零版本后第一次重建就撞上了）。
- *
- * 要拦的是 2026-10-26 那次真实事故：只重建了普通 jar、`fatJar` 没跑，`-all.jar` 停在三小时前，
- * `start.mjs` 只看文件名不看内容，于是旧界面又"成功启动"了一次。
- * （顺带修正一个容易误判的点：Windows 上 JVM 并不会锁死运行中的 jar，实测 `fatJar` 能就地覆盖，
- * 所以问题不在文件锁，在**没人调用 fatJar**。）
- *
- * 逃生口 `LEGADO_ALLOW_STALE_JAR=1`：故意跑旧包做回滚验证时用。
+ * 判据用 web/dist 与 jar 内 static/ 的全部文件 SHA-256；CSS、SW、图标任一变化都算陈旧，
+ * 读不到包内内容按陈旧处理。缺失/陈旧默认由 bootstrap 自动构建一次；
+ * LEGADO_ALLOW_STALE_JAR=1 只用于显式回滚，不触发构建。
  */
 const distIndex = path.join(runtime.root, 'web', 'dist', 'index.html');
 if (existsSync(distIndex)) {
-  const jarPath = path.join(runtime.libs, jar);
-  const distAsset = bundleAssetName(readFileSync(distIndex, 'utf8'));
-  const jarAsset = bundleAssetName(readJarEntry(jarPath) || '');
-  const stale = !jarAsset
-    // 读不到包内条目（没有 PowerShell/unzip，或包里没有 index.html）→ 退回旧的 mtime 判断
-    ? statSync(distIndex).mtimeMs > statSync(jarPath).mtimeMs + 1000
-    : distAsset !== jarAsset;
-  if (stale && !process.env.LEGADO_ALLOW_STALE_JAR) {
-    console.error(`这个 jar 里没有当前界面，拒绝启动。`);
-    console.error(`  jar   ${jar}  包内前端 ${jarAsset || '(读不到，退回按时间判断)'}`);
-    console.error(`  dist  web/dist  ${distAsset || '(读不到)'}`);
-    console.error(`先重建（顺序不能反，运行中的进程加载的是旧包）：`);
-    console.error(`  node stop.mjs && npm run build && node start.mjs`);
-    console.error(`确实要跑这个旧包（回滚验证）：LEGADO_ALLOW_STALE_JAR=1 node start.mjs`);
-    process.exit(1);
+  const fingerprint = isBundledUiStale(runtime.root, jar, runtime.libs);
+  if (fingerprint.distAsset) {
+    console.log(`界面指纹 ${fingerprint.distAsset}${fingerprint.jarAsset && fingerprint.jarAsset !== fingerprint.distAsset ? `（jar 内是 ${fingerprint.jarAsset}，靠 LEGADO_ALLOW_STALE_JAR 放行）` : ''}`);
   }
-  if (distAsset) console.log(`界面指纹 ${distAsset}${jarAsset && jarAsset !== distAsset ? `（jar 内是 ${jarAsset}，靠 LEGADO_ALLOW_STALE_JAR 放行）` : ''}`);
 }
 // 用 let：端口在下面可能因“默认端口被别的程序占了”而改，环境变量要跟着重算一次。
 let env = childEnvironment(runtime);

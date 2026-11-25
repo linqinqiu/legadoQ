@@ -3,15 +3,24 @@
 // 来历：2026-10-26 那次"重启了但界面还是旧的"。跑着的 `legado-0.8.6-all.jar` 是 01:25 的，
 // `web/dist` 是 08:40 的，两者都叫 0.8.6，`/healthz` 也报 0.8.6 —— 从版本号上**完全看不出**
 // 部署漂移，只有把包里的 `static/index.html` 解出来比对 bundle 文件名才看得出来。
-// 这条门禁就是把那次手工解包对比固化下来：不一致就红，并直接给出修复命令。
+// 这条门禁就是把那次手工解包对比固化下来：dist、resources、jar、运行实例的全部 static
+// 文件逐个比 SHA-256，不一致就红，并直接给出修复命令。
 //
 // 只读，不写任何文件。跑法：node tools/verify/bundled-ui-check.mjs
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { ROOT } from './env.mjs'
 // 与 start.mjs / make-cds.mjs 共用同一份"该跑哪个包、构建指纹是什么、怎么读包内条目"的判断：
 // 各写一遍的话，门禁绿而实际跑的是另一个包。
-import { bundleAssetName, declaredVersion, newestFatJar, readJarEntry } from '../../scripts/runtime.mjs'
+import {
+  bundleAssetName,
+  declaredVersion,
+  hashStaticDirectory,
+  newestFatJar,
+  readJarStaticHashes,
+  staticHashDifferences,
+} from '../../scripts/runtime.mjs'
 
 const DIST_INDEX = path.join(ROOT, 'web/dist/index.html')
 const RESOURCES_INDEX = path.join(ROOT, 'app/build/resources/main/static/index.html')
@@ -33,11 +42,15 @@ if (!fs.existsSync(DIST_INDEX)) {
 }
 
 const dist = fingerprint(fs.readFileSync(DIST_INDEX, 'utf8'))
+const distHashes = hashStaticDirectory(path.dirname(DIST_INDEX))
 record('web/dist 里有主 bundle', !!dist, dist || 'index.html 里找不到 assets/index-*.js')
 
+const resourcesDirectory = path.join(ROOT, 'app/build/resources/main/static')
 if (fs.existsSync(RESOURCES_INDEX)) {
-  const built = fingerprint(fs.readFileSync(RESOURCES_INDEX, 'utf8'))
-  record('processResources 产物与 dist 一致', built === dist, `dist=${dist} resources=${built || '(读不到)'}`)
+  const differences = staticHashDifferences(distHashes, hashStaticDirectory(resourcesDirectory))
+  const count = differences.missing.length + differences.changed.length + differences.extra.length
+  record('processResources 全部静态文件与 dist 一致', count === 0,
+    count ? `缺失=${differences.missing.join(',')} 变化=${differences.changed.join(',')} 多余=${differences.extra.join(',')}` : `${Object.keys(distHashes).length} 个文件`)
 } else {
   record('processResources 产物', 'skip', '还没跑过 :app:processResources')
 }
@@ -52,19 +65,15 @@ if (!jar) {
     ? `没有 legado-${want}-all.jar；libs 里现有：${have || '（空）'} —— 重跑 npm run build`
     : 'app/build/libs 里没有 *-all.jar —— fatJar 没产出可运行包')
 } else {
-  let inside
-  try {
-    inside = fingerprint(readJarEntry(path.join(LIBS, jar)) || '') || ''
-  } catch (error) {
-    record('fatJar 内前端', 'skip', `读不出包内 static/index.html：${error instanceof Error ? error.message.split('\n')[0] : error}`)
-    inside = undefined
-  }
-  if (inside !== undefined) {
-    // 包里有 jar、但没有 static/index.html，正是"只有后端、没有界面"的那种包。
-    // 原来这一格什么都不记，等于把最该拦的情况漏掉了。
-    record(`fatJar（${jar}）内前端与 dist 一致`, !!inside && inside === dist,
-      inside ? `dist=${dist} jar=${inside}` : '包里没有 static/index.html —— 不是可运行界面包')
-  }
+  const jarHashes = readJarStaticHashes(path.join(LIBS, jar))
+  const differences = staticHashDifferences(distHashes, jarHashes)
+  const count = differences.missing.length + differences.changed.length + differences.extra.length
+  record(`fatJar（${jar}）全部静态文件与 dist 一致`, count === 0,
+    jarHashes
+      ? count
+        ? `缺失=${differences.missing.join(',')} 变化=${differences.changed.join(',')} 多余=${differences.extra.join(',')}`
+        : `${Object.keys(distHashes).length} 个文件`
+      : '读不到包内 static/，按失败处理')
 }
 
 /**
@@ -85,23 +94,37 @@ async function timed(url, ms) {
   }
 }
 
-try {
-  const html = await timed(`${BASE}/`, 3000).then((r) => r.text())
-  const live = fingerprint(html)
-  if (live) record('运行中的实例与 dist 一致', live === dist, `dist=${dist} 运行中=${live}`)
+if (process.env.LEGADO_SKIP_LIVE_UI_CHECK === '1') {
+  record('运行中的实例', 'skip', '自动构建期间跳过 live 检查，避免旧实例阻止重建')
+} else {
+  try {
+    const html = await timed(`${BASE}/`, 3000).then((r) => r.text())
+    const live = fingerprint(html)
+    record('运行中的实例 HTML 有主 bundle', !!live, live || 'index.html 里找不到 assets/index-*.js')
+    if (live) record('运行中的实例与 dist 一致', live === dist, `dist=${dist} 运行中=${live}`)
 
-  // ⚠️ 只比对 HTML 里写的那个 bundle 名是不够的 —— 名字对上了，文件仍可能取不到。
-  // 真踩到过：实例发的 HTML 是新的（引用新哈希），但 `/assets/<新哈希>.js` 回 404，
-  // 页面白屏；而上面那条 "运行中的实例与 dist 一致" 照样 PASS，因为两边都写着同一个名字。
-  // 浏览器真正需要的是「HTML + 它引用的脚本都能取到」，所以这里必须真去拉一次。
-  if (live) {
-    const status = await timed(`${BASE}/assets/${live}`, 5000)
-      .then((r) => r.status)
-      .catch(() => 0)
-    record('运行中的实例真能发出它引用的 bundle', status === 200, `/assets/${live} → http=${status || '取不到'}`)
+    // 名字对上了仍可能 404 或内容损坏，所以逐个取 dist 里的文件并比对哈希。
+    if (live) {
+      const mismatches = []
+      for (const file of Object.keys(distHashes).sort()) {
+        try {
+          const response = await timed(`${BASE}/${file}`, 5000)
+          if (response.status !== 200) {
+            mismatches.push(`${file}:http=${response.status}`)
+            continue
+          }
+          const hash = createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex')
+          if (hash !== distHashes[file]) mismatches.push(`${file}:hash`)
+        } catch {
+          mismatches.push(`${file}:unreachable`)
+        }
+      }
+      record('运行中的实例全部静态文件与 dist 一致', mismatches.length === 0,
+        mismatches.length ? mismatches.join(', ') : `${Object.keys(distHashes).length} 个文件`)
+    }
+  } catch {
+    record('运行中的实例', 'skip', `${BASE} 没在跑（这条只在校验已部署实例时才看）`)
   }
-} catch {
-  record('运行中的实例', 'skip', `${BASE} 没在跑（这条只在校验已部署实例时才看）`)
 }
 
 let failed = 0

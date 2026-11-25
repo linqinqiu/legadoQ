@@ -3,6 +3,8 @@ import { Icon } from '../icons'
 import { Logo } from './Logo'
 import { registerServiceWorkerOnce } from '../lib/swRegistration'
 import { pushUiPref } from '../lib/uiPrefs'
+import { isAppBusy } from '../lib/appBusy'
+import { createReloadWhenIdle } from './pwaReload'
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[]
@@ -97,6 +99,7 @@ export function PwaManager() {
 
     // 2. Service Worker registration and update detection
     let checkForUpdate: (() => void) | null = null
+    let reloadWhenIdle: ReturnType<typeof createReloadWhenIdle> | null = null
     let updateTimer = 0
     if ('serviceWorker' in navigator && process.env.NODE_ENV !== 'test') {
       registerServiceWorkerOnce((url, options) => navigator.serviceWorker.register(url, options)).then(reg => {
@@ -115,10 +118,9 @@ export function PwaManager() {
       document.addEventListener('visibilitychange', checkForUpdate)
       updateTimer = window.setInterval(checkForUpdate, 5 * 60 * 1000)
 
-      let refreshing = false
       // `registerType: 'autoUpdate'` 生成的 SW 会 skipWaiting + clientsClaim，
       // 所以更新是"新 SW 直接接管"，没有 waiting 态、也没有"点一下才更新"的提示：
-      // 接管后等页面空闲（不在输入、不在搜索）再刷新一次。
+      // 接管后等页面空闲（reader/写请求已结束，且不在输入、不在搜索）再刷新一次。
       // 于是**第一次访问**（页面本来没有 controller）装好 SW 的那一刻也会报 controllerchange。
       // 原来这里无条件 reload，表现是"用户刚点搜索/正在翻页，页面自己刷了一下"：
       // 搜索请求被丢掉，界面上什么都没发生（书库指定书源搜索打不开就是这个），
@@ -126,26 +128,25 @@ export function PwaManager() {
       // 只有"本来就被旧 SW 控制着、又被新 SW 接管"才是真更新，才需要刷新。
       let hadController = !!navigator.serviceWorker.controller
       const busy = () => {
+        if (isAppBusy()) return true
+        // 保留 DOM 兜底：编辑框与进行中的搜索未必都接入 appBusy。
         const el = document.activeElement
         if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)) return true
         // 搜索进行中：那条「停止搜索」按钮就是唯一的在飞标志
         return [...document.querySelectorAll('button')].some(node => (node.textContent ?? '').trim() === '停止搜索')
       }
-      const reloadWhenIdle = () => {
-        if (refreshing) return
-        if (busy()) {
-          window.setTimeout(reloadWhenIdle, 1500)
-          return
-        }
-        refreshing = true
-        window.location.reload()
-      }
+      reloadWhenIdle = createReloadWhenIdle({
+        isBusy: busy,
+        reload: () => window.location.reload(),
+        setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
+        clearTimer: timer => window.clearTimeout(timer),
+      })
       onControllerChange = () => {
         if (!hadController) {
           hadController = !!navigator.serviceWorker.controller
           return
         }
-        reloadWhenIdle()
+        reloadWhenIdle?.request()
       }
       navigator.serviceWorker.addEventListener('controllerchange', onControllerChange)
     }
@@ -160,6 +161,7 @@ export function PwaManager() {
       }
       if (updateTimer) window.clearInterval(updateTimer)
       if (onControllerChange) navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
+      reloadWhenIdle?.dispose()
     }
   }, [])
 

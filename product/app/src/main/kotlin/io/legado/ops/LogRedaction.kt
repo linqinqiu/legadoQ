@@ -37,7 +37,7 @@ object LogRedaction {
 
     /** 其余凭据头：值取到空白或分隔符为止；`Bearer`/`Basic` 这类前缀连同值一起吃掉。 */
     private val HEADER_SECRET = Regex(
-        "(?i)\\b(authorization|x-api-key|x-auth-token|proxy-authorization)(\\s*[:=]\\s*)" +
+        "(?i)\\b(authorization|x-api-key|x-auth-token|proxy-authorization|apikey|x-feedback-token)(\\s*[:=]\\s*)" +
             "(?:(?:bearer|basic)\\s+)?[^\\s,;]+",
     )
 

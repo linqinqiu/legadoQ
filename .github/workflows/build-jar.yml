@@ -17,6 +17,9 @@ name: Build legadoQ JAR
 # 「装 Java 17 再 java -jar」，用户问"不是要无依赖就能普通用户使用吗"。现在拆成
 # build（Linux，跑测试出 jar）→ desktop（Windows，jlink + jpackage 出免安装包）→
 # release（Linux，拼正文、传三个资产）。桌面包没出来就不发版，正文也不会说"不用装 Java"。
+#
+# 2026-11-24：发布链前面加轻量 quality（Node 22，不装依赖）：protocol/API/changelog/version/
+# delivery/脚本用例六道契约先过，build 才开始；release 显式依赖 quality，不能靠别的工作流并行变绿。
 on:
   push:
     branches: [main, master]
@@ -46,8 +49,37 @@ defaults:
     working-directory: product
 
 jobs:
+  quality:
+    name: Release Quality Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          # changelog:check 要定位最后一笔日志提交；浅克隆会把边界切掉。
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 六道门禁都只用 Node 标准库/仓库脚本，不安装前后端依赖，也不构建产物。
+      # 显式回到仓库根：根 protocol:check 不在 product/，其余命令用 --prefix 保持口径。
+      - name: Run Release Quality Gates
+        working-directory: .
+        run: |
+          npm run protocol:check
+          npm --prefix product run docs:api-check
+          npm --prefix product run changelog:check
+          npm --prefix product run version:check
+          node product/tools/verify/delivery-check.mjs
+          npm --prefix product run test:scripts
+
   build:
     name: Build & Package JAR
+    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -77,6 +109,10 @@ jobs:
         run: |
           npm ci --prefix web
           npm --prefix web run build
+
+      # 体积预算：与 ci.yml 的 web-check 同一条判据，打包路径上也钉一次。
+      - name: Bundle Size Budget
+        run: npm --prefix web run budget
 
       - name: Run Web & Server Verification Tests
         env:
@@ -198,8 +234,9 @@ jobs:
   release:
     name: Publish Release
     # 桌面包是发行页的主推产物：它没出来就不发版，否则正文说"不用装 Java"而资产里没有，
-    # 用户只能去下 jar、再去装 Java —— 正是这版要修的问题。
-    needs: [build, desktop]
+    # 用户只能去下 jar、再去装 Java —— 正是这版要修的问题。quality 也显式列出：
+    # 即使将来 DAG 被改动，发布 job 本身仍直接要求质量门禁成功。
+    needs: [quality, build, desktop]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20

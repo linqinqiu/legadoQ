@@ -1,8 +1,9 @@
 // 运行时位置解析：start.mjs 与 stop.mjs 共用一份，避免两边端口/路径各写一遍而飘掉。
 // 优先级：.env 文件 > 进程环境变量 > 默认值。默认值全部落在安装目录内，一个字节都不写 C 盘。
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** 安装目录：脚本自己所在目录，所以整个文件夹可以随意改名/搬盘；LEGADO_HOME 可显式指定。 */
@@ -127,24 +128,86 @@ export function bundleAssetName(html) {
 /**
  * 读出 jar（zip）里某个条目的文本；读不到返回 null。
  *
- * 不引第三方 zip 库：Windows 走自带的 .NET，类 Unix 走 `unzip`。
+ * 不引第三方 zip 库：Windows 走系统自带 `tar`，类 Unix 走 `unzip`。
  * 用途是**按内容判新鲜度** —— mtime 会假阳性：Vite 每次重发 `web/dist` 都刷新时间戳，
  * 而 Gradle 在内容没变时把 `fatJar` 判为 UP-TO-DATE、包时间戳停在上一轮，
  * 只看 mtime 就会把"内容完全一致的当前包"误判成旧包。
  */
+function archiveReader() {
+  return process.platform === 'win32'
+    ? { tool: join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), list: '-tf', extract: '-xOf' }
+    : { tool: 'unzip', list: '-Z1', extract: '-p' };
+}
+
 export function readJarEntry(jarPath, entry = 'static/index.html') {
   if (!existsSync(jarPath)) return null;
+  const reader = archiveReader();
   try {
-    if (process.platform === 'win32') {
-      const ps = 'Add-Type -AssemblyName System.IO.Compression.FileSystem;' +
-        `$z=[System.IO.Compression.ZipFile]::OpenRead('${jarPath.replace(/'/g, "''")}');` +
-        `$e=$z.Entries | Where-Object { $_.FullName -replace '\\\\','/' -eq '${entry}' };` +
-        'if ($e) { $s=New-Object System.IO.StreamReader($e.Open()); $s.ReadToEnd(); $s.Close() };' +
-        '$z.Dispose()';
-      return execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', maxBuffer: 1 << 24 });
-    }
-    return execFileSync('unzip', ['-p', jarPath, entry], { encoding: 'utf8', maxBuffer: 1 << 24 });
+    return execFileSync(reader.tool, [reader.extract, jarPath, entry], {
+      encoding: 'utf8',
+      maxBuffer: 1 << 24,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
   } catch {
     return null;
   }
+}
+
+function sha256(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+export function hashStaticDirectory(directory) {
+  const hashes = {};
+  const visit = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) visit(full);
+      else if (entry.isFile()) hashes[relative(directory, full).replace(/\\/g, '/')] = sha256(readFileSync(full));
+    }
+  };
+  visit(directory);
+  return hashes;
+}
+
+/** 只读取 static/ 条目；类文件不参与界面一致性判断。读不到就返回 null，调用方必须 fail-closed。 */
+export function readJarStaticHashes(jarPath) {
+  if (!existsSync(jarPath)) return null;
+  const reader = archiveReader();
+  try {
+    const names = execFileSync(reader.tool, [reader.list, jarPath], {
+      encoding: 'utf8',
+      maxBuffer: 1 << 24,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+      .split(/\r?\n/)
+      .map((name) => name.replace(/\\/g, '/'))
+      .filter((name) => name.startsWith('static/') && !name.endsWith('/'));
+    return Object.fromEntries(names.map((name) => [
+      name.slice('static/'.length),
+      sha256(execFileSync(reader.tool, [reader.extract, jarPath, name], {
+        maxBuffer: 64 << 20,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })),
+    ]));
+  } catch {
+    return null;
+  }
+}
+
+export function staticHashDifferences(expected, actual) {
+  if (!actual) return { missing: Object.keys(expected), changed: [], extra: [] };
+  const keys = new Set([...Object.keys(expected), ...Object.keys(actual)]);
+  const missing = [];
+  const changed = [];
+  const extra = [];
+  for (const key of keys) {
+    if (!(key in actual)) missing.push(key);
+    else if (!(key in expected)) extra.push(key);
+    else if (expected[key] !== actual[key]) changed.push(key);
+  }
+  return { missing: missing.sort(), changed: changed.sort(), extra: extra.sort() };
 }

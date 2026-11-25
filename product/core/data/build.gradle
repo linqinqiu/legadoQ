@@ -1,0 +1,9 @@
+plugins {
+    alias libs.plugins.kotlin.jvm
+}
+
+dependencies {
+    api project(':core:model')
+    implementation "org.xerial:sqlite-jdbc:3.49.1.0"
+    testImplementation libs.junit
+}

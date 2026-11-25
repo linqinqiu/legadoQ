@@ -44,7 +44,7 @@ test {
 
 // 框架守门：钉死"框架不含内容 + 端点计数契约"。任何破坏默认暴露面（端点计数变了，
 // 或让 plugin/ 容器夹带具体功能）的提交都会在 build 阶段直接红。
-// 端点计数以 `app/src/main/resources/agent-api.json` 为准（当前 165 条 / 19 组），
+// 端点计数以 `app/src/main/resources/agent-api.json` 为准（当前 147 条 / 19 组），
 // 由 `web/test/ApiCatalog.test.ts` 断言；这里**不抄数字** —— 本注释曾长期停在 141 端点。
 tasks.register('verifyFramework', Test) {
     group = 'verification'
@@ -160,6 +160,12 @@ java {
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+}
+
+tasks.named('compileTestKotlin', org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
+    compilerOptions.freeCompilerArgs.add(
+        "-Xfriend-paths=${project(':core:ops').layout.buildDirectory.dir('classes/kotlin/main').get().asFile}",
+    )
 }
 
 application {
@@ -316,6 +322,8 @@ processResources {
 
 dependencies {
     api project(':core:model')
+    api project(':core:ops')
+    implementation project(':core:data')
     implementation "io.ktor:ktor-server-netty:3.4.3"
     // CIO 暂时留着：
     // - `stalled-client-check` 对照实验要用它证明「阻塞写」才是根因（2026-11-16 实测，见 docs/sessions）；
@@ -330,7 +338,6 @@ dependencies {
     // 接口 JSON 的 gzip：书源清单 ~1MB、发现页书源 ~540KB，全是重复度极高的对象；
     // 只压 JSON（静态资源在 StaticWeb 里自己压，SSE/音频/图片不压）。
     implementation "io.ktor:ktor-server-compression:3.4.3"
-    implementation "org.xerial:sqlite-jdbc:3.49.1.0"
     implementation "org.jsoup:jsoup:1.18.3"
     // 规则引擎的 @xpath 方言支持（与 Legado 同款 xpath-on-jsoup），本地已有缓存版本 2.5.1
     implementation "cn.wanghaomiao:JsoupXpath:2.5.1"
@@ -339,6 +346,7 @@ dependencies {
     implementation "org.slf4j:slf4j-simple:2.0.16"
     testImplementation "io.ktor:ktor-server-test-host:3.4.3"
     testImplementation "io.ktor:ktor-client-content-negotiation:3.4.3"
+    testImplementation files(project(':core:ops').layout.buildDirectory.dir('classes/kotlin/main'))
     testImplementation libs.junit
 }
 

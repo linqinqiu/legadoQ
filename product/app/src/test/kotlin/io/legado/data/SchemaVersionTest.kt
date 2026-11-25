@@ -1,6 +1,6 @@
 package io.legado.data
 
-import io.legado.data.db.Schema
+import io.legado.data.core.DatabaseEngine
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
@@ -70,7 +70,12 @@ class SchemaVersionTest {
         val fixture = fixture("legado-schema-fresh")
         try {
             val db = fixture.connection
-            Schema.createTables(db)
+            DatabaseEngine(
+                dbPath = fixture.directory.resolve("legado.sqlite").toString(),
+                maxPoolSize = 1,
+                snapshotKeep = 0,
+                snapshotMinIntervalMs = 0,
+            ).use { engine -> engine.initialize {} }
             assertEquals("刚建完表的库还没有版本号", 0, SchemaVersion.current(db))
 
             val version = db.inTransaction { SchemaVersion.migrate(db) }
@@ -273,7 +278,12 @@ class SchemaVersionTest {
         val fixture = fixture("legado-schema-baseline-shape")
         try {
             val db = fixture.connection
-            Schema.createTables(db)
+            DatabaseEngine(
+                dbPath = fixture.directory.resolve("legado.sqlite").toString(),
+                maxPoolSize = 1,
+                snapshotKeep = 0,
+                snapshotMinIntervalMs = 0,
+            ).use { engine -> engine.initialize {} }
             db.exec("pragma user_version = 0")
             db.inTransaction { SchemaVersion.migrate(db) }
 

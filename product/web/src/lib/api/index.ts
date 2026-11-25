@@ -7,7 +7,7 @@
  *   localBooks / cover / bookImage / bookMedia / replaceRules / tts
  *   backup
  *   connections / models / agentSources / comprehend / chat / chatStream / skills / prompts / taskModels / mcp
- *   brand / system
+ *   brand / system / feedback
  *
  * 文件末尾另组装旧 `api` 对象形状（兼容层）：旧调用点经 `lib/api.ts` 别名拿到它，
  * 新代码请直接用上面的按域导出。所有类型定义见 ./types.ts；基础 fetch 客户端见 ./client.ts。
@@ -47,11 +47,13 @@ import { backup } from './domains/backup'
 
 import { brand } from './domains/brand'
 import { system } from './domains/system'
+import { feedback } from './domains/feedback'
 
 import type { SearchStreamEvent } from './types'
 
 export { request }
 export * from './types'
+export type { FeedbackCategory, FeedbackInput, FeedbackItem } from './domains/feedback'
 
 export {
   sources,
@@ -81,6 +83,7 @@ export {
   backup,
   brand,
   system,
+  feedback,
 }
 
 /** 流式搜索：WebSocket 推事件。保持旧签名（keyword, sourceIds, onEvent, onError, onClose）。

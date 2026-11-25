@@ -16,10 +16,13 @@
 ```bash
 npm --prefix web install
 npm run dev          # 只起前端 dev server（热重载，不含后端）
+npm run doctor       # 只读体检：Node / npm / JDK / wrapper / 依赖 / 产物 / 端口
+npm run pr           # 提交前门禁：契约、脚本、前端类型与用例、后端用例
 npm test             # 全部用例：前端 node:test + 后端 JUnit
 npm run check        # 前端类型检查（tsc）
 node stop.mjs        # 停掉本项目在端口上的那个 java 进程
 npm run build        # 见下面四步
+npm run full         # pr + 完整构建 + 包内界面与体积预算
 node start.mjs       # 起服务并自动开浏览器（默认 127.0.0.1:1234）
 ```
 
@@ -43,7 +46,7 @@ transform 输入改走临时文件、而本机删除临时文件被拒（Windows
 
 **为什么必须先 `node stop.mjs`**：跑着的服务加载的是磁盘上那份 `-all.jar`。Windows 上覆盖它其实会成功（不是文件锁问题），但如果构建中途有东西把服务拉起来，那个进程读到的就是**写了一半的包** —— 表现是首页已经新了、`/healthz` 还报旧哈希。真正出过的事故是另一头：`fatJar` 一度只被 `npm run build` 调用，谁走 `gradlew build` / IDE 构建就只刷新普通 jar，`-all.jar` 静默留在过去，重启了也还是旧界面。现在两侧都有守卫：
 
-- `start.mjs` 启动前：磁盘上有比 fatJar 更新的 `web/dist` → **拒绝启动**，并给出该敲的命令（回滚验证要绕过用 `LEGADO_ALLOW_STALE_JAR=1`）。
+- `start.mjs` 启动前：当前版本 fatJar 缺失，或包内界面指纹与 `web/dist` 不一致 → **自动重建一次**并复验；`--no-build` / `LEGADO_NO_AUTO_BUILD=1` 可禁用，显式回滚旧包仍用 `LEGADO_ALLOW_STALE_JAR=1`。
 - `start.mjs` 启动后：抓 `/` 与 `web/dist` 比主 bundle 哈希，不一致就不打开浏览器、以退出码 1 结束。
 - `app/build.gradle`：有 `web/dist` 时 `assemble` 依赖 `fatJar`，走 Gradle 的构建也会刷新可运行包。
 
@@ -51,7 +54,7 @@ transform 输入改走临时文件、而本机删除临时文件被拒（Windows
 
 ## 提交前 / 分支与 PR / 提交信息
 
-- `npm run check` 与 `npm test` 都要过；动了框架层还要先跑 `./gradlew :app:verifyFramework`。
+- 提交前跑 `npm run pr`；动了框架层还要先跑 `./gradlew :app:verifyFramework`。
 - 版本号唯一来源是 `app/build.gradle` 的 `version`；发版前升一档并在 `CHANGELOG.md` 顶部补一条。
 - 从 `main` 切描述性分支，**别直接推 `main`**；一个 PR 只做一件事。
 - 提交信息沿用 `<type>(<scope>): <中文说明>`（`fix` / `feat` / `refactor` / `docs` / `chore` / `test`）。

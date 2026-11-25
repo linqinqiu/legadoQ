@@ -245,9 +245,10 @@ class SourceLoginTest {
         val next = runner.executeLoginUiActionV2(source, "sendCode", "{}", mapOf("phone" to "13800000000"))
         assertTrue(next.ok)
         assertNotNull(next.state)
-        assertTrue(next.state!!, next.state.contains("\"step\":\"code\""))
+        val nextState = next.state!!
+        assertTrue(nextState, nextState.contains("\"step\":\"code\""))
 
-        val second = runner.renderLoginUiV2(source, next.state!!)
+        val second = runner.renderLoginUiV2(source, nextState)
         assertNull(second.error)
         assertEquals("code", second.rows[0].key)
 
@@ -298,7 +299,8 @@ class SourceLoginTest {
         val first = runner.executeLoginAction(source, "getServerSettings()", emptyMap())
         assertTrue(first.error ?: "脚本失败", first.success)
         assertEquals("线路设置", first.inlineTitle)
-        assertTrue(first.inlineHtml!!, first.inlineHtml.contains("id=\"serverValue\""))
+        val inlineHtml = first.inlineHtml!!
+        assertTrue(inlineHtml, inlineHtml.contains("id=\"serverValue\""))
         assertNull("本地页面不该被当成远端地址", first.openUrl)
         assertTrue(first.toastMessages.contains("请点完成"))
 
@@ -336,7 +338,8 @@ class SourceLoginTest {
         val out = runner.executeLoginAction(source, "getServerSettings()", emptyMap())
         assertTrue(out.error ?: "脚本失败", out.success)
         assertEquals("线路设置", out.inlineTitle)
-        assertTrue(out.inlineHtml!!, out.inlineHtml.contains("https://line2.example"))
+        val inlineHtml = out.inlineHtml!!
+        assertTrue(inlineHtml, inlineHtml.contains("https://line2.example"))
     }
 
     @Test
@@ -521,7 +524,8 @@ class SourceLoginTest {
         val first = runner.executeLoginUiActionV2(source, "open")
         assertTrue(first.ok)
         assertEquals("设置页", first.inlineTitle)
-        assertTrue(first.inlineHtml!!, first.inlineHtml.contains("id=\"pick\""))
+        val inlineHtml = first.inlineHtml!!
+        assertTrue(inlineHtml, inlineHtml.contains("id=\"pick\""))
 
         val second = runner.executeLoginUiActionV2(
             source,

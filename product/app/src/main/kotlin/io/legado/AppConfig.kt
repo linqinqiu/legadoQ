@@ -240,6 +240,22 @@ object AppConfig {
             .takeIf { it.isNotEmpty() }
 
     /**
+     * 意见收集中转的 Supabase 项目地址 / anon public key（2026-11-24）。
+     *
+     * 两者都必须显式配置才启用 `/api/feedback`：未设时端点回 409 feedback_not_configured，
+     * 界面继续走既有的 GitHub Issue 反馈入口。anon key 只在服务端持有、不随前端 bundle 分发
+     * （前端拿到的只是本地随机 token 的 SHA-256），且真正的安全边界是 Supabase 的 RLS，不是 key。
+     * 与 accessToken 一样只认环境变量、不落盘、不进日志；AppConfigEnvWiringTest 可断言读过。
+     */
+    val supabaseUrl: String?
+        get() = record("LEGADO_SUPABASE_URL", env["LEGADO_SUPABASE_URL"]?.trim() ?: "")
+            .takeIf { it.isNotEmpty() }
+
+    val supabaseAnonKey: String?
+        get() = record("LEGADO_SUPABASE_ANON_KEY", env["LEGADO_SUPABASE_ANON_KEY"]?.trim() ?: "")
+            .takeIf { it.isNotEmpty() }
+
+    /**
      * 是否允许 AI 连接的 `baseUrl` 指向**回环地址**（默认 false）。
      *
      * 为什么需要这个口子：这台软件只跑在本机，而想接的模型也常常就在本机 ——

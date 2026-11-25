@@ -68,7 +68,7 @@
 
 ## 快速开始
 
-前置：Node.js 20+、Java 17+。
+前置：Node.js 20+、Java 17+。源码目录首次先执行 `npm --prefix product/web install`；发布包解压后可直接运行。
 
 ```bash
 npm start
@@ -77,7 +77,7 @@ npm start
 npm run stop
 ```
 
-1234 被别的程序占着时不会再启动失败：启动器会往后找一个空闲端口并把地址打出来。
+当前版本 fatJar 缺失或界面过期时，`npm start` 会自动构建一次；用 `npm run doctor` 可先只读体检环境。1234 被别的程序占着时不会再启动失败：启动器会往后找一个空闲端口并把地址打出来。
 想固定在某个端口，用 `npm start -- --port 1235`，或在界面「设置 → 服务端口」里改（写进 `port.txt`）。
 
 Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`。
@@ -94,9 +94,9 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 
 安全模型：
 
-- 只监听 `127.0.0.1`，没有身份认证；绑定地址就是唯一的门。
-- `GET` / `HEAD` 直接放行；`POST` / `PUT` / `DELETE` 要求同源 `Origin`。
-- 把 `LEGADO_HOST` 改成 `0.0.0.0` 等于把整库写权限交给局域网。启动脚本会拒绝非回环地址，确认要暴露才加 `--allow-external-bind`。
+- 默认只监听 `127.0.0.1`；可选 `LEGADO_ACCESS_TOKEN` 为访问令牌，未设时保持历史行为。
+- `GET` / `HEAD` 直接放行；浏览器发起的 `POST` / `PUT` / `PATCH` / `DELETE` 跨站写请求必须带同源 `Origin`，无 `Origin` 的命令行与非浏览器客户端保持放行。
+- 把 `LEGADO_HOST` 改成 `0.0.0.0` 前必须显式加 `--allow-external-bind` 或 `LEGADO_ALLOW_EXTERNAL_BIND=1`；配置 access token 后，非回环请求还必须带 Bearer 头或 `?token=`。
 
 ---
 

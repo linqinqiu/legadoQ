@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.3.0 · 端点数：145 · 生成时间：2026-11-21
+> 版本：0.3.0 · 端点数：147 · 生成时间：2026-11-24
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -33,7 +33,8 @@
 | 图片与媒体 | 6 |
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
-| **合计** | **145** |
+| 反馈 | 2 |
+| **合计** | **147** |
 
 ## 目录（1）
 
@@ -269,4 +270,11 @@
 | GET | `/api/tts/session/{id}/events` | 否 | 这个会话的事件流：哪一片好了、能播了、出错了吗 |
 | POST | `/api/tts/speak` | 是 | 一次性把一段文本合成完整音频（整章文本走会话那条更好）；请求体：text=要念的文本，不许空，voice=音色，rate=语速，pitch=音高，engine=引擎，customUrl=自建引擎才填，customHeader=可选，customMethod=可选 |
 | GET | `/api/tts/speak` | 否 | 同样的一次性合成，参数走查询串（给 audio 标签这种没法发 POST 的地方用）；query：text=文本（必填），voice=音色，rate=语速，pitch=音高 |
+
+## 反馈（2）
+
+| 方法 | 路径 | 写门 | 说明 |
+|---|---|---|---|
+| POST | `/api/feedback` | 是 | 匿名提交一条建议；Ktor 中转到 Supabase，不落本地库。未配置中转时回 409，界面回退 GitHub Issue；请求体：category=bug / feature / general / question，content=1–2000 字，contact=可选，最多 200 字，仅用于回复此条建议，tokenHash=前端本地随机 token 的 SHA-256，64 位小写十六进制 |
+| GET | `/api/feedback/mine` | 否 | 按请求头 x-feedback-token（64 位小写十六进制）查回自己提交的建议；Supabase RLS 只放行 token 匹配的行 |
 

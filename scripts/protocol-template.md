@@ -21,4 +21,4 @@
 
 ## 改完跑门禁
 - 前端：`cd product/web && npm test`（node:test 自研 runner，项数随源文件浮动，以当次实跑为准）
-- 后端：`cd product && ./gradlew :app:test --no-daemon`（GoldenRuleTest 逐字节守门）
+- 后端：`cd product && ./gradlew :app:test --no-daemon`（GoldenRuleTest 逐字节守门）；改 `:core:*` 时先跑对应模块测试，如 `./gradlew :core:data:test`

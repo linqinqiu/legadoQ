@@ -23,4 +23,6 @@ rootProject.name = 'legado'
 
 include ':app'
 include ':core:model'
+include ':core:ops'
+include ':core:data'
 

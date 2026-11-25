@@ -4,7 +4,7 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-23 实测**：前端 **1,125 项全绿**，`tsc -b` 通过；后端 **1,059 项全绿**（149 个 suite，`--max-workers=2`）。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §12。
+> 当前发布版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ`（私有） ｜ **2026-11-25 实测**：前端 **1,143 项全绿**（147 个文件），`tsc -b` 通过；后端合计 **1,078 项全绿**（153 个 suite，其中 `:core:data` 10 项）。生产构建、体积门禁与新 jar 隔离启动冒烟通过。04:00 的规模与旧测试统计仅作快照，不代表当前工作树；实测口径见 `product/docs/restructure/facts.md` §14。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -33,7 +33,8 @@
 | 包 | 职责 |
 |---|---|
 | `http/` | 路由与 HTTP 边界：15 个 `*Routes.kt` 域模块 + `Routes.kt` 只做域声明；系统域（目录/服务/日志/诊断/关于/更新日志）独立成 `http/system/SystemRoutes.kt`；`Guard.kt`（同源写门）、`RouteCatalog.kt`（端点目录） |
-| `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 只是组合根（连接池 / 建表 / 迁移 / Cookie 工具四件事拆在 `data/db/`：`ConnectionPool` `Schema` `SchemaVersion` `Migration` `CookieUtil`） |
+| `AppContainer.kt` | 应用组合根：创建并持有数据库、规则引擎、缓存、订阅、TTS、浏览器登录、备份与反馈依赖；统一后台任务启动和幂等关闭，路由只接收容器 |
+| `data/` | 表级 DAO，全部写成 `Database` 的扩展函数；`Database.kt` 是领域门面并委托 `:core:data`。业务版本迁移在 `data/SchemaVersion.kt`，历史补列在 `data/db/Migration.kt`，Cookie 工具在 `data/db/CookieUtil.kt` |
 | `reading/` | 阅读域收口 `ReadingRepository`：进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口 |
 | `experimental/ai/` | AI 网关（**不参与编译/打包**，`/api/agent` 不注册）：2026-11-17 从 `app/src/main/kotlin/io/legado/ai/` 移到 `product/experimental/ai/`，恢复方式见该目录 README |
 | `rules/` | 书源规则引擎（Rhino 沙箱、正文/目录/搜索规则、loginUi V1/V2 渲染与动作）；`RuleProcessor` / `RuleContext` / `RuleDispatcher` 是**已接入的扩展点**（0.2.34：求值前先问处理器、没人认领再走内联），`rules/processor/demo/` 是两个可直接注册的示例 |
@@ -43,13 +44,14 @@
 | `content/` | 正文净化与标题处理 |
 | `subscription/` | 书源订阅、RSS |
 | `tts/` | Edge TTS 与朗读会话 |
-| `ops/` | 运维与出站面：`NetworkSecurity.kt`（出站 SSRF 闸门）、`PinnedProxy.kt`（连接级 IP 固定）、`GuardedHttpClient.kt`、`ProxyHeaders.kt`（反代头）、`ServerIdentity.kt`、`LogService.kt`、`UpdateCheck.kt`、`Metrics.kt`、`UiPrefsStore.kt` |
+| `ops/` | 应用运维：`ProxyHeaders.kt`（反代头）、`ServerIdentity.kt`、`LogService.kt`、`UpdateCheck.kt`、`UiPrefsStore.kt`；出站 SSRF 闸门、连接级 IP 固定、受保护 HTTP 客户端与指标已迁至 `:core:ops` |
 | `backup/` | 备份包导入（zip 与裸 JSON，兼容兄弟项目扩展条目）；导出尚未支持 |
-| `model/` | 纯请求 / 响应 DTO，按系统、书源、发现、阅读、书架、替换规则、备份、日志、凭据、本地书拆为十个同包文件；不依赖其他领域实现（G5 已零基线） |
+| `:core:model` | 纯请求 / 响应 DTO，按系统、书源、发现、阅读、书架、替换规则、备份、反馈拆为八个同包文件；不依赖其他领域实现（G5 已零基线） |
+| `:core:data` | SQLite 连接池、单写事务、建表、启动快照与碎片回收；`DatabaseEngine.initialize {}` 接收 `app` 注入的业务迁移，核心模块不反向依赖宿主 |
 
 桌面壳 `DesktopLauncher.kt` 负责窗口、启动画面、托盘与安装目录解析。插件装载机制已整体移除（代码里没有 `plugin/` 包），保留的是工具 / 协议 / 连接选择策略三类**运行时注册表**扩展点。
 
-### 2.2 端点分布（145 条 / 18 组）
+### 2.2 端点分布（147 条 / 19 组）
 
 | 组 | 条数 | 组 | 条数 |
 |---|---:|---|---:|
@@ -62,6 +64,7 @@
 | 图片与媒体 | 6 | 书源订阅 | 5 |
 | 发现页 | 3 | 离线缓存 | 3 |
 | 搜索 | 2 | 目录 | 1 |
+| 匿名反馈 | 2 | | |
 
 契约由 `resources/agent-api.json` 描述，`FrameworkContractTest`、`web/test/ApiCatalog.test.ts` 与源码双向核对；`npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 一致。
 
@@ -86,12 +89,11 @@
 | `features/bookshelf/` | 书架页（`ShelfPage`）与书库页（`LibraryPage`）+ 封面、空态引导、拖拽排序、布局与自定义顺序 |
 | `features/explore/` | 发现页：按书源 `exploreUrl` 分栏浏览 |
 | `features/source-editor/` | 书源页 + 编辑器面板、字段表单、健康体检、登录浮层、换源弹窗、订阅面板 |
-| `features/settings/` | 设置页 + 分区表（数据权威源 `settingsSections.ts`）、AI 工具、Cookie、壁纸分区 |
-| `features/ai/` | AI 悬浮球、对话面板（流式）、多会话、连接管理、技能库 |
+| `features/settings/` | 设置页 + 分区表（数据权威源 `settingsSections.ts`）、Cookie、壁纸分区 |
 | `features/rss/` | RSS 页与文章阅读 |
 | `plugins/` | 页面级插件：`about` `backup` `changelog` `reading-log` `source-health`，以及 Slot/Extension 外壳（`slotRegistry`、`extensionRegistry`、`attachmentStore`、`ExtensionSlot`） |
 | `lib/api/` | 按域拆分的 API 客户端：`client.ts` + `types.ts` + `domains/*`；`lib/api.ts` 保留旧 `api` 对象形状作兼容层 |
-| `lib/` 其余 | 品牌 store、导航、离线存储、拖拽排序、字号/字体库、AI 会话 store 等 |
+| `lib/` 其余 | 品牌 store、导航、离线存储、拖拽排序、字号/字体库、命名忙碌源与反馈令牌等 |
 | `components/` | 通用弹层与控件（ContextMenu、Select、Toast、各类 Modal），22 个文件 |
 
 **页面与业务的边界**：**没有 `pages/` 目录了** —— 路由级页面直接住在它自己的域里
@@ -123,17 +125,18 @@
 
 | 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | `npm test`（`gradlew :app:test`） | **1,059 项 / 0 失败 / 0 跳过**（149 个 suite；2026-11-23 `--max-workers=2` 全量实测，含 S3 鉴权闸 10 项）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印；自定义 TTS 判据覆盖到路由层：`/api/tts/speak` 的 `Authorization` 转发、`{{speakText}}` 替换、`Content-Type` 透传、字节流原样返回，元数据地址发送前拒绝（400 `tts_invalid_request`），上游 401/500 不再被当音频回 200（502 `tts_failed`），8MB 上限边读边判，重定向上限改为“3 跳允许、第 4 跳拒绝”，跨源重定向不再重放自定义头（同源跳转保留），跟跳方法按 RFC 9110 归一（`303`/`301`/`302` 的 POST 降为 GET、不带 body，`307`/`308` 保留方法与 body）；服务层另有 CRLF 注入头与 `Host` 丢弃判据 |
+| 后端测试 | `npm test`（`gradlew :app:test`）+ `./gradlew :core:data:test` | **1,078 项 / 153 suite / 0 失败 / 0 跳过**（2026-11-25 全量实测；`:app` 1,068 + `:core:data` 10，含匿名反馈中转、RLS 契约、日志脱敏与 AppContainer 生命周期判据）。`ArchitectureBoundaryTest` 此前因 `d34af81` 的 `source/ExternalBrowserLogin.kt → io.legado.ops` 未进基线而红，本轮新增 `port/LocalControl` 端口、由 `Routes.kt` 注入实现后转绿；`E2EScenariosTest` 的墙钟断言已移除，改为“只碰选中书源 + 恰好 4 次请求 / 5000 章完整性”的确定性判据，耗时只打印；自定义 TTS 判据覆盖到路由层：`/api/tts/speak` 的 `Authorization` 转发、`{{speakText}}` 替换、`Content-Type` 透传、字节流原样返回，元数据地址发送前拒绝（400 `tts_invalid_request`），上游 401/500 不再被当音频回 200（502 `tts_failed`），8MB 上限边读边判，重定向上限改为“3 跳允许、第 4 跳拒绝”，跨源重定向不再重放自定义头（同源跳转保留），跟跳方法按 RFC 9110 归一（`303`/`301`/`302` 的 POST 降为 GET、不带 body，`307`/`308` 保留方法与 body）；服务层另有 CRLF 注入头与 `Host` 丢弃判据 |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
-| Web 测试 | `web: npm test` | **1,125 项 / 0 失败**（2026-11-23 全量实测，含 S3 访问令牌 5 项；`ChallengerEmpiricalStress` 曾因并行负载触发一次计时基准红，单文件与第二次全量均通过） |
-| 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-22 本轮实测，随 `build:fallback` 一起跑） |
+| Web 测试 | `web: npm test` | **1,143 项 / 147 个文件 / 0 失败**（2026-11-25 全量实测，含匿名反馈令牌、API 错误、PWA 忙碌刷新与契约判据） |
+| 类型检查 | `npm run check`（`tsc -b`） | 通过（2026-11-25 随 `build:fallback` 一起跑） |
+| 交付契约与工具脚本 | `node tools/verify/delivery-check.mjs` / `node --test scripts/*.test.mjs` | **SELF TEST 30/30、脚本用例 22/22**；CI 的 quality job 已纳入第六道脚本门禁，release 等待 quality → build → desktop 全链完成 |
 | 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **74.52%**（11,518/15,456；2026-11-23 随全量 `:app:test` 产出的 `jacocoTestReport`，其中 `tts` 75.81% = 630/831、`ops` 82.47% = 560/679）；前端行 **63.51%**（2026-11-09 快照，本轮未重跑 `npm run coverage`） |
-| 端点文档一致 | `cd product && npm run docs:api-check` | 通过：145 条端点、18 个分组与文档一致（并核对本文与 ARCHITECTURE/ROADMAP 里手写的端点数） |
+| 端点文档一致 | `cd product && npm run docs:api-check` | 通过：147 条端点、19 个分组与文档一致（并核对本文与 ARCHITECTURE/ROADMAP 里手写的端点数） |
 | 更新日志 | `cd product && npm run changelog:check` | 通过：无待记录改动（自查至边界 `771b311`） |
 | 版本单一来源 | `cd product && npm run version:check` | 通过：8 处版本均为 **0.3.0**，build **56** |
 | 真浏览器门禁 | `product/tools/verify/*-check.mjs` | **51** 个 `*-check.mjs`（该目录下共 78 个 `.mjs`，其中约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
 
-CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约 / 文档 / 结构）、`build-jar.yml`（打包与发布）、`gates.yml`（真浏览器门禁）、`coverage.yml`、`docker.yml`。
+CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约 / 文档 / 结构）、`build-jar.yml`（六道质量门禁通过后才打包，发布等待桌面资产）、`gates.yml`（真浏览器门禁）、`coverage.yml`、`docker.yml`。
 
 ---
 
@@ -226,7 +229,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，端点契约由源码、测试与 API 文档共同校验。当前版本为 **0.3.0 / build 56**；前端全量 **1,125 项通过**、后端全量 **1,059 项全绿**（均 2026-11-23 实测）。历史规模和覆盖率数字以各自日期快照理解，不与当前混淆。当前 ReaderScreen 交互编排仍较集中，详见已知缺口；`RuleRunner` 拆分状态应以当前源码核实后再列入行动项。
+后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，端点契约由源码、测试与 API 文档共同校验。当前版本为 **0.3.0 / build 56**；前端全量 **1,143 项通过**、后端全量 **1,078 项全绿**（均 2026-11-25 实测）。历史规模和覆盖率数字以各自日期快照理解，不与当前混淆。当前 ReaderScreen 交互编排仍较集中，详见已知缺口；`RuleRunner` 拆分状态应以当前源码核实后再列入行动项。
 
 ---
 ## 9. 数字口径

@@ -19,9 +19,7 @@ import javax.crypto.spec.PBEKeySpec
 import io.legado.AppConfig
 import io.legado.cache.CachedCover
 import io.legado.content.ContentProcessor
-import io.legado.data.db.ConnectionPool
-import io.legado.data.db.Migration
-import io.legado.data.db.Schema
+import io.legado.data.core.DatabaseEngine
 import io.legado.localbook.LocalBookParser
 import io.legado.localbook.ParsedBook
 import io.legado.model.BackupShelfEntry
@@ -61,24 +59,19 @@ import io.legado.model.SourceSubscription
 import io.legado.model.SourceSummary
 import io.legado.model.SubscriptionWriteRequest
 
-/**
- * 数据库组合根：从原有 641 行的 Database.kt 重构为轻量装配点。
- *
- * 职责拆分：
- * - `ConnectionPool`：读写连接池、WAL 配置、连接健康检查（`select 1`）
- * - `Schema`：建表 SQL（首次启动时执行）
- * - `Migration`：旧库缺列补列、cookie_jar 折叠、VACUUM 碎片回收
- *
- * `Database` 本身只负责组装这三者，并暴露向后兼容的 `connect` / `write` / `close`
- * 接口给现有 DAO 调用，无需改动调用方。
- */
+/** 数据库领域门面：委托核心引擎，并持有书源缓存与规则内核端口。 */
 class Database(private val path: String) : Closeable, AutoCloseable, PortBundle {
 
     /** 库文件路径的只读视图：备份快照清单端点据此定位 `<同目录>/backups`。 */
     val dbPath: String get() = path
 
     private val random = SecureRandom()
-    private val pool = ConnectionPool.default(path)
+    private val engine = DatabaseEngine(
+        dbPath = path,
+        maxPoolSize = AppConfig.dbPoolSize,
+        snapshotKeep = AppConfig.dbSnapshotKeep,
+        snapshotMinIntervalMs = AppConfig.dbSnapshotMinIntervalMs,
+    )
 
     @Volatile internal var isClosed = false
 
@@ -89,88 +82,23 @@ class Database(private val path: String) : Closeable, AutoCloseable, PortBundle 
     /** 凭据桶「被多少书源提到」的统计缓存，定义与说明见 `CookieDao.kt`。 */
     internal val cookieMentions = CookieMentions()
 
-    init {
-        // 目录由 ConnectionPool 构造时创建，此处保留显式声明以兼容旧行为。
-        java.nio.file.Files.createDirectories(java.nio.file.Path.of(path).toAbsolutePath().parent)
-    }
-
     /** 读连接：先从池里复用，池空则新建；失效连接直接丢弃并重建。 */
-    internal fun <T> connect(block: (java.sql.Connection) -> T): T {
-        check(!isClosed) { "Database is closed" }
-        val connection = pool.borrowRead()
-        return try {
-            val result = block(connection)
-            pool.releaseRead(connection)
-            result
-        } catch (error: Throwable) {
-            pool.releaseRead(connection)
-            throw error
-        }
-    }
+    internal fun <T> connect(block: (java.sql.Connection) -> T): T = engine.read(block)
 
     /** 写连接：全局单写，复用同一连接，全局锁保护。 */
-    internal fun <T> write(block: (java.sql.Connection) -> T): T =
-        pool.useWrite(block)
+    internal fun <T> write(block: (java.sql.Connection) -> T): T = engine.write(block)
 
-    /**
-     * 事务里当前线程的嵌套深度。用 `ThreadLocal` 而不是成员变量：写连接由 `writeLock`
-     * 独占，同一时刻只有一个线程在事务里，深度天然是「这一层调用栈的深度」。
-     */
-    private val transactionDepth = ThreadLocal.withInitial { 0 }
+    /** 可嵌套事务：只有最外层提交或回滚，内层用 SAVEPOINT。 */
+    fun <T> transaction(block: (java.sql.Connection) -> T): T = engine.transaction(block)
 
-    /**
-     * **可嵌套的事务入口**：只有最外层 `commit` / `rollback`，内层用 SAVEPOINT。
-     *
-     * 为什么需要它：库里有六七个函数自己写 `autoCommit = false … commit() … autoCommit = true`
-     * （六个备份导入步骤都是这个形状）。把它们串成一个整批事务时，直接在外面套一层
-     * `write { autoCommit = false }` 会静默失效 —— 第一个内层函数在 `finally` 里把
-     * `autoCommit` 复位成 true，外层事务当场被提交掉；0.2.35 的批量删书事故就是这条。
-     *
-     * 所以规矩改成：**谁都不许自己动 `autoCommit`**，要么走本函数，要么走 `write {}`（不碰
-     * `autoCommit`，语句自动并入当前事务）。内层失败用 SAVEPOINT 回滚到入口，外层的其它
-     * 步骤不受影响；外层失败则整体回滚。
-     *
-     * 约束：事务内**不要做网络 / 文件 IO**（单写连接被独占，所有写请求排队），也**不要调用
-     * 仍然自己管 `autoCommit` 的 DAO**（`ShelfDao` / `CacheDao` 里的老函数），它们会把
-     * 外层事务提交掉。
-     */
-    fun <T> transaction(block: (java.sql.Connection) -> T): T = write { db ->
-        val depth = transactionDepth.get()
-        val savepoint = if (depth == 0) {
-            db.autoCommit = false
-            null
-        } else {
-            db.setSavepoint("legado_tx_$depth")
-        }
-        transactionDepth.set(depth + 1)
+    /** 首次启动：核心引擎建表与快照，领域迁移在单独事务里执行。 */
+    fun initialize() {
         try {
-            val result = block(db)
-            if (savepoint != null) db.releaseSavepoint(savepoint)
-            if (depth == 0) db.commit()
-            result
+            engine.initialize { tx -> SchemaVersion.migrate(tx) }
         } catch (error: Throwable) {
-            // 回滚自己失败不能盖掉真因：真正要抛给上层的还是 block 里那个异常。
-            runCatching { if (savepoint != null) db.rollback(savepoint) else db.rollback() }
-            throw error
-        } finally {
-            transactionDepth.set(depth)
-            if (depth == 0) runCatching { db.autoCommit = true }
-        }
-    }
-
-    /** 首次启动：建表 + 迁移 + 快照。碎片回收不在这条同步路径里，见 [scheduleReclaimFragmentation]。 */
-    fun initialize(): Unit = write { db ->
-        Schema.createTables(db)
-        // 迁移前的原样快照：迁移失败时库里还留着升级前的完整副本（VACUUM 不能在事务里跑，
-        // 所以它必须排在事务之外）。
-        Migration.maybeSnapshot(db, path)
-        // 版本化迁移（P0-3）：整段在一笔事务里，任一步失败即回滚、版本不变、启动失败。
-        try {
-            transaction { tx -> SchemaVersion.migrate(tx) }
-        } catch (error: Throwable) {
+            val version = runCatching { engine.read(SchemaVersion::current) }.getOrDefault(-1)
             throw IllegalStateException(
-                "数据库迁移失败（停在 v${runCatching { SchemaVersion.current(db) }.getOrDefault(-1)}，" +
-                    "已回滚到迁移前状态，可修复后重试）：${error.message}",
+                "数据库迁移失败（停在 v$version，已回滚到迁移前状态，可修复后重试）：${error.message}",
                 error,
             )
         }
@@ -194,7 +122,7 @@ class Database(private val path: String) : Closeable, AutoCloseable, PortBundle 
                 return@Thread
             }
             if (isClosed) return@Thread
-            runCatching { write { db -> Migration.reclaimFreePages(db) } }
+            runCatching { engine.reclaimFreePages() }
                 .onFailure { error ->
                     System.err.println(
                         "启动后异步碎片回收失败：${error.javaClass.simpleName}: ${error.message} —— 不影响功能，只是文件没缩回去",
@@ -206,11 +134,11 @@ class Database(private val path: String) : Closeable, AutoCloseable, PortBundle 
     override fun close() {
         if (isClosed) return
         isClosed = true
-        pool.close()
+        engine.close()
     }
 
     /** 书源表被写过几次（`app_meta.source_revision`，由 source 表上的触发器维护）。 */
-    internal fun sourceRevision(): Long = connect { db ->
+    internal fun sourceRevision(): Long = engine.read { db ->
         db.prepareStatement("select value from app_meta where key = 'source_revision'").use { statement ->
             statement.executeQuery().use { rs -> if (rs.next()) rs.getString(1)?.toLongOrNull() ?: 0L else 0L }
         }

@@ -17,12 +17,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.system.exitProcess
 import java.nio.file.Files
-import io.legado.cache.BookCacheService
-import io.legado.cache.CoverCache
-import io.legado.data.Database
-import io.legado.data.DbSnapshot
-import io.legado.data.MentionsWarmer
-import io.legado.data.getCookieForUrl
+import io.legado.data.core.DbSnapshot
 import io.legado.http.AccessTokenGate
 import io.legado.http.BodyLimits
 import io.legado.http.PayloadTooLargeException
@@ -32,14 +27,11 @@ import io.legado.http.SameOriginWriteGate
 import io.legado.ops.ServerIdentity
 import io.legado.http.StrictJsonConverter
 import io.legado.http.apiRoutes
+import io.legado.feedback.FeedbackService
 import io.legado.http.requireLoopbackBind
 import io.legado.model.HealthStatus
 import io.legado.ops.LogService
 import io.legado.port.logSystem
-import io.legado.rules.RuleRunner
-import io.legado.subscription.SubscriptionService
-import io.legado.tts.EdgeTtsService
-import io.legado.tts.TtsSessionService
 import io.legado.model.ApiError
 
 /**
@@ -145,7 +137,14 @@ private fun Throwable.deepBadRequestMessage(): String? =
         .mapNotNull { it.message }
         .lastOrNull()
 
-fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnvironment(), cdsDump: Boolean = false) {
+fun Application.legadoApplication(
+    config: ServerConfig = ServerConfig.fromEnvironment(),
+    cdsDump: Boolean = false,
+    feedbackService: FeedbackService = FeedbackService(
+        baseUrl = AppConfig.supabaseUrl,
+        anonKey = AppConfig.supabaseAnonKey,
+    ),
+) {
     // 绑定闸门：非回环地址必须显式放行（LEGADO_ALLOW_EXTERNAL_BIND=1），否则直接拒绝启动。
     // 放在最前面：一旦监听 0.0.0.0，整库就已经对局域网开放了，之后再拦请求没有意义。
     val externalBind = requireLoopbackBind(config.host, config.allowExternalBind)
@@ -170,34 +169,20 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
     if (DbSnapshot.applyPendingRestore(config.databasePath)) {
         log.info("已按待恢复标记还原数据库（下次启动生效的一次性操作，原库已留 pre-restore 副本）")
     }
-    val database = Database(config.databasePath)
-    database.initialize()
-    // 启动时把「每个凭据桶被多少书源提到」的统计提前算好（全库扫描，冷 JVM 实测 2~3 秒）。
-    // 不预热的话，进程起来后第一次打开凭据管理要等这么久；预热放在低优先级守护线程里，
-    // 和界面首屏那些请求并行，用户基本感知不到。见 CookieDao.kt 的 MentionsWarmer。
-    // 启动这一跑不等防抖：Ktor 自己启动要 6 秒，扫得越早越能在"服务已就绪"之前算完。
-    MentionsWarmer.schedule(database, delayMs = 0)
-    val subscriptions = SubscriptionService(database) { message -> log.info(message) }
-    val runner = RuleRunner(database = database)
-    // coverCache 要在 bookCache 之前建：离线缓存漫画章节时顺带把图抓进同一个磁盘缓存，
-    // 否则离线打开漫画只有 `![图片](url)` 占位、图全裂。
-    val coverCache = CoverCache(config.coverCacheDirectory, cookieFor = { database.getCookieForUrl(it) })
-    val bookCache = BookCacheService(database, runner, coverCache) { message -> log.info(message) }
-    val edgeTts = EdgeTtsService()
-    val ttsSessions = TtsSessionService(edgeTts)
+    val container = AppContainer.create(config, feedbackService) { message -> log.info(message) }
 
     // AI 那一整套（ai/ 包 + /api/agent 路由）2026-11-17 已挪到 product/experimental/ai/ 做实验型，
     // 不参与编译与打包；要恢复的话把它挪回 app/src/main/kotlin/io/legado/ai/ 并接回这两处。
 
     // 插件系统已移除（用户 2026-10-26：不再做插件）。
     // 工具注册表 / 钩子仍在 ai/ 里，宿主代码可以直接 register() 挂工具 —— 那属于 AI 能力面，不是「插件」。
-    environment.monitor.subscribe(ApplicationStopping) { 
+    environment.monitor.subscribe(ApplicationStopping) {
         logSystem("服务器正在停止")
-        subscriptions.stop(); bookCache.stop(); ttsSessions.close(); database.close() 
+        container.close()
     }
-    environment.monitor.subscribe(ApplicationStopped) { 
+    environment.monitor.subscribe(ApplicationStopped) {
         logSystem("服务器已停止")
-        subscriptions.stop(); bookCache.stop(); ttsSessions.close(); database.close() 
+        container.close()
     }
     /**
      * 订阅同步、缓存续跑、一次性封面回收都是**后台工作**，不必挡在"端口能连"前面。
@@ -212,13 +197,7 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
      */
     if (!cdsDump) {
         environment.monitor.subscribe(ApplicationStarted) {
-            subscriptions.start()
-            bookCache.start()
-            // 大库高碎片时全量 VACUUM 会重写整个文件，同步跑明显拖冷启动。
-            // 端口已 listen，把碎片回收挪到后台守护线程里（见 Database.scheduleReclaimFragmentation）。
-            database.scheduleReclaimFragmentation()
-            val purgedCovers = coverCache.purgeGeneratedLocalCovers(database)
-            if (purgedCovers > 0) log.info("已回收 {} 张自动生成的本地书封面", purgedCovers)
+            container.start()
         }
     } else {
         // 生成脚本趁这几秒预热几个接口（让请求路径的类也进归档），然后正常退出。
@@ -335,10 +314,7 @@ fun Application.legadoApplication(config: ServerConfig = ServerConfig.fromEnviro
                 )
             )
         }
-        apiRoutes(
-            database, runner, coverCache, subscriptions, bookCache, edgeTts, ttsSessions,
-            config.localBooksDirectory, config.homeDirectory, config.host, config.port,
-        )
+        apiRoutes(container)
         // 注册在 staticWeb 之前：根路由是 `staticResources("/")`，先摆 /next 才不必去猜路由树的优先级
         staticNext(config.nextDirectory)
         staticWeb(config.homeDirectory)

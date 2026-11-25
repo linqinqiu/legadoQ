@@ -1,11 +1,12 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { api, BookDetails, BookshelfItem, SearchResult, SourceSummary } from './lib/api'
 import { getAccessToken } from './lib/accessToken'
 import { performanceMonitor } from './lib/performance' // 性能监控初始化
 import { reportBrand } from './lib/brandStore'
 import { ContextMenuLayer } from './components/ContextMenu'
-import { ReaderScreen } from './features/reader/ReaderScreen'
+// 阅读器整支按需加载：2294 行 + 它拖着的 content/dialogs/tts 一大片，不该压在首屏。
+const ReaderScreen = lazy(() => import('./features/reader/ReaderScreen').then(m => ({ default: m.ReaderScreen })))
 import type { OpenBook } from './lib/openBook'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { activeSkin, isDarkSkin, loadReaderSettings, ReaderSettings, saveReaderSettings, themeClassNames } from './features/reader/settingsPanel/readerSettings'
@@ -58,6 +59,15 @@ export { extractSourcesFromRaw, parseSourceJsonText, sanitizeImageUrl }
 export type { SourceChoice, SourceChoiceStatus }
 const PAGE_DIALOG_TITLES: Record<PageDialogKind, string> = { rules: '替换净化规则' }
 const readerStorageKey = 'legado-open-book-v1'
+/**
+ * 惰性 chunk 的加载占位：复用 app-loading 那对已在样式表里登记的类（UiContract 门禁要求
+ * 类名有真实 CSS 规则，别自造）。只转个小圈，不铺满屏 —— 页面/阅读器容器自己会画底色。
+ */
+const ChunkLoading = () => (
+  <span className="app-loading-box" role="status" aria-live="polite">
+    <span className="app-loading-spinner" aria-hidden="true" />
+  </span>
+)
 /** 旧深链进来仍开对的那一个悬浮层，不白屏也不跳页 */
 const dialogFromHash = (): PageDialogKind | null => location.hash === '#rules' ? 'rules' : null
 
@@ -648,14 +658,16 @@ function App() {
         <ContextMenuLayer />
         {/* 阅读器崩了不该把外壳一起带走：正文那一支单独包一层，出口回到进入前的页面 */}
         <ErrorBoundary region="阅读器" onExit={() => navigate(readerReturnPage)}>
-          <ReaderScreen
-            openBook={reader.book}
-            startIndex={reader.index}
-            settings={settings}
-            onSettingsChange={setSettings}
-            onClose={() => navigate(readerReturnPage)}
-            sources={sources}
-          />
+          <Suspense fallback={<ChunkLoading />}>
+            <ReaderScreen
+              openBook={reader.book}
+              startIndex={reader.index}
+              settings={settings}
+              onSettingsChange={setSettings}
+              onClose={() => navigate(readerReturnPage)}
+              sources={sources}
+            />
+          </Suspense>
         </ErrorBoundary>
       </div>
     )
@@ -725,7 +737,7 @@ function App() {
         revision={serverRevision}
         revisionSha={serverSha}
       />
-      {renderPage(page, pageContext)}
+      <Suspense fallback={<ChunkLoading />}>{renderPage(page, pageContext)}</Suspense>
       {explorePick && page === 'explore' && (
         <BookDetailModal
           book={explorePick.book}

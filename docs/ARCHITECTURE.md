@@ -1,7 +1,7 @@
 # 架构示意
 
 > 依据当前源码整理，只画已经存在的部分。**版本号以 `/healthz` 为准，端点以 `/api/catalog` 为准**
-> （`docs/API-REFERENCE.md` 由契约生成）。本文里的端点数与表数最近核对于 **2026-11-14**，
+> （`docs/API-REFERENCE.md` 由契约生成）。本文里的端点数与表数最近核对于 **2026-11-24**，
 > 发版后可能变化；以 `product/docs/restructure/facts.md` 与 `docs:api-check` 的当次输出为准。
 > 接口清单见 [`API-REFERENCE.md`](API-REFERENCE.md)，目录职责见 [`STRUCTURE.md`](STRUCTURE.md)。
 >
@@ -17,9 +17,9 @@ flowchart LR
         CLI["curl / 脚本 / AI Agent<br/>不带 Origin 的客户端"]
     end
 
-    subgraph PROC["单个 JVM 进程 · Ktor CIO 3.4.3 · 默认 127.0.0.1:1234"]
+    subgraph PROC["单个 JVM 进程 · Ktor Netty 3.4.3 · 默认 127.0.0.1:1234"]
         GUARD["同源写门<br/>http/Guard.kt<br/>只拦跨站写"]
-        ROUTE["路由层<br/>http/Routes.kt 装配点 + 15 个组文件<br/>145 个端点 / 18 组<br/>WS /api/search/stream"]
+        ROUTE["路由层<br/>http/Routes.kt 装配点 + 15 个组文件<br/>147 个端点 / 19 组<br/>WS /api/search/stream"]
         STATIC["静态资源<br/>StaticWeb.kt<br/>SPA 壳 + /next 挂载点"]
 
         subgraph DOMAIN["业务模块"]
@@ -31,12 +31,11 @@ flowchart LR
             TTS["tts<br/>Edge TTS 会话流"]
             BACKUP["backup<br/>备份包导入"]
             SUB["subscription<br/>书源订阅 / RSS"]
-            AGENT["ai<br/>Agent 工具与护栏"]
-            OPS["ops<br/>出站闸门 / 日志落库 / 更新检查"]
+            OPS["ops<br/>日志落库 / 更新检查"]
         end
 
         DB[("SQLite<br/>data/legado.sqlite · WAL<br/>代码建 21 张表")]
-        NETSEC["出站闸门<br/>ops/NetworkSecurity.kt + PinnedProxy.kt<br/>拒内网 / 链路本地 / 保留段 · 连接级 IP 固定"]
+        NETSEC["出站闸门<br/>:core:ops/NetworkSecurity.kt + PinnedProxy.kt<br/>拒内网 / 链路本地 / 保留段 · 连接级 IP 固定"]
     end
 
     NET["外部站点<br/>书源 / RSS / TTS 接口"]
@@ -56,7 +55,6 @@ flowchart LR
     ROUTE --> TTS
     ROUTE --> BACKUP
     ROUTE --> SUB
-    ROUTE --> AGENT
     ROUTE --> OPS
 
     SRC --> RULE
@@ -72,7 +70,6 @@ flowchart LR
     CACHE --> DB
     BACKUP --> DB
     SUB --> DB
-    AGENT --> DB
     OPS --> DB
 ```
 
@@ -82,15 +79,16 @@ flowchart LR
 flowchart TB
     subgraph L1["入口与装配"]
         A1["Application.kt<br/>Ktor 特性 / 路由注册"]
-        A2["ServerConfig.kt<br/>环境变量与默认值"]
-        A3["DesktopLauncher.kt<br/>桌面壳生命周期"]
-        A4["StaticWeb.kt<br/>内置 SPA"]
+        A2["AppContainer.kt<br/>组合根与生命周期"]
+        A3["ServerConfig.kt<br/>环境变量与默认值"]
+        A4["DesktopLauncher.kt<br/>桌面壳生命周期"]
+        A5["StaticWeb.kt<br/>内置 SPA"]
     end
 
     subgraph L2["HTTP 边界与出站闸门"]
-        B1["Routes.kt 装配点<br/>+ 15 个 <组>Routes.kt<br/>全部 /api/* 与 WebSocket"]
-        B2["Guard.kt<br/>同源写门"]
-        B3["ops/NetworkSecurity.kt<br/>出站 SSRF 闸门 + PinnedProxy"]
+        B1["Routes.kt 装配点<br/>+ 按域拆分的 <组>Routes.kt<br/>全部 /api/* 与 WebSocket"]
+        B2["Guard.kt / AccessTokenGate.kt<br/>同源写门 / 可选令牌"]
+        B3[":core:ops/NetworkSecurity.kt<br/>出站 SSRF 闸门 + PinnedProxy"]
         B4["ops/ProxyHeaders.kt<br/>反代头"]
         B5["RouteCatalog.kt<br/>/api/catalog 生成"]
     end
@@ -104,12 +102,12 @@ flowchart TB
         C6["tts 朗读"]
         C7["backup 备份"]
         C8["subscription 订阅"]
-        C9["ai Agent"]
-        C10["ops 运维"]
+        C9["ops 运维"]
     end
 
     subgraph L4["基础设施"]
-        D1["data/Database.kt 装配点<br/>建表 / 迁移 / 连接池<br/>+ 13 个 <面>Dao.kt"]
+        D1["data/Database.kt 领域门面<br/>业务迁移 / 端口适配<br/>+ 13 个 <面>Dao.kt"]
+        D1A[":core:data/DatabaseEngine.kt<br/>连接池 / 单写事务 / 建表<br/>快照 / 碎片回收"]
         D2["SQLite 文件"]
         D3["data/covers<br/>封面落盘"]
         D4["data/external-browser-profile<br/>内置浏览器配置"]
@@ -120,7 +118,8 @@ flowchart TB
     L1 --> L2
     L2 --> L3
     L3 --> L4
-    B3 --> D2
+    D1 --> D1A
+    D1A --> D2
 ```
 
 ## 3. 一条开书链路
@@ -189,7 +188,7 @@ flowchart LR
 flowchart LR
     A["npm start<br/>或 product/start.cmd / start.sh"] --> B["product/start.mjs<br/>解析端口、数据目录、日志"]
     B --> C["java -jar<br/>product/app/build/libs/legado-*-all.jar"]
-    C --> D["Ktor CIO<br/>127.0.0.1:1234"]
+    C --> D["Ktor Netty<br/>127.0.0.1:1234"]
     D --> E["/healthz<br/>版本与状态"]
     D --> F["/api/catalog<br/>机器可读端点目录"]
     D --> G["/ 与 /next<br/>内置 SPA"]
@@ -204,6 +203,8 @@ flowchart LR
   注意服务端自己的兜底默认是 `8080`（`ServerConfig.kt`），`1234` 是 `product/scripts/runtime.mjs` 这个启动器给的 ——
   裸跑 jar 不经过启动器时，缺省端口是 8080 而不是 1234。
 - 数据与日志都相对安装根解析，换盘或改名后无需改配置。
+- `npm start` 发现当前版本 fatJar 缺失或界面指纹过期时自动构建一次；`--no-build`（或 `LEGADO_NO_AUTO_BUILD=1`）可禁用，显式回滚旧包仍用 `LEGADO_ALLOW_STALE_JAR=1`。
+- 开发体检用 `npm run doctor`（只读，支持 `--json`）；提交前用 `npm run pr`；完整构建与发布预算用 `npm run full` 或 `npm run release:check`。
 - 停止用 `npm run stop`（`product/stop.mjs`），只结束本目录启动的进程。
 
 ## 6. 安全边界
@@ -232,8 +233,8 @@ flowchart TB
 
 | 目录 | 职责 | 关键文件 |
 |---|---|---|
-| `product/app/src/main/kotlin/io/legado/` | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`AppConfig.kt`、`StaticWeb.kt`、`BuildInfo.kt`、`DesktopLauncher.kt` |
-| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、目录生成 | `Routes.kt` 装配点 + 15 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`PrefsRoutes`/`TtsRoutes`/`AgentApiRoutes`/`SystemRoutes`）、`Guard.kt`、`BodyLimit.kt`（请求体上限）、`RouteCatalog.kt` |
+| `product/app/src/main/kotlin/io/legado/` | 入口与装配 | `Application.kt`、`AppContainer.kt`、`ServerConfig.kt`、`AppConfig.kt`、`StaticWeb.kt`、`BuildInfo.kt`、`DesktopLauncher.kt` |
+| `product/app/src/main/kotlin/io/legado/http/` | 路由、写门、目录生成 | `Routes.kt` 装配点 + 15 个域文件（`SourcesRoutes`/`SearchRoutes`/`SubscriptionsRoutes`/`BackupRoutes`/`RssRoutes`/`ReadingRoutes`/`ReplaceRulesRoutes`/`ShelfRoutes`/`TocRulesRoutes`/`MediaRoutes`/`ReadersRoutes`/`PrefsRoutes`/`TtsRoutes`/`FeedbackRoutes`/`SystemRoutes`）、`Guard.kt`、`BodyLimit.kt`（请求体上限）、`RouteCatalog.kt` |
 | `product/app/src/main/kotlin/io/legado/rules/` | 规则解析与求值 | `RuleRunner.kt`、`RuleSplit.kt`、`RuleValue.kt`、`RuleNodeSelection.kt`、`ResponseBody.kt`、`JsSandbox.kt`、`JavaPackages.kt` |
 | `product/app/src/main/kotlin/io/legado/source/` | 书源、登录、体检、调试 | `SourceCodec.kt`、`SourceHealth.kt`、`SourceDebugger.kt`、`WebViewProxy.kt`、`ExternalBrowserLogin.kt` |
 | `product/app/src/main/kotlin/io/legado/content/` | 正文净化 | `ContentPipeline.kt`、`ContentProcessor.kt`、`LooseJson.kt` |
@@ -243,7 +244,7 @@ flowchart TB
 | `product/app/src/main/kotlin/io/legado/backup/` | 备份 | `BackupImporter.kt`、`BackupStore.kt`、`LegacyBackup.kt` |
 | `product/app/src/main/kotlin/io/legado/subscription/` | 书源订阅与 RSS | `SubscriptionService.kt` |
 | `product/app/src/main/kotlin/io/legado/reading/` | 阅读域收口 | `ReadingRepository.kt`（进度 / 阅读记录 / 笔记划线书签 / 本书检索 / 章节窗口） |
-| `product/app/src/main/kotlin/io/legado/ai/` | 进程内 AI 网关 | `Agent.kt` 实现 · `AgentConnection.kt` 句柄 · `AgentRoutes.kt` 薄收口 · `LlmProvider.kt` / `ToolRegistry.kt` / `ConnectionSelector.kt` 扩展点 · `Guardrails.kt` · `BuiltinTools.kt` · `McpBridge.kt` · `AgentCatalog.kt` 契约 |
+| `product/experimental/ai/` | 实验型 AI 网关，不参与当前构建 | `main/` 原 AI 实现 · `tests/` 原测试 · `web/` 原前端面板；恢复方式见 `product/experimental/README.md` |
 | `product/app/src/main/kotlin/io/legado/port/` | 规则内核窄接口 | `PortBundle.kt`、`StorePorts.kt`（`rules/` 不直接依赖 `data/`） |
 | `product/app/src/main/kotlin/io/legado/ops/` | 出站闸门与运维面 | `NetworkSecurity.kt`、`PinnedProxy.kt`、`GuardedHttpClient.kt`、`ProxyHeaders.kt`、`ServerIdentity.kt`、`LogService.kt`、`LogRedaction.kt`、`UpdateCheck.kt`、`Metrics.kt`、`UiPrefsStore.kt` |
 | `product/app/src/main/kotlin/io/legado/data/` | 建表、迁移、连接池 + 各数据面 | `Database.kt` 装配点 + 13 个 `<面>Dao.kt`（同包扩展函数）+ `SourceRepository.kt` |
@@ -252,7 +253,7 @@ flowchart TB
 
 ## 8. 接口分组
 
-`/api/catalog` 当前返回 145 条，按 18 组分布（2026-11-17 快照）：
+`/api/catalog` 当前返回 147 条，按 19 组分布（2026-11-24 快照）：
 
 | 分组 | 条数 | 分组 | 条数 |
 |---|---:|---|---:|
@@ -265,6 +266,7 @@ flowchart TB
 | 图片与媒体 | 6 | 书源订阅 | 5 |
 | 发现页 | 3 | 离线缓存 | 3 |
 | 搜索 | 2 | 目录 | 1 |
+| 匿名反馈 | 2 | | |
 
 逐条路径与方法见 [`API-REFERENCE.md`](API-REFERENCE.md)。
 
@@ -281,12 +283,12 @@ flowchart TB
         │  HTTP + WebSocket（默认回环）
         ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 单个 JVM 进程（Ktor CIO 3.4.3）                              │
+│ 单个 JVM 进程（Ktor Netty 3.4.3）                              │
 │                                                              │
 │  RequestBodyLimit（全局插件，声明长度超限 → 413）            │
 │  SameOriginWriteGate（全局插件，拦跨站写）                    │
 │  ─────────────────────────────────────────────────────────  │
-│  Routes.kt 装配点 + 15 个域路由文件（165 端点 / 19 组）        │
+│  Routes.kt 装配点 + 15 个域路由文件（147 端点 / 19 组）        │
 │  ─────────────────────────────────────────────────────────  │
 │  领域层：source · rules · content · localbook · cache ·       │
 │          tts · subscription · backup · ops · ai · reading    │
@@ -313,18 +315,16 @@ flowchart TB
 |---:|---|---|
 | 1 | `ServerIdentity.init(host, port)` | 同源写门比对的是「服务自己是谁」，必须早于任何请求 |
 | 2 | `LogService.initialize(dbPath)` | 日志要落库，先于数据库构造 |
-| 3 | `Database(path)` + `initialize()` | 建表、迁移、按碎片率决定 `VACUUM` |
-| 4 | `SubscriptionService` / `RuleRunner` | 依赖 Database |
-| 5 | `CoverCache` → `BookCacheService` | 封面缓存必须先于整书缓存：离线缓存漫画章节时要顺手抓图进同一个磁盘缓存 |
-| 6 | `EdgeTtsService` → `TtsSessionService` | 会话服务依赖引擎 |
-| 7 | `AgentModule.connect(...)` | 进程内 AI 网关，**不开端口、不注册路由**；注入的是与 HTTP 端点**同一份**服务实例 |
-| 8 | 订阅 `ApplicationStarted`，挂后台任务 | 端口就绪**不等**订阅同步 / 缓存续跑 / 封面回收，避免启动被外部网络拖住 |
-| 9 | `install(ContentNegotiation / WebSockets / StatusPages)` | 序列化、WS、异常映射 |
-| 10 | `install(RequestBodyLimit)` | 请求体声明长度闸，装在 StatusPages 之后（异常才被 413 handler 接走） |
-| 11 | `install(SameOriginWriteGate)` | 全局写门，必须在 `routing {}` 之前 |
-| 12 | `routing { get("/healthz"); apiRoutes(...) }` | 全部业务端点 |
+| 3 | `DbSnapshot.applyPendingRestore(dbPath)` | 在打开数据库前消费一次性恢复标记，失败时保留原库与安全副本 |
+| 4 | `AppContainer.create(config, feedbackService)` | 组合根统一创建 Database、规则引擎、缓存、订阅、TTS、浏览器登录与路由适配器 |
+| 5 | 订阅 `ApplicationStopping` / `ApplicationStopped` | 调用 `AppContainer.close()`；关闭动作幂等，避免重复释放 |
+| 6 | 订阅 `ApplicationStarted`，调用 `AppContainer.start()` | 端口就绪**不等**订阅同步 / 缓存续跑 / 封面回收，避免启动被外部网络拖住 |
+| 7 | `install(ContentNegotiation / WebSockets / StatusPages)` | 序列化、WS、异常映射 |
+| 8 | `install(RequestBodyLimit)` | 请求体声明长度闸，装在 StatusPages 之后（异常才被 413 handler 接走） |
+| 9 | `install(SameOriginWriteGate)` | 全局写门，必须在 `routing {}` 之前 |
+| 10 | `routing { get("/healthz"); apiRoutes(container) }` | 全部业务端点 |
 
-**线程模型**：Ktor CIO 协程调度；阻塞式 I/O（SQLite、文件、`java.net.http`）用 `withContext(Dispatchers.IO)` 切走；缓存任务用协程 + `Semaphore` 限并发；前端排版用 Web Worker（另一条线，见 §6）。
+**线程模型**：Ktor Netty 处理 HTTP；阻塞式 I/O（SQLite、文件、`java.net.http`）用 `withContext(Dispatchers.IO)` 切走；缓存任务用协程 + `Semaphore` 限并发；前端排版用 Web Worker（另一条线，见 §6）。
 
 ---
 
@@ -357,11 +357,11 @@ Database（data/Database.kt）
 
 1. **一个域 = 一张路由文件 + 一组 DAO + （可选）一个 Repository**，装配入口固定为 `fun Route.xxxRoutes(deps)`。
 2. **跨域复用必须有第二个消费方**。只有一处用到的东西留在原域，不许"为省一次 import"搬进公共包 —— 公共包一旦长成杂物间，就再也分不清谁能删。
-3. **`Routes.kt` 只构造依赖并调用域入口**。新增域**不改中央签名**；若发现必须改，说明依赖没归位。
+3. **`AppContainer` 负责构造依赖与生命周期，`Routes.kt` 只挂载域入口**。新增域**不改中央签名**；若发现必须改，说明依赖没归位。
 4. **依赖方向单向**：领域服务不反向依赖 `ai/`（它是扩展面，不是基础设施）；`reading/` 可被任何域引用，但它不引用其他域的 DAO。插件系统已整体移除，不再有 `plugin/` 依赖面。
 5. **一个域只有一个对外动词面**：HTTP 路由只做"入参 → 域方法 → 响应"，业务判断留在域内，别在路由里写 if-else 分支业务。
 
-> 现状：规则 1 已成立（15 个域文件，`Routes.kt` 只做挂载，不再内联端点）；规则 4 仍有 AI 工具层直调其他域 DAO 的历史遗留，尚未全部收回。
+> 现状：规则 1 已成立（15 个域文件，`Routes.kt` 只做挂载，不再内联端点）；AI 已移出当前构建，不再构成运行时依赖。
 
 ---
 
@@ -369,17 +369,17 @@ Database（data/Database.kt）
 
 ### 3.1 装配点
 
-`product/app/src/main/kotlin/io/legado/http/Routes.kt` 的 `apiRoutes(...)` 是唯一装配点，签名即依赖清单（Database、RuleRunner、CoverCache、SubscriptionService、BookCacheService、EdgeTtsService、TtsSessionService、安装根、当前 host/port、Agent 连接、ProfileStore）。
+`product/app/src/main/kotlin/io/legado/AppContainer.kt` 是唯一组合根：创建并持有基础设施、后台任务与路由适配器，并提供 `start()` / `close()` 生命周期。`http/Routes.kt` 的 `apiRoutes(container)` 只把容器里的依赖挂到各域入口，不再创建任何基础设施。
 
 域路由在 `route("/api") { ... }` 内逐个挂：
 
 ```kotlin
 systemRoutes · sourcesRoutes · searchRoutes · subscriptionsRoutes · backupRoutes
 rssRoutes · readingRoutes · replaceRulesRoutes · shelfRoutes · tocRulesRoutes
-mediaRoutes · readerRoutes · ttsRoutes · agentApiRoutes
+mediaRoutes · readerRoutes · ttsRoutes · feedbackRoutes
 ```
 
-15 个域文件：`AgentApiRoutes` `BackupRoutes` `MediaRoutes` `PrefsRoutes` `ReadersRoutes` `ReadingRoutes` `ReplaceRulesRoutes` `RssRoutes` `SearchRoutes` `ShelfRoutes` `SourcesRoutes` `SubscriptionsRoutes` `SystemRoutes` `TocRulesRoutes` `TtsRoutes`。
+15 个域文件：`BackupRoutes` `FeedbackRoutes` `MediaRoutes` `PrefsRoutes` `ReadersRoutes` `ReadingRoutes` `ReplaceRulesRoutes` `RssRoutes` `SearchRoutes` `ShelfRoutes` `SourcesRoutes` `SubscriptionsRoutes` `SystemRoutes` `TocRulesRoutes` `TtsRoutes`。
 
 ### 3.2 一次请求的生命周期
 
@@ -401,14 +401,14 @@ Ktor Call
 | 400 | 客户端可修：字段缺失、地址非法、被出站闸门拒绝 | `invalid_request`、`invalid_process` |
 | 403 | 跨站写被拒 | `cross_origin` |
 | 404 | 资源不存在 | `not_found` |
-| 409 | 前置条件不满足（无模型连接、版本冲突） | `no_connection`、`version_conflict` |
+| 409 | 前置条件不满足（书源版本冲突、反馈未配置） | `version_conflict`、`feedback_not_configured` |
 | 502 | 上游到不了 / 规则执行失败 | `upstream_unreachable`、`source_execution_failed` |
 
 `respondCatching` 专门把 `RuleExecutionException` 映射成 502，避免书源规则异常被当成服务端 bug。
 
 ### 3.3 端点契约与门禁
 
-- 契约文件：`product/app/src/main/resources/agent-api.json`（145 条 / 18 组）。
+- 契约文件：`product/app/src/main/resources/agent-api.json`（147 条 / 19 组）。
 - `web/test/ApiCatalog.test.ts` 双向核对：源码里多一条 / 目录里少一条都红。
 - `npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 与契约一致。
 - ⚠️ 目录是**扫源码文本**得出的，不是运行时路由表 —— 曾经因此漏过「路由写进别的 handler 里、启动后 404」的缺陷。现在有 `RouteCatalogTest` 真起服务打一发的判据兜底。
@@ -428,7 +428,7 @@ Ktor Call
 | `subscription/` | `SubscriptionService` | 书源订阅、RSS 拉取 |
 | `backup/` | `BackupStore` | 备份包导入导出、无归宿条目的保留区 |
 | `ops/` | `LogService`、`LogRedaction`、`UpdateCheck` | 结构化日志落库（出口统一脱敏）、更新检查 |
-| `ai/` | `Agent`、`ToolRegistry`、`LlmProvider`、`ConnectionSelector` | 进程内 AI 网关（§7） |
+| `feedback/` | `FeedbackService`、`FeedbackRelay` | Supabase 匿名反馈中转；服务端持有 anon key，前端不接触 |
 | `reading/` | `ReadingRepository` | 阅读域收口：进度、阅读记录、笔记/划线/书签、本书检索、章节窗口 |
 | `port/` | `PortBundle`、`StorePorts` | 规则内核需要的窄接口，`rules/` 只依赖它而不依赖 `data/` |
 
@@ -596,7 +596,7 @@ AgentRoutes（HTTP）
 
 ```
 GET/HEAD/OPTIONS → 放行
-只读 POST 白名单（替换规则预览、书源校验、AI comprehend/chat）→ 放行
+当前注册路由的只读 POST 白名单（替换规则预览）→ 放行
 自己管来源策略的路由（/api/sources/{id}/login-cookie）→ 放行，交给路由自己判
 无 Origin → 放行（curl / 脚本 / 非浏览器客户端）
 Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
@@ -605,9 +605,13 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 为什么按 `ServerIdentity` 而不是 `Host`：DNS 重绑定场景下 `Origin` 与 `Host` 会同时变成攻击域名，互比必然相等。
 
-> 历史遗留：84 处路由里仍留着 `requireSameOriginWrite()` 的二次检查。它是幂等的、无害，但已经不是防线本身 —— 新路由**不需要**再调它。
+> 历史遗留：部分路由里仍留着 `requireSameOriginWrite()` 的二次检查。它是幂等的、无害，但已经不是防线本身 —— 新路由**不需要**再调它。
 
-### 8.2 出站 SSRF 闸门（`ops/NetworkSecurity.kt`）
+### 8.2 可选访问令牌（`http/AccessTokenGate.kt`）
+
+`LEGADO_ACCESS_TOKEN` 未设时是空操作，保持本机历史行为；设置后，来源不是回环的请求必须带 `Authorization: Bearer <token>` 或 `?token=<token>`。令牌只从环境变量读取，不落盘、不进日志；比较用常量时间。回环请求仍由同源写门保护，不要求浏览器携带令牌。
+
+### 8.3 出站 SSRF 闸门（`ops/NetworkSecurity.kt`）
 
 受控出站经 `ops/PinnedProxy.kt` 回环代理：解析一次 → 校验 → 连接同一个已校验地址（连接级 IP 固定，关闭 DNS 重绑定 TOCTOU 窗口，P0-2）。`resolveAndValidateSafeHttpTarget(uri)`：协议必须是 http(s) → 解析域名（带 5 分钟 DNS 缓存）→ 逐个 IP 判：
 
@@ -620,10 +624,10 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 
 自定义 TTS 的附加请求头按跳转同源判定：**scheme / host / 端口任一变化即视为跨源，重建请求时不再重放用户配置的头**（`Authorization`、`Cookie`、`X-Api-Key` 等通常就是第三方服务的 key），避免上游用一个 302 把凭据带到用户没配置过的主机；同源跳转（含默认端口归一化）照常保留。跟跳方法同时按 RFC 9110 §15.4 归一：`303` 一律 GET，`301`/`302` 把 POST 降为 GET（不带 body），`307`/`308` 原样保留方法与 body——否则上游 302/303 到静态文件或 CDN 时会被 405 或重复合成。
 
-### 8.3 边界与开关
+### 8.4 边界与开关
 
 - 默认只绑回环；非回环绑定必须 `LEGADO_ALLOW_EXTERNAL_BIND=1` 显式放行（启动闸门 `requireLoopbackBind`），否则拒绝启动。
-- 插件系统已于 2026-10-26 整体移除：没有 `plugin/` 包、没有 jar 扫描开关，AI 工具只能由宿主代码 `register()` 注册。
+- 插件系统已于 2026-10-26 整体移除：没有 `plugin/` 包、没有 jar 扫描开关。AI 工具代码已移到 `product/experimental/ai/`，当前构建不注册。
 
 ---
 
@@ -720,7 +724,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | :--- | :--- | :--- | :--- |
 | 入口与装配 | `Application.kt`、`ServerConfig.kt`、`DesktopLauncher.kt` | Ktor 特性装配、路由注册、启动后台任务 | 端口就绪**不等**订阅同步 / 缓存续跑 / 封面回收，它们挂在 `ApplicationStarted` 之后 |
 | 路由 | `http/Routes.kt` 装配点 + `http/<域>Routes.kt`（15 个域文件，0.8.2 起拆出） | 全部 `/api/*` 与 WebSocket | 装配点只构造依赖并逐个挂载；`SystemRoutes` 也已是独立文件；响应体一律 `@Serializable data class`；`Map<String, Any>` 在 Ktor 这边直接 500 |
-| 数据 | `data/Database.kt` 装配点 + `data/<面>Dao.kt`（13 个，0.8.2 起拆出） | 建表、迁移、连接生命周期在装配点；书源/书架/缓存/导入/RSS/订阅/日志/登录/凭据/净化/脚本缓存各归各面 | 源清单在库层缓存，写路径统一失效；`close()` 也清缓存。DAO 写成同包扩展函数，调用点 `database.foo()` 不变；跨包用要 `import io.legado.data.<方法>` |
+| 数据 | `data/Database.kt` 领域门面 + `data/<面>Dao.kt`（13 个）+ `:core:data/DatabaseEngine.kt` | 核心模块负责连接池、单写事务、建表、快照与碎片回收；`app` 负责业务 DAO、版本迁移和端口适配 | `initialize {}` 是迁移注入 seam，核心模块不得 import 宿主包。源清单在库层缓存，写路径统一失效；DAO 写成同包扩展函数，调用点 `database.foo()` 不变 |
 | 规则引擎 | `rules/RuleSplit.kt`、`rules/RuleValue.kt`、`rules/RuleRunner.kt`、`rules/JsSandbox.kt` | 把 Legado 的取值语法求值成值 | 沙箱**不开真实 Java 反射**：`JavaImporter` 是安全空替身；`{{}}` 模板展开后早退，不再被当选择器二次求值 |
 | 内容管道 | `content/ContentProcessor.kt`、`content/LooseJson.kt` | 正文净化、脏 JSON 兜底 | 净化在落库**之前**执行，离线缓存与朗读因此自动拿到干净文本 |
 | 缓存 | `cache/BookCacheService.kt`、`cache/CoverCache.kt`、`book_*_cache` 表 | 整书离线、封面代理与落盘 | 封面边读边限大小、落盘原子化；正文缓存有 SQLite 层，改章节逻辑时别读已缓存的那一章 |
@@ -741,9 +745,9 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 - **内容与规则**：`replace_rule`、`script_cache`、`source_subscription`、`rss_source`。
 - **诊断与元数据**：`log_entry`（含 `repeat_count` 合并同类、`host` 让界面说得出哪个站在失败）、`app_meta`。
 
-> 注意"代码建的表"与"磁盘上的表"不是一回事：`data/db/Schema.kt` 只建不删，早年版留下又已停用的表
+> 注意"代码建的表"与"磁盘上的表"不是一回事：`:core:data/Schema.kt` 只建不删，早年版留下又已停用的表
 > （如书签功能 0.6.12 移除后遗留的 `book_mark`）仍会躺在老库里。数表数量要用
-> `sqlite_master` 查实际库，别按本文当断言；代码里的权威清单是 `data/db/Schema.kt` 的
+> `sqlite_master` 查实际库，别按本文当断言；代码里的权威清单是 `:core:data/Schema.kt` 的
 > `create table if not exists`（当前 21 条）。
 
 **不在库里的两类东西**：TXT 分章规则是"随包 `app/src/main/resources/assets/txtTocRule.json` ∪ 本机覆盖文件"；

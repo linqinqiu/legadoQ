@@ -1,10 +1,14 @@
-import React from 'react'
-import { ExplorePage } from '../features/explore/ExplorePage'
-import { LibraryPage } from '../features/bookshelf/LibraryPage'
-import { RssPage } from '../features/rss/RssPage'
-import { ShelfPage } from '../features/bookshelf/ShelfPage'
-import { SourcesPage } from '../features/source-editor/SourcesPage'
-import { SettingsPage, type SettingsSection } from '../features/settings/SettingsPage'
+import React, { lazy } from 'react'
+// 页面按路由惰性加载：首屏只拉书库那一支，阅读器/书源/书架/订阅/设置各成独立 chunk。
+// 用 .then(m => ({ default: m.X })) 是因为这些页面都是具名导出，React.lazy 要的是 default。
+// 注意别把这些引用改回静态 import —— 那会让首屏 bundle 又把它们全装回去（体积门禁盯着）。
+const ExplorePage = lazy(() => import('../features/explore/ExplorePage').then(m => ({ default: m.ExplorePage })))
+const LibraryPage = lazy(() => import('../features/bookshelf/LibraryPage').then(m => ({ default: m.LibraryPage })))
+const RssPage = lazy(() => import('../features/rss/RssPage').then(m => ({ default: m.RssPage })))
+const ShelfPage = lazy(() => import('../features/bookshelf/ShelfPage').then(m => ({ default: m.ShelfPage })))
+const SourcesPage = lazy(() => import('../features/source-editor/SourcesPage').then(m => ({ default: m.SourcesPage })))
+const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })))
+import type { SettingsSection } from '../features/settings/SettingsPage'
 import type { BookshelfItem, SearchResult, SourceSummary } from '../lib/api'
 import type { OpenBook } from '../lib/openBook'
 import type { ReaderSettings } from '../features/reader/settingsPanel/readerSettings'

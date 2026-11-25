@@ -36,7 +36,9 @@ import io.legado.model.SourceSubscription
 class SubscriptionService(private val database: Database, private val log: (String) -> Unit) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val updateMutex = Mutex()
-    private val client = io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    private val client by lazy {
+        io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    }
     private var scheduler: Job? = null
 
     fun start() {

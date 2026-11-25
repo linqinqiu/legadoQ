@@ -1,7 +1,5 @@
-package io.legado.data.db
+package io.legado.data.core
 
-import io.legado.AppConfig
-import io.legado.data.Database
 import kotlin.concurrent.withLock
 import org.sqlite.SQLiteConfig
 import java.nio.file.Files
@@ -12,9 +10,9 @@ import java.sql.Connection
  * 连接池：从 `Database.kt` 拆出。
  *
  * 职责：建立读连接池、写连接、WAL 配置、连接健康检查（`select 1`）。
- * `Database` 只持有该实例，不再直接管理连接生命周期细节。
+ * `DatabaseEngine` 只持有该实例，不再直接管理连接生命周期细节。
  */
-class ConnectionPool(private val path: String, private val maxPoolSize: Int) {
+internal class ConnectionPool(private val path: String, private val maxPoolSize: Int) {
 
     private val writeLock = java.util.concurrent.locks.ReentrantLock()
     private val readPool = java.util.concurrent.ConcurrentLinkedQueue<Connection>()
@@ -96,9 +94,4 @@ class ConnectionPool(private val path: String, private val maxPoolSize: Int) {
         }.getOrDefault(false)
     }
 
-    companion object {
-        /** 默认最大读连接池大小，由 `AppConfig.dbPoolSize` 决定。 */
-        fun default(path: String): ConnectionPool =
-            ConnectionPool(path, AppConfig.dbPoolSize)
-    }
 }

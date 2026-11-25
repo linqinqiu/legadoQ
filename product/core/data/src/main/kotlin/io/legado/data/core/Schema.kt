@@ -1,6 +1,5 @@
-package io.legado.data.db
+package io.legado.data.core
 
-import io.legado.data.Database
 import java.sql.Connection
 
 /**
@@ -9,7 +8,7 @@ import java.sql.Connection
  * 职责：只负责首次启动时的建表与索引/触发器创建，不负责旧库迁移。
  * 迁移见 `Migration.kt`。
  */
-object Schema {
+internal object Schema {
 
     /** 执行所有建表语句。必须在写事务内调用，且此时只有写连接（无其他读连接）。 */
     fun createTables(db: Connection) {

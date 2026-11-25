@@ -90,10 +90,16 @@ jobs:
           npm --prefix web run check:test
           npm --prefix web run build
 
+      # 体积预算：读上一步 build 出来的 web/dist，gzip 后与基线比，超了就红。
+      # 只读产物、不联网、不依赖服务，所以放在 build 之后、测试之前。
+      - name: Bundle Size Budget
+        run: npm --prefix web run budget
+
       - name: Run Web Test Suite
         # 走 npm test（= tsx test/run-all.ts）而不是裸 npx tsx：cwd 必须是 web 包，
         # 否则 tsconfig 找不到、JSX 回落 classic 编译，报的是"React is not defined"这种假错。
         run: npm --prefix web test
 
-  # 版本抄本一致性（scripts/version-check.mjs）由 contract.yml 的 doc-gate 负责
-  # （push main + 全分支 PR 都覆盖），这里不再重复跑（S-18 去重）。
+  # 本 workflow 保持后端/前端快反馈，不复制发布链的重任务。
+  # protocol/API/changelog/version/delivery 契约集中在 build-jar.yml 的 quality，
+  # build → desktop → release 由 needs 串住；contract.yml 的独立检查不替代这条发布 DAG。

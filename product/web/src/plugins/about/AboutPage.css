@@ -1,0 +1,15 @@
+.about-feedback { display: grid; gap: 10px; max-width: 640px; margin-top: 12px; }
+.about-feedback-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.about-feedback select, .about-feedback textarea {
+  width: 100%; min-width: 0;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: var(--canvas); color: var(--ink);
+  padding: 9px 11px; outline: none; font: inherit;
+}
+.about-feedback textarea { min-height: 120px; resize: vertical; }
+.about-feedback select:focus, .about-feedback textarea:focus { border-color: var(--accent); }
+.about-feedback a.primary-button { text-decoration: none; }
+.about-feedback-list { display: grid; gap: 8px; }
+.about-feedback-list article { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--surface-muted); }
+.about-feedback-list header { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: var(--t-xs); }
+.about-feedback-list p { margin: 6px 0 0; color: var(--ink); font-size: var(--t-sm); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }

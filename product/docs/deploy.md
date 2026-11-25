@@ -1,6 +1,6 @@
 # 部署与运维
 
-> 最后核对：**0.3.0 / 2026-11-22**（本轮复核构建顺序与产物校验章节；发行资产口径以 `.github/workflows/build-jar.yml` 为准）
+> 最后核对：**0.3.0 / 2026-11-24**（补充匿名反馈中转与 Supabase RLS 验收；发行资产口径以 `.github/workflows/build-jar.yml` 为准）
 
 这份文档说"怎么把它跑起来、怎么升级、跑坏了先看哪儿"。功能面看 [`../README.md`](../README.md)，
 内部结构看 [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)。
@@ -121,3 +121,43 @@ curl -s http://127.0.0.1:<端口>/healthz
 - 镜像**必须本地构建**，流水线里的镜像发布还没通（`docker.yml` 那条）。
 - 数据卷挂到 `/data`（`ENV LEGADO_DATA_DIR=/data`），宿主用 `./ls_data:/data`；`compose.yml` 里已经这么写。
   容器里 `LEGADO_HOST=0.0.0.0` 是必需的（否则宿主机映射接不上），也意味着容器网络里谁都能访问 —— 别直接把 8080 暴露到公网。
+
+## 9. 匿名反馈通道（可选）
+
+「关于」页可以直接提交建议。默认不依赖 Supabase：未配置中转时，提交接口返回
+`409 feedback_not_configured`，界面自动切回原来的 GitHub Issue 流程，用户仍能反馈。
+启用后浏览器只访问本机 Ktor，由服务端转发到 Supabase；这样没有浏览器直连 Supabase 的
+CORS 问题，以后要限流也有统一入口。
+
+### 9.1 建表与权限
+
+1. 在 Supabase SQL Editor 执行一次仓库里的 [`../../docs/feedback-supabase.sql`](../../docs/feedback-supabase.sql)。
+2. 确认 `public.feedback` 已启用 RLS，并且只有两条策略：`anon insert` 与 `select own only`。
+3. 不要新增 `update` / `delete` 策略；脚本已显式收回匿名角色的这两种权限。
+
+表只保存提交字段与随机令牌的 SHA-256 哈希，不保存 IP、User-Agent、设备 ID 或邮箱。
+`contact` 是用户自愿填写的联系方式；为空时不会发送。浏览器本地随机令牌不会上传，也不会写进
+日志；服务端只接收 64 位十六进制哈希。查询「我的建议」时把同一哈希放进
+`x-feedback-token`，RLS 只返回与之匹配的行，缺少或错误的令牌返回空数组。
+
+### 9.2 配置与上线
+
+只在运行 legadoQ 的服务器上设置下面两项，然后重启服务：
+
+```bash
+LEGADO_SUPABASE_URL=https://<project-ref>.supabase.co
+LEGADO_SUPABASE_ANON_KEY=<anon-key>
+```
+
+也可以放进安装根目录的 `.env`，但**不要把真实 `.env` 或 anon key 提交到 Git**。
+本部署要求 anon key 只留在服务端，不进入前端 bundle；数据权限由 Supabase RLS 负责，
+不是靠 anon key 保密。日志统一脱敏 `apikey`、`Authorization` 与 `x-feedback-token`，反馈正文不写日志。
+
+### 9.3 验收
+
+在「关于」页提交一条建议，再点「查看我的建议」，应能看到刚提交的编号、时间、分类与内容。
+随后用错误的哈希查询，应返回空数组；直接尝试更新或删除，应被 RLS 拒绝。最后清空两项
+环境变量并重启，界面应重新提供 GitHub 回退，且公开 Issue 正文不包含自愿填写的联系方式。
+
+首版不加 CAPTCHA。先观察真实垃圾提交；如果出现滥用，优先在 Ktor 中转层加限流，
+不要改成让浏览器绕过服务端直写 Supabase。

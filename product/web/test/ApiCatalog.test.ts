@@ -189,15 +189,17 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 2026-11-16：备份导出第一域（书源），新增 GET /api/backup/export（备份组，只读）→ 165 → 166。
   // 2026-11-17：AI 那一整套挪到 product/experimental/ai/，/api/agent 那组不再注册 → 166 → 144。
   // 2026-11-21：补全书源字典规则（上游 dictRule）`POST /api/sources/{id}/dict`（只读查询，归入书源组，不新增分组）→ 144 → 145。
-  assert.equal(catalog.endpoints.length, 145, `端点总数必须为 145，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
-  // 2026-11-17：AI 那组随代码挪走后 19 → 18。
-  assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 18, '分组数应为 18')
+  // 2026-11-24：匿名建议中转新增 POST /api/feedback 与 GET /api/feedback/mine（新「反馈」组）→ 145 → 147。
+  assert.equal(catalog.endpoints.length, 147, `端点总数必须为 147，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-11-17：AI 那组随代码挪走后 19 → 18；2026-11-24 反馈组加入 → 19。
+  assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')
   assert.equal(systemGroup.length, 11, `系统组必须为 11 条（含 /api/diagnostics 与三条 /api/ui-prefs），现在是 ${systemGroup.length}`)
   const keys = catalog.endpoints.map((e: { method: string; path: string }) => `${e.method} ${e.path}`)
   for (const must of ['POST /api/search', 'PUT /api/sources/{id}', 'GET /api/sources/{id}/debug',
     'GET /api/sources/{id}/browser/res', 'WS /api/search/stream', 'POST /api/books/content',
-    'GET /api/bookshelf', 'POST /api/tts/speak', 'GET /api/replace-rules', 'POST /api/backup/import']) {
+    'GET /api/bookshelf', 'POST /api/tts/speak', 'GET /api/replace-rules', 'POST /api/backup/import',
+    'POST /api/feedback', 'GET /api/feedback/mine']) {
     assert.ok(keys.includes(must), `AI 要接进来必须能看见 ${must}`)
   }
   // 随包那份 JSON 里的 version 只是给人翻仓库时看的（运行时由 RouteCatalog 盖成当前构建号），

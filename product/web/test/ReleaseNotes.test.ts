@@ -57,7 +57,7 @@ test('CI 真的在 Windows 上打便携包，并把它挂进发行资产', () =>
   assert.match(workflow, /package-desktop\.mjs/, '要跑真正的打包脚本，不要手搓 zip')
   assert.match(workflow, /runtime\/bin\/java\.exe/, '要核对包里自带运行时 —— 这是"不用装 Java"的唯一依据')
   assert.match(workflow, /legadoq-desktop-\*\.zip/, '便携包要作为发行资产上传')
-  assert.match(workflow, /needs: \[build, desktop\]/, '桌面包没出来就不发版')
+  assert.match(workflow, /needs: \[quality, build, desktop\]/, '质量、构建、桌面包任一失败都不发版')
 })
 
 test('滚动构建（latest）没有版本段落时有兜底说明', () => {

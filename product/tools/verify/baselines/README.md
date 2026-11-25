@@ -7,3 +7,4 @@
 | --- | --- | --- |
 | `server-test-failures-47.txt` | `:app:test` 回归判定（AGENTS §3） | 本机长期固定的 47 条失败**集合**（Windows 删不掉被占用的 SQLite）。判回归只比集合，不比数量 |
 | `frame-frozen-20261003.json` | `frame-metrics.mjs` | 书库等 9 页 × 3 视口的版面实测值。**书库那一组是冻结基准**，PROPOSAL-018 要求它改版后零漂移 |
+| `bundle-budget.json` | `bundle-budget-check.mjs` | 前端 gzip 体积上限（入口 JS / 全部 JS / 全部 CSS）。棘轮，优化后只许调低 |

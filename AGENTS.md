@@ -21,7 +21,7 @@
 - 前端测试（**node:test 自研 runner，不是 vitest**）：`npm --prefix product/web test`（全量约 20–40s，项数随源文件浮动，以当次实跑为准，数字真源 `product/docs/restructure/facts.md`）。别用 `npx vitest`（扫不到 `web/test/**`）。
 - 前端类型：`npm --prefix product/web run check`（`tsc -b`）
 - 覆盖率真源：`npm --prefix product run coverage`
-- 后端测试：`cd product && ./gradlew :app:test --no-daemon`（偶发 worker 崩溃：`./gradlew --stop` 后重跑；别与前端测试并发跑）
+- 后端测试：`cd product && ./gradlew :app:test --no-daemon`（偶发 worker 崩溃：`./gradlew --stop` 后重跑；别与前端测试并发跑）；改 `:core:*` 时先跑对应模块测试，如 `./gradlew :core:data:test`
 - 门禁三条：`npm --prefix product run version:check` / `docs:api-check` / `changelog:check`
 
 ## 3. 阅读器子系统索引（前端最热区 `product/web/src/features/reader/`）
@@ -32,8 +32,8 @@
 - 跳转原语定位：要找 `jumpToNote` / `jumpToSearchHit` / `jumpToNotePosition`，**直接看 `useReaderPositionJump.ts`**，不要回 `ReaderScreen.tsx`。`toggleBookmark` 仍在 `ReaderScreen.tsx`（本轮留原地降风险）。
 
 ## 4. 后端要点
-- `product/app/src/main/kotlin/io/legado/`：`http/`（路由）· `data/`（Repository，**一律放 data/**，放 `source/` 会撞 `ArchitectureBoundaryTest`）· `rules/`（`RuleRunner` + `RuleProcessor` 扩展点）· `tts/`。AI 那一整套 2026-11-17 已挪到 `product/experimental/ai/`（不参与编译与打包），见该目录 README。
-- 端点 **145 条 / 18 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
+- 后端主代码在 `product/app/src/main/kotlin/io/legado/`：`http/`（路由）· `data/`（Repository，**一律放 data/**，放 `source/` 会撞 `ArchitectureBoundaryTest`）· `rules/`（`RuleRunner` + `RuleProcessor` 扩展点）· `tts/`；`AppContainer.kt` 是组合根。纯 DTO 在 `:core:model`，网络与指标基础设施在 `:core:ops`，SQLite 引擎/建表/快照在 `:core:data`；业务 DAO 与版本迁移仍留 `app`。AI 那一整套 2026-11-17 已挪到 `product/experimental/ai/`（不参与编译与打包），见该目录 README。
+- 端点 **147 条 / 19 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
 
 ## 5. 常见坑（详见 facts.md / 研究文档）
 - 池里只有一条写连接：DAO 的 `write{}` 不能被外层 `write{}` 包（内层退出复位 autoCommit → commit 抛错）。
@@ -54,7 +54,7 @@
 纪律：删/拆文件时同步缩 `tools/verify/depth-check.mjs` 的 `KNOWN_DEEP` 基线（只许单调缩小）。
 
 ## 8. 任务→精确位置 速查表（绝大多数「在哪」直接查这里，别探索）
-> 路径前缀：后端 `product/app/src/main/kotlin/io/legado/`，前端 `product/web/src/`。
+> 路径前缀：后端主代码 `product/app/src/main/kotlin/io/legado/`，纯 DTO `product/core/model/src/main/kotlin/io/legado/model/`，网络基础设施 `product/core/ops/src/main/kotlin/io/legado/ops/`，数据引擎 `product/core/data/src/main/kotlin/io/legado/data/core/`，前端 `product/web/src/`。下表未另写模块的 Kotlin 路径均相对后端主代码。
 
 ### 8.1 后端 · 路由（全在 `http/`）
 | 改什么 | 文件 |
@@ -71,7 +71,8 @@
 | 订阅 | `http/SubscriptionsRoutes.kt`(74) |
 | RSS | `http/RssRoutes.kt` |
 | TTS | `http/TtsRoutes.kt` |
-| 守卫/鉴权 | `http/Guard.kt` |
+| 守卫/鉴权 | `http/Guard.kt` · `http/AccessTokenGate.kt` |
+| 匿名反馈中转 | `http/FeedbackRoutes.kt` · `feedback/FeedbackService.kt`（Supabase 密钥只在服务端） |
 
 ### 8.2 后端 · AI 子系统（已挪到 `product/experimental/ai/`）
 
@@ -102,10 +103,12 @@
 | Cookie/登录/会话 | `data/CookieDao.kt`(714) · `data/LoginDao.kt` · `data/SessionCookies.kt` |
 | 阅读/缓存/RSS/替换/脚本缓存 DAO | `data/ReadingDao.kt` · `data/CacheDao.kt` · `data/RssDao.kt` · `data/ReplaceRuleDao.kt` · `data/ScriptCacheDao.kt` |
 | 书源 WebView 代理 | `source/WebViewProxy.kt`(817) |
-| 共享请求 / 响应 DTO | `model/SystemModels.kt` · `SourceModels.kt` · `DiscoveryModels.kt` · `ReadingModels.kt` · `BookshelfModels.kt` · `ReplaceRuleModels.kt` · `BackupModels.kt` |
+| 共享请求 / 响应 DTO（`:core:model`） | `product/core/model/src/main/kotlin/io/legado/model/` 下 `SystemModels.kt` · `SourceModels.kt` · `DiscoveryModels.kt` · `ReadingModels.kt` · `BookshelfModels.kt` · `ReplaceRuleModels.kt` · `BackupModels.kt` · `FeedbackModels.kt` |
+| 出站网络与指标基础设施（`:core:ops`） | `product/core/ops/src/main/kotlin/io/legado/ops/` 下 `NetworkSecurity.kt` · `PinnedProxy.kt` · `GuardedHttpClient.kt` · `Metrics.kt` |
+| SQLite 引擎 / 建表 / 快照（`:core:data`） | `product/core/data/src/main/kotlin/io/legado/data/core/` 下 `DatabaseEngine.kt` · `ConnectionPool.kt` · `Schema.kt` · `DbSnapshot.kt`；业务迁移注入 `initialize {}`，DAO 暂留 `app` |
 | MP3 时长估算 | `tts/TtsSessionService.kt`（`Mp3DurationEstimator`；对应 `Mp3DurationEstimatorTest`） |
 | TTS 会话 | `tts/TtsSessionService.kt` |
-| 入口/healthz/版本 | `Application.kt` · `BuildInfo.kt` · `BrandStore.kt` · `DesktopLauncher.kt`(607) |
+| 入口/healthz/版本/组合根 | `Application.kt` · `AppContainer.kt` · `BuildInfo.kt` · `BrandStore.kt` · `DesktopLauncher.kt`(607) |
 
 ### 8.5 前端（`product/web/src/`）
 | 改什么 | 文件 |

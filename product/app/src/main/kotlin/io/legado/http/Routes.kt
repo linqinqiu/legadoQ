@@ -7,30 +7,14 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
-import io.legado.backup.BackupStore
-import io.legado.cache.BookCacheService
-import io.legado.cache.CoverCache
-import io.legado.data.Database
-import io.legado.data.queryLogs
-import io.legado.localbook.TocRules
+import io.legado.AppContainer
 import io.legado.model.ApiError
-import io.legado.ops.LocalControlClient
 import io.legado.ops.NetworkSecurity
-import io.legado.ops.UiPrefsStore
 import io.legado.port.LogLevel
 import io.legado.port.logSystem
 import io.legado.rules.RuleExecutionException
-import io.legado.rules.RuleRunner
-import io.legado.source.ExternalBrowserLogin
-import io.legado.source.SourceDebugger
-import io.legado.source.WebViewProxy
-import io.legado.subscription.SubscriptionService
-import io.legado.tts.EdgeTtsService
-import io.legado.tts.TtsSessionService
 import io.legado.http.system.systemRoutes
-import java.nio.file.Path
 import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.json.Json
 
 /**
  * HTTP 路由装配点：这里只留各业务组的挂载调用。
@@ -41,53 +25,44 @@ import kotlinx.serialization.json.Json
  * `http/system/SystemRoutes.kt`，此处仅做装配。
  * 机器可读契约的双向核对见 `web/test/ApiCatalog.test.ts`（扫 http/ 整目录）。
  */
-fun Route.apiRoutes(
-    database: Database,
-    runner: RuleRunner,
-    coverCache: CoverCache,
-    subscriptions: SubscriptionService,
-    bookCache: BookCacheService,
-    edgeTts: EdgeTtsService = EdgeTtsService(),
-    ttsSessions: TtsSessionService = TtsSessionService(edgeTts),
-    localBooksDirectory: Path = Path.of(".data/local_books"),
-    /** 安装根：界面里改端口时把 `port.txt` 写在这里。 */
-    homeDirectory: Path = Path.of("."),
-    // 这次运行实际绑的地址与端口（`/api/server` 报给界面）。
-    currentHost: String = "127.0.0.1",
-    currentPort: Int = 8080,
-) {
-    val webView = WebViewProxy(database)
-    // 备份包里没有原生归宿的个性化条目，原样收在数据目录下的一个文件夹里（见 BackupStore 的取舍说明）。
-    val backupKeep = BackupStore(localBooksDirectory.resolveSibling("backup_kept"))
-    // 规则表的本机改动（手机备份套进来的启用选择与自定义规则）落在 data 下一个文件里，不建表：
-    // 这张表只在切目录时被读一次，建表反而让"改了没生效"变成要查数据库的事。
-    TocRules.useStore(localBooksDirectory.resolveSibling("txt_toc_rules.json"))
-    // 界面偏好（壁纸 / 阅读设置 / 免责声明确认）落在数据目录，换端口不丢 ——
-    // 它们原先在 localStorage，而 localStorage 按 origin 隔离，改端口等于换了个站点。
-    val uiPrefs = UiPrefsStore(localBooksDirectory.resolveSibling(UiPrefsStore.FILE_NAME))
-    // 真浏览器登录：profile 放在数据目录下（与 local_books 同级），登录态跨次启动保留。
-    val externalLogin = ExternalBrowserLogin(
-        database,
-        localBooksDirectory.resolveSibling("external-browser-profile"),
-        LocalControlClient,
-    )
-    val debugger = SourceDebugger(runner)
+fun Route.apiRoutes(container: AppContainer) {
     route("/api") {
-        // 系统域：目录 / 服务自身 / 日志 / 诊断 / 关于 / 更新日志
-        systemRoutes(database, homeDirectory, currentHost, currentPort)
-        sourcesRoutes(database, runner, webView, externalLogin, debugger)
-        searchRoutes(database, runner)
-        subscriptionsRoutes(database, subscriptions)
-        backupRoutes(database, backupKeep)
-        rssRoutes(database, runner)
-        readingRoutes(database, runner)
-        replaceRulesRoutes(database, runner)
-        shelfRoutes(database, bookCache, coverCache, localBooksDirectory)
-        tocRulesRoutes(database, backupKeep, localBooksDirectory)
-        prefsRoutes(uiPrefs)
-        mediaRoutes(database, coverCache, localBooksDirectory, runner)
-        readerRoutes(database)
-        ttsRoutes(edgeTts, ttsSessions)
+        systemRoutes(
+            container.database,
+            container.config.homeDirectory,
+            container.config.host,
+            container.config.port,
+        )
+        sourcesRoutes(
+            container.database,
+            container.runner,
+            container.webView,
+            container.externalLogin,
+            container.debugger,
+        )
+        searchRoutes(container.database, container.runner)
+        subscriptionsRoutes(container.database, container.subscriptions)
+        backupRoutes(container.database, container.backupKeep)
+        rssRoutes(container.database, container.runner)
+        readingRoutes(container.database, container.runner)
+        replaceRulesRoutes(container.database, container.runner)
+        shelfRoutes(
+            container.database,
+            container.bookCache,
+            container.coverCache,
+            container.config.localBooksDirectory,
+        )
+        tocRulesRoutes(container.database, container.backupKeep, container.config.localBooksDirectory)
+        prefsRoutes(container.uiPrefs)
+        mediaRoutes(
+            container.database,
+            container.coverCache,
+            container.config.localBooksDirectory,
+            container.runner,
+        )
+        readerRoutes(container.database)
+        ttsRoutes(container.edgeTts, container.ttsSessions)
+        feedbackRoutes(container.feedbackService)
     }
 }
 

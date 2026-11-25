@@ -287,7 +287,7 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | 产物完整性门禁 | **11/11 通过** | `node product/tools/verify/dist-check.mjs`（新增：校验 index.html 引用资源真实存在） |
 | jar / dist / 活服务一致性 | **5/5 通过**（含活服务 `/assets/*.js → 200`） | `node product/tools/verify/bundled-ui-check.mjs`（启动 `product/start.mjs --no-open` 后实跑） |
 | 四步构建链（兜底分支） | **4/4 完成，`BUILD SUCCESSFUL in 4m 10s`** | `cd product; $env:LEGADO_WEB_BUILD='fallback'; npm run build` |
-| HTTP 端点 | 145 条 / 18 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
+| HTTP 端点 | 147 条 / 19 组（`docs:api-check` 一致） | `npm --prefix product run docs:api-check` |
 
 **架构边界回归的处置（本轮已修）**：首次全量（默认并行度）暴露 2 项失败：
 
@@ -347,3 +347,52 @@ sqlite3 "file:product/data/legado.sqlite?mode=ro" "select count(*) from sqlite_m
 | POST 经 307（`/keep → /tts`） | **200**；目标端收到 `POST` + `payload` |
 
 门禁同轮全绿：`version:check`（8 处 0.3.0 / build 56）、`docs:api-check`（145 端点 / 18 组）、`changelog:check`（64 条提交，边界 `771b311`）、`architecture-check` G1–G8、`depth-check`（过深 5 个基线内）、`dist-check` 11/11、`bundled-ui-check` 4/4（运行实例一项因已停服 SKIP）。
+
+## 13. 2026-11-25 第 0 阶段与 AppContainer 第一刀
+
+> 采集于 HEAD `42473cf` 之上的未提交工作树；本节是第 0 阶段快照，现行数字见 §14，§12 保留为更早历史。本轮未提交、未推送。
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| **后端测试实跑** | **1,074 项 / 152 suite / 0 失败 / 0 错误 / 0 跳过** | `cd product && ./gradlew :app:test --no-daemon`，`BUILD SUCCESSFUL in 3m 27s`；`test-results/test/*.xml` 求和 |
+| **AppContainer 生命周期** | **2/2 通过** | `AppContainerTest`：组合根构造不新增 HTTP selector 线程；构造失败时关闭已创建的数据库与后台资源 |
+| **前端测试实跑** | **1,143 项 / 147 个文件 / 0 失败** | `npm --prefix product/web test`（Node 内置 runner）；含 PWA 忙碌刷新、API 写请求忙碌源与匿名反馈判据 |
+| **前端类型** | **通过** | `npm --prefix product/web run check`（`tsc -b`），并随最终 fallback 生产构建再跑一次 |
+| **工具脚本用例** | **22/22 通过** | `node --test product/scripts/*.test.mjs` |
+| **交付契约自测** | **30/30 通过** | `node product/tools/verify/delivery-check.mjs`；覆盖 Docker 上下文、quality → build → desktop → release DAG、PR 发布守卫与吞错表达式 |
+| **结构门禁** | **G1–G8、depth 全绿** | `architecture-check`：`styles.css` 6,750 行 ≤ 6,760；关于页反馈样式已迁入独立 CSS |
+| **最终生产包** | **276 modules / 40 个 static 文件** | `LEGADO_WEB_BUILD=fallback npm --prefix product run build`；`dist-check` 11/11、`bundled-ui-check` 4/4，dist / resources / fatJar 全量 SHA-256 一致 |
+| **运行 UI 指纹** | `index-hUi9qrsS.js` | 1299 隔离实例启动后，运行页面与磁盘 `web/dist/index.html` 一致 |
+| **体积预算** | **入口 JS 176,532 B / 200,000；全部 JS 586,703 B / 640,000；CSS 40,750 B / 48,000** | `node product/tools/verify/bundle-budget-check.mjs`：6/0，含三条反向自测 |
+| **随包浏览器验收** | **22/22 通过** | 生产静态包 + mock API，固定 `http://127.0.0.1:1299`；覆盖白名单字段、SHA-256 token、30 秒冷却、本人建议、GitHub 回退、按需拆包与零运行时异常 |
+
+本轮先复现并修掉两类真实问题：一次性构造组合根会新增 8 个 HTTP selector 线程（六类默认客户端改为 lazy 后归零）；构造中途失败会遗留已打开的 SQLite 文件（增加分段 cleanup 后通过）。PWA 刷新保护由命名忙碌源引用计数与单一待刷新状态机承担，阅读页和所有写请求忙碌时延迟刷新，空闲后只刷新一次。
+
+环境限制如实记录：
+
+- 本机标准 Vite 构建在删除 esbuild 临时文件时被 Windows 拒绝（`remove ... Access is denied`），不是 TypeScript 或源码错误；最终包走仓库既有 `build:fallback`。CI 仍保留标准构建，未用 fallback 掩盖 CI 错误。
+- 本机 `docker --version` 返回 `docker: command not found`，因此 Dockerfile 已补 `core/` 上下文并通过静态交付契约，**真实镜像构建尚未实跑**。
+- Supabase 仍需在项目侧执行 `docs/feedback-supabase.sql` 并配置 `LEGADO_SUPABASE_URL` / `LEGADO_SUPABASE_ANON_KEY`；本轮浏览器验收使用 mock API，不冒充真实 Supabase 连通性验证。
+
+## 14. 2026-11-25 `:core:data` 第一刀
+
+> 采集于 HEAD `42473cf` 之上的未提交工作树；**现行测试与构建数字以本节为准**。本轮未提交、未推送。
+
+| 项 | 数值 | 命令/口径 |
+|---|---|---|
+| **核心数据测试** | **10 项 / 2 suite / 0 失败** | `./gradlew :core:data:test`；`DatabaseEngineTest` 3 项 + `DbSnapshotTest` 7 项 |
+| **app 后端测试** | **1,068 项 / 151 suite / 0 失败 / 0 错误 / 0 跳过** | `./gradlew test --no-daemon --max-workers=1`；XML 求和 |
+| **后端合计** | **1,078 项 / 153 suite / 0 失败** | `:core:data` 10 + `:app` 1,068；`:core:model` / `:core:ops` 暂无测试源 |
+| **前端回归** | **1,143 项 / 147 文件 / 0 失败** | `npm --prefix product/web test`；`SchemaTableCount.test.ts` 已改读 `core/data` 新路径 |
+| **前端类型** | **通过** | `npm --prefix product/web run check`，生产 fallback 构建内再次执行 |
+| **工具脚本** | **22/22 通过** | `npm --prefix product run test:scripts` |
+| **交付契约** | **静态检查 PASS；反向自测 30/30** | `node tools/verify/delivery-check.mjs` 与 `--self-test` |
+| **结构与文档门禁** | **全绿** | architecture G1–G8、depth（后端 117 + core:data 4，过深基线 3）、protocol、version、docs:api、changelog、`git diff --check` |
+| **生产包** | **276 modules / 40 static 文件** | `LEGADO_WEB_BUILD=fallback LEGADO_SKIP_LIVE_UI_CHECK=1 npm --prefix product run build`；dist 11/11、bundled UI 4/0（live 项按自动构建契约 SKIP） |
+| **jar 模块指纹** | **核心类齐、旧类无残留** | zip 清单实测 `DatabaseEngine` / `ConnectionPool` / `Schema` / `DbSnapshot` / `org.sqlite.JDBC` 均在；旧 `data/DbSnapshot` 与 `data/db/{ConnectionPool,Schema}` 均不在 |
+| **隔离运行冒烟** | **通过** | 新 fatJar + 临时数据目录 + 随机回环端口；`/healthz` 正常、`user_version=1`、核心表存在、生成 1 份快照、首页引用新 bundle；结束后删临时目录 |
+| **体积预算** | **入口 JS 176,532 B / 200,000；全部 JS 586,703 B / 640,000；CSS 40,750 B / 48,000** | `bundle-budget-check` 6/0；UI 主包仍为 `index-hUi9qrsS.js` |
+
+本轮的 seam 是 `DatabaseEngine`：连接池、单写连接、嵌套事务、建表、启动快照、碎片回收和关闭语义留在核心模块；`app` 通过 `initialize { SchemaVersion.migrate(it) }` 注入业务迁移，13 个 DAO 与端口适配不搬。`ArchitectureBoundaryTest` 新增 `core:data` 反向依赖扫描，`depth-check.mjs` 把新模块纳入扫描并删掉两条过期基线。
+
+第一次定向回归因本机 JVM native memory allocation（`mmap` / `malloc`）失败，未产生用例结论；改为 `--max-workers=1`、Gradle 堆 1g 后，定向 60 项、核心 10 项及后续全量均通过。标准 Vite 构建的 Windows esbuild 删除权限限制、Docker CLI 缺失、Supabase 实连待办仍与 §13 相同，本轮没有把静态检查或 mock 验收冒充外部实连。

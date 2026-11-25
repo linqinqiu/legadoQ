@@ -58,6 +58,24 @@ node tools/verify/opensource-hygiene-check.mjs   # 11 项
 
 三个都绿 = 可以发版。
 
+### 2.1 前端体积预算（`bundle-budget-check.mjs`）
+
+唯一的"读构建产物、不联网、不需要服务在跑"的判据，所以单列。前置：先 `npm --prefix web run build`。
+
+```bash
+npm --prefix web run budget         # = node tools/verify/bundle-budget-check.mjs
+```
+
+量三类 gzip 字节（Node `zlib.gzipSync`，与 vite 构建日志同源），超上限即 FAIL：
+
+- **入口 JS**：`index.html` 直接引用的 JS —— 首屏必下。路由拆包（2026-11-24）就盯它：单包 2.05 MB → 拆后 ~600 KB。
+- **全部 JS**：`dist/assets` 下所有 JS 之和（含惰性 chunk）。
+- **全部 CSS**：`dist/assets` 下所有 CSS 之和。
+
+上限在 `tools/verify/baselines/bundle-budget.json`（和别的参照物一样进版本库，别放 gitignore 的 `out/`），是**棘轮**：优化后只许调低；要调高必须在提交说明里写清多的字节值在哪。脚本末尾带反向对照（`SELF TEST` 三条）——用假数据把判据逐一打红，确认不是永远 PASS 的空壳。
+
+CI 接线：`ci.yml` 的 `web-check`（build 之后）与 `build-jar.yml` 的 `build`（build 之后）各跑一次；`gates.yml` 的 `full` job 用通配符自动收。`run-all-gates.mjs` 也会自动收，但**它不负责构建**，跑全量前先自己 build，否则这条会因缺 `dist` 报前置不满足。
+
 ## 3. CI 里跑哪些（`.github/workflows/gates.yml`）
 
 | Job | 触发 | 跑什么 |

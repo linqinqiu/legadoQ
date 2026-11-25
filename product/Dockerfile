@@ -30,6 +30,7 @@ COPY gradle/libs.versions.toml gradle/libs.versions.toml
 # 少了它们，`gradle -p app` 会把 app/ 当构建根，版本目录（<根>/gradle/）解析不到，
 # plugins 块两个 alias 直接编译失败（issue #11，6 秒即死）。
 COPY settings.gradle gradle.properties build.gradle ./
+COPY core/ core/
 COPY app/ app/
 COPY --from=web-build /src/web/dist/ app/src/main/resources/static/
 # 从仓库根跑任务路径（不再 -p app）：构建根 = /src，settings.gradle 生效。

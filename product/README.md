@@ -92,11 +92,11 @@ AI 那一套（进程内网关、内置工具、openai-compatible 连接、MCP�
 
 ### Windows 桌面程序（免 Java）
 
-见上一节：`node scripts/package-desktop.mjs` 打出 `dist/legadoq-desktop-<版本>.zip`，解压双击 `legadoq.exe`。这一档还没上传到 Releases，所以只能自己打（或者在 Issues 里问维护者要一份）。
+见上一节：发布时下载 CI 产出的 `legadoq-desktop-<版本>.zip`；要本地构建则运行 `node scripts/package-desktop.mjs`，产物在 `dist/`，解压双击 `legadoq.exe`。
 
 ### 整合包 jar（免 Java）
 
-Releases 下载 `legadoq-<版本>.zip`，解压后运行 `start.bat`（默认端口 1234，可用 `start.bat 1235` 换）。
+本机打包出 `legadoq-<版本>.zip` 后，解压运行 `start.bat`（默认端口 1234，可用 `start.bat 1235` 换）；CI 发行资产不含这个整合包。
 
 ### 直接跑 jar（需要 Java 17+）
 
@@ -113,9 +113,9 @@ LEGADO_PORT=9000 LEGADO_DATA_DIR=/srv/legadoq/data java -jar legado-<版本>-all
 自己构建：
 
 ```bash
-npm --prefix web run build
-./gradlew :app:fatJar      # → app/build/libs/legado-<版本>-all.jar
-node tools/make-cds.mjs       # 可选：生成 CDS 归档，冷启动 ~8.3s → ~5.3s；过期时 start.mjs 会自动重建
+npm --prefix web install
+npm run build           # 前端 → dist 校验 → fatJar → 包内界面校验
+node tools/make-cds.mjs  # 可选：生成 CDS 归档，冷启动 ~8.3s → ~5.3s；过期时 start.mjs 会自动重建
 ```
 
 ### Docker
@@ -133,8 +133,12 @@ docker run -d --name legadoq --restart unless-stopped \
 ### 从源码跑
 
 ```bash
-cd web && npm install && npm run dev     # 前端开发服务器（热重载）
-./gradlew :app:run                    # 服务端
+npm --prefix web install
+npm run doctor          # 先体检环境与产物
+npm start               # 缺少当前 fatJar 时自动构建，再启动并打开界面
+# 或分别起开发服务：
+npm run dev             # 前端热重载
+./gradlew :app:run      # 服务端
 ```
 
 ## 环境变量
@@ -143,6 +147,7 @@ cd web && npm install && npm run dev     # 前端开发服务器（热重载）
 | --- | --- | --- |
 | `LEGADO_HOST` | `127.0.0.1` | 绑定地址。改成 `0.0.0.0` 就局域网可达，见下一节 |
 | `LEGADO_ALLOW_EXTERNAL_BIND` | 未设置 | 设为 `1` 才允许非回环绑定；`start.mjs --allow-external-bind` 等价于此项 |
+| `LEGADO_ACCESS_TOKEN` | 未设置 | 可选访问令牌；设置后非回环请求须带 `Authorization: Bearer <token>` 或 `?token=<token>` |
 | `LEGADO_PORT` | `8080`（裸 jar）；启动脚本 / 桌面版 `1234` | HTTP 与 WebSocket 端口 |
 | `LEGADO_DATA_DIR` | `data` | 数据根目录，封面缓存与本地书都从它下面派生 |
 | `LEGADO_DATABASE` | `$LEGADO_DATA_DIR/legado.sqlite` | 单独指定库文件位置 |
@@ -151,11 +156,11 @@ cd web && npm install && npm run dev     # 前端开发服务器（热重载）
 | `LEGADO_HOME` | 当前目录 | 安装根：`port.txt`、`server.log`、`tmp/` 都从它下面派生。由启动器传入（`scripts/runtime.mjs`），裸跑 jar 一般不用管 |
 | `LEGADO_REPO` | `linqinqiu/legadoQ` | `owner/repo` 形状，供「关于」页检查更新；默认本项目自己的仓库，换 fork 时改它 |
 
-`start.mjs` / `stop.mjs` 是可选封装（后台拉起、按端口停进程），以脚本自己所在目录为安装根，整个文件夹可以改名或搬盘。`start.mjs` 支持 `--port 1235` 换端口、`--host 0.0.0.0 --allow-external-bind` 换绑定地址（非回环必须显式放行）、`--no-open` 只起服务不开浏览器（默认起来后自动打开浏览器）。端口也可以**在界面上改**（设置 → 服务 → 服务端口，重启后生效，写的是安装根下的 `port.txt`）；优先级 `--port` > `port.txt` > `.env` / 环境变量 > 1234。同目录的 `start.cmd` 是给双击用的门面：服务没跑就起、等就绪再开界面；已经在跑就直接开界面。
+`start.mjs` / `stop.mjs` 是可选封装（后台拉起、按端口停进程），以脚本自己所在目录为安装根，整个文件夹可以改名或搬盘。`start.mjs` 支持 `--port 1235` 换端口、`--host 0.0.0.0 --allow-external-bind` 换绑定地址（非回环必须显式放行）、`--no-open` 只起服务不开浏览器（默认起来后自动打开浏览器）、`--no-build` 禁用缺失或陈旧 fatJar 的自动重建。端口也可以**在界面上改**（设置 → 服务 → 服务端口，重启后生效，写的是安装根下的 `port.txt`）；优先级 `--port` > `port.txt` > `.env` / 环境变量 > 1234。同目录的 `start.cmd` 是给双击用的门面：服务没跑就起、等就绪再开界面；已经在跑就直接开界面。
 
 ## 想给手机用之前
 
-这个服务不设身份，绑定地址就是唯一的门。默认只绑回环，所以手机连不上是设计如此。要跨设备用，设 `LEGADO_HOST=0.0.0.0` 并显式放行（`LEGADO_ALLOW_EXTERNAL_BIND=1`，或 `start.mjs --allow-external-bind`）后重启 —— 同时清楚这意味着同一张网里任何人都能读改这个库（书源、书架、登录凭据）。要认真做就在前面放一层带鉴权的反向代理，或者走隧道，别把服务直接暴露出去。
+默认只绑回环，所以手机连不上是设计如此。要跨设备用，设 `LEGADO_HOST=0.0.0.0` 并显式放行（`LEGADO_ALLOW_EXTERNAL_BIND=1`，或 `start.mjs --allow-external-bind`）后重启。未设 `LEGADO_ACCESS_TOKEN` 时同一张网里任何人都能读改这个库（书源、书架、登录凭据）；配置令牌后，非回环请求仍须带令牌。要认真暴露到公网，就在前面放一层带鉴权的反向代理，或者走隧道。
 
 ## 手机备份包
 
@@ -178,6 +183,7 @@ cd web && npm install && npm run dev     # 前端开发服务器（热重载）
 app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Gradle 模块）
   src/main/kotlin/io/legado/
     Application.kt          启动入口与 Ktor 特性装配
+    AppContainer.kt         组合根：基础设施创建与生命周期
     ServerConfig.kt · AppConfig.kt   环境变量到默认值
     StaticWeb.kt            界面静态资源挂载（同端口的 `/` 与 `/next`）
     BuildInfo.kt · DesktopLauncher.kt  版本清单 · 桌面壳（探端口、开浏览器、托盘退出）
@@ -195,7 +201,7 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     ops/                    NetworkSecurity.kt 出站 SSRF 闸门 · PinnedProxy.kt 连接级 IP 固定 · GuardedHttpClient.kt · ProxyHeaders.kt · ServerIdentity.kt · LogService.kt · UpdateCheck.kt · Metrics.kt · UiPrefsStore.kt
     port/                   规则内核需要的窄接口（PortBundle 等），把 rules → data 的横穿收成一组访问器
     model/                  纯请求 / 响应数据类型，按系统、书源、发现、阅读、书架、替换规则、备份分文件
-  src/main/resources/       agent-api.json（144 条端点契约）· assets/txtTocRule.json
+  src/main/resources/       agent-api.json（147 条端点契约）· assets/txtTocRule.json
 web/                        前端（React 19 + TS + Vite，构建产物进同一个 jar）
   src/main.tsx              应用外壳 + hash 路由 + 全局快捷键
   src/app/                  AppHeader.tsx 顶栏 · pages.tsx 页面注册表（导航项在 lib/nav.ts）

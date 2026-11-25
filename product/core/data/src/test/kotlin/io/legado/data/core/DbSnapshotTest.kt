@@ -1,6 +1,4 @@
-package io.legado
-
-import io.legado.data.DbSnapshot
+package io.legado.data.core
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull

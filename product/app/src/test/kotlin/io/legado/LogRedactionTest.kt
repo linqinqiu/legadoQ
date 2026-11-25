@@ -57,6 +57,8 @@ class LogRedactionTest {
         )
         assertEquals("Cookie: ***", LogRedaction.redact("Cookie: sid=1; uid=2"))
         assertEquals("X-Api-Key=***", LogRedaction.redact("X-Api-Key=abc-123"))
+        assertEquals("apikey: ***", LogRedaction.redact("apikey: supabase-public-key"))
+        assertEquals("x-feedback-token=***", LogRedaction.redact("x-feedback-token=" + "a".repeat(64)))
         assertEquals("Set-Cookie: ***", LogRedaction.redact("Set-Cookie: a=b"))
     }
 

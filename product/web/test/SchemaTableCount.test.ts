@@ -21,7 +21,7 @@ const productRoot = path.resolve(here, '../..')
 const repoRoot = path.resolve(productRoot, '..')
 
 const schema = fs.readFileSync(
-  path.join(productRoot, 'app/src/main/kotlin/io/legado/data/db/Schema.kt'),
+  path.join(productRoot, 'core/data/src/main/kotlin/io/legado/data/core/Schema.kt'),
   'utf8',
 )
 const tables = [...schema.matchAll(/create table if not exists\s+([a-z_][a-z0-9_]*)/gi)].map(

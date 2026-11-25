@@ -38,7 +38,9 @@ class CoverCache(
      *  换到前面就会把 `{ "image/png" to bytes }` 绑给 `cookieFor`，五个既有用例一起编译不过。 */
     private val fetcher: ((String) -> Pair<String, ByteArray>)? = null,
 ) {
-    private val client = io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    private val client by lazy {
+        io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    }
 
     init { Files.createDirectories(directory) }
 

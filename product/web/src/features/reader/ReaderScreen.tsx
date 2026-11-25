@@ -5,6 +5,7 @@
 import React, { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api, BookDetails, BookNote, BookSearchHit, Chapter, SearchResult, SourceSummary, TocRuleOption } from '../../lib/api'
 import { getBrand } from '../../lib/brandStore'
+import { registerAppBusy, READER_BUSY_SOURCE } from '../../lib/appBusy'
 import { ContextMenuItem, showContextMenu } from '../../components/ContextMenu'
 import { matchBestChapter } from '../../components/SourceSwitchModal'
 import { Icon } from '../../icons'
@@ -84,6 +85,7 @@ export function ReaderScreen({ openBook, startIndex, settings, onSettingsChange,
    *    state），表现为"设置开了但正文没变"。两处是同一个坑的两面。
    */
   const [convert, setConvert] = useState<ScriptConverter>(() => IDENTITY_CONVERTER)
+  useEffect(() => registerAppBusy(READER_BUSY_SOURCE), [])
   useEffect(() => {
     let alive = true
     loadScriptConverter(settings.scriptMode)

@@ -100,10 +100,12 @@ class ExternalBrowserLogin(
 
     // 本机控制面：目标是 Chromium 的 DevTools 端口，不是出站抓取。走注入的 `LocalControl`
     // 端口（实现是 `ops.LocalControlClient`，见该文件注释），每个 URL 发出前仍要过回环闸门。
-    private val http = control.newClient(
-        connectTimeout = Duration.ofSeconds(5),
-        followRedirects = HttpClient.Redirect.NEVER,
-    )
+    private val http by lazy {
+        control.newClient(
+            connectTimeout = Duration.ofSeconds(5),
+            followRedirects = HttpClient.Redirect.NEVER,
+        )
+    }
 
     /**
      * 我们拉起来的浏览器是否还活着；进程没了顺手清状态。

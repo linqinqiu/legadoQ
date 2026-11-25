@@ -201,9 +201,51 @@ class ArchitectureBoundaryTest {
         )
     }
 
+    @Test
+    fun `core data 不得反向依赖 app 宿主包`() {
+        val dir = productDir().resolve("core/data/src/main/kotlin")
+        val files = scanCodeLines(dir)
+        assertTrue("core:data 扫描面异常：没有读到源码", files.size >= 4)
+        val violations = files.flatMap { (file, lines) ->
+            lines.mapNotNull { CORE_DATA_IMPORT.find(it) }
+                .map { it.groupValues[1].ifEmpty { "<root>" } }
+                .filter { it !in setOf("data", "model") }
+                .map { "${file.fileName} → io.legado.$it" }
+        }
+        assertTrue(
+            "core:data 出现了反向依赖：$violations。核心数据模块只能依赖 model 与自身实现，" +
+                "配置、业务迁移、DAO 和宿主能力必须留在 app。",
+            violations.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `HTTP 路由装配不得创建基础设施`() {
+        val routes = readServerFile("http/Routes.kt")
+        val forbiddenConstructors = listOf(
+            "WebViewProxy(",
+            "BackupStore(",
+            "UiPrefsStore(",
+            "ExternalBrowserLogin(",
+            "SourceDebugger(",
+            "TocRules.useStore(",
+        )
+        val violations = forbiddenConstructors.filter { it in routes }
+        assertTrue(
+            "Routes.kt 仍在创建基础设施：$violations。创建与生命周期必须收进组合根 AppContainer。",
+            violations.isEmpty(),
+        )
+    }
+
     // ===== 辅助：源码定位 + 剥注释扫描（对齐 FrameworkContractTest 的做法）=====
 
     private fun serverDir(): Path = findServerSourceDir()
+
+    private fun productDir(): Path {
+        var dir = serverDir()
+        while (dir.parent != null && !Files.exists(dir.resolve("settings.gradle"))) dir = dir.parent
+        return dir
+    }
 
     private fun readServerFile(rel: String): String = serverDir().resolve(rel).readText()
 
@@ -286,6 +328,7 @@ class ArchitectureBoundaryTest {
         val BRIDGE_API_PUT = Regex("""putProperty\(\s*api\s*,\s*"([A-Za-z][A-Za-z0-9_]*)"""")
         val MODEL_REVERSE_IMPORT = Regex("""^import\s+io\.legado\.([a-z]+)\.""")
         val RULES_CONCRETE_IMPORT = Regex("""^import\s+io\.legado\.(data|source|http)\.([A-Za-z][A-Za-z0-9_]*)""")
+        val CORE_DATA_IMPORT = Regex("""^import\s+io\.legado(?:\.([A-Za-z][A-Za-z0-9_]*))?""")
 
         /**
          * 第 4 条判据的扫描面：`io/legado` 下**除 `http` 之外的全部包**（14 个）。

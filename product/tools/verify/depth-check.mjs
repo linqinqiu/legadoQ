@@ -46,13 +46,10 @@ const MAX_FRONTEND_DIRS = 3;      // web/src/<分区>/<域>/<组>/File.tsx
 // 已知过深文件基线（ROOT 相对、正斜杠）。**只许缩小**：扁平化掉一个就从这里删一条。
 // 分后端/前端两块只是为了报告可读，判定是合并后统一比对的。
 const KNOWN_DEEP = new Set([
-  // ---- 后端 7：data/db（连接池/迁移/Schema/Cookie 存储）、rules/processor/demo（示例处理器）、
-  //      http/system（系统路由组）—— 都是按子系统收拢，不是随手嵌深 ----
-  //      2026-11-08：四个「尚未实现」的规则引擎占位实现已删除，基线从 11 条缩到 7 条。
-  'app/src/main/kotlin/io/legado/data/db/ConnectionPool.kt',
+  // ---- 后端 3：data/db（迁移/Cookie 存储）、http/system（系统路由组）——
+  //      都是按子系统收拢，不是随手嵌深。ConnectionPool 与 Schema 已随 core:data 下沉。----
   'app/src/main/kotlin/io/legado/data/db/CookieUtil.kt',
   'app/src/main/kotlin/io/legado/data/db/Migration.kt',
-  'app/src/main/kotlin/io/legado/data/db/Schema.kt',
   'app/src/main/kotlin/io/legado/http/system/SystemRoutes.kt',
 
   // ---- 前端：2026-11-06 上限改到 3 层后，原来的 16 条（lib/api/domains、reader/{typeset,settingsPanel,dict}）
@@ -93,20 +90,23 @@ function collect(label, base, files, max, exts) {
 }
 
 const BE_BASE = path.join(ROOT, 'app/src/main/kotlin/io/legado');
+const CORE_DATA_BASE = path.join(ROOT, 'core/data/src/main/kotlin/io/legado/data');
 const FE_BASE = path.join(ROOT, 'web/src');
 
 const beFiles = walk(BE_BASE, ['.kt'], []);
+const coreDataFiles = walk(CORE_DATA_BASE, ['.kt'], []);
 const feFiles = walk(FE_BASE, ['.ts', '.tsx'], []).filter(f => !f.endsWith('.d.ts'));
 
 const deep = new Set([
   ...collect('后端 io/legado', BE_BASE, beFiles, MAX_BACKEND_PKG_DIRS, ['.kt']),
+  ...collect('核心 core:data', CORE_DATA_BASE, coreDataFiles, MAX_BACKEND_PKG_DIRS, ['.kt']),
   ...collect('前端 web/src', FE_BASE, feFiles, MAX_FRONTEND_DIRS, ['.ts', '.tsx']),
 ]);
 
-// 空转哨兵：若两个扫描面都扫不到文件，"无新违规"就是假绿。
-if (beFiles.length < 50 || feFiles.length < 50) {
+// 空转哨兵：若扫描面都扫不到文件，"无新违规"就是假绿。
+if (beFiles.length + coreDataFiles.length < 50 || feFiles.length < 50) {
   console.error(
-    `\n[depth-check] 扫描面异常：后端 ${beFiles.length} 个 .kt、前端 ${feFiles.length} 个 ts/tsx，明显偏少。` +
+    `\n[depth-check] 扫描面异常：后端 ${beFiles.length + coreDataFiles.length} 个 .kt、前端 ${feFiles.length} 个 ts/tsx，明显偏少。` +
       `\n  此时「无新过深文件」不可信——请先确认 ROOT 与两个 BASE 路径有效。`,
   );
   process.exit(1);

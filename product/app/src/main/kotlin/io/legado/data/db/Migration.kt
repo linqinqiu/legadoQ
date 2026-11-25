@@ -1,8 +1,6 @@
 package io.legado.data.db
 
-import io.legado.AppConfig
 import io.legado.data.cookieBucket
-import io.legado.data.Database
 import io.legado.data.parseCookieString
 import io.legado.data.readTocChapters
 import kotlinx.serialization.json.Json
@@ -14,54 +12,10 @@ import java.util.Base64
 /**
  * 数据库迁移：从 `Database.kt.initialize()` 拆出。
  *
- * 职责：旧库缺列补列、旧表折叠（cookie_jar → cookie）、VACUUM 碎片回收。
+ * 职责：旧库缺列补列、旧表折叠（cookie_jar → cookie）。
  * 所有迁移在 `initialize()` 之后执行，确保表已存在。
  */
 object Migration {
-
-    /** 启动快照：距最近一份不足间隔则跳过，否则 `VACUUM INTO`。 */
-    fun maybeSnapshot(db: Connection, dbPath: String) {
-        val keep = io.legado.AppConfig.dbSnapshotKeep
-        if (keep <= 0) return
-        val dir = io.legado.data.DbSnapshot.backupsDirOf(dbPath)
-        val minInterval = io.legado.AppConfig.dbSnapshotMinIntervalMs
-        val latest = io.legado.data.DbSnapshot.latestSnapshotTs(dir)
-        if (minInterval > 0L && latest != null && System.currentTimeMillis() - latest < minInterval) return
-        io.legado.data.DbSnapshot.run(db, dbPath, keep)
-    }
-
-    /** 回收空闲页：碎片率超过阈值时全量 VACUUM。 */
-    fun reclaimFreePages(db: Connection) {
-        val pageCount = runCatching {
-            db.createStatement().use { st -> st.executeQuery("pragma page_count").use { if (it.next()) it.getLong(1) else 0L } }
-        }.getOrNull() ?: return
-        val freePages = runCatching {
-            db.createStatement().use { st -> st.executeQuery("pragma freelist_count").use { if (it.next()) it.getLong(1) else 0L } }
-        }.getOrNull() ?: return
-        if (pageCount <= 0 || freePages <= 0) return
-        val ratio = freePages.toDouble() / pageCount
-        val threshold = 0.25
-        if (ratio < threshold) return
-
-        val before = pageCount
-        runCatching {
-            db.createStatement().use { it.execute("VACUUM") }
-            db.createStatement().use { it.execute("pragma optimize") }
-        }.onSuccess {
-            val after = runCatching {
-                db.createStatement().use { st -> st.executeQuery("pragma page_count").use { if (it.next()) it.getLong(1) else before } }
-            }.getOrDefault(before)
-            System.err.println(
-                "数据库碎片回收：空闲页 $freePages/$pageCount（${(ratio * 100).toInt()}%）" +
-                    "已 VACUUM，${before} → $after 页",
-            )
-        }.onFailure { error ->
-            System.err.println(
-                "数据库碎片回收失败（空闲页 $freePages/$pageCount，${(ratio * 100).toInt()}%）：" +
-                    "${error.javaClass.simpleName}: ${error.message} —— 不影响功能，只是文件没缩回去",
-            )
-        }
-    }
 
     /** 折叠旧的 `source_login_state.cookie_jar` 进全局 `cookie` 表。 */
     fun migrateLegacyCookieJars(db: Connection) {

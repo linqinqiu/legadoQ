@@ -3,7 +3,7 @@
 > **⚠ 这份文档描述的是「挪走前」的接口，当前构建里没有这些端点。**
 > 2026-11-17 按「附属额外功能暂且移除」的决定，AI 那一整套（`ai/` 包 + `/api/agent` 路由 + 前端 AI 面板）
 > 已整体移到 `product/experimental/ai/`，不在任何 Gradle / 前端源码集里，`./gradlew build` 与 `npm run build`
-> 都不碰它；`resources/agent-api.json` 里的 agent 端点也已同步删除（现为 144 条，全是阅读器主线）。
+> 都不碰它；`resources/agent-api.json` 里的 agent 端点也已同步删除（当前 147 条 / 19 组，为阅读器主线与匿名反馈）。
 > 恢复步骤见 [`experimental/README.md`](../experimental/README.md)。下面内容只在把 AI 挪回源码树之后才成立。
 
 > 本文原名 `product/AGENTS.md`，2026-11-11 迁入 `product/docs/`，以免被 AI 工具按目录自动加载
@@ -445,7 +445,7 @@ app/src/main/kotlin/io/legado/ai/
 > 只是默认实现，全部可插拔（外部 provider / 工具 / 选择器用新 id 注册、`replace` 覆盖、`unregister`
 > 摘掉）。这条边界由 `FrameworkContractTest`（`@Tag("framework-contract")`，钉进 `verifyFramework`
 > 与 `check`）守住：默认只含 `openai-compatible` 与 `FirstProfileSelector`、重复 id 被拒、
-> 内置工具默认不可删、`agent-api.json` 契约 165 条 / 19 组 / 22 个内置工具。
+> 内置工具默认不可删、契约端点数以 `agent-api.json` 为准、22 个内置工具。
 
 ## 2. 核心类型（`AgentContext.kt`）
 

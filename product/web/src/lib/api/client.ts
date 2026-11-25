@@ -2,6 +2,7 @@
 
 import { fetchWithMetrics } from '../performance'
 import { clearAccessToken, getAccessToken, signalUnauthorized } from '../accessToken'
+import { registerAppBusy } from '../appBusy'
 
 /**
  * 写操作仍由服务端的同源闸门把关（浏览器自带 Origin）。这里唯一注入的是可选的对外访问
@@ -10,6 +11,16 @@ import { clearAccessToken, getAccessToken, signalUnauthorized } from '../accessT
  */
 
 type RequestOptions = { timeoutMs?: number }
+
+const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+const MUTATION_BUSY_SOURCE = 'api-mutation'
+
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message)
+    this.name = 'ApiRequestError'
+  }
+}
 
 /**
  * 发请求并做统一处理：补 JSON 头、带同源凭据、走性能采集、非 2xx 抛服务端那句话。
@@ -44,10 +55,22 @@ async function requestResponse(
     signalUnauthorized()
   }
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string }
-    throw new Error(body.message ?? '请求失败')
+    const body = await response.json().catch(() => ({ message: response.statusText })) as { message?: string; code?: string }
+    throw new ApiRequestError(body.message ?? '请求失败', response.status, body.code)
   }
   return response
+}
+
+/** 写请求从发起到响应体解析完成都算 pending mutation；GET 不阻塞 PWA 刷新。 */
+async function withMutationActivity<T>(init: RequestInit, operation: () => Promise<T>): Promise<T> {
+  const release = MUTATION_METHODS.has((init.method ?? 'GET').toUpperCase())
+    ? registerAppBusy(MUTATION_BUSY_SOURCE)
+    : null
+  try {
+    return await operation()
+  } finally {
+    release?.()
+  }
 }
 
 /**
@@ -60,8 +83,10 @@ export async function request<T>(
   init: RequestInit = {},
   opts: RequestOptions = {},
 ): Promise<T> {
-  const response = await requestResponse(path, init, opts)
-  return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>)
+  return withMutationActivity(init, async () => {
+    const response = await requestResponse(path, init, opts)
+    return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>)
+  })
 }
 
 /** 取纯文本（更新日志、备份 kept 条目这类端点）。非 2xx 与 request 同一套错误口径。 */
@@ -70,7 +95,7 @@ export async function requestText(
   init: RequestInit = {},
   opts: RequestOptions = {},
 ): Promise<string> {
-  return (await requestResponse(path, init, opts)).text()
+  return withMutationActivity(init, async () => (await requestResponse(path, init, opts)).text())
 }
 
 /** 取二进制 Blob（语音合成这类端点）。 */
@@ -79,7 +104,7 @@ export async function requestBlob(
   init: RequestInit = {},
   opts: RequestOptions = {},
 ): Promise<Blob> {
-  return (await requestResponse(path, init, opts)).blob()
+  return withMutationActivity(init, async () => (await requestResponse(path, init, opts)).blob())
 }
 
 /** 取二进制 ArrayBuffer（字体文件这类端点）。 */
@@ -88,5 +113,5 @@ export async function requestArrayBuffer(
   init: RequestInit = {},
   opts: RequestOptions = {},
 ): Promise<ArrayBuffer> {
-  return (await requestResponse(path, init, opts)).arrayBuffer()
+  return withMutationActivity(init, async () => (await requestResponse(path, init, opts)).arrayBuffer())
 }

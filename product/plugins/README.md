@@ -12,7 +12,7 @@
 | 给 AI 加一个能力（工具） | 写一个 `Tool` 实现，注册进 `ai/ToolRegistry.kt`；元数据用 `ToolMeta(id, group, description, writes = …)`，`writes = true` 的会自动过写操作确认闸。AI 立刻能调。 |
 | 接别家 LLM 协议 / 换连接选择策略 | 实现 `ai/LlmProvider.kt` 或 `ai/ConnectionSelector.kt` 的接口，注册进对应 `providerRegistry`。 |
 
-两条都不注册 HTTP 路由（端点计数由 `agent-api.json` 的 `count` 钉住，现为 165 条 / 19 组），
+两条都不注册 HTTP 路由（端点计数由 `agent-api.json` 的 `count` 钉住），
 接入面说明见 `product/docs/agent-api.md`。
 
 ## 原始设计（历史，下面这些只供追溯）

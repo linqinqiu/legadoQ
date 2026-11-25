@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { api, type AboutInfo, type UpdateCheckResult } from '../../lib/api'
+import { api, feedback, type AboutInfo, type FeedbackCategory, type FeedbackItem, type UpdateCheckResult } from '../../lib/api'
+import { ApiRequestError } from '../../lib/api/client'
 import { DISCLAIMER_TEXT, PRODUCT_INTRO, TERMS_TEXT } from '../../lib/agreement'
-import { FEEDBACK_BODY_MAX, FEEDBACK_TITLE_MAX, buildFeedbackUrl } from '../../lib/feedbackUrl'
+import { FEEDBACK_BODY_MAX, FEEDBACK_TITLE_MAX, buildFeedbackUrl, clampText } from '../../lib/feedbackUrl'
+import { feedbackCooldownRemaining, getFeedbackTokenHash, markFeedbackCooldown } from '../../lib/feedbackToken'
+import './AboutPage.css'
 
 /**
  * 「关于」（用户 2026-10-02：「加入关于（名称，开发者，更新日志，检查更新，用户协议，开源许可，免责声明）」）。
@@ -45,6 +48,12 @@ const REFERENCED: Array<[string, string, string]> = [
 
 const LICENSE_TEXT = 'legadoQ 以 GNU GPL-3.0 发布：你可以自由运行、研究、修改和分发本程序，' +
   '但修改后的版本必须以同一协议公开源码。完整条款见仓库根目录的 LICENSE 文件。'
+const FEEDBACK_CATEGORY_LABELS: Record<FeedbackCategory, string> = {
+  bug: '问题',
+  feature: '功能建议',
+  general: '其他建议',
+  question: '使用疑问',
+}
 // 用户协议 / 免责声明 / 产品介绍的文案在 `agreement.ts`（与首启弹层共用一份，抄两份迟早漂移）。
 
 /** 把 ISO 时间（`published_at`）念成本地时间；解析不了就原样返回，不编一个假时间。 */
@@ -91,12 +100,25 @@ export function AboutPage({
   const [checking, setChecking] = useState(false)
   const [notice, setNotice] = useState('')
   const [feedbackOpen, setFeedbackOpen] = useState(false)
-  const [feedbackTitle, setFeedbackTitle] = useState('')
+  const [feedbackCategory, setFeedbackCategory] = useState<FeedbackCategory>('general')
   const [feedbackBody, setFeedbackBody] = useState('')
+  const [feedbackContact, setFeedbackContact] = useState('')
+  const [feedbackMode, setFeedbackMode] = useState<'relay' | 'github' | null>(null)
+  const [feedbackBusy, setFeedbackBusy] = useState(false)
+  const [feedbackMineBusy, setFeedbackMineBusy] = useState(false)
+  const [feedbackMessage, setFeedbackMessage] = useState('')
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[] | null>(null)
+  const [feedbackCooldownMs, setFeedbackCooldownMs] = useState(() => feedbackCooldownRemaining())
 
   useEffect(() => {
     void api.about().then(setInfo).catch(() => setNotice('关于信息没能从服务端读到'))
   }, [])
+
+  useEffect(() => {
+    if (feedbackCooldownMs <= 0) return
+    const timer = window.setTimeout(() => setFeedbackCooldownMs(0), feedbackCooldownMs)
+    return () => window.clearTimeout(timer)
+  }, [feedbackCooldownMs])
 
   const runCheck = () => {
     setChecking(true)
@@ -111,16 +133,13 @@ export function AboutPage({
   const repository = info?.repository ?? ''
   const homepage = repository ? `https://github.com/${repository}` : ''
 
-  /**
-   * 只生成地址，不提交：真正按下「Create」的是用户在 GitHub 页面上的那一次点击。
-   * 这样不需要任何令牌 —— 凭据是用户自己的 GitHub 账号，不是这台机器的。
-   */
   const feedbackUrl = (() => {
-    if (!feedbackOpen) return ''
+    if (feedbackMode !== 'github' || !feedbackBody.trim()) return ''
+    const firstLine = feedbackBody.trim().split('\n')[0]
     try {
       return buildFeedbackUrl({
         repository,
-        title: feedbackTitle,
+        title: clampText(`[${FEEDBACK_CATEGORY_LABELS[feedbackCategory]}] ${firstLine}`, FEEDBACK_TITLE_MAX),
         description: feedbackBody,
         version: info?.version,
       })
@@ -128,6 +147,58 @@ export function AboutPage({
       return ''
     }
   })()
+
+  const submitFeedback = async () => {
+    const content = feedbackBody.trim()
+    if (!content || feedbackBusy || feedbackCooldownMs > 0) return
+    setFeedbackBusy(true)
+    setFeedbackMessage('')
+    setFeedbackItems(null)
+    try {
+      const tokenHash = await getFeedbackTokenHash()
+      await feedback.submit({
+        category: feedbackCategory,
+        content,
+        contact: feedbackContact.trim() || undefined,
+        tokenHash,
+      })
+      setFeedbackMode('relay')
+      setFeedbackMessage('已提交，感谢你的建议。')
+      setFeedbackBody('')
+      setFeedbackContact('')
+      setFeedbackCooldownMs(markFeedbackCooldown() - Date.now())
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 409 && error.code === 'feedback_not_configured') {
+        setFeedbackMode('github')
+        setFeedbackMessage('这台服务未配置匿名反馈通道，将改用 GitHub 提交；内容会公开，联系方式不会带入。')
+      } else {
+        setFeedbackMessage('提交失败，请稍后重试。')
+      }
+    } finally {
+      setFeedbackBusy(false)
+    }
+  }
+
+  const viewFeedback = async () => {
+    if (feedbackMineBusy) return
+    setFeedbackMineBusy(true)
+    setFeedbackMessage('')
+    try {
+      const tokenHash = await getFeedbackTokenHash()
+      const items = await feedback.mine(tokenHash)
+      setFeedbackItems(items)
+      if (items.length === 0) setFeedbackMessage('暂未找到建议，可能尚未提交成功，或本地身份已经更换。')
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 409 && error.code === 'feedback_not_configured') {
+        setFeedbackMode('github')
+        setFeedbackMessage('这台服务未配置匿名反馈通道，暂时无法查看建议。')
+      } else {
+        setFeedbackMessage('查看失败，请稍后重试。')
+      }
+    } finally {
+      setFeedbackMineBusy(false)
+    }
+  }
 
   return (
     <section className="about-page">
@@ -166,35 +237,81 @@ export function AboutPage({
         {feedbackOpen && (
           <div className="about-feedback">
             <p className="about-feedback-note">
-              建议会打开 GitHub 的新建 Issue 页面，用你自己的 GitHub 账号确认后才真正提交，内容对公众可见。
-              {!repository && ' 服务端没有返回仓库地址，暂时无法提交。'}
+              {feedbackMode === 'github'
+                ? '这台服务未配置匿名反馈通道，将打开 GitHub 新建 Issue；内容会公开，联系方式不会带入。'
+                : '建议匿名提交，不采集 IP、设备或邮箱；联系方式仅用于回复此条建议。'}
+              {feedbackMode === 'github' && !repository && ' 服务端没有返回仓库地址，暂时无法提交。'}
             </p>
             <label className="customize-field">
-              <span>标题</span>
-              <input
-                type="text"
-                value={feedbackTitle}
-                maxLength={FEEDBACK_TITLE_MAX}
-                onChange={event => setFeedbackTitle(event.target.value)}
-                placeholder="一句话说明想改进什么"
-              />
+              <span>分类</span>
+              <select
+                value={feedbackCategory}
+                onChange={event => setFeedbackCategory(event.target.value as FeedbackCategory)}
+              >
+                {Object.entries(FEEDBACK_CATEGORY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
             </label>
             <label className="customize-field">
-              <span>描述</span>
+              <span>内容</span>
               <textarea
                 value={feedbackBody}
-                maxLength={FEEDBACK_BODY_MAX}
+                maxLength={2000}
                 rows={5}
                 onChange={event => setFeedbackBody(event.target.value)}
                 placeholder="在什么场景下、期望怎样、现在怎样"
               />
             </label>
+            <label className="customize-field">
+              <span>联系方式（可选）</span>
+              <input
+                type="text"
+                autoComplete="off"
+                value={feedbackContact}
+                maxLength={200}
+                onChange={event => setFeedbackContact(event.target.value)}
+                placeholder="仅用于回复此条建议"
+              />
+            </label>
             <div className="customize-actions">
-              {feedbackUrl
-                ? <a className="primary-button" href={feedbackUrl} target="_blank" rel="noreferrer">打开 GitHub 提交</a>
-                : <button type="button" className="primary-button" disabled>打开 GitHub 提交</button>}
-              <span className="customize-saved">标题 {FEEDBACK_TITLE_MAX} 字以内，描述 {FEEDBACK_BODY_MAX} 字以内</span>
+              {feedbackMode === 'github' ? (
+                feedbackUrl
+                  ? <a className="primary-button" href={feedbackUrl} target="_blank" rel="noreferrer">打开 GitHub 提交</a>
+                  : <button type="button" className="primary-button" disabled>打开 GitHub 提交</button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => void submitFeedback()}
+                    disabled={!feedbackBody.trim() || feedbackBusy || feedbackCooldownMs > 0}
+                  >
+                    {feedbackBusy ? '提交中…' : feedbackCooldownMs > 0 ? `${Math.ceil(feedbackCooldownMs / 1000)} 秒后可再提交` : '提交建议'}
+                  </button>
+                  <button type="button" className="ghost-button" onClick={() => void viewFeedback()} disabled={feedbackMineBusy}>
+                    {feedbackMineBusy ? '读取中…' : '查看我的建议'}
+                  </button>
+                </>
+              )}
+              <span className="customize-saved">
+                {feedbackMode === 'github' ? `GitHub 描述最多 ${FEEDBACK_BODY_MAX} 字` : `内容 ${feedbackBody.length}/2000，联系方式 ${feedbackContact.length}/200`}
+              </span>
             </div>
+            {feedbackMessage && <p className="about-feedback-note" role="status">{feedbackMessage}</p>}
+            {feedbackItems && feedbackItems.length > 0 && (
+              <div className="about-feedback-list" aria-live="polite">
+                {feedbackItems.map(item => (
+                  <article key={item.id}>
+                    <header>
+                      <span>{FEEDBACK_CATEGORY_LABELS[item.category] ?? item.category}</span>
+                      <time dateTime={item.created_at}>{formatWhen(item.created_at)}</time>
+                    </header>
+                    <p>{item.content}</p>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {notice && <p className="about-check is-unreachable">{notice}</p>}

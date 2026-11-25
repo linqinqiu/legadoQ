@@ -14,7 +14,7 @@ import io.legado.backup.BackupExporter
 import io.legado.backup.BackupImporter
 import io.legado.backup.BackupStore
 import io.legado.data.Database
-import io.legado.data.DbSnapshot
+import io.legado.data.core.DbSnapshot
 import io.legado.model.ApiError
 import io.legado.model.SnapshotRestoreRequest
 import io.legado.model.SnapshotRestoreScheduled

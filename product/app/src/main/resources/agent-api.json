@@ -1,10 +1,10 @@
 {
   "service": "legadoQ",
   "version": "0.3.0",
-  "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统）。每条按 group 归类。",
+  "scope": "全量：这台服务对外暴露的每一条端点都在这里（书源管理 / 发现页 / 搜索 / 登录与凭据 / 内置浏览器 / 阅读 / 书架 / 离线缓存 / 分章规则 / 净化规则 / 图片与媒体 / 进度与笔记 / 朗读 / RSS / 书源订阅 / 备份 / 系统 / 反馈）。每条按 group 归类。",
   "howToConnect": {
     "baseUrl": "http://127.0.0.1:1234",
-    "auth": "本服务不设身份：绑定地址就是唯一的门。写操作（write=true）从浏览器发起必须带与 Host 同源的 Origin 头；本机脚本或 AI 客户端直接调用即可（不带 Origin 就放行），不需要令牌。唯一反向例外是 WebSocket：那条把「没有 Origin」当作跨站拒掉。把 LEGADO_HOST 改成 0.0.0.0 等于把整个库的写权限交给局域网。",
+    "auth": "默认不设身份；显式设置 LEGADO_ACCESS_TOKEN 后，非回环来源必须带 Authorization: Bearer <token> 或 ?token=<token>。写操作（write=true）从浏览器发起必须带与 Host 同源的 Origin 头；本机脚本或 AI 客户端不带 Origin 时放行。唯一反向例外是 WebSocket：那条把「没有 Origin」当作跨站拒掉。把 LEGADO_HOST 改成 0.0.0.0 等于把整个库的写权限交给局域网。",
     "contentType": "application/json; charset=utf-8",
     "errors": "失败一律是非 2xx + {\"code\":..., \"message\":...}；message 是给人看的一句中文，可以直接显示或据此改动作",
     "response": "每条的 response 字段写的是回包顶层形状。三类不按这个走：GET /api/sources/{id}/debug 是 SSE，WS /api/search/stream 是 WebSocket 帧，内置浏览器那几条（page / res / submit）回的是目标站响应原文而不是 legadoQ 的 JSON。",
@@ -1635,7 +1635,29 @@
       },
       "response": "{text: 字典规则展开后的结果}",
       "group": "书源"
+    },
+    {
+      "method": "POST",
+      "path": "/api/feedback",
+      "write": true,
+      "group": "反馈",
+      "purpose": "匿名提交一条建议；Ktor 中转到 Supabase，不落本地库。未配置中转时回 409，界面回退 GitHub Issue",
+      "body": {
+        "category": "bug / feature / general / question",
+        "content": "1–2000 字",
+        "contact": "可选，最多 200 字，仅用于回复此条建议",
+        "tokenHash": "前端本地随机 token 的 SHA-256，64 位小写十六进制"
+      },
+      "response": "{ok:true}；非法输入 400 invalid_feedback，未配置 409 feedback_not_configured，上游失败 502 feedback_upstream_failed"
+    },
+    {
+      "method": "GET",
+      "path": "/api/feedback/mine",
+      "write": false,
+      "group": "反馈",
+      "purpose": "按请求头 x-feedback-token（64 位小写十六进制）查回自己提交的建议；Supabase RLS 只放行 token 匹配的行",
+      "response": "[{id,created_at,category,content}]；未配置 409 feedback_not_configured，令牌非法 400 invalid_feedback_token，上游失败 502 feedback_upstream_failed"
     }
   ],
-  "count": 145
+  "count": 147
 }

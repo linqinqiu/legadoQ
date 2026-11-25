@@ -30,19 +30,25 @@ class EdgeTtsService(
      * Edge 官方 WSS：目标固定为 `speech.platform.bing.com`，走唯一出站原语。
      * `GuardedHttpClient` 的 WebSocket 包装只放 wss，经 PinnedProxy 的 CONNECT 盲隧道。
      */
-    private val wssClient: HttpClient = NetworkSecurity.newHttpClient(
-        connectTimeout = Duration.ofSeconds(10),
-        followRedirects = HttpClient.Redirect.NEVER,
-    ),
+    wssClient: HttpClient? = null,
     /**
      * 自定义 TTS：地址由用户填，按方案 A 放行本机/局域网，但封掉链路本地与云元数据段。
      * 不自动跟随重定向：`followCustomTtsRedirects` 手动逐跳跟随并重新过策略。
      */
-    private val customClient: HttpClient = CustomTtsClient.newClient(
-        connectTimeout = Duration.ofSeconds(10),
-        followRedirects = HttpClient.Redirect.NEVER,
-    ),
+    customClient: HttpClient? = null,
 ) {
+    private val edgeClient: HttpClient by lazy {
+        wssClient ?: NetworkSecurity.newHttpClient(
+            connectTimeout = Duration.ofSeconds(10),
+            followRedirects = HttpClient.Redirect.NEVER,
+        )
+    }
+    private val customTtsClient: HttpClient by lazy {
+        customClient ?: CustomTtsClient.newClient(
+            connectTimeout = Duration.ofSeconds(10),
+            followRedirects = HttpClient.Redirect.NEVER,
+        )
+    }
     private val cache = ConcurrentHashMap<String, ByteArray>()
     private val maxCacheSize = AppConfig.edgeTtsCacheMax
 
@@ -170,7 +176,7 @@ class EdgeTtsService(
         val muid = generateMuid()
         val wssUrl = "$WSS_BASE_URL?TrustedClientToken=$TRUSTED_CLIENT_TOKEN&Sec-MS-GEC=$secMsGec&Sec-MS-GEC-Version=$SEC_MS_GEC_VERSION&ConnectionId=$connectionId"
 
-        val ws = wssClient.newWebSocketBuilder()
+        val ws = edgeClient.newWebSocketBuilder()
             .header("User-Agent", USER_AGENT)
             .header("Origin", ORIGIN)
             .header("Pragma", "no-cache")
@@ -290,7 +296,7 @@ class EdgeTtsService(
             var ws: WebSocket? = null
 
             try {
-                ws = wssClient.newWebSocketBuilder()
+                ws = edgeClient.newWebSocketBuilder()
                     .header("User-Agent", USER_AGENT)
                     .header("Origin", ORIGIN)
                     .header("Pragma", "no-cache")
@@ -353,7 +359,7 @@ class EdgeTtsService(
         handler: HttpResponse.BodyHandler<T>,
     ): HttpResponse<T> {
         var current = initial
-        var response = customClient.send(current, handler)
+        var response = customTtsClient.send(current, handler)
         var hops = 0
         while (response.statusCode() in 300..399) {
             val location = response.headers().firstValue("location").orElse(null) ?: break
@@ -368,7 +374,7 @@ class EdgeTtsService(
             // 被丢弃的那一跳响应体必须关掉，否则流式响应会漏文件描述符。
             runCatching { response.body()?.let { (it as? java.io.Closeable)?.close() } }
             current = rebuild(current.uri(), next, response.statusCode())
-            response = customClient.send(current, handler)
+            response = customTtsClient.send(current, handler)
             hops++
         }
         return response

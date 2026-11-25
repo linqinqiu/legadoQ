@@ -105,7 +105,9 @@ test('订阅两件事分居同页：书源页干净、订阅页装两块、页�
 
 test('形状核对：书源页只剩编辑器，订阅页两块并列', () => {
   const pages = read('app/pages.tsx')
-  assert.match(pages, /import \{ RssPage \} from '\.\.\/features\/rss\/RssPage'/, '「订阅」页要由 features/rss/RssPage 提供')
+  // 2026-11-24：页面改为 React.lazy 惰性加载，静态 import 变成 import('../features/rss/RssPage')。
+  // 判据的意图不变 —— 订阅页仍由 features/rss/RssPage 提供（只是不再打进首屏 chunk）。
+  assert.match(pages, /features\/rss\/RssPage/, '「订阅」页要由 features/rss/RssPage 提供')
 
   const sourcesPage = stripComments(functionBody(read('features/source-editor/SourcesPage.tsx'), 'SourcesPage'))
   assert.ok(sourcesPage.length > 3000, `SourcesPage 只切出 ${sourcesPage.length} 字，切分本身没在做事`)

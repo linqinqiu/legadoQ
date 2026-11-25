@@ -1,0 +1,12 @@
+{
+  "_readme": [
+    "前端体积预算上限（单位：字节，gzip 后）。bundle-budget-check.mjs 读这份文件。",
+    "口径：Node 的 zlib.gzipSync 默认级别，与 vite 构建日志里的 gzip 列同源；别用系统 gzip 比对。",
+    "entryJsGzip = index.html 直接引用的 JS（首屏必下）；allJsGzip = dist/assets 下所有 JS 之和（含惰性 chunk）；cssGzip = 所有 CSS 之和。",
+    "这是棘轮：体积优化后请把上限同步调低（只许单调缩小）。要上调必须在提交说明里写清为什么多出来的字节值得。",
+    "2026-11-24 初值取自路由拆包后的标准构建实测：entry 182663 / all 602369 / css 40727，留约 6~10% 余量吸收构建模式(esbuild/terser)差异。"
+  ],
+  "entryJsGzip": 200000,
+  "allJsGzip": 640000,
+  "cssGzip": 48000
+}

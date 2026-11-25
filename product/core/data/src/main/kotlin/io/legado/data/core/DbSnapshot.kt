@@ -1,4 +1,4 @@
-package io.legado.data
+package io.legado.data.core
 
 import io.legado.model.SnapshotInfo
 import java.nio.file.Files
@@ -16,11 +16,11 @@ import java.util.Comparator
  *
  * 为什么用 `VACUUM INTO` 而不是直接复制 `.db`：WAL 模式下尚未合并的 `-wal` 段不在 `.db` 文件里，
  * 裸拷文件可能拿到"半提交"的状态（恢复时 `database disk image is malformed`）。`VACUUM INTO`
- * 走 SQLite 自带的在线备份语义，产出**已合并、自包含**的单文件快照（与本类 `reclaimFreePages`
- * 用 `VACUUM` 的同一手法，也是这里刻意复用连接、不新开读连接的原因）。
+ * 走 SQLite 自带的在线备份语义，产出**已合并、自包含**的单文件快照（与 `DatabaseEngine`
+ * 碎片回收用 `VACUUM` 的同一手法，也是这里刻意复用连接、不新开读连接的原因）。
  *
  * 失败一律不抛错打断启动：快照是保险，"保险没做成"不该把主程序带崩——只打一条带原因的 stderr，
- * 与 `reclaimFreePages`「失败必须说出来」同一口径。
+ * 与碎片回收「失败必须说出来」同一口径。
  */
 object DbSnapshot {
     private const val PREFIX = "legado-"

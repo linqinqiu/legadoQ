@@ -99,7 +99,9 @@ class RuleRunner(
      * 这类形状时就没抓手，所以留这个口子（优先于 `responseFetcher`）。
      */
     internal var fetchedFetcher: ((String) -> Fetched)? = null
-    private val client = io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    private val client by lazy {
+        io.legado.ops.NetworkSecurity.newHttpClient(connectTimeout = Duration.ofSeconds(10), followRedirects = HttpClient.Redirect.NEVER)
+    }
     internal val json = Json { ignoreUnknownKeys = true }
     internal val jsSandbox = JsSandbox(this)
 

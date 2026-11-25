@@ -29,11 +29,12 @@ class ApiContractTest {
         assertEquals("count 必须等于 endpoints 实际条数", endpoints.size, root["count"]?.jsonPrimitive?.int)
 
         // 2026-11-17：AI 自定义接入那 22 条随代码挪进 product/experimental/ai/ → 166 - 22 = 144；
-        // 2026-11-21：补全书源字典规则 POST /api/sources/{id}/dict（归入书源组，不新增分组）→ 144 → 145。
-        assertEquals("端点总数必须是 145", 145, endpoints.size)
+        // 2026-11-21：补全书源字典规则 POST /api/sources/{id}/dict（归入书源组，不新增分组）→ 144 → 145；
+        // 2026-11-24：新增匿名反馈 POST /api/feedback 与 GET /api/feedback/mine（新分组）→ 145 → 147。
+        assertEquals("端点总数必须是 147", 147, endpoints.size)
 
         val groups = endpoints.map { it.jsonObject["group"]!!.jsonPrimitive.content }
-        assertEquals("组数必须是 18", 18, groups.toSet().size)
+        assertEquals("组数必须是 19", 19, groups.toSet().size)
         assertEquals("AI 那组已经随代码挪走，不该还在契约里", 0, groups.count { it == "AI 自定义接入" })
 
         val injectedBase = root["howToConnect"]?.jsonObject?.get("baseUrl")?.jsonPrimitive?.content
