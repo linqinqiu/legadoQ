@@ -22,6 +22,9 @@ const keyRules = [
   ['前端测试命令', /npm test|npm --prefix product\/web test/],
   ['后端测试命令', /gradlew :app:test/],
   ['AGENTS 指针', /AGENTS\.md/],
+  ['书源单一数据源', /sourceCatalog/],
+  ['反馈限流', /FeedbackLimiter/],
+  ['后台更新提示', /updateHint/],
 ];
 const agentsPath = join(root, 'AGENTS.md');
 let agents = '';

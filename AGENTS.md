@@ -72,7 +72,7 @@
 | RSS | `http/RssRoutes.kt` |
 | TTS | `http/TtsRoutes.kt` |
 | 守卫/鉴权 | `http/Guard.kt` · `http/AccessTokenGate.kt` |
-| 匿名反馈中转 | `http/FeedbackRoutes.kt` · `feedback/FeedbackService.kt`（Supabase 密钥只在服务端） |
+| 匿名反馈中转 | `http/FeedbackRoutes.kt` · `feedback/FeedbackService.kt`（Supabase 密钥只在服务端）· `feedback/FeedbackLimiter.kt`（按 tokenHash 滑动窗口，超限 429） |
 
 ### 8.2 后端 · AI 子系统（已挪到 `product/experimental/ai/`）
 
@@ -117,6 +117,8 @@
 | 阅读器 hook/展示 | `features/reader/` 下 `useReader*`(`useReaderPositionJump`=跳转原语：`jumpToNote`/`jumpToSearchHit`/`jumpToNotePosition`) · `ReaderBody`/`ReaderOverlays`/`ReaderChrome`/`ReaderCatalog` |
 | 书架页 | `features/bookshelf/ShelfPage.tsx`(1240) · `LibraryPage.tsx` |
 | 书源编辑器 | `features/source-editor/SourcesPage.tsx`(933) · `SourceLoginModal/UiPanel` · `SourceEditorPanel` · `SourceHealthModal` |
+| 书源清单（单一数据源） | `lib/sourceCatalog.ts`（`subscribe/getSnapshot/load/invalidate/replace`：请求合流、缓存、失效、乐观排序回滚）；`SourcesPage`·`SourceSwitchModal`·`main.tsx` 共同订阅，别再各自 `api.sources()` |
+| 后台更新提示 | `lib/updateHint.ts`（6h 节流、失败静默、只认 `available`）；`main.tsx` 拿到 `/healthz` 版本后触发，小圆点在 `app/AppHeader.tsx` 的 `.brand-version-dot` |
 | AI 连接/悬浮球（已挪走） | 前端 12 个组件 + `lib/aiChatStore.ts`·`aiToolGroups.ts`·`api/domains/agent.ts` 已在 `product/experimental/ai/web/`；界面无入口 |
 | 通用模态 | `components/ReplaceRulesModal` · `SourceSwitchModal` · `BookDetailModal` |
 | 设置/Cookie | `features/settings/CookieSection.tsx` · `app/AppHeader.tsx` |

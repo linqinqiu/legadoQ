@@ -16,9 +16,16 @@
 ## 热点（最常改、最烧 token，按需 grep 段，别整读）
 - 前端阅读器：`product/web/src/features/reader/` —— `ReaderScreen.tsx`(2346) 是状态中枢，**整读最烧 token**；跳转原语已抽到 `useReaderPositionJump.ts`，笔记状态在 `useReaderNotes.ts`，`toggleBookmark` 仍在 `ReaderScreen.tsx`。
 - 后端规则引擎：`product/app/src/main/kotlin/io/legado/rules/RuleRunner.kt`(1679) 是最大文件，改规则逻辑时按需 grep 段，别整读。
+- 书源清单单一数据源：`product/web/src/lib/sourceCatalog.ts`（订阅快照/加载/失效/替换），书源页与选源弹层都订阅它，别再各自请求 `api.sources()`。
+- 反馈与更新：`feedback/FeedbackLimiter.kt`（按 tokenHash 滑动窗口，超限 429）· `product/web/src/lib/updateHint.ts`（后台节流查新版本，圆点在 `AppHeader.tsx`）。
 - 行数会漂移：定位一律 `grep -n '<符号>'`，别把 `(NNNN)` 当精确行号；`/api/agent/*` 接入说明在 `product/docs/agent-api.md`（不自动加载）。
 - 完整「任务→文件」映射、测试门禁、常见坑：见 `AGENTS.md`（CodeBuddy/Qoder 会自动读；其他工具请也读它）。
 
 ## 改完跑门禁
 - 前端：`cd product/web && npm test`（node:test 自研 runner，项数随源文件浮动，以当次实跑为准）
 - 后端：`cd product && ./gradlew :app:test --no-daemon`（GoldenRuleTest 逐字节守门）；改 `:core:*` 时先跑对应模块测试，如 `./gradlew :core:data:test`
+
+## 协议维护（换 agent 也能接着改）
+- 三份精简入口由 `scripts/protocol-template.md` 单一来源生成，不要直接改 `CLAUDE.md` / `GEMINI.md` / `.cursorrules`。
+- 改完模板跑 `npm run protocol:sync`；`npm run protocol:check` 是门禁（CI 已接），同时校验三份与模板逐字节一致，以及关键纪律在 `AGENTS.md` 与模板两侧都在位。
+- `AGENTS.md` 是完整权威源（§8 任务→精确位置速查表）；改导航时它与模板一起改，别只改一边。
