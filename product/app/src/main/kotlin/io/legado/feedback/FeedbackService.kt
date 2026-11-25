@@ -13,6 +13,8 @@ sealed class SubmitOutcome {
     data object NotConfigured : SubmitOutcome()
     data class Ok(val status: Int) : SubmitOutcome()
     data class Failed(val status: Int) : SubmitOutcome()
+    /** 同一 token 短时间内提交过多 —— 路由映射成 429，不上游。 */
+    data object RateLimited : SubmitOutcome()
 }
 
 sealed class MineOutcome {
@@ -37,6 +39,7 @@ class FeedbackService(
     private val anonKey: String?,
     private val http: FeedbackHttp = supabaseHttp(),
     private val json: Json = Json { ignoreUnknownKeys = true },
+    private val limiter: FeedbackLimiter = FeedbackLimiter(),
 ) {
     private val configured: Boolean get() = !baseUrl.isNullOrBlank() && !anonKey.isNullOrBlank()
     private val restUrl: String get() = baseUrl!!.trimEnd('/') + "/rest/v1/feedback"
@@ -58,6 +61,8 @@ class FeedbackService(
         if (contact != null && contact.length > 200) return SubmitOutcome.Failed(400)
         val tokenHash = request.tokenHash.trim()
         if (!TOKEN_HASH_REGEX.matches(tokenHash)) return SubmitOutcome.Failed(400)
+        // 校验通过后才占额度：非法请求不该烧掉正常用户的配额，也不该记入窗口。
+        if (!limiter.allow(tokenHash)) return SubmitOutcome.RateLimited
 
         val payload = buildJsonObject {
             put("app_id", "legadoQ")

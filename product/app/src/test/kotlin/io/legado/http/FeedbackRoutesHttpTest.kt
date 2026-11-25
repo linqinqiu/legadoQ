@@ -17,6 +17,7 @@ import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.testApplication
 import io.legado.feedback.FeedbackHttp
+import io.legado.feedback.FeedbackLimiter
 import io.legado.feedback.FeedbackOutcome
 import io.legado.feedback.FeedbackService
 import io.legado.model.FEEDBACK_TOKEN_HEADER
@@ -103,6 +104,33 @@ class FeedbackRoutesHttpTest {
         assertEquals(HttpStatusCode.BadGateway, response.status)
         assertTrue(response.bodyAsText().contains("feedback_upstream_failed"))
         assertTrue(!response.bodyAsText().contains("secret upstream detail"))
+    }
+
+    @Test
+    fun `repeated submits from one token are rate limited`() = testApplication {
+        var sent = 0
+        val service = FeedbackService(
+            "https://example.supabase.co",
+            "anon-key",
+            FeedbackHttp { _, _, _, _ -> sent++; FeedbackOutcome(201) },
+            limiter = FeedbackLimiter(maxPerWindow = 1),
+        )
+        application { setup(service) }
+        val body = Json.encodeToString(FeedbackRequest(content = "建议", tokenHash = "a".repeat(64)))
+
+        val first = client.post("/api/feedback") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.OK, first.status)
+
+        val second = client.post("/api/feedback") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        assertEquals(HttpStatusCode.TooManyRequests, second.status)
+        assertTrue(second.bodyAsText().contains("feedback_rate_limited"))
+        assertEquals("rate limited submit never reaches upstream", 1, sent)
     }
 
     @Test

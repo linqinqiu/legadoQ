@@ -42,6 +42,10 @@ fun Route.feedbackRoutes(service: FeedbackService = FeedbackService(
                     ApiError("feedback_not_configured", "这台服务没有开启匿名反馈通道"),
                 )
                 is SubmitOutcome.Ok -> call.respond(mapOf("ok" to true))
+                SubmitOutcome.RateLimited -> call.respond(
+                    HttpStatusCode.TooManyRequests,
+                    ApiError("feedback_rate_limited", "提交太频繁，请稍后再试"),
+                )
                 is SubmitOutcome.Failed -> {
                     val badRequest = outcome.status == 400
                     call.respond(

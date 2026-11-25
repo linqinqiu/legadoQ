@@ -180,6 +180,16 @@ svg { width: 18px; height: 18px; flex: none; }
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+/* 后台更新提示：版本芯片上一点小圆点，不铺长串文字（用户嫌版本号太长）。 */
+.brand-version-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
 .app-page-header nav {
   display: flex;
   align-items: center;
@@ -420,7 +430,7 @@ svg { width: 18px; height: 18px; flex: none; }
   background: var(--line);
   margin: 2px 0;
 }
-.menu-logout-btn {
+.menu-action-btn {
   width: 100%;
   min-height: 38px;
   display: inline-flex;
@@ -435,10 +445,10 @@ svg { width: 18px; height: 18px; flex: none; }
   transition: background 0.15s ease;
   cursor: pointer;
 }
-.menu-logout-btn:hover {
+.menu-action-btn:hover {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
-.menu-logout-btn svg {
+.menu-action-btn svg {
   width: 16px;
   height: 16px;
 }
@@ -1586,7 +1596,7 @@ mark.search-highlight { background: var(--accent-soft); color: var(--accent); fo
     padding: 10px 4px;
     font-size: 13px;
   }
-  .menu-logout-btn {
+  .menu-action-btn {
     min-height: 46px;
     justify-content: center;
     background: color-mix(in srgb, var(--danger) 8%, transparent);

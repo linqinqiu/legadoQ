@@ -171,6 +171,10 @@ export function AboutPage({
       if (error instanceof ApiRequestError && error.status === 409 && error.code === 'feedback_not_configured') {
         setFeedbackMode('github')
         setFeedbackMessage('这台服务未配置匿名反馈通道，将改用 GitHub 提交；内容会公开，联系方式不会带入。')
+      } else if (error instanceof ApiRequestError && error.status === 429) {
+        // 服务端按 token 做了频率闸：明确告诉用户等一会儿，并同步冷却，别让他连点撞墙。
+        setFeedbackCooldownMs(markFeedbackCooldown() - Date.now())
+        setFeedbackMessage('提交太频繁，请稍后再试（约 30 秒）。')
       } else {
         setFeedbackMessage('提交失败，请稍后重试。')
       }

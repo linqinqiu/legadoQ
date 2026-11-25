@@ -3,6 +3,7 @@ import { Icon } from '../icons'
 import { PRIMARY_PAGES } from '../lib/pageMeta'
 import type { Page } from '../lib/nav'
 import { getBrand, subscribeBrand } from '../lib/brandStore'
+import { getUpdateHint, subscribeUpdateHint } from '../lib/updateHint'
 import { Logo } from '../components/Logo'
 import { promptPwaInstall, subscribePwaInstall } from '../components/PwaManager'
 import { availableSkins, BUILTIN_SKINS, resolveTheme, type ReaderSettings } from '../features/reader/settingsPanel/readerSettings'
@@ -57,6 +58,8 @@ export function AppHeader({
   // 品牌名单一来源（lib/brandStore）：此前这里硬编码「legadoQ」，
   // 用户改了名（设置 → 应用名称与图标）之后顶栏照旧，等于"改了个寂寞"。
   const brand = useSyncExternalStore(subscribeBrand, getBrand, getBrand)
+  // 后台更新提示：有新版本时给版本芯片点一颗小圆点，不弹窗、不铺长串文字。
+  const updateHint = useSyncExternalStore(subscribeUpdateHint, getUpdateHint, getUpdateHint)
   // 选中态以**实际生效**的那套为准：内置皮肤被删掉或 theme 里存了脏值时，settings.theme
   // 和界面上亮着的那张卡会不是同一个。
   const activeTheme = resolveTheme(settings)
@@ -163,10 +166,17 @@ export function AppHeader({
             type="button"
             className="brand-version"
             onClick={() => onOpenChangelog?.()}
-            title={`当前版本 ${version}${revision ? `（${revision}）` : ''} · 看这一版改了什么`}
+            title={`当前版本 ${version}${revision ? `（${revision}）` : ''} · ${updateHint.latest ? `有新版本 ${updateHint.latest}，` : ''}看这一版改了什么`}
             aria-label={`当前版本 ${version}${revision ? `，修订 ${revision}` : ''}，打开更新日志`}
           >
             {version}
+            {updateHint.latest && (
+              <span
+                className="brand-version-dot"
+                title={`有新版本 ${updateHint.latest}`}
+                aria-label={`有新版本 ${updateHint.latest}`}
+              />
+            )}
           </button>
         )}
       </div>
@@ -289,7 +299,7 @@ export function AppHeader({
                 {canInstall && (
                   <button
                     type="button"
-                    className="menu-logout-btn"
+                    className="menu-action-btn"
                     style={{ color: 'var(--ink)' }}
                     role="menuitem"
                     onClick={() => void handlePwaInstall()}
@@ -307,7 +317,7 @@ export function AppHeader({
                 */}
                 <button
                   type="button"
-                  className="menu-logout-btn"
+                  className="menu-action-btn"
                   style={{ color: 'var(--ink)' }}
                   role="menuitem"
                   onClick={() => {
@@ -320,7 +330,7 @@ export function AppHeader({
                 </button>
                 <button
                   type="button"
-                  className="menu-logout-btn"
+                  className="menu-action-btn"
                   style={{ color: 'var(--ink)' }}
                   role="menuitem"
                   onClick={() => {
@@ -333,7 +343,7 @@ export function AppHeader({
                 </button>
                 <button
                   type="button"
-                  className="menu-logout-btn"
+                  className="menu-action-btn"
                   style={{ color: 'var(--ink)' }}
                   role="menuitem"
                   aria-pressed={isFullscreen}

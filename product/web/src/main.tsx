@@ -15,6 +15,7 @@ import { clearDynamicTheme, getDynamicTheme, setDynamicTheme, subscribeDynamicTh
 import { seedFromImageUrl } from './ui/color/seed.dom'
 import { getWallpaperSnapshot, resolveWallpaperImageUrl, subscribeWallpaper } from './lib/wallpaper'
 import { hydrateUiPrefs } from './lib/uiPrefs'
+import { autoCheckUpdate } from './lib/updateHint'
 import { AppHeader } from './app/AppHeader'
 import { FirstRunAgreement } from './components/FirstRunAgreement'
 import { AccessTokenPrompt } from './components/AccessTokenPrompt'
@@ -420,6 +421,13 @@ function App() {
     void tick()
     return () => { cancelled = true; if (timer) window.clearTimeout(timer) }
   }, [])
+
+  // 后台更新提示：拿到版本号后查一次，节流与失败静默都在 lib/updateHint 里。
+  // 不挡渲染、不弹窗；有新版本只在顶栏版本芯片上点一个小圆点（见 AppHeader）。
+  // 探活可能重试多次，但 serverVersion 一旦设置就稳定，这个 effect 只跑一次。
+  useEffect(() => {
+    if (serverVersion) void autoCheckUpdate(serverVersion, () => api.checkUpdate())
+  }, [serverVersion])
 
   // 品牌（应用名称与图标）在启动时拉一次，写进单一来源 lib/brandStore：
   // 顶栏品牌字、标签页标题都读那里。取不到就保持内置的「legadoQ」，不把界面弄成空名字。
