@@ -27,6 +27,7 @@ import io.legado.data.listCookieBuckets
 import io.legado.data.listReplaceRules
 import io.legado.data.listRssSources
 import io.legado.data.listSources
+import io.legado.data.listSubscriptions
 import io.legado.data.rssSourceIsEnabled
 import io.legado.data.saveProgress
 import io.legado.data.setCookieForUrl
@@ -77,6 +78,48 @@ class BackupImportTest {
             val progress = database.getProgress("https://example.com/", "https://example.com/book/1")
             assertNotNull(progress)
             assertEquals(261, progress!!.chapterIndex)
+        } finally {
+            database.close()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `sourceSub 书源订阅落到订阅表且原包仍留档`() {
+        val directory = Files.createTempDirectory("legado-backup-subscription")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        val keep = BackupStore(directory.resolve("kept"))
+        try {
+            database.initialize()
+            val archive = directory.resolve("sub-only.zip")
+            // 上游 RuleSub.type: 0=书源订阅（本机唯一能承接的），1=RSS 订阅，3=替换规则订阅。
+            // autoUpdate=false 的那条要留在列表里但停用，可手动更新。
+            writeArchive(
+                archive,
+                mapOf(
+                    "sourceSub.json" to
+                        """[
+                          {"id":1,"name":"书源订阅甲","url":"https://sub-a.example/list","type":0,"autoUpdate":true},
+                          {"id":2,"name":"停用的订阅","url":"https://sub-b.example/list","type":0,"autoUpdate":false},
+                          {"id":3,"name":"RSS 订阅","url":"https://sub-c.example/list","type":1,"autoUpdate":true},
+                          {"id":4,"name":"替换规则订阅","url":"https://sub-d.example/list","type":3,"autoUpdate":true},
+                          {"id":5,"name":"空地址","url":"  ","type":0,"autoUpdate":true}
+                        ]""",
+                ),
+            )
+
+            val summary = BackupImporter(database, keep).import(archive)
+
+            assertEquals(2, summary.subscriptions)
+            val subscriptions = database.listSubscriptions()
+            assertEquals(2, subscriptions.size)
+            assertEquals("https://sub-a.example/list", subscriptions[0].url)
+            assertTrue(subscriptions[0].enabled)
+            assertEquals("https://sub-b.example/list", subscriptions[1].url)
+            assertFalse(subscriptions[1].enabled)
+            // 只勾个性化条目导出的包也合法；原包仍留档，兄弟项目多写的字段不丢。
+            assertTrue(summary.keptSections.any { it.name.equals("sourceSub.json", ignoreCase = true) })
+            assertNotNull(keep.read("sourceSub.json"))
         } finally {
             database.close()
             directory.toFile().deleteRecursively()
@@ -570,6 +613,7 @@ class BackupImportTest {
                   "bookGroup": [{"groupId":9,"groupName":"合并组"}],
                   "rssSources": [{"sourceUrl":"https://feed.example/","sourceName":"合并订阅"}],
                   "cookies": [{"url":"bundle.example","cookie":"sid=raw-1"}],
+                  "sourceSub": [{"name":"合并订阅","url":"https://sub-bundle.example/list","type":0,"autoUpdate":true,"js":"alert(1)"}],
                   "bookmark": [{"bookName":"合并书","chapterIndex":1}]
                 }
                 """.trimIndent(),
@@ -583,8 +627,13 @@ class BackupImportTest {
             assertEquals(1, summary.rssSources)
             assertEquals(1, summary.bookGroups)
             assertEquals(1, summary.cookies)
-            assertEquals(1, summary.keptSections.size)
-            assertEquals("书签", summary.keptSections.single().label)
+            assertEquals(1, summary.subscriptions)
+            assertEquals(2, summary.keptSections.size)
+            assertTrue(summary.keptSections.any { it.label == "书签" })
+            assertTrue(summary.keptSections.any { it.name.equals("sourceSub.json", ignoreCase = true) })
+            // 裸 JSON 的 sourceSub 既落订阅表，也把上游多写的 js/showRule 原样留档
+            assertTrue(store.read("sourceSub.json")!!.contains("alert(1)"))
+            assertEquals(1, database.listSubscriptions().size)
             assertEquals("https://bundle.example", database.listBookshelf().single().sourceId)
             assertEquals("合并组", database.listBookGroups().single().name)
             assertTrue(database.getCookieForUrl("https://bundle.example/x")!!.contains("sid=raw-1"))

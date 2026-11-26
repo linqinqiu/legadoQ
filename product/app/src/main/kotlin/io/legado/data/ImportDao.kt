@@ -1,6 +1,7 @@
 package io.legado.data
 
 import io.legado.model.BackupShelfEntry
+import io.legado.model.BackupSubscriptionEntry
 import io.legado.model.ImportResponse
 import io.legado.model.LibraryImportResult
 import io.legado.source.ParsedRssSource
@@ -90,6 +91,33 @@ internal fun Database.importBookGroupsOn(db: java.sql.Connection, groups: List<P
         mapping[phoneId] = localId
     }
     return mapping
+}
+
+/**
+ * 恢复包内 `sourceSub.json`（上游 `RuleSub`，书源订阅地址）到 `source_subscription` 表。
+ *
+ * 只收 `type=0`（产物是一批书源）那类；上游 `type=1` 是 RSS 源订阅、`type=3` 是替换规则订阅，
+ * 本机订阅表只描述书源订阅，硬塞进去会变成"看着有、同步出来是错的"。
+ * 上游 `autoUpdate` 直接对到本机 `enabled`：关掉的订阅仍留在列表里，可手动更新。
+ *
+ * 同 URL 按本机既有冲突策略覆盖 `enabled` 与 `updated_at`，与 `saveSubscription` 一致；
+ * `url` 是表主键，重复导入不会堆第二份。
+ */
+internal fun Database.importSubscriptionsOn(db: java.sql.Connection, entries: List<BackupSubscriptionEntry>): Int {
+    if (entries.isEmpty()) return 0
+    val now = System.currentTimeMillis()
+    var applied = 0
+    db.prepareStatement("""insert into source_subscription(url,enabled,created_at,updated_at) values(?,?,?,?)
+        on conflict(url) do update set enabled=excluded.enabled,updated_at=excluded.updated_at""").use { stmt ->
+        entries.forEach { entry ->
+            stmt.setString(1, entry.url)
+            stmt.setInt(2, if (entry.enabled) 1 else 0)
+            stmt.setLong(3, now)
+            stmt.setLong(4, now)
+            applied += stmt.executeUpdate()
+        }
+    }
+    return applied
 }
 
 /**

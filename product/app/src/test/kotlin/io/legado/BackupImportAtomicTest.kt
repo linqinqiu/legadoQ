@@ -10,6 +10,7 @@ import io.legado.data.listBookshelf
 import io.legado.data.listReplaceRules
 import io.legado.data.listRssSources
 import io.legado.data.listSources
+import io.legado.data.listSubscriptions
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipEntry
@@ -27,7 +28,7 @@ import org.junit.Test
  */
 class BackupImportAtomicTest {
 
-    private val steps = listOf("sources", "rules", "groups", "library", "rss", "cookies")
+    private val steps = listOf("sources", "rules", "groups", "library", "rss", "subscriptions", "cookies")
 
     @Test
     fun `六步里任何一步失败 六个域都不落库`() {
@@ -52,6 +53,7 @@ class BackupImportAtomicTest {
                 assertEquals("$failing 失败后分组不许留下", groupsBefore, database.listBookGroups().size)
                 assertEquals("$failing 失败后书架不许留下", 0, database.listBookshelf().size)
                 assertEquals("$failing 失败后 RSS 不许留下", 0, database.listRssSources(null).size)
+                assertEquals("$failing 失败后书源订阅不许留下", 0, database.listSubscriptions().size)
                 assertNull("$failing 失败后凭据不许留下", database.getCookieForUrl("https://cookie.example/"))
                 assertTrue(
                     "$failing 失败后个性化条目文件不许落盘：${store.list().map { it.name }}",
@@ -113,6 +115,7 @@ class BackupImportAtomicTest {
             assertEquals(1, second.getValue("rules"))
             assertEquals(1, second.getValue("books"))
             assertEquals(1, second.getValue("rss"))
+            assertEquals(1, second.getValue("subscriptions"))
         } finally {
             database.close()
             directory.toFile().deleteRecursively()
@@ -155,6 +158,7 @@ class BackupImportAtomicTest {
         "groups" to database.listBookGroups().size,
         "books" to database.listBookshelf().size,
         "rss" to database.listRssSources(null).size,
+        "subscriptions" to database.listSubscriptions().size,
     )
 
     private fun sections(): Map<String, String> = mapOf(
@@ -165,6 +169,7 @@ class BackupImportAtomicTest {
         "bookshelf.json" to
             """[{"name":"书一","author":"某作者","bookUrl":"https://atomic.example/book/1","origin":"https://atomic.example","tocUrl":"https://atomic.example/book/1","group":77,"durChapterIndex":3,"durChapterTime":1782343455600}]""",
         "rssSources.json" to """[{"sourceUrl":"https://rss-a.example/","sourceName":"甲订阅","enabled":true}]""",
+        "sourceSub.json" to """[{"name":"书源订阅","url":"https://sub-a.example/list","type":0,"autoUpdate":true}]""",
         "cookies.json" to BackupAes.encryptBase64("""[{"url":"cookie.example","cookie":"sid=1"}]""", PASSWORD),
         "readRecord.json" to """[{"bookName":"书一","readTime":100}]""",
     )

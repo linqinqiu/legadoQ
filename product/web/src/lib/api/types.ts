@@ -615,6 +615,8 @@ export type BackupImportSummary = {
   rssSourcesUpdated?: number
   /** 包内 bookGroup.json 落到本机分组表的数量 */
   bookGroups?: number
+  /** 包内 sourceSub.json（书源订阅地址）恢复到本机订阅表的条数 */
+  subscriptions?: number
   /** 包内条目读出来但没落库的原因（某一条本身坏了，不是整节跳过） */
   errors?: string[]
   /** 备份包里有、服务端既没导入也没收进数据目录的条目名，由服务端报，不在前端写死 */

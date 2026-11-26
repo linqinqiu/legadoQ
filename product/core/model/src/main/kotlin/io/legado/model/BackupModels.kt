@@ -23,6 +23,8 @@ data class BackupImportSummary(
     val rssSourcesUpdated: Int = 0,
     /** 包内 `bookGroup.json` 里落到本机分组表的数量（同名只留一个，手机号已换成本机号）。 */
     val bookGroups: Int = 0,
+    /** 包内 `sourceSub.json`（书源订阅地址）落到本机订阅表的条数，只收 type=0（产物是书源）。 */
+    val subscriptions: Int = 0,
     /** 备份包里有、但服务端当前承接不了的条目名（TTS/字典/主题…），如实回报而不是静默丢弃。 */
     val skippedSections: List<String> = emptyList(),
     /** 包内条目读得出来但落不了库的原因（某一条书源/RSS 本身坏了）。以前只停在 ImportResponse 里，界面看不见。 */
@@ -42,6 +44,9 @@ data class KeptBackupEntry(
     val appliable: Boolean,
     val updatedAt: Long,
 )
+
+/** 备份包 `sourceSub.json` 中的一条书源订阅地址（上游 RuleSub），仅用于导入。 */
+data class BackupSubscriptionEntry(val url: String, val enabled: Boolean)
 
 /** 备份包 `bookshelf.json` 中的一条书架记录（含阅读进度），仅用于导入。 */
 data class BackupShelfEntry(

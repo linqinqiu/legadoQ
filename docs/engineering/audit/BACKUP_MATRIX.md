@@ -51,7 +51,7 @@ MD3 在此基础上多写 8 个条目：`bookMarking.json`、`highlightTagRule.j
 | `readRecord.json` | 阅读记录 | 存为文件 | **不可用** | `reading_log` 表结构接近，可映射但未做 |
 | `searchHistory.json` | 搜索历史 | 存为文件 | **不可用** | 无对应表 |
 | `rssStar.json` | RSS 收藏 | 存为文件 | **不可用** | 无对应表 |
-| `sourceSub.json` | 书源订阅 | 存为文件 | **不可用** | 有 `source_subscription` 表，但导入器不映射 |
+| `sourceSub.json` | 书源订阅 | **原生导入** `source_subscription` 表 + 原样留档 | 可用（type=0 书源订阅） | 上游 `RuleSub.type=1`（RSS 订阅）/`=3`（替换规则）无本机对应表，跳过但仍留档；`autoUpdate` 对到本机 `enabled`；`name/js/showRule/sourceUrl` 等字段只留在文件里 |
 | `keyboardAssists.json` / `dictRule.json` | 键盘助手/字典规则 | 存为文件 | **不可用** | 无消费方 |
 | `servers.json` | WebDAV/服务器配置 | 仅上报 | 不导入 | 含凭据，刻意不收 |
 | `autoTask.json` | 自动任务 | 排除 | 不导入 | 运行时调度，legadoQ 无对应能力 |
@@ -59,7 +59,7 @@ MD3 在此基础上多写 8 个条目：`bookMarking.json`、`highlightTagRule.j
 | `config` / `videoConfig` | 客户端偏好 | 排除 | 不导入 | 含设备参数与绝对路径 |
 | MD3 额外 8 项 | 主题/首页/记录详情等 | 存为文件 | 不可用 | 无对应表；至少没丢 |
 
-**结论**：六个核心节能进库；其余 20+ 节里，只有 3 节能「手动套用」，9 节是「留档但不能用」，其余是刻意不收。对用户来说，「备份导进来了」与「我的书签/高亮/阅读记录回来了」是两件事。
+**结论**（2026-11-26 更新：`sourceSub.json` 已接入 `source_subscription` 表）：七个核心节能进库；其余 20+ 节里，只有 3 节能「手动套用」，8 节是「留档但不能用」，其余是刻意不收。对用户来说，「备份导进来了」与「我的书签/高亮/阅读记录回来了」是两件事。
 
 ## 3. 字段级矩阵：bookshelf.json（最关键）
 

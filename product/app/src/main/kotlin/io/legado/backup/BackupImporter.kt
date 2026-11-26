@@ -23,10 +23,12 @@ import io.legado.data.importLibraryOn
 import io.legado.data.importReplaceRulesOn
 import io.legado.data.importRssSourcesOn
 import io.legado.data.importSourcesOn
+import io.legado.data.importSubscriptionsOn
 import io.legado.data.setCookieForUrl
 import io.legado.decodeTextAuto
 import io.legado.model.BackupImportSummary
 import io.legado.model.BackupShelfEntry
+import io.legado.model.BackupSubscriptionEntry
 import io.legado.model.ImportResponse
 import io.legado.model.KeptBackupEntry
 import io.legado.model.LibraryImportResult
@@ -111,6 +113,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         val shelf = readSection(zip, entries, SHELF_NAMES)?.let(::parseShelf).orEmpty()
         val groups = readSection(zip, entries, GROUP_NAMES)?.let(::parseBookGroups).orEmpty()
         val rss = readSection(zip, entries, RSS_NAMES)?.let(::parseRssSources).orEmpty()
+        val subscriptions = readSection(zip, entries, SUB_NAMES)?.let(::parseSubscriptions).orEmpty()
         // 手机上只勾了个性化条目（书签 / 搜索历史 / TXT 分章规则…）导出的包也是合法备份：
         // 以前这类包会被判"不是可识别的 Legado 备份"整包拒收，用户看到的是"我明明导出来了"。
         val keepable = present.intersect(BackupStore.KEEP_NAMES.map { it.lowercase() }.toSet())
@@ -118,11 +121,11 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         // 导出侧一域一包，某个域正好是空的时候写出来就是 `bookSource.json` 里只有 `[]`。
         // 以前这种包被判"不是可识别的 Legado 备份"，用户看到的是"我自己导出来的包不让导回去"。
         val recognized = present.intersect(
-            (SOURCE_NAMES + RULE_NAMES + SHELF_NAMES + COOKIE_NAMES + GROUP_NAMES + RSS_NAMES)
+            (SOURCE_NAMES + RULE_NAMES + SHELF_NAMES + COOKIE_NAMES + GROUP_NAMES + RSS_NAMES + SUB_NAMES)
                 .map { it.lowercase() }.toSet(),
         )
         require(sources.isNotEmpty() || rules.isNotEmpty() || shelf.isNotEmpty() || groups.isNotEmpty() ||
-            rss.isNotEmpty() || keepable.isNotEmpty() || recognized.isNotEmpty()) {
+            rss.isNotEmpty() || subscriptions.isNotEmpty() || keepable.isNotEmpty() || recognized.isNotEmpty()) {
             "不是可识别的 Legado 备份：找过 ${SOURCE_NAMES.joinToString()} / ${RULE_NAMES.joinToString()} / " +
                 "${SHELF_NAMES.joinToString()}，也没有能收下的个性化条目，包内实际有 ${present.size} 个条目"
         }
@@ -151,7 +154,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             }
         }
 
-        commit(sources, rules, shelf, groups, rss, present, pendingKeeps) {
+        commit(sources, rules, shelf, groups, rss, subscriptions, present, pendingKeeps) {
             // 书源先落库，凭据再进全局桶
             importCookies(zip, entries, password)
         }
@@ -179,6 +182,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         val shelf = mutableListOf<BackupShelfEntry>()
         val groups = mutableListOf<Pair<Long, String>>()
         val rss = mutableListOf<String>()
+        val subscriptions = mutableListOf<BackupSubscriptionEntry>()
         val cookieRows = mutableListOf<CookieRow>()
         // 同 importZip：只登记，事务提交成功后才落盘。
         val pendingKeeps = mutableListOf<Pair<String, String>>()
@@ -191,6 +195,15 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
                 Section.SHELF -> shelfOf(obj)?.let { shelf += it }
                 Section.GROUP -> groupOf(obj)?.let { groups += it }
                 Section.RSS -> rss += obj.toString()
+                Section.SUBSCRIPTION -> {
+                    subscriptionOf(obj)?.let { subscriptions += it }
+                    // 包装键是 sourceSub 时既落表、又原样留档：上游 RuleSub 的 name/js/showRule
+                    // 等字段本机表没有落点，光进表会丢。
+                    val keepName = entry.name?.let { name ->
+                        BackupStore.KEEP_NAMES.firstOrNull { it.equals("$name.json", ignoreCase = true) }
+                    }
+                    if (keep != null && keepName != null) pendingKeeps += keepName to obj.toString()
+                }
                 Section.COOKIE -> obj.text("url")?.takeIf { it.isNotBlank() }?.let { url ->
                     cookieRows += CookieRow(url = url, cookie = obj.text("cookie").orEmpty())
                 }
@@ -212,16 +225,17 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             if (shelf.isNotEmpty()) add("bookshelf.json")
             if (groups.isNotEmpty()) add("bookgroup.json")
             if (rss.isNotEmpty()) add("rsssources.json")
+            if (subscriptions.isNotEmpty()) add("sourcesub.json")
             if (cookieRows.isNotEmpty()) add("cookies.json")
             addAll(pendingKeeps.map { it.first.lowercase() })
         }
         require(sources.isNotEmpty() || rules.isNotEmpty() || shelf.isNotEmpty() || groups.isNotEmpty() ||
-            rss.isNotEmpty() || cookieRows.isNotEmpty() || pendingKeeps.isNotEmpty()) {
+            rss.isNotEmpty() || subscriptions.isNotEmpty() || cookieRows.isNotEmpty() || pendingKeeps.isNotEmpty()) {
             "不是可识别的 Legado 备份：JSON 里没有书源 / 替换规则 / 书架 / RSS 订阅源 / 分组 / 登录凭据，" +
                 "也没有能收下的个性化条目"
         }
 
-        return commit(sources, rules, shelf, groups, rss, present, pendingKeeps) {
+        return commit(sources, rules, shelf, groups, rss, subscriptions, present, pendingKeeps) {
             if (cookieRows.isEmpty()) CookieOutcome(0, null) else applyCookies(cookieRows)
         }
     }
@@ -240,6 +254,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         shelf: List<BackupShelfEntry>,
         groups: List<Pair<Long, String>>,
         rss: List<String>,
+        subscriptions: List<BackupSubscriptionEntry>,
         present: Set<String>,
         pendingKeeps: List<Pair<String, String>>,
         cookies: () -> CookieOutcome,
@@ -249,6 +264,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         var groupMap: Map<Long, Long> = emptyMap()
         var library = LibraryImportResult(0, 0, 0)
         var rssResult = ImportResponse(0, 0, 0, emptyList())
+        var appliedSubscriptions = 0
         var cookieOutcome = CookieOutcome(0, null)
         database.transaction { db ->
             stepHook?.invoke("sources")
@@ -263,6 +279,8 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             library = database.importLibraryOn(db, shelf.map { it.copy(groupId = groupMap[it.phoneGroupId] ?: 0L) })
             stepHook?.invoke("rss")
             rssResult = database.importRssSourcesOn(db, rss)
+            stepHook?.invoke("subscriptions")
+            appliedSubscriptions = database.importSubscriptionsOn(db, subscriptions)
             stepHook?.invoke("cookies")
             cookieOutcome = cookies()
         }
@@ -284,6 +302,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             cookies = cookieOutcome.applied,
             cookiesNote = cookieOutcome.note,
             bookGroups = groupMap.size,
+            subscriptions = appliedSubscriptions,
             rssSources = rssResult.imported,
             rssSourcesUpdated = rssResult.updated,
             skippedSections = (KNOWN_BUT_UNSUPPORTED - keptNames).filter { it in present }.sorted(),
@@ -390,12 +409,14 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         obj.containsKey("pattern") && (obj.containsKey("replacement") || obj.containsKey("isRegex") ||
             obj.containsKey("isEnabled") || obj.containsKey("isEnable")) -> Section.RULE
         obj.containsKey("groupId") && obj.containsKey("groupName") -> Section.GROUP
+        // 上游 RuleSub 必带 url/type/autoUpdate；`sourceUrl` 是可空的可选项，不能拿它当判据。
+        obj.containsKey("url") && obj.containsKey("type") && obj.containsKey("autoUpdate") -> Section.SUBSCRIPTION
         obj.containsKey("url") && obj.containsKey("cookie") -> Section.COOKIE
         obj.containsKey("bookUrl") || obj.containsKey("noteUrl") || obj.containsKey("bookInfoBean") -> Section.SHELF
         else -> null
     }
 
-    private enum class Section { SOURCE, RULE, SHELF, GROUP, RSS, COOKIE }
+    private enum class Section { SOURCE, RULE, SHELF, GROUP, RSS, SUBSCRIPTION, COOKIE }
 
     private data class JsonEntry(val name: String?, val value: JsonElement)
 
@@ -481,6 +502,25 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         return id to name
     }
 
+    /**
+     * `sourceSub.json`（上游 `Backup.kt:301` ← `ruleSubDao.all`，实体是 `RuleSub`）。
+     * 只收 `type=0`：产物是书源的订阅；`type=1` 是 RSS 订阅、`type=3` 是替换规则订阅，
+     * 本机订阅表只描述书源订阅，硬塞会让同步产物对不上。原包仍会原样留档，不丢这三种数据。
+     * 上游 `autoUpdate` 对到本机 `enabled`（关掉的订阅留在列表里，可手动更新）。
+     */
+    private fun parseSubscriptions(text: String): List<BackupSubscriptionEntry> =
+        LegacyBackup.elementsOf(text).mapNotNull(::subscriptionOf)
+
+    private fun subscriptionOf(element: JsonElement): BackupSubscriptionEntry? {
+        val obj = element as? JsonObject ?: return null
+        val url = obj.text("url")?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val type = obj.number("type") ?: 0L
+        if (type != 0L) return null
+        val flag = obj["autoUpdate"] as? JsonPrimitive
+        val enabled = flag?.booleanOrNull ?: flag?.longOrNull?.let { it != 0L } ?: false
+        return BackupSubscriptionEntry(url = url, enabled = enabled)
+    }
+
     private fun parseShelf(text: String): List<BackupShelfEntry> =
         LegacyBackup.elementsOf(text).mapNotNull(::shelfOf)
 
@@ -545,9 +585,17 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             "rss_sources.json", "rss-sources.json", "rss.json",
         )
 
+        /**
+         * 书源订阅地址（上游 `sourceSub.json` ← `RuleSub`）。故意不加进 `importZip` 的 `handled`
+         * 集合：这一节**既落订阅表、又原样留档**，兄弟项目多写的字段不丢。
+         */
+        val SUB_NAMES = listOf(
+            "sourceSub.json", "sourcesub.json", "ruleSub.json", "rule_sub.json", "rule-sub.json",
+        )
+
         /** 备份包里我们暂时承接不了的条目：导入后如实回报，不假装什么都没发生。 */
         val KNOWN_BUT_UNSUPPORTED = listOf(
-            "rssstar.json", "sourcesub.json", "bookmemo.json",
+            "rssstar.json", "bookmemo.json",
             "bookmark.json", "highlight.json", "highlightrule.json", "readrecord.json",
             "readrecorddetail.json", "searchhistory.json", "txttocrule.json", "httptts.json",
             "keyboardassists.json", "dictrule.json", "servers.json", "readconfig.json",

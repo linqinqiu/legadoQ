@@ -119,7 +119,7 @@ test('导入结果播报：启用位、RSS、分组、跳过项与单条错误�
     reportImportSummary({
       sources: 3, sourcesUpdated: 2, rules: 1, rulesUpdated: 0, books: 4, booksUpdated: 1, progress: 5,
       cookies: 6, cookiesNote: '包内有加密凭据，未填密码已跳过',
-      rssSources: 7, rssSourcesUpdated: 8, bookGroups: 9,
+      rssSources: 7, rssSourcesUpdated: 8, bookGroups: 9, subscriptions: 10,
       skippedSections: ['ttsSource.json', 'dictRule.json'], errors: ['第 3 条书源 JSON 解析失败'],
     })
   } finally {
@@ -130,6 +130,7 @@ test('导入结果播报：启用位、RSS、分组、跳过项与单条错误�
   assert.ok(all.includes('保留本机启用状态'), '必须说明已存在的书源没被刷启用位')
   assert.ok(all.includes('RSS 订阅源 15'), `RSS 要报：${all}`)
   assert.ok(all.includes('分组 9'), '分组要报')
+  assert.ok(all.includes('书源订阅 10'), 'sourceSub.json 恢复的书源订阅要报，不能只留档不说话')
   assert.ok(all.includes('登录凭据 6'), '凭据要报')
   assert.ok(all.includes('ttsSource.json'), '不承接的条目名要如实念出来')
   assert.ok(all.includes('1 条没读进去'), '单条解析失败不许静默')
@@ -172,6 +173,23 @@ test('导入结果播报：空包要警告而不是报"完成"', () => {
   }
   assert.ok(shown.join('\n').includes('没有可导入的内容'), '空包要说空')
   assert.ok(shown.join('\n').includes('highlight.json'), '顺带说明跳过了什么')
+})
+
+test('只有书源订阅的包不能报"没有可导入的内容"', () => {
+  const shown: string[] = []
+  const unsubscribe = toast.subscribe(items => { items.forEach(item => { if (!shown.includes(item.message)) shown.push(item.message) }) })
+  try {
+    reportImportSummary({
+      sources: 0, sourcesUpdated: 0, rules: 0, rulesUpdated: 0, books: 0, booksUpdated: 0, progress: 0,
+      subscriptions: 3,
+    })
+  } finally {
+    unsubscribe()
+  }
+  // toast 是全局 store，subscribe 会立刻回放之前用例留下的消息；只看这次播报的最后一条。
+  const latest = shown[shown.length - 1] ?? ''
+  assert.ok(!latest.includes('没有可导入的内容'), `订阅也算导入内容：${latest}`)
+  assert.ok(latest.includes('书源订阅 3'), `只导订阅也要报数：${latest}`)
 })
 
 /** 去掉注释：残留扫描要抓的是"代码还在用 WebDAV"，不是"某句解释提到了它"。 */

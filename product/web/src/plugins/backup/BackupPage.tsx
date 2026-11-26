@@ -32,6 +32,7 @@ const RESTORED_SECTIONS: [string, string][] = [
   ['书架与阅读进度', '书架按书合并，进度只在更新时间较新时覆盖；**你从书架删过的书不会被备份复活**'],
   ['RSS 订阅源', '「订阅」页那一栏，按 sourceUrl 合并'],
   ['分组', '包里的组号会换成本机组号（同名只留一个）'],
+  ['书源订阅', '「订阅」页的书源订阅地址，按地址合并；原包也照样留档'],
 ]
 
 /** 没有原生界面、但会原样收进数据目录的条目，以及它们各自的下落（导入后下面会列出这次实际收下的文件）。 */
@@ -49,7 +50,10 @@ export function reportImportSummary(summary: BackupImportSummary) {
   const kept = summary.keptSections ?? []
   const books = total(summary.books, summary.booksUpdated)
   const rss = total(summary.rssSources, summary.rssSourcesUpdated)
-  if (total(summary.sources, summary.sourcesUpdated) + total(summary.rules, summary.rulesUpdated) + books + rss === 0) {
+  if (
+    total(summary.sources, summary.sourcesUpdated) + total(summary.rules, summary.rulesUpdated) +
+    books + rss + (summary.subscriptions ?? 0) === 0
+  ) {
     toast.warning(skipped.length ? `备份包里没有可导入的内容，已跳过：${skipped.join('、')}` : '备份包里没有可导入的内容')
     return
   }
@@ -57,6 +61,7 @@ export function reportImportSummary(summary: BackupImportSummary) {
     `导入完成：书源 ${total(summary.sources, summary.sourcesUpdated)}（已存在的保留本机启用状态），` +
     `替换规则 ${total(summary.rules, summary.rulesUpdated)}，书籍 ${books}，阅读进度 ${summary.progress}` +
     `${rss ? `，RSS 订阅源 ${rss}` : ''}${summary.bookGroups ? `，分组 ${summary.bookGroups}` : ''}` +
+    `${summary.subscriptions ? `，书源订阅 ${summary.subscriptions}` : ''}` +
     `${summary.cookies ? `，登录凭据 ${summary.cookies} 条` : ''}`,
   )
   // 备份里当然还留着删之前的书：跳过多少本必须说出来，否则用户以为导入把删除决定盖掉了
