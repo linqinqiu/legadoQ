@@ -4,6 +4,7 @@ import { api, type LogEntry } from '../lib/api'
 import { Icon } from '../icons'
 import { Select } from './Select'
 import { DiagnosticsStrip } from './DiagnosticsStrip'
+import { PerformanceStrip } from './PerformanceStrip'
 import { toast } from './Toast'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -206,6 +207,7 @@ export function LogsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <DiagnosticsStrip />
+        <PerformanceStrip />
 
         {state === 'failed' && (
           <div className="logs-error">
