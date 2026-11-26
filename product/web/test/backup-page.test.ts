@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { AppHeader } from '../src/app/AppHeader'
 import { toast } from '../src/components/Toast'
 import { defaultReaderSettings } from '../src/features/reader/settingsPanel/readerSettings'
-import { BackupPage, reportImportSummary } from '../src/plugins/backup/BackupPage'
+import { BackupPage, afterBackupImported, reportImportSummary } from '../src/plugins/backup/BackupPage'
 import { applyPreferencePatch, mapReadStyle } from '../src/features/reader/settingsPanel/backupPreferences'
 
 const SRC = path.resolve(import.meta.dirname, '../src')
@@ -134,6 +134,29 @@ test('导入结果播报：启用位、RSS、分组、跳过项与单条错误�
   assert.ok(all.includes('ttsSource.json'), '不承接的条目名要如实念出来')
   assert.ok(all.includes('1 条没读进去'), '单条解析失败不许静默')
   assert.ok(all.includes('未填密码已跳过'), 'cookiesNote 要原样转达')
+})
+
+test('导入成功后必须触发宿主刷新书源缓存——否则书源页/选源下拉还是导入前那份', () => {
+  // 书源走 sourceCatalog 共享缓存，load() 在 ready 时直接返回旧数组。导入写了库却没 invalidate，
+  // 界面看到的就是"导了没用"。这里的回调就是宿主接的 refreshSources（sourceCatalog.invalidate）。
+  let refreshes = 0
+  const summary = {
+    sources: 2, sourcesUpdated: 0, rules: 0, rulesUpdated: 0, books: 0, booksUpdated: 0, progress: 0,
+  }
+  afterBackupImported(summary, () => { refreshes += 1 })
+  assert.equal(refreshes, 1, '导入成功后恰好刷新一次书源，让共享缓存重新拉取')
+  // 没接宿主时也不能抛（SSR 静态渲染 / 独立使用）
+  afterBackupImported(summary)
+  assert.equal(refreshes, 1, '不给回调时安静跳过，不报错')
+})
+
+test('切页容器带 key={page}：切页重挂载才能重放 .page-enter 动画', () => {
+  const main = fs.readFileSync(path.join(SRC, 'main.tsx'), 'utf8')
+  assert.match(main, /<Suspense\s+key=\{page\}\s+fallback=\{<ChunkLoading\s*\/>\}>\{renderPage\(page, pageContext\)\}<\/Suspense>/,
+    '页面容器必须按 page 加 key，否则 React 复用子树、切页动画不重放')
+  // 书源浮层必须把宿主的刷新回调接进来
+  assert.match(main, /<BackupModal[^>]*onImported=\{refreshSources\}/,
+    '备份浮层要接到 refreshSources，导入成功才能刷新书源缓存')
 })
 
 test('导入结果播报：空包要警告而不是报"完成"', () => {

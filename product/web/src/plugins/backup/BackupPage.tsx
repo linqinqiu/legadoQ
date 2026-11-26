@@ -72,7 +72,20 @@ export function reportImportSummary(summary: BackupImportSummary) {
   if (errors.length) toast.warning(`${errors.length} 条没读进去：${errors.slice(0, 2).join('；')}${errors.length > 2 ? '…' : ''}`)
 }
 
-export function BackupPage() {
+/**
+ * 导入成功后的收尾：播报结果 + 请求宿主刷新书源共享目录。
+ *
+ * 抽成纯函数是为了能脱离 DOM 测（`handleImport` 挂在 `<input>` 的 onChange 上，SSR 触发不了）。
+ * 书源走 `sourceCatalog` 那份共享缓存：`load()` 在 status=ready 时直接返回旧数组，导入写了库却不
+ * invalidate，关掉这个浮层后书源页 / 选源下拉看到的还是导入前那份，用户读到的是"导了没用"。
+ * 书架与 RSS 每次挂载都重新 fetch、不依赖缓存，所以这里只需刷新书源这一处。
+ */
+export function afterBackupImported(summary: BackupImportSummary, onImported?: () => void) {
+  reportImportSummary(summary)
+  onImported?.()
+}
+
+export function BackupPage({ onImported }: { onImported?: () => void } = {}) {
   const [backupPassword, setBackupPassword] = useState('')
   /** 「从地址导入」的地址输入；与「选择备份包导入」并存。 */
   const [importUrl, setImportUrl] = useState('')
@@ -139,7 +152,7 @@ export function BackupPage() {
     try {
       // 不传密码也能导入：cookies.json 那节会单独报告没解开，其他内容照常写入。
       const summary = await api.importBackupFile(file, backupPassword.trim())
-      reportImportSummary(summary)
+      afterBackupImported(summary, onImported)
       // 只有包内确实有加密凭据、又没填密码时，才提示可以补密码重试 ——
       // 它不是导入的前置条件，以前摆在主操作行上，看着像必填。
       if (summary.cookiesNote && !summary.cookies) setPasswordOpen(true)

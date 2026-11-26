@@ -750,7 +750,9 @@ function App() {
         revision={serverRevision}
         revisionSha={serverSha}
       />
-      <Suspense fallback={<ChunkLoading />}>{renderPage(page, pageContext)}</Suspense>
+      {/* key={page}：切页时强制重挂载，让页面根 class 上的 .page-enter 动画真正重放；
+          没有 key 时 React 复用同一棵子树，动画只在首次挂载跑一次，切页看着是"硬切"。 */}
+      <Suspense key={page} fallback={<ChunkLoading />}>{renderPage(page, pageContext)}</Suspense>
       {explorePick && page === 'explore' && (
         <BookDetailModal
           book={explorePick.book}
@@ -788,7 +790,7 @@ function App() {
       {openModal === 'changelog' && (
         <ChangelogModal onClose={closeModal} serverVersion={serverVersion} />
       )}
-      {openModal === 'backup' && <BackupModal onClose={closeModal} />}
+      {openModal === 'backup' && <BackupModal onClose={closeModal} onImported={refreshSources} />}
       {openModal === 'about' && (
         <AboutModal
           onClose={closeModal}

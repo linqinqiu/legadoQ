@@ -9,10 +9,10 @@ import { PageDialog } from '../../components/PageDialog'
  * 「手机恢复这个名词解释有些难听，咱们这是电脑啊」，主语是包，不是手机也不是动作。
  * 判据 `source-editor-check` 盯着这个标题。
  */
-export function BackupModal({ onClose }: { onClose: () => void }) {
+export function BackupModal({ onClose, onImported }: { onClose: () => void; onImported?: () => void }) {
   return (
     <PageDialog title="备份包" onClose={onClose}>
-      <BackupPage />
+      <BackupPage onImported={onImported} />
     </PageDialog>
   )
 }
