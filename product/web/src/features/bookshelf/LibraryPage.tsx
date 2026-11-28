@@ -261,6 +261,8 @@ export function LibraryPage({ sources, onSourcesChanged, onOpen }: { sources: So
               ? `已停止，已获得 ${groups.length} 本书。`
               : search.loading
                 ? `已获得 ${groups.length} 本书，已检查 ${completed} / ${total} 个书源${failures || empty ? `，失败 ${failures} 个、无结果 ${empty} 个` : ''}…`
+                : search.progress?.truncated
+                  ? '搜索已到总时限，本次尚未检查完所有书源，可缩小范围重试。'
                 : `搜完了：检查 ${completed} / ${total} 个书源，命中 ${search.progress?.matchedSources ?? 0} 本`
                   + `${failures || empty ? `（失败 ${failures} · 无结果 ${empty}）` : ''}。`
                   + (scopeMode === 'single'

@@ -50,7 +50,7 @@ export function renderPage(page: Page, ctx: PageContext): React.ReactNode {
         <SourcesPage selected={ctx.selected} onSelect={ctx.onSelectSource} />
       )
     case 'subscriptions':
-      return <RssPage onOpenBackup={() => ctx.openModal('backup')} />
+      return <RssPage onOpenBackup={() => ctx.openModal('backup')} onSourcesChange={ctx.refreshSources} />
     case 'settings':
       return <SettingsPage sections={ctx.settingsSections} />
     case 'shelf':

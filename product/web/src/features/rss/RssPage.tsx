@@ -12,7 +12,10 @@ import { SourceSubscriptionPanel } from './SourceSubscriptionPanel'
  * 以前书源订阅挂在「书源」页里（因为它同步出来的东西是书源），结果是书源页右栏被订阅面板撑长、
  * 用户也觉得「订阅地址」跑错了地方。现在统一收到「订阅」页：两件事并列，一眼能分清。
  */
-export function RssPage({ onOpenBackup }: { onOpenBackup: () => void }) {
+export function RssPage({ onOpenBackup, onSourcesChange }: {
+  onOpenBackup: () => void
+  onSourcesChange: () => void
+}) {
   return (
     <main className="rss-page">
       <header className="page-title">
@@ -24,7 +27,7 @@ export function RssPage({ onOpenBackup }: { onOpenBackup: () => void }) {
 
       {/* 一、书源订阅：产物是书源 */}
       <section className="subscription-block" aria-label="书源订阅">
-        <SourceSubscriptionPanel onSourcesChange={() => undefined} />
+        <SourceSubscriptionPanel onSourcesChange={onSourcesChange} />
       </section>
 
       {/* 二、RSS 文章源：产物是文章 */}
