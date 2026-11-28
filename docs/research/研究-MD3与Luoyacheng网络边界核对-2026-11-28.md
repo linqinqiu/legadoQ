@@ -83,6 +83,8 @@ Luoyacheng 历史入口 `Luoyacheng/legado` 经 GitHub API 重定向为 `Luoyach
 2. **开源卫生门禁仍把 WebDAV 当整体已删除。** 当前手动迁移真实存在于 `BackupWebDav.kt`、`BackupWebDavRoutes.kt` 与备份页，旧规则扫描所有 `webdav` 字面量，必然误红。规则收窄为“旧独立 `/api/webdav` 路由不恢复”，允许 `/api/backup/webdav`；仅保留负向测试自身豁免。修复后门禁 **PASS 11 / FAIL 0 / NOTE 1**。全量门禁里的 `source-editor-check.mjs` 也仍断言备份页不许出现 WebDAV，并会把 WebDAV 密码框误判为本地备份密码默认展开；已改为检查手动迁移文案、不承诺自动同步，且密码折叠判据排除 `.backup-webdav`。
 3. **Docker 构建上下文缺少前端构建脚本。** `web/package.json` 的 `build` 调用 `../scripts/build-web.mjs`，而 Dockerfile 只复制 `web/` 与产品说明，容器内必然 `MODULE_NOT_FOUND`。首次修复写成 `COPY scripts/build-web.mjs scripts/`，真实工作流仍失败；Docker 的相对目标按当前 `WORKDIR /src/web` 解析，文件落到了 `/src/web/scripts/`。已改为绝对目标 `COPY scripts/build-web.mjs /src/scripts/`。没有根据未取得的底层日志猜测依赖问题，也没有放宽 npm 安装策略；本机没有 Docker，最终镜像结果仍以真实工作流为准。
 
+`1ea6ab4` 推送后，普通 CI、覆盖率与真浏览器门禁成功，但 JAR 的 Release Quality Gates 与契约工作流的日志锁同时失败。公开 job 步骤显示后端端点契约、文档、前端双锁、目录深度均成功；本地复跑 `npm --prefix product run changelog:check` 也明确只报 `1ea6ab4` 这一条 fix 未推进日志水位线。没有把这两条工作流失败误判为 Docker 回归；补记现有 Docker 用户可见条目后再验。
+
 本轮复验：前端 **153 个测试文件 / 1,188 项 / 0 失败、错误或跳过**，TypeScript 类型检查与生产构建通过；脚本回归 **33 项 / 0 失败或跳过**；版本、API 文档、更新日志、协议与目录深度检查通过；`git diff --check` 通过。没有重启或覆盖 1234 日常实例，没有运行会写入共享书库的全量浏览器门禁；相关真实浏览器与 Docker 结果以新提交的 Actions 为准。
 
 ## 后续推荐与验收条件
