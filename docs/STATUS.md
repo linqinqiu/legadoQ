@@ -4,10 +4,9 @@
 > 更细的命令与时间戳见 `product/docs/restructure/facts.md`。facts.md 是**带日期的快照**，用于复现当时的数字；
 > 当前版本 / 构建号以 `product/app/build.gradle` 与 `/healthz` 为准；版本门禁从 `product/` 执行 `npm run version:check`。
 >
-> 当前仓库版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ` ｜ **2026-11-28 最新工作树实测**：前端全量 **1,188 项通过**（153 个文件），应用与测试类型检查均通过；历史书源版本/备份后端定向 **91 项 / 11 suite**、最终 fatJar 隔离浏览器 **73 项通过**。冲突书源可查询历史版本、预览后全局启用，并显式选择原始别名书籍保全关联；启用前强制校验整库快照，变化/缓存任务未退出时拒绝。此前手动公网 HTTPS WebDAV 已支持迁移包上传回读校验及拉取预览确认，浏览器远端响应仍为模拟。此前 jar 的 40 个静态文件曾与备用构建 dist 一致（本轮标准 dist 已刷新，jar 未重打），390px 无横向溢出且确认按钮可达。真实样本 **81 项**和 app 全量 **1,105 项 / 158 suite**仍为 2026-11-27 结果，本轮未重跑；未验真实供应商账号、NAS 私网、手机 App 恢复或桌面包。标准前端构建已通过临时目录隔离恢复；日常 1234 部分资源 404 仍待处理。命令和边界见 facts.md §18、§20–26。
-> 2026-11-28 启动资源切点：新增按选中 jar 校验实际 HTTP 资源的启动与复用检查；**30 项脚本测试、真实 jar 40 文件及实际启动器复用通过**。日常实例仍复现 10 个 JS/CSS 404，本轮未重启；修复范围和命令见 facts.md §27。
-> 2026-11-28 构建续修：Windows 构建子进程隔离至仓库根 tmp；标准前端构建退出 0、dist 11/11、预算 6/6、脚本 33/33 通过。未重建 fatJar 或重启日常服务，当前标准 dist 不与旧包混作同一产物；见 facts.md §28。
-> 2026-11-28 上游网络核对：固定 MD3 与 Luoyacheng 提交；CONNECT 同次写入首包丢失已以修复前超时复现，修复后代理/网络安全/搜索取消/架构 26 项与黄金样例 6 项，合计 **32 项 / 5 suite** 通过。代理活跃连接关闭仍待补，非 BMP URL 编码为未运行确认的候选；未重打运行 jar。命令与范围见 facts.md §29。
+> 当前仓库版本 **0.3.0 / build 56** ｜ 活跃分支 `refactor/rebuild` ｜ 远端 `linqinqiu/legadoQ` ｜ **2026-11-28 交付验收**：搜索截止/取消、CONNECT 首包、备份迁移预览与历史书源版本、订阅刷新、启动资源校验及 Windows 构建修复已分批提交推送至 `54234ae`。后端全量 **1,157 项 / 164 suite**、前端全量 **1,188 项 / 153 文件**、两项类型检查、33 项脚本测试通过。标准前端构建与 fatJar 已重建，日常 **1234 已重启**：`/healthz` 返回 `sha=54234ae`、`ui=index-D_PSZVLP.js`，40 个静态文件在 dist / processResources / jar / HTTP 四处 SHA-256 一致，0 资源失败。命令与交付边界见 facts.md §30。
+> 历史隔离验收仍按原日期使用：11-28 备份浏览器 **73 项**，11-27 真实手机备份样本 **81 项**。真实供应商账号、NAS 私网、手机 App 恢复和桌面发行包尚未验收；WebDAV 浏览器远端响应仍为模拟。历史书源版本可预览后全局启用，支持显式别名书籍保全关联及强制安全快照；见 facts.md §24–26。
+> 上游核对固定 MD3 与 Luoyacheng 提交，CONNECT 同次写入首包丢失已用修复前超时、修复后通过验证并进入运行 jar；活跃连接关闭/half-close 回收仍待修，非 BMP URL 编码仍是未运行确认候选，见 facts.md §29。
 > 本文只写**现在真实具备的能力**，规划中的东西放在最后「已知缺口」一节，且明确标注是缺口。
 
 ---
@@ -128,19 +127,19 @@
 
 | 门禁 | 命令 | 现状 |
 |---|---|---|
-| 后端测试 | 在 `product/` 执行 `./gradlew.bat :app:test --no-daemon --max-workers=1` | **1,105 项 / 158 suite / 0 失败 / 0 错误 / 0 跳过**（2026-11-27 全量实测，6m31s；XML 求和），含书架/进度冲突策略、预览指纹及事务回滚回归。本轮未复跑 `:core:data:test`；较早的定向结果不与全量加总 |
+| 后端测试 | 在 `product/` 执行 `./gradlew.bat :app:test --no-daemon --max-workers=1` | **1,157 项 / 164 suite / 0 失败 / 0 错误 / 0 跳过**（2026-11-28 全量实测，17m55s；XML 求和），含搜索截止/取消、CONNECT 首包、历史书源版本、备份/WebDAV 回归。本轮未复跑 `:core:data:test`；较早的定向结果不与全量加总 |
 | 路由组挂载 | `cd product && ./gradlew :app:test --tests '*RouteMountTest'` | 每个 `*Routes.kt` 的入口函数必须在 `Routes.kt` 的 `apiRoutes` 里挂载；反向也不许留没有文件的调用 |
-| Web 测试 | `npm.cmd --prefix product/web test` | **1,188 项 / 153 个文件 / 0 失败、取消或跳过**（2026-11-28 最新全量实测，112,567.9037 ms），新增历史版本入口、预览/确认状态、别名默认不选与三个 API 回归；保留 WebDAV、迁移、搜索及订阅回归 |
+| Web 测试 | `npm.cmd --prefix product/web test` | **1,188 项 / 153 个文件 / 0 失败、取消或跳过**（2026-11-28 最新全量实测，83,477.548 ms），含历史版本入口、预览/确认状态、别名默认不选与 API 回归；保留 WebDAV、迁移、搜索及订阅回归 |
 | 类型检查 | `npm.cmd --prefix product/web run check` / `run check:test` | 两项均通过（2026-11-28）；应用 `tsc -b` 与测试类型分别执行 |
-| 交付契约与工具脚本 | `node tools/verify/delivery-check.mjs` / `node --test scripts/*.test.mjs` | **SELF TEST 30/30、脚本用例 33/33（2026-11-28，见 facts.md §28）**；CI 的 quality job 已纳入第六道脚本门禁，release 等待 quality → build → desktop 全链完成 |
-| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **74.52%**（11,518/15,456；2026-11-23 随全量 `:app:test` 产出的 `jacocoTestReport`，其中 `tts` 75.81% = 630/831、`ops` 82.47% = 560/679）；前端行 **63.51%**（2026-11-09 快照，本轮未重跑 `npm run coverage`） |
+| 交付契约与工具脚本 | `node tools/verify/delivery-check.mjs` / `npm.cmd --prefix product run test:scripts` | **SELF TEST 30/30、交付契约 PASS、脚本用例 33/33（2026-11-28，见 facts.md §30）**；CI 的 quality job 已纳入第六道脚本门禁，release 等待 quality → build → desktop 全链完成 |
+| 覆盖率 | `:app:jacocoTestReport` / `web: test:coverage` | 后端行 **76.16%**（11,506/15,108；2026-11-28 随全量 `:app:test` 产出的 `jacocoTestReport`）；前端行 **63.51%**（2026-11-09 快照，本轮未重跑 `npm run coverage`） |
 | 端点文档一致 | `cd product && npm run docs:api-check` | 通过：153 条端点、19 个分组与文档一致；备份组 12 条 |
-| 更新日志 | `cd product && npm run changelog:check` | 通过：无待记录改动（自查 6 条提交，边界 `d4ad7f7`）；备份预览、冲突策略与确认前变化检查另已写入 `product/CHANGELOG.md` |
+| 更新日志 | `cd product && npm run changelog:check` | 通过：提交后无待记录改动（2026-11-28，检查边界 `54234ae`）；搜索、迁移/备份、书源版本、订阅刷新与启动构建修复均已提交并记录 |
 | 版本单一来源 | `cd product && npm run version:check` | 通过：8 处版本均为 **0.3.0**，build **56** |
 | 真浏览器门禁 | `product/tools/verify/*-check.mjs` | **51** 个 `*-check.mjs`（该目录下共 78 个 `.mjs`，其中约 40 个要活服务 + 真浏览器）：阅读排版、笔记、备份、缓存、登录跨域抓取等多条 |
 | 备份隔离浏览器验收（2026-11-28） | `npm.cmd --prefix product run verify:backup-preview-ui` | 最新 fatJar **73 项通过**；真实版本列表/预览/启用、规则与书籍状态保全、verified 安全快照、留档字节不变、重放拒绝及 390px 按钮可达；保留此前备份/WebDAV 流程。40 静态文件 SHA-256 对齐，0 页面异常，临时目录已清理。WebDAV 远端响应模拟，不等同供应商账号验收 |
 | 真实手机备份隔离验收（2026-11-27） | `npm.cmd --prefix product run verify:backup-real-sample -- '<样本路径>'` | **81 项通过**；三个空临时库完成预览/导入/重复导入、六原生域往返及含留档迁移；12 项留档逐字节哈希一致，源证据内容、索引和复用检查通过；三服务无未处理异常，原包未变，临时目录已清理。不是手机 App 恢复验收 |
-| 书源版本与备份定向测试（2026-11-28 最新轮） | 十一个 suite 的完整命令见 facts.md §26 | **91 项 / 11 suite / 0 失败、错误或跳过**，`BUILD SUCCESSFUL in 9m 6s`；含版本服务 14、HTTP 5、别名保全/真实快照恢复、缓存互斥与既有备份/WebDAV 回归。首轮多 fork 内存不足失败，单 worker 重跑通过；未重跑 app 全量。此前 WebDAV 切点 102/15 的结果见 §25，不与本轮加总 |
+| 书源版本与备份定向测试（2026-11-28） | 十一个 suite 的完整命令见 facts.md §26 | **91 项 / 11 suite / 0 失败、错误或跳过**，`BUILD SUCCESSFUL in 9m 6s`；含版本服务 14、HTTP 5、别名保全/真实快照恢复、缓存互斥与既有备份/WebDAV 回归。首轮多 fork 内存不足失败，单 worker 重跑通过；后续 app 全量已通过，见 §30。此前 WebDAV 切点 102/15 的结果见 §25，不与全量加总 |
 
 CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）、`version-gate.yml`（PR 要求代码变更带 CHANGELOG 或版本、Tag 与版本一致）、`contract.yml`（契约 / 文档 / 结构）、`build-jar.yml`（六道质量门禁通过后才打包，发布等待桌面资产）、`gates.yml`（真浏览器门禁）、`coverage.yml`、`docker.yml`。
 
@@ -238,7 +237,7 @@ CI：`ci.yml`（后端测试 / 前端类型检查与构建 / 版本一致性）�
 
 ## 8. 一句话总结
 
-后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，当前版本 **0.3.0 / build 56**、153 端点/19 组。2026-11-28 最新切点完成历史版本预览启用、显式别名书籍保全关联与强制安全快照，**1,188 项前端、91 项后端定向、73 项隔离浏览器通过**，此前 fatJar 的 40 个静态资源曾与当时备用构建一致。手动 WebDAV 上传回读校验与拉取预览已完成，真实账号、NAS 私网和手机 App 恢复仍待验。此前 app 全量 1,105 项及真实样本 81 项沿用 2026-11-27 日期，不与本轮相加。标准前端构建已恢复，dist 已刷新但 jar 未重打；日常实例资源 404、搜索真实源和上游代理退出仍待处理；取证见 facts.md §20–28。
+后端是单进程、本地 SQLite 阅读服务，前端是 React 阅读器，当前版本 **0.3.0 / build 56**、153 端点/19 组。2026-11-28 已将搜索、备份/历史版本、订阅刷新、启动构建及 CONNECT 首包修复分批提交推送；后端 **1,157 项**、前端 **1,188 项**全量通过。标准 dist 与 fatJar 已重建并重启日常 1234，40 个静态文件四处哈希一致，旧实例资源 404 已消除。历史隔离浏览器 73 项与真实样本 81 项保留原日期；真实账号、NAS 私网、手机 App 恢复、搜索真实源和代理活跃连接退出仍待验或待修。取证见 facts.md §24–30。
 
 ---
 ## 9. 数字口径
