@@ -13,14 +13,16 @@ import io.ktor.websocket.*
 import io.legado.backup.BackupExporter
 import io.legado.backup.BackupImporter
 import io.legado.backup.BackupStore
+import io.legado.backup.BackupMigration
 import io.legado.data.Database
 import io.legado.data.core.DbSnapshot
 import io.legado.model.ApiError
 import io.legado.model.SnapshotRestoreRequest
 import io.legado.model.SnapshotRestoreScheduled
 import java.nio.file.Files
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
@@ -72,20 +74,57 @@ fun Route.backupRoutes(
             call.respondText(body, ContentType.Application.Json)
         }
         /**
-         * 导出备份，一域一包。当前支持**书源**（domain=source，默认）与**替换规则**（domain=replaceRule）；
-         * 书架 / 分组 / RSS 按 `docs/research/研究-备份导出设计-2026-11-16.md` 逐个补。
+         * 导出备份，一域一包：书源 / 替换规则 / 分组 / RSS / 书架含进度 / 书源订阅。
+         * 完整包走不写 domain 的 `all`，一域一包是排查用的。
          *
          * 为什么要带 `domain` 参数而不是直接叫"导出全部"：只导一域时，文件名与参数都写明范围，
          * 用户不会以为"备份好了"、恢复时才发现书架没在里面。未知域直接 400，不静默降级。
          *
-         * 只读 GET：不写库、不改状态，所以不过同源写门。响应是流式 zip，
-         * 5,600 条书源约 30–40 MB，不整包读进内存（见 [BackupExporter]）。
+         * 只读 GET：不写库、不改状态，所以不过同源写门。普通导出直接流式写 zip；
+         * recovery 先校验并暂存完整 zip，再发送下载响应，避免把生成失败作为空包返回。
          */
         get("/backup/export") {
             val domain = call.request.queryParameters["domain"]?.trim()?.lowercase().orEmpty().ifBlank { "all" }
             val stamp = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
             when (domain) {
+                "recovery" -> {
+                    // Stage completely: validation/disk/size failures must occur before sending HTTP 200.
+                    var staged: java.nio.file.Path? = null
+                    suspend fun cleanup() = withContext(NonCancellable + Dispatchers.IO) {
+                        staged?.let { Files.deleteIfExists(it) }
+                        Unit
+                    }
+                    try {
+                        withContext(NonCancellable + Dispatchers.IO) {
+                            staged = Files.createTempFile("legado-migration-", ".zip")
+                        }
+                        val file = requireNotNull(staged)
+                        withContext(Dispatchers.IO) {
+                            Files.newOutputStream(file).use { BackupMigration.export(database, backupKeep, it) }
+                            require(Files.size(file) <= BodyLimits.BACKUP_BYTES) { "迁移包超过上传上限，请单独下载留档" }
+                        }
+                        call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"legadoq-migration-$stamp.zip\"")
+                        call.respondOutputStream(ContentType.Application.Zip) {
+                            // Ktor may run this producer after respondOutputStream returns.
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    Files.newInputStream(file).use { it.copyTo(this@respondOutputStream) }
+                                    Unit
+                                }
+                            } finally { cleanup() }
+                        }
+                        call.application.log.debug("migration export completed")
+                    } catch (error: CancellationException) {
+                        cleanup()
+                        throw error
+                    } catch (error: Exception) {
+                        cleanup()
+                        if (!call.response.isCommitted) call.respond(HttpStatusCode.InternalServerError,
+                            ApiError("backup_export_failed", "迁移包生成失败，请检查留档完整性、目录空间与大小上限；可分别导出原生数据和下载留档"))
+                        else throw error
+                    }
+                }
                 // 不写 domain = 导出完整备份（界面那个按钮走的就是这条）：
                 // 一域一包是排查用的，默认给"全部"才符合「导出备份」四个字。
                 "all", "" -> respondZip(call, "legadoq-backup-$stamp.zip") { BackupExporter.exportAll(database, this) }
@@ -102,11 +141,15 @@ fun Route.backupRoutes(
                 "shelf", "bookshelf" -> respondZip(call, "legadoq-bookshelf-$stamp.zip") {
                     BackupExporter.exportBookshelf(database, this)
                 }
+                "subscription", "sourcesub" -> respondZip(call, "legadoq-subscriptions-$stamp.zip") {
+                    BackupExporter.exportSubscriptions(database, this)
+                }
                 else -> call.respond(
                     HttpStatusCode.BadRequest,
                     ApiError(
                         "invalid_domain",
-                        "支持导出书源（source）、替换规则（replaceRule）、分组（group）、RSS（rss）、书架含进度（shelf）",
+                        "支持导出书源（source）、替换规则（replaceRule）、分组（group）、RSS（rss）、" +
+                            "书架含进度（shelf）、书源订阅（subscription）、原生数据与留档迁移包（recovery）",
                     ),
                 )
             }
@@ -115,16 +158,27 @@ fun Route.backupRoutes(
             if (!call.requireSameOriginWrite()) return@post
             val multipart = call.receiveMultipart()
             var password: String? = null
+            var sectionsJson: String? = null
+            var libraryPolicyJson: String? = null
+            var previewToken: String? = null
             var upload: Pair<String, ByteArray>? = null
             multipart.forEachPart { part ->
                 try {
                     when (part) {
-                        is PartData.FormItem -> if (part.name == "password") password = part.value
+                        is PartData.FormItem -> when (part.name) {
+                            "password" -> password = part.value
+                            "sections" -> sectionsJson = part.value
+                            "libraryPolicy" -> libraryPolicyJson = part.value
+                            "previewToken" -> previewToken = part.value
+                        }
                         // 边读边判：超限在读取过程中就抛 PayloadTooLargeException（→ 413），
                         // 不再先 readBytes() 把 10GB 吃满内存再回头看大小。
                         is PartData.FileItem -> if (upload == null) {
                             upload = (part.originalFileName ?: "backup.zip") to
-                                readBounded(part.streamProvider(), BodyLimits.BACKUP_BYTES, "backup_too_large", "备份包")
+                                withContext(Dispatchers.IO) {
+                                    // streamProvider 的阻塞读取不能占用 Netty event loop，否则大包会等不到后续数据。
+                                    readBounded(part.streamProvider(), BodyLimits.BACKUP_BYTES, "backup_too_large", "备份包")
+                                }
                         }
                         else -> {}
                     }
@@ -133,9 +187,19 @@ fun Route.backupRoutes(
                     part.dispose()
                 }
             }
-            val (filename, bytes) = upload
+            val (_, bytes) = upload
                 ?: return@post call.respond(HttpStatusCode.BadRequest, ApiError("no_file", "没有收到备份包"))
             if (bytes.isEmpty()) return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", "备份包是空的"))
+            val preview = when (call.request.queryParameters["preview"]) {
+                null, "false" -> false
+                "true" -> true
+                else -> return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", "preview 只能是 true 或 false"))
+            }
+            val sections = try {
+                sectionsJson?.let { Json.decodeFromString<List<String>>(it).toSet() }
+            } catch (_: IllegalArgumentException) {
+                return@post call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", "sections 必须是模块 ID 的 JSON 数组"))
+            }
             /*
              * 不再按扩展名挑：兄弟项目与分享链接常见的裸 JSON（书源数组、合并导出）也要能导，
              * 而转存工具经常把 zip 改成 .json。容器由 BackupImporter 按内容（zip 头 PK）判别。
@@ -144,24 +208,27 @@ fun Route.backupRoutes(
             val staged = Files.createTempFile("legado-backup-", ".bin")
             try {
                 Files.write(staged, bytes)
-                val summary = runCatching {
-                    withContext(Dispatchers.IO) { BackupImporter(database, backupKeep).import(staged, password?.takeIf { it.isNotBlank() }) }
-                }
-                val result = summary.getOrElse { error ->
-                    if (error is CancellationException) throw error
+                try {
+                    val importer = BackupImporter(database, backupKeep)
+                    val policy = libraryPolicyJson?.let { Json.decodeFromString<io.legado.model.BackupLibraryPolicy>(it).also { value -> value.validate() } }
+                    val secret = password?.takeIf { it.isNotBlank() }
+                    if (preview) {
+                        call.respond(withContext(Dispatchers.IO) { importer.preview(staged, secret, policy ?: io.legado.model.BackupLibraryPolicy()) })
+                    } else {
+                        val result = withContext(Dispatchers.IO) { importer.import(staged, secret, sections, policy, previewToken) }
+                        call.application.log.info("backup imported (sources={}, books={})",
+                            result.sources + result.sourcesUpdated, result.books + result.booksUpdated)
+                        call.respond(result)
+                    }
+                } catch (error: io.legado.backup.BackupPreviewChangedException) {
+                    call.respond(HttpStatusCode.Conflict, ApiError("backup_preview_changed", error.message ?: "请重新预览"))
+                } catch (error: io.legado.backup.BackupArchiveException) {
+                    call.respond(HttpStatusCode.InternalServerError, ApiError("backup_archive_failed", error.message ?: "书源冲突版本留档失败"))
+                } catch (error: IllegalArgumentException) {
                     call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", error.message ?: "备份包解析失败"))
-                    return@post
+                } catch (error: java.util.zip.ZipException) {
+                    call.respond(HttpStatusCode.BadRequest, ApiError("invalid_backup", "备份包解析失败"))
                 }
-                call.application.log.info(
-                    "backup uploaded and imported: {} (sources={}, rules={}, books={}, rss={}, groups={})",
-                    filename,
-                    result.sources + result.sourcesUpdated,
-                    result.rules + result.rulesUpdated,
-                    result.books + result.booksUpdated,
-                    result.rssSources + result.rssSourcesUpdated,
-                    result.bookGroups,
-                )
-                call.respond(result)
             } finally {
                 runCatching { Files.deleteIfExists(staged) }
             }
@@ -181,6 +248,8 @@ private suspend fun respondZip(
 ) {
     call.response.header(HttpHeaders.ContentDisposition, "attachment; filename=\"$fileName\"")
     call.respondOutputStream(ContentType.Application.Zip) { write() }
+    // 流式响应挂起恢复时可能携带内部 content 对象；在本层收尾，勿向路由透传为 Unit。
+    call.application.log.debug("backup export completed")
 }
 
 

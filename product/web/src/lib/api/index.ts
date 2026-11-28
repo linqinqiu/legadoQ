@@ -234,6 +234,7 @@ export const api = {
   bookMedia: bookMedia.url,
   // backup
   importBackupFile: backup.importFile,
+  previewBackupFile: backup.previewFile,
   keptBackupEntries: backup.listKeptEntries,
   keptBackupEntryUrl: backup.keptEntryUrl,
   keptBackupEntry: backup.keptEntry,

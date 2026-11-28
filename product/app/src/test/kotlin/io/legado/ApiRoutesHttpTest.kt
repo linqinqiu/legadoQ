@@ -355,14 +355,15 @@ class ApiRoutesHttpTest {
             }
             assertEquals(HttpStatusCode.BadRequest, invalidAddResp.status)
 
-            // 3. Add subscription with valid URL
+            // 3. Add subscription with valid URL; only validate/store it, never fetch.
+            // A public IP literal keeps this CRUD test independent of the machine's DNS.
             val validAddResp = client.post("/api/subscriptions") {
                 contentType(ContentType.Application.Json)
-                setBody(SubscriptionWriteRequest("https://example.com/sources.json", enabled = true))
+                setBody(SubscriptionWriteRequest("https://8.8.8.8/sources.json", enabled = true))
             }
             assertEquals(HttpStatusCode.OK, validAddResp.status)
             val sub = validAddResp.body<SourceSubscription>()
-            assertEquals("https://example.com/sources.json", sub.url)
+            assertEquals("https://8.8.8.8/sources.json", sub.url)
 
             // 4. Delete subscription
             val deleteSubResp = client.delete("/api/subscriptions/${sub.id}") {

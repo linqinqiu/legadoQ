@@ -1,6 +1,6 @@
 # legadoQ API 参考
 
-> 版本：0.3.0 · 端点数：147 · 生成时间：2026-11-24
+> 版本：0.3.0 · 端点数：153 · 生成时间：2026-11-27
 > 本文由 `node scripts/gen-api-reference.mjs` 从 `app/src/main/resources/agent-api.json` 生成；
 > 那份 JSON 就是 `GET /api/catalog` 吐出去的契约，以此为准，不要在手写正文里改端点。
 
@@ -23,7 +23,7 @@
 | 内置浏览器 | 17 |
 | 搜索 | 2 |
 | 书源订阅 | 5 |
-| 备份 | 6 |
+| 备份 | 12 |
 | RSS | 7 |
 | 阅读 | 7 |
 | 净化规则 | 10 |
@@ -34,7 +34,7 @@
 | 进度与笔记 | 9 |
 | 朗读 | 9 |
 | 反馈 | 2 |
-| **合计** | **147** |
+| **合计** | **153** |
 
 ## 目录（1）
 
@@ -130,7 +130,7 @@
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
-| POST | `/api/search` | 是 | 同步搜索：所有源都跑完才一次性回（流式版本是 WS /api/search/stream）；请求体：keyword=书名或作者，sourceIds=不给就是全库启用源 |
+| POST | `/api/search` | 是 | 同步搜索：全部完成或达到整批预算时返回，截断以 X-Search-Truncated/Completed/Total 响应头标明（流式版本是 WS /api/search/stream）；请求体：keyword=书名或作者，sourceIds=不给就是全库启用源 |
 | WS | `/api/search/stream` | 否 | 流式搜索：连上后逐源推结果，慢源不必等全库。它与其余 HTTP 条目的反差在于**没带 Origin 会被拒**（本机脚本得自己发一个 Origin: http://127.0.0.1:1234） |
 
 ## 书源订阅（5）
@@ -143,14 +143,20 @@
 | POST | `/api/subscriptions/{id}/update` | 是 | 立刻更新这一个订阅（去抓那个地址，把拿到的书源入库） |
 | POST | `/api/subscriptions/update` | 是 | 更新所有启用的订阅 |
 
-## 备份（6）
+## 备份（12）
 
 | 方法 | 路径 | 写门 | 说明 |
 |---|---|---|---|
-| GET | `/api/backup/export` | 否 | 导出备份包（zip）。不写 domain = 完整备份（五域一起：bookSource/replaceRule/bookGroup/rssSources/bookshelf，含阅读进度）；单域排查用 domain=source·replaceRule·group·rss·shelf。不含登录凭据与笔记书签 |
+| GET | `/api/backup/export` | 否 | 导出备份包（zip）。默认 all 为六个原生域（含阅读进度与书源订阅）；单域为 source·replaceRule·group·rss·shelf·subscription。显式 recovery 另含个性化留档、源版本证据及校验清单，恢复须按模块确认，不激活历史源。不含封面、本地书或完整数据库；留档可能含私密配置 |
+| POST | `/api/backup/webdav/list` | 是 | 手动列出公网 HTTPS WebDAV 目录中本产品生成的迁移包；凭据仅当次使用，不持久化，不跟随重定向，暂不支持 NAS 私网。须同源；请求体：url=HTTPS 目录地址，不含凭据、查询或片段，username=可选，password=可选 |
+| POST | `/api/backup/webdav/upload` | 是 | 导出含留档的迁移包到临时文件并 PUT 到公网 HTTPS WebDAV，以唯一文件名和 If-None-Match:* 请求不覆盖；随后 GET 回读核对大小与 SHA-256，才报告成功。最多64MiB；失败可能留有远端文件，不自动删除。须同源；请求体：url=HTTPS 目录地址，username=可选，password=可选 |
+| POST | `/api/backup/webdav/pull` | 是 | 从公网 HTTPS WebDAV 拉取本产品迁移包，按文件名 SHA-256 校验后返回 ZIP 字节。仅传输，不自动恢复；客户端仍须调用现有预览与按模块确认。哈希只检测损坏，不认证来源。须同源；请求体：url=HTTPS 目录地址，username=可选，password=可选，name=list 返回的完整文件名 |
+| POST | `/api/backup/source-versions/list` | 是 | 显式读取完整哈希校验的书源冲突留档，以每页20组返回版本名称、原始ID和默认版本索引；支持按ID或名称筛选，不返回规则正文，不写数据库，须同源；请求体：archive=source-variants-<sha256>.json，offset=可选，非负组偏移，query=可选，最长200字符 |
+| POST | `/api/backup/source-versions/preview` | 是 | 只读预览某冲突版本对同规范ID全部书籍的影响、保留的缓存数量及原始别名书籍的可选重新关联。仅认可留档中原始书源和精确书籍引用；不自动关联、合并或清缓存，须同源；请求体：archive=完整留档名，index=list返回的原始版本索引，relink=可选，[{sourceId:原始别名,bookUrl}]，最多200项 |
+| POST | `/api/backup/source-versions/activate` | 是 | 确认同规范ID全局切换规则及显式勾选的别名书籍关联，保留启停、排序、进度、笔记、日志及缓存；清旧体检。事务前强制完整数据库快照，失败拒绝写入；变化或目标冲突409，后台缓存活跃409。快照恢复为重启后整库回滚。须同源；请求体：archive=与预览相同，index=与预览相同，relink=与预览相同，previewToken=绑定留档、版本、关联选择和相关本机行的预览凭证 |
 | GET | `/api/backup/kept` | 否 | 服务器上留存的备份条目清单（手机导出的 .zip 里那几段，段级存下来了） |
 | GET | `/api/backup/kept/{name}` | 否 | 取其中一个条目的 JSON 原文（name 用清单里给的那个，别自己拼） |
-| POST | `/api/backup/import` | 是 | 上传备份入库（multipart）：手机/兄弟项目导出的 zip，或裸 JSON（分享书源数组、{bookSource:[…],bookshelf:[…]} 合并导出）；容器按内容判别，不看扩展名；请求体：file=multipart 文件字段，zip 或 .json（≤64 MiB），password=可选，只用于解开 zip 里的 cookies.json |
+| POST | `/api/backup/import` | 是 | 上传 zip 或裸 JSON 备份；?preview=true 只解析预览，不写数据库或留档；确认时重新上传同一文件并用 sections 选择模块。容器按内容判别；请求体：file=multipart 文件字段，zip 或 .json（≤64 MiB），password=可选，只用于解开 zip 里的 cookies.json，sections=可选，multipart 文本字段，JSON 字符串数组：sources/rules/groups/shelf/rss/subscriptions/cookies/kept；缺省兼容旧客户端导入全部，空数组或未知模块返回 400，libraryPolicy=可选，multipart JSON 对象：metadata=keep_local/overwrite，progress=newer/overwrite/keep_local。预览缺省使用 keep_local+newer；确认传入时必须同时带 previewToken。确认省略策略与凭证时保留旧导入语义，previewToken=确认时与 libraryPolicy 一同提交预览返回的凭证，绑定文件、策略和相关本机书架/进度/删除记录；所选书架发生变化返回 409，任一模块均不写入。未选择书架时仍检查文件与策略 |
 | GET | `/api/backup/snapshots` | 否 | 启动库快照清单（只读）：每次启动 VACUUM INTO 到 <库同目录>/backups 的历史副本，逐份重算 SHA-256 与 sidecar 比对给出 verified。只列不恢复——恢复是停服期操作 |
 | POST | `/api/backup/snapshots/restore` | 是 | 排定从某快照恢复：只写一个待恢复标记，**不在运行时覆盖已打开的库**；真正落库发生在下次启动、打开数据库之前（当前库会先移作 pre-restore 安全副本，可回退）。需重启才生效；请求体：name=快照文件名（须来自 /api/backup/snapshots 且当前 verified） |
 

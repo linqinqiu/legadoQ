@@ -2,6 +2,46 @@ package io.legado.model
 
 import kotlinx.serialization.Serializable
 
+/** sections 统计包内可解析条目，libraryDiff 预测书架与进度的处理结果；预览不写数据库或文件。 */
+@Serializable
+data class BackupImportPreview(
+    val sections: List<BackupSectionPreview>,
+    val warnings: List<String> = emptyList(),
+    val libraryPolicy: BackupLibraryPolicy? = null,
+    val libraryDiff: BackupLibraryDiff? = null,
+    val previewToken: String? = null,
+)
+
+/** 新确认流程显式选择策略；省略整个对象时维持旧客户端的导入语义。 */
+@Serializable
+data class BackupLibraryPolicy(val metadata: String = "keep_local", val progress: String = "newer") {
+    fun validate() {
+        require(metadata in setOf("keep_local", "overwrite")) { "未知的书架信息冲突策略" }
+        require(progress in setOf("newer", "overwrite", "keep_local")) { "未知的阅读进度冲突策略" }
+    }
+}
+
+/** 仅书架/进度的处理预测，更新数表示策略选中的已有记录；包内同键重复取最后一条，其余模块仍报告包内数量。 */
+@Serializable
+data class BackupLibraryDiff(
+    val booksAdded: Int = 0,
+    val booksUpdated: Int = 0,
+    val booksKept: Int = 0,
+    val skippedDeleted: Int = 0,
+    val progressApplied: Int = 0,
+    val progressKept: Int = 0,
+    val progressUnknownTime: Int = 0,
+    val duplicates: Int = 0,
+)
+
+@Serializable
+data class BackupSectionPreview(
+    val id: String,
+    val label: String,
+    val items: Int,
+    val policy: String,
+)
+
 /** 备份导入结果统计（供页面提示使用）。 */
 @Serializable
 data class BackupImportSummary(
@@ -31,6 +71,7 @@ data class BackupImportSummary(
     val errors: List<String> = emptyList(),
     /** 没有原生归宿、但已原样收进数据目录的个性化条目（书签/字典/阅读样式/朗读引擎…）。 */
     val keptSections: List<KeptBackupEntry> = emptyList(),
+    val libraryDiff: BackupLibraryDiff? = null,
 )
 
 /** 备份包里被原样收下的一条个性化内容。appliable 为真时前端可以把它映射到自己的阅读设置上。 */
@@ -65,6 +106,8 @@ data class BackupShelfEntry(
     val phoneGroupId: Long = 0,
     /** 映射后的本机组号，0 = 未分组。 */
     val groupId: Long = 0,
+    /** 明确携带进度才能恢复首章 0；没有进度字段的书不能凭空生成进度。 */
+    val hasProgress: Boolean = chapterIndex > 0,
 )
 
 /**
@@ -73,7 +116,10 @@ data class BackupShelfEntry(
  * [skippedDeleted] 是从备份里**跳过**的条目数：这些书用户在本机删过（见 `book_shelf_tombstone`），
  * 导入是合并、不复活它们。以前这个数混在 imported 里，界面读起来像"新增"，用户会以为删除没生效。
  */
-data class LibraryImportResult(val imported: Int, val updated: Int, val progress: Int, val skippedDeleted: Int = 0)
+data class LibraryImportResult(
+    val imported: Int, val updated: Int, val progress: Int, val skippedDeleted: Int = 0,
+    val diff: BackupLibraryDiff? = null,
+)
 
 
 /** 本地图书导入批量响应 */
@@ -100,3 +146,22 @@ data class SnapshotInfo(
 
 /** 排定恢复的回包：只说"已排定、需重启"，不代表已改库。 */
 @Serializable data class SnapshotRestoreScheduled(val scheduled: Boolean, val restartRequired: Boolean, val name: String)
+
+/** Request-only credentials. Never persisted or returned by the server. */
+@Serializable data class BackupWebDavRequest(val url: String, val username: String = "", val password: String = "", val name: String? = null)
+@Serializable data class BackupWebDavEntry(val name: String, val bytes: Long? = null, val modified: String? = null)
+@Serializable data class BackupWebDavUpload(val name: String, val bytes: Long, val sha256: String, val verified: Boolean)
+
+@Serializable data class SourceVersionListRequest(val archive: String, val offset: Int = 0, val query: String = "")
+@Serializable data class SourceVersionVariant(val index: Int, val name: String, val originalId: String, val winner: Boolean)
+@Serializable data class SourceVersionGroup(val sourceId: String, val variants: List<SourceVersionVariant>)
+@Serializable data class SourceVersionList(val total: Int, val offset: Int, val groups: List<SourceVersionGroup>)
+@Serializable data class SourceVersionLink(val sourceId: String, val bookUrl: String)
+@Serializable data class SourceVersionRequest(val archive: String, val index: Int, val relink: List<SourceVersionLink> = emptyList(), val previewToken: String? = null)
+@Serializable data class SourceVersionAlias(val sourceId: String, val bookUrl: String, val name: String, val conflict: Boolean)
+@Serializable data class SourceVersionPreview(
+    val sourceId: String, val name: String, val sourceVersion: Long?, val affectedBooks: Int,
+    val affectedBookNames: List<String>, val cacheEntries: Int, val aliases: List<SourceVersionAlias>,
+    val previewToken: String, val warnings: List<String>,
+)
+@Serializable data class SourceVersionResult(val sourceId: String, val relinked: Int, val snapshot: String)

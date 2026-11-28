@@ -9,6 +9,7 @@ import io.legado.data.importSources
 import io.legado.data.listRssSources
 import io.legado.data.listSources
 import io.legado.data.listSubscriptions
+import io.legado.data.listBookshelf
 import io.legado.data.saveReplaceRule
 import io.legado.data.saveSource
 import io.legado.data.saveSubscription
@@ -24,6 +25,20 @@ import java.net.InetAddress
 import java.nio.file.Files
 
 class ImportConflictPolicyTest {
+    @Test
+    fun `backup library explicit policies protect local metadata and accept only strictly newer progress`() {
+        withDatabase { db ->
+            val entry = io.legado.model.BackupShelfEntry("https://policy.example/", "book", "本机", null, "toc", null, false, 5, readAt = 200)
+            db.transaction { connection ->
+                io.legado.data.applyLibraryRestore(connection, io.legado.data.planLibraryRestore(connection, listOf(entry), io.legado.model.BackupLibraryPolicy(), "file"))
+                val plan = io.legado.data.planLibraryRestore(connection, listOf(entry.copy(name = "备份", chapterIndex = 2)), io.legado.model.BackupLibraryPolicy(), "file")
+                assertEquals(1, plan.diff.booksKept)
+                assertEquals(0, plan.diff.progressApplied)
+                io.legado.data.applyLibraryRestore(connection, plan)
+            }
+            assertEquals("本机", db.listBookshelf().single().name)
+        }
+    }
     @Test
     fun `source backup preserves local enabled while direct save applies requested enabled`() {
         withDatabase { db ->

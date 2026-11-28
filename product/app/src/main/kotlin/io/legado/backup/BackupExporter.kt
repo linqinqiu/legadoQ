@@ -6,9 +6,11 @@ import io.legado.data.forEachRssPayload
 import io.legado.data.forEachShelfEntry
 import io.legado.data.forEachSourcePayload
 import io.legado.data.listBookGroups
+import io.legado.data.listSubscriptions
 import io.legado.model.BackupShelfEntry
 import io.legado.model.BookGroup
 import io.legado.model.ReplaceRule
+import io.legado.model.SourceSubscription
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -51,6 +53,9 @@ internal object BackupExporter {
     /** 书架那份（含阅读进度）。 */
     const val SHELF_ENTRY = "bookshelf.json"
 
+    /** 书源订阅那份；上游 `Backup.kt:301` 写出的名字就是 `sourceSub.json`。 */
+    const val SUBSCRIPTIONS_ENTRY = "sourceSub.json"
+
     /** 攒到这么大就落一次盘；太小会让小库也写很多次，太大会让峰值内存变难看。 */
     private const val FLUSH_CHARS = 64 * 1024
 
@@ -65,6 +70,25 @@ internal object BackupExporter {
      */
     fun exportRssSources(database: Database, out: OutputStream) =
         writeJsonArray(out, RSS_ENTRY) { emit -> database.forEachRssPayload(emit) }
+
+    /**
+     * 导出书源订阅（上游 `RuleSub` 形状）。本机表只存 url/enabled，所以 `name` 落 url ——
+     * 不编造上游那份 `js/showRule` 等字段，读到空值就用上游默认值。
+     * `type=0` 必须写死：产物是书源，导回手机或本机才不会被当成 RSS/替换规则订阅。
+     */
+    fun exportSubscriptions(database: Database, out: OutputStream) =
+        writeJsonArray(out, SUBSCRIPTIONS_ENTRY) { emit ->
+            database.listSubscriptions().forEach { emit(subscriptionJson(it)) }
+        }
+
+    private fun subscriptionJson(sub: SourceSubscription): String = buildJsonObject {
+        put("id", sub.id)
+        put("name", sub.url)
+        put("url", sub.url)
+        put("type", 0)
+        put("autoUpdate", sub.enabled)
+        put("update", sub.updatedAt)
+    }.toString()
 
     /**
      * 导出书架 + 阅读进度（第五域，也是最麻烦的一域）。
@@ -200,18 +224,25 @@ internal object BackupExporter {
         buildJsonObject { put("groupId", group.id); put("groupName", group.name) }.toString()
 
     /**
-     * 导出**完整备份**：一个包里放全部五域（默认入口）。
+     * 导出**原生域备份**：一个包里放全部六域（默认入口），不含个性化留档与图片。
      *
      * 为什么默认是「全部」而不是某一域：界面上的按钮叫「导出备份」，用户按的就是这个意思；
-     * 只导一域是排查/迁移用的，得显式写 `domain=`。五域各自带自己的形状约定，这里只是把它们串进同一个 zip ——
+     * 只导一域是排查/迁移用的，得显式写 `domain=`。六域各自带自己的形状约定，这里只是把它们串进同一个 zip ——
      * 顺序固定成「书源 → 替换规则 → 分组 → RSS → 书架」，纯粹为了人排查时顺眼，导入侧按条目名认，与顺序无关。
      */
     fun exportAll(database: Database, out: OutputStream) =
         zipWith(out) { zip ->
+            writeAll(database, zip)
+        }
+
+    internal fun writeAll(database: Database, zip: ZipOutputStream) {
             writeArrayEntry(zip, SOURCES_ENTRY) { emit -> database.forEachSourcePayload(emit) }
             writeArrayEntry(zip, RULES_ENTRY) { emit -> database.exportReplaceRules(null).forEach { emit(ruleJson(it)) } }
             writeArrayEntry(zip, GROUPS_ENTRY) { emit -> database.listBookGroups().forEach { emit(groupJson(it)) } }
             writeArrayEntry(zip, RSS_ENTRY) { emit -> database.forEachRssPayload(emit) }
+            writeArrayEntry(zip, SUBSCRIPTIONS_ENTRY) { emit ->
+                database.listSubscriptions().forEach { emit(subscriptionJson(it)) }
+            }
             writeArrayEntry(zip, SHELF_ENTRY) { emit -> database.forEachShelfEntry { emit(shelfJson(it)) } }
-        }
+    }
 }

@@ -5320,13 +5320,20 @@ input[type="checkbox"] {
 }
 
 /* ============================================================
-   备份恢复页（WebDAV 文件服务删除后，这一页只剩"选包即恢复"）
+   备份恢复页（选包预览、按模块确认导入）
    ============================================================ */
-.backup-page { max-width: 920px; min-height: calc(100vh - 68px); margin: 0 auto; padding: 36px 32px; }
-.backup-panel { margin-top: var(--s-5); padding: var(--s-5); border: 1px solid var(--line); border-radius: var(--r-2); background: var(--surface); }
+.backup-page { max-width: 920px; min-height: calc(100vh - 68px); margin: 0 auto; padding: 36px 32px; grid-template-columns: minmax(0, 1fr); }
+.backup-panel { min-width: 0; margin-top: var(--s-5); padding: var(--s-5); border: 1px solid var(--line); border-radius: var(--r-2); background: var(--surface); }
 .backup-panel h2 { font-family: Georgia, "Noto Serif SC", serif; font-size: var(--t-xl); font-weight: 600; }
 .backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-.backup-password, .backup-url { flex: 1; min-width: 220px; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-muted); color: var(--ink); outline: none; }
+.backup-preview { display: grid; gap: var(--s-3); margin-top: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--line); }
+.backup-preview h3 { margin: 0; font-size: var(--t-md); font-weight: 600; }
+.backup-preview label { display: flex; align-items: center; gap: var(--s-2); }
+.backup-preview .backup-hint { margin-top: var(--s-1); }
+.backup-preview fieldset { display: grid; gap: var(--s-2); min-width: 0; padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-1); }
+.backup-preview fieldset label { flex-wrap: wrap; }
+.backup-preview select { max-width: 100%; padding: var(--s-1); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-1); }
+.backup-password, .backup-url { flex: 1; min-width: min(220px, 100%); min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-muted); color: var(--ink); outline: none; }
 .backup-password::placeholder, .backup-url::placeholder { color: var(--muted); }
 .backup-actions .primary-button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 16px; }
 .backup-actions .primary-button svg { width: 15px; height: 15px; }
@@ -5340,7 +5347,7 @@ input[type="checkbox"] {
 .backup-kept-meta { color: var(--muted); font-size: var(--t-sm); }
 .backup-kept-list .subtle-button { margin-left: auto; min-height: 28px; padding: 0 11px; font-size: var(--t-sm); text-decoration: none; }
 .backup-kept-download { color: var(--muted); }
-.backup-hint { margin-top: var(--s-3); color: var(--muted); font-size: var(--t-sm); line-height: 1.7; }
+.backup-hint { margin-top: var(--s-3); color: var(--muted); font-size: var(--t-sm); line-height: 1.7; overflow-wrap: anywhere; }
 .backup-kept-subhead { margin-top: var(--s-4); color: var(--ink); font-size: var(--t-md); font-weight: 600; }
 .backup-scope { display: grid; gap: var(--s-2); margin-top: var(--s-4); }
 .backup-scope > div { display: grid; grid-template-columns: 108px 1fr; gap: var(--s-3); align-items: baseline; padding-bottom: var(--s-2); border-bottom: 1px solid var(--line); }
@@ -6773,3 +6780,8 @@ html.theme-dynamic body {
 .chapter-reviews-audio { display: block; margin-top: 6px; width: 100%; }
 .chapter-reviews-foot { display: flex; gap: var(--s-3, 12px); margin-top: 4px; font-size: var(--t-xs, 12px); color: var(--muted); }
 .chapter-reviews-more { display: flex; justify-content: center; padding: 4px 0; }
+.backup-webdav { min-width: 0; }
+.backup-webdav fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.backup-webdav label { display: grid; gap: .35rem; margin-bottom: .75rem; }
+.backup-webdav input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-muted); color: var(--ink); }
+.backup-webdav-name { overflow-wrap: anywhere; min-width: 0; }

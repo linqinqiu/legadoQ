@@ -3,6 +3,10 @@ package io.legado.backup
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import io.legado.model.KeptBackupEntry
 
 /**
@@ -18,6 +22,64 @@ import io.legado.model.KeptBackupEntry
  * 自己的 `readerSettings` 上，套用的动作是显式的、可撤销的，而不是导入时偷偷改用户的设置。
  */
 class BackupStore(private val directory: Path) {
+    /** Version activation accepts only intact, content-addressed evidence; never normalize a path. */
+    internal fun sourceArchive(name: String): JsonObject {
+        require(SOURCE_ARCHIVE.matches(name)) { "书源留档名称无效" }
+        require(Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "书源留档目录不可用" }
+        val path = directory.resolve(name)
+        require(Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "书源留档不存在" }
+        val bytes = Files.newInputStream(path, java.nio.file.LinkOption.NOFOLLOW_LINKS).use {
+            it.readNBytes((BackupImporter.MAX_ENTRY_BYTES + 1).toInt())
+        }
+        require(bytes.size <= BackupImporter.MAX_ENTRY_BYTES) { "书源留档超过大小限制" }
+        val text = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+        return BackupSourceArchive.validate(name, text)
+    }
+    /** Only recognized regular files; never follow links or silently omit corrupt evidence. */
+    internal fun migrationFiles(): List<Pair<String, ByteArray>> {
+        if (!Files.exists(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return emptyList()
+        require(Files.isDirectory(directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "留档目录不可读" }
+        var total = 0L
+        return Files.list(directory).use { stream ->
+            val paths = stream.filter { BackupMigration.allowed(it.fileName.toString()) }
+                .limit((BackupMigration.MAX_FILES + 1).toLong()).toList().sorted()
+            require(paths.size <= BackupMigration.MAX_FILES) { "留档文件过多，请分批保管原始备份" }
+            require(paths.map { it.fileName.toString().lowercase() }.distinct().size == paths.size) { "留档名称大小写冲突" }
+            paths.map { path ->
+            val name = path.fileName.toString()
+            require(Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "留档必须为普通文件" }
+            val bytes = Files.newInputStream(path, java.nio.file.LinkOption.NOFOLLOW_LINKS).use {
+                it.readNBytes((BackupImporter.MAX_ENTRY_BYTES + 1).toInt())
+            }
+            total += bytes.size
+            require(bytes.size <= BackupImporter.MAX_ENTRY_BYTES && total <= BackupImporter.MAX_TOTAL_BYTES) { "留档大小超过迁移上限" }
+            val text = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+            if (BackupMigration.archivePattern.matches(name)) BackupSourceArchive.validate(name, text)
+            name to bytes
+        } }
+    }
+
+    /** Content addressed recovery evidence. Existing evidence must match; never overwrite corruption. */
+    internal fun keepSourceArchive(text: String): KeptBackupEntry {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val name = "source-variants-$digest.json"
+        Files.createDirectories(directory)
+        val target = directory.resolve(name)
+        if (Files.exists(target)) {
+            check(Files.readAllBytes(target).contentEquals(bytes)) { "书源冲突版本留档校验失败" }
+        } else {
+            val temp = Files.createTempFile(directory, ".variants-", ".tmp")
+            try {
+                Files.write(temp, bytes)
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE)
+            } finally {
+                Files.deleteIfExists(temp)
+            }
+        }
+        return KeptBackupEntry(name, labelOf(name), bytes.size.toLong(), itemsOf(name, text), false,
+            Files.getLastModifiedTime(target).toMillis())
+    }
 
     /** 只接受我们认识的那批条目名，避免把包里任意文件都往数据目录里灌。 */
     fun keep(name: String, text: String): Boolean {
@@ -47,8 +109,8 @@ class BackupStore(private val directory: Path) {
                     KeptBackupEntry(
                         name = file.fileName.toString(),
                         bytes = Files.size(file),
-                        items = countItems(text),
-                        label = KEEP_LABELS[file.fileName.toString().lowercase()] ?: file.fileName.toString(),
+                        items = itemsOf(file.fileName.toString(), text),
+                        label = labelOf(file.fileName.toString()),
                         appliable = APPLYABLE_NAMES.any { it.equals(file.fileName.toString(), ignoreCase = true) },
                         updatedAt = runCatching { Files.getLastModifiedTime(file).toMillis() }.getOrElse { 0L },
                     )
@@ -58,10 +120,15 @@ class BackupStore(private val directory: Path) {
     }
 
     /** 上游这些条目都是 JSON 数组；数一下顶层元素，界面上就能说"收下多少条"而不是只报文件名。 */
-    private fun countItems(text: String): Int = runCatching { LegacyBackup.elementsOf(text).size }.getOrDefault(0)
-
     companion object {
         private val KEEP_UNSAFE = Regex("[^A-Za-z0-9._-]")
+        private val SOURCE_ARCHIVE = Regex("source-variants-[a-f0-9]{64}\\.json")
+
+        private fun itemsOf(name: String, text: String): Int = runCatching {
+            if (SOURCE_ARCHIVE.matches(name))
+                ((Json.parseToJsonElement(text) as JsonObject)["bookSource"] as JsonArray).size
+            else LegacyBackup.elementsOf(text).size
+        }.getOrDefault(0)
 
         /**
          * 备份包里我们目前没有原生归宿、但值得原样收下的条目。
@@ -115,8 +182,8 @@ class BackupStore(private val directory: Path) {
             "manifest.json" to "备份清单",
         )
 
-        fun labelOf(name: String): String =
-            KEEP_LABELS[name.substringAfterLast('/').lowercase()] ?: name.substringAfterLast('/')
+        fun labelOf(name: String): String = if (SOURCE_ARCHIVE.matches(name)) "书源冲突版本与原始书架引用"
+            else KEEP_LABELS[name.substringAfterLast('/').lowercase()] ?: name.substringAfterLast('/')
 
         fun isAppliable(name: String): Boolean =
             APPLYABLE_NAMES.any { it.equals(name.substringAfterLast('/'), ignoreCase = true) }

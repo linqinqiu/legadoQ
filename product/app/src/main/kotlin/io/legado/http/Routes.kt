@@ -43,6 +43,8 @@ fun Route.apiRoutes(container: AppContainer) {
         searchRoutes(container.database, container.runner)
         subscriptionsRoutes(container.database, container.subscriptions)
         backupRoutes(container.database, container.backupKeep)
+        backupWebDavRoutes(container.database, container.backupKeep)
+        backupSourceVersionRoutes(container.database, container.backupKeep, container.bookCache)
         rssRoutes(container.database, container.runner)
         readingRoutes(container.database, container.runner)
         replaceRulesRoutes(container.database, container.runner)

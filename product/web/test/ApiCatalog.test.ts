@@ -190,7 +190,9 @@ test('目录里每一条都真存在，代码里的端点一条不漏', () => {
   // 2026-11-17：AI 那一整套挪到 product/experimental/ai/，/api/agent 那组不再注册 → 166 → 144。
   // 2026-11-21：补全书源字典规则（上游 dictRule）`POST /api/sources/{id}/dict`（只读查询，归入书源组，不新增分组）→ 144 → 145。
   // 2026-11-24：匿名建议中转新增 POST /api/feedback 与 GET /api/feedback/mine（新「反馈」组）→ 145 → 147。
-  assert.equal(catalog.endpoints.length, 147, `端点总数必须为 147，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
+  // 2026-11-28：手动 WebDAV 迁移新增 list/upload/pull 三条 POST（备份组，均过写门）→ 147 → 150。
+  // 2026-11-28：书源历史版本 list/preview/activate（备份组，均过同源门）→ 150 → 153。
+  assert.equal(catalog.endpoints.length, 153, `端点总数必须为 153，现在是 ${catalog.endpoints.length}（重排时同步改此断言并说明）`)
   // 2026-11-17：AI 那组随代码挪走后 19 → 18；2026-11-24 反馈组加入 → 19。
   assert.equal(new Set(catalog.endpoints.map((e: { group: string }) => e.group)).size, 19, '分组数应为 19')
   const systemGroup = catalog.endpoints.filter((e: { group: string }) => e.group === '系统')

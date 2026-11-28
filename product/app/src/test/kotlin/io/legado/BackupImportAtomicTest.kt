@@ -5,6 +5,7 @@ import io.legado.backup.BackupImporter
 import io.legado.backup.BackupStore
 import io.legado.data.Database
 import io.legado.data.getCookieForUrl
+import io.legado.data.getProgress
 import io.legado.data.listBookGroups
 import io.legado.data.listBookshelf
 import io.legado.data.listReplaceRules
@@ -29,6 +30,28 @@ import org.junit.Test
 class BackupImportAtomicTest {
 
     private val steps = listOf("sources", "rules", "groups", "library", "rss", "subscriptions", "cookies")
+
+    @Test
+    fun `显式策略导入在后续阶段失败同样全部回滚`() {
+        val directory = Files.createTempDirectory("legado-backup-policy-atomic")
+        val database = Database(directory.resolve("legado.sqlite").toString())
+        val store = BackupStore(directory.resolve("kept"))
+        try {
+            database.initialize()
+            val before = database.listBookGroups()
+            val archive = directory.resolve("backup.zip")
+            writeArchive(archive, sections())
+            val importer = BackupImporter(database, store)
+            val preview = importer.preview(archive, PASSWORD)
+            importer.stepHook = { if (it == "cookies") error("策略恢复后故障") }
+            assertTrue(runCatching { importer.import(archive, PASSWORD, libraryPolicy = preview.libraryPolicy, previewToken = preview.previewToken) }.isFailure)
+            assertTrue(database.listSources(null).isEmpty()); assertTrue(database.listBookshelf().isEmpty())
+            assertTrue(database.listReplaceRules().isEmpty()); assertTrue(database.listRssSources(null).isEmpty())
+            assertTrue(database.listSubscriptions().isEmpty()); assertEquals(before, database.listBookGroups())
+            assertNull(database.getProgress("https://atomic.example", "https://atomic.example/book/1"))
+            assertNull(database.getCookieForUrl("https://cookie.example/")); assertTrue(store.list().isEmpty())
+        } finally { database.close(); directory.toFile().deleteRecursively() }
+    }
 
     @Test
     fun `六步里任何一步失败 六个域都不落库`() {

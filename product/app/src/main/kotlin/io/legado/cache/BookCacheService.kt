@@ -2,6 +2,7 @@ package io.legado.cache
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -39,6 +40,14 @@ import io.legado.rules.RuleRunner
 class BookCacheService(private val database: Database, private val runner: RuleRunner, private val coverCache: CoverCache, private val log: (String) -> Unit) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    private val sourceVersionLock = Any()
+
+    /** Block new background cache jobs while a source version and its book keys are replaced. */
+    internal fun <T> withSourcesIdle(sourceIds: Set<String>, action: () -> T): T = synchronized(sourceVersionLock) {
+        if (jobs.any { (key, job) -> key.substringBefore('\u0000') in sourceIds && !job.isCompleted })
+            throw io.legado.data.SourceVersionBusy()
+        action()
+    }
 
     fun start() { database.cacheRequests().forEach(::enqueue) }
     fun stop() {
@@ -47,16 +56,18 @@ class BookCacheService(private val database: Database, private val runner: RuleR
         runCatching { runBlocking { scope.coroutineContext[Job]?.join() } }
     }
 
-    fun enqueue(book: CachedBookRequest) {
+    fun enqueue(book: CachedBookRequest) = synchronized(sourceVersionLock) {
         val key = "${book.sourceId}\u0000${book.bookUrl}"
-        if (jobs[key]?.isActive == true) return
-        jobs[key] = scope.launch {
-            try { cache(book) } finally { jobs.remove(key) }
+        if (jobs[key]?.isCompleted == false) return@synchronized
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try { cache(book) } finally { jobs.remove(key, coroutineContext[Job]!!) }
         }
+        jobs[key] = job
+        job.start()
     }
 
     fun cancel(sourceId: String, bookUrl: String) {
-        val job = jobs.remove("$sourceId\u0000$bookUrl")
+        val job = jobs["$sourceId\u0000$bookUrl"]
         job?.cancel()
         database.finishBookCache(sourceId, bookUrl, "已取消缓存")
     }

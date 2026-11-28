@@ -6,6 +6,7 @@ import io.legado.model.BackupShelfEntry
 import io.legado.model.BookshelfWriteRequest
 import io.legado.model.ReadingProgress
 import io.legado.model.ReplaceRule
+import io.legado.model.SubscriptionWriteRequest
 import io.legado.data.Database
 import io.legado.data.assignBookGroup
 import io.legado.data.createBookGroup
@@ -19,6 +20,8 @@ import io.legado.data.saveProgress
 import io.legado.data.setBookshelfCompleted
 import io.legado.data.exportReplaceRules
 import io.legado.data.listBookGroups
+import io.legado.data.listSubscriptions
+import io.legado.data.saveSubscription
 import io.legado.data.exportSources
 import io.legado.data.importSources
 import io.legado.data.saveReplaceRule
@@ -340,10 +343,12 @@ class BackupExportRoundTripTest {
             )
             source.saveProgress(ReadingProgress(sourceId, bookUrl, "c3", 3, 0.0, 42))
             source.assignBookGroup(sourceId, bookUrl, group.id)
+            // 停用的订阅也要跟着走：autoUpdate=false 是订阅自己的状态，不是"不必导出"。
+            source.saveSubscription(SubscriptionWriteRequest(url = "https://all.example/subs", enabled = false))
 
             val bytes = ByteArrayOutputStream().also { BackupExporter.exportAll(source, it) }.toByteArray()
 
-            // 一个包里五个条目，名字与导入侧认的那五个一致
+            // 一个包里六个条目，名字与导入侧认的那六个一致
             val names = mutableSetOf<String>()
             ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
                 while (true) {
@@ -352,7 +357,11 @@ class BackupExportRoundTripTest {
                     assertTrue("${entry.name} 必须是 JSON 数组", zip.readBytes().toString(Charsets.UTF_8).trim().startsWith("["))
                 }
             }
-            assertEquals("五域都要在包里", setOf("bookSource.json", "replaceRule.json", "bookGroup.json", "rssSources.json", "bookshelf.json"), names)
+            assertEquals(
+                "六域都要在包里",
+                setOf("bookSource.json", "replaceRule.json", "bookGroup.json", "rssSources.json", "sourceSub.json", "bookshelf.json"),
+                names,
+            )
 
             val archive = directory.resolve("all.zip")
             Files.write(archive, bytes)
@@ -361,10 +370,14 @@ class BackupExportRoundTripTest {
             assertEquals("替换规则", 1, summary.rules)
             assertEquals("分组", 1, summary.bookGroups)
             assertEquals("RSS", 1, summary.rssSources)
+            assertEquals("书源订阅", 1, summary.subscriptions)
             assertEquals("书", 1, summary.books)
             assertEquals("进度", 1, summary.progress)
             assertTrue("不该有报错：${summary.errors}", summary.errors.isEmpty())
             assertEquals(shelfEntries(source).single().name, shelfEntries(target).single().name)
+            val restoredSub = target.listSubscriptions().single()
+            assertEquals("订阅地址要往返", "https://all.example/subs", restoredSub.url)
+            assertEquals("停用状态也要往返（autoUpdate ↔ enabled）", false, restoredSub.enabled)
         } finally {
             source.close()
             target.close()

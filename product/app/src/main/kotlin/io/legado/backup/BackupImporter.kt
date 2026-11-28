@@ -25,8 +25,15 @@ import io.legado.data.importRssSourcesOn
 import io.legado.data.importSourcesOn
 import io.legado.data.importSubscriptionsOn
 import io.legado.data.setCookieForUrl
+import io.legado.data.previewLibraryRestore
+import io.legado.data.planLibraryRestore
+import io.legado.data.applyLibraryRestore
+import io.legado.data.libraryRestoreContext
+import io.legado.model.BackupLibraryPolicy
 import io.legado.decodeTextAuto
 import io.legado.model.BackupImportSummary
+import io.legado.model.BackupImportPreview
+import io.legado.model.BackupSectionPreview
 import io.legado.model.BackupShelfEntry
 import io.legado.model.BackupSubscriptionEntry
 import io.legado.model.ImportResponse
@@ -81,6 +88,8 @@ internal object BackupAes {
             .joinToString("") { "%02x".format(it) }
 }
 
+class BackupPreviewChangedException : IllegalStateException("备份文件、策略或相关书架与进度已变化，请重新预览后确认")
+
 class BackupImporter(private val database: Database, private val keep: BackupStore? = null) {
 
     /**
@@ -96,24 +105,123 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
      * 容器按内容判别（zip 头 `PK`），不看扩展名 —— 微信、网盘转存常把 `backup.zip`
      * 改成 `.json` 或干脆没有扩展名；反过来，`.json` 里装 zip 也照样能认。
      */
-    fun import(file: Path, password: String? = null): BackupImportSummary {
-        val magic = Files.newInputStream(file).use { it.readNBytes(2) }
-        val isZip = magic.size == 2 && magic[0] == 'P'.code.toByte() && magic[1] == 'K'.code.toByte()
-        return if (isZip) importZip(file, password) else importJson(file)
+    fun import(file: Path, password: String? = null, sections: Set<String>? = null,
+        libraryPolicy: BackupLibraryPolicy? = null, previewToken: String? = null): BackupImportSummary {
+        require(sections == null || (sections.isNotEmpty() && SECTION_IDS.containsAll(sections))) {
+            "请选择有效的备份模块"
+        }
+        libraryPolicy?.validate()
+        require((libraryPolicy == null && previewToken == null) || (libraryPolicy != null && !previewToken.isNullOrBlank())) {
+            "冲突策略与预览凭证必须一起提交，请重新预览"
+        }
+        val fileHash = hashFile(file)
+        if (libraryPolicy != null && previewToken?.substringBefore(':') != libraryRestoreContext(libraryPolicy, fileHash)) {
+            throw BackupPreviewChangedException()
+        }
+        val data = prepare(file, password)
+        fun selected(id: String) = sections == null || id in sections
+        fun selectedKeep(name: String) = selected(if (name.lowercase() in SUB_NAMES.map(String::lowercase)) "subscriptions" else "kept")
+        // 用户没勾选的留档项不是“不支持”；只把真正没承接的条目留给结果汇总。
+        val unselectedKeeps = data.pendingKeeps.filterNot { selectedKeep(it.first) }.map { it.first.lowercase() }.toSet()
+        return commit(
+            data.sources.takeIf { selected("sources") }.orEmpty(),
+            data.rules.takeIf { selected("rules") }.orEmpty(),
+            data.shelf.takeIf { selected("shelf") }.orEmpty(),
+            data.groups.takeIf { selected("groups") }.orEmpty(),
+            data.rss.takeIf { selected("rss") }.orEmpty(),
+            data.subscriptions.takeIf { selected("subscriptions") }.orEmpty(),
+            data.present - unselectedKeeps,
+            data.pendingKeeps.filter { selectedKeep(it.first) },
+            libraryPolicy,
+            previewToken,
+            fileHash,
+            data.sourceArchive.takeIf { selected("sources") },
+        ) {
+            if (!selected("cookies")) CookieOutcome(0, null)
+            else data.cookieNote?.let { CookieOutcome(0, it) }
+                ?: if (data.cookieRows.isEmpty()) CookieOutcome(0, null) else applyCookies(data.cookieRows)
+        }
     }
 
-    private fun importZip(file: Path, password: String?): BackupImportSummary = ZipFile(file.toFile()).use { zip ->
+    fun preview(file: Path, password: String? = null, libraryPolicy: BackupLibraryPolicy = BackupLibraryPolicy()): BackupImportPreview {
+        libraryPolicy.validate()
+        val data = prepare(file, password)
+        val plan = database.previewLibraryRestore(data.shelf, libraryPolicy, hashFile(file))
+        val sections = buildList {
+            fun section(id: String, label: String, count: Int, policy: String) {
+                if (count > 0) add(BackupSectionPreview(id, label, count, policy))
+            }
+            section("sources", "书源", data.sources.size, "按 ID 合并，已有书源保留本机启用状态")
+            section("rules", "替换净化规则", data.rules.size, "按规则标识覆盖")
+            section("groups", "分组", data.groups.size, "按名称合并并重编号；不勾选时新导入的书不分组")
+            section("shelf", "书架与阅读进度", data.shelf.size, "书架与进度分别按所选策略处理；保留删除决定与已有书本机分组；同一本书重复记录取最后一条")
+            section("rss", "RSS 订阅源", data.rss.size, "按地址覆盖内容和启用状态")
+            section("subscriptions", "书源订阅", maxOf(data.subscriptions.size,
+                data.pendingKeeps.count { it.first.lowercase() in SUB_NAMES.map(String::lowercase) }),
+                "仅 type=0 按地址覆盖启用状态；原包扩展字段留档，其他订阅类型只留档")
+            section("cookies", "登录凭据", data.cookieRows.size, "按域名合并凭据；需要单独勾选")
+            section("kept", "个性化条目与恢复留档", data.pendingKeeps.count { it.first.lowercase() !in SUB_NAMES.map(String::lowercase) },
+                "原样保存文件，个性化条目覆盖同名留档；冲突版本按内容保留，不自动激活；不会自动套用阅读样式或分章规则")
+        }
+        return BackupImportPreview(sections, buildList {
+            add("模块括号内的数量表示包内可解析条目，不是预计新增数；书架与进度另列处理预测，无效书源或 RSS 条目在实际导入时单独报告")
+            // 真实手机包可同时包含同站点不同 # 注解的规则版本；当前主键会去掉注解。
+            // 不在这里改变标识/覆盖协议，但确认前必须明确暴露合并数量，不能把包内数量当恢复数。
+            val archive = data.sourceArchive
+            if (archive.mergedVersions > 0) {
+                add("${archive.validSources} 条有效书源按本机标识归一化后为 ${archive.uniqueSources} 个，将合并 ${archive.mergedVersions} 条；" +
+                    "同标识仅保留包内最后一条。选择书源时强制保存可下载的冲突版本留档（含原始书源字段与全部书架 origin），留档失败则数据库导入回滚；" +
+                    "书架仍绑定归一化后的胜出版本，原始关联可能有歧义，不自动迁移。请保留原始备份，本次恢复不是全部书源版本的无损迁移。")
+            }
+            data.cookieNote?.let { add(it) }
+        }, libraryPolicy, plan.diff, plan.token)
+    }
+
+    private fun hashFile(file: Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(file).use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private data class PreparedBackup(
+        val sources: List<String>, val rules: List<ReplaceRule>, val shelf: List<BackupShelfEntry>,
+        val groups: List<Pair<Long, String>>, val rss: List<String>,
+        val subscriptions: List<BackupSubscriptionEntry>, val present: Set<String>,
+        val pendingKeeps: List<Pair<String, String>>, val cookieRows: List<CookieRow>,
+        val cookieNote: String? = null,
+        val sourceArchive: BackupSourceArchive = BackupSourceArchive(emptyList(), emptyList()),
+    )
+
+    private fun prepare(file: Path, password: String?): PreparedBackup {
+        val magic = Files.newInputStream(file).use { it.readNBytes(2) }
+        val isZip = magic.size == 2 && magic[0] == 'P'.code.toByte() && magic[1] == 'K'.code.toByte()
+        return if (isZip) prepareZip(file, password) else prepareJson(file)
+    }
+
+    private fun prepareZip(file: Path, password: String?): PreparedBackup = ZipFile(file.toFile()).use { zip ->
         val entries = zip.entries().asSequence().filter { !it.isDirectory }.toList()
         require(entries.sumOf { it.size.coerceAtLeast(0L) } <= MAX_TOTAL_BYTES) {
             "备份包展开后超过 ${MAX_TOTAL_BYTES / 1024 / 1024} MiB，已拒绝"
         }
+        val migrationKeeps = BackupMigration.read(zip, entries)
+        // Migration roots are authoritative; kept/sourceSub.json is historical evidence only.
+        val nativeEntries = if (migrationKeeps == null) entries else entries.filter { '/' !in it.name }
         val present = entries.map { it.name.substringAfterLast('/').lowercase() }.toSet()
-        val sources = readSection(zip, entries, SOURCE_NAMES)?.let(::parseSources).orEmpty()
-        val rules = readSection(zip, entries, RULE_NAMES)?.let(::parseRules).orEmpty()
-        val shelf = readSection(zip, entries, SHELF_NAMES)?.let(::parseShelf).orEmpty()
-        val groups = readSection(zip, entries, GROUP_NAMES)?.let(::parseBookGroups).orEmpty()
-        val rss = readSection(zip, entries, RSS_NAMES)?.let(::parseRssSources).orEmpty()
-        val subscriptions = readSection(zip, entries, SUB_NAMES)?.let(::parseSubscriptions).orEmpty()
+        val rawSources = readSection(zip, nativeEntries, SOURCE_NAMES)?.let(LegacyBackup::elementsOf).orEmpty()
+        val sources = rawSources.mapNotNull(::sourceOf)
+        val rules = readSection(zip, nativeEntries, RULE_NAMES)?.let(::parseRules).orEmpty()
+        val rawShelf = readSection(zip, nativeEntries, SHELF_NAMES)?.let(LegacyBackup::elementsOf).orEmpty()
+        val shelf = rawShelf.mapNotNull(::shelfOf)
+        val groups = readSection(zip, nativeEntries, GROUP_NAMES)?.let(::parseBookGroups).orEmpty()
+        val rss = readSection(zip, nativeEntries, RSS_NAMES)?.let(::parseRssSources).orEmpty()
+        val subscriptions = readSection(zip, nativeEntries, SUB_NAMES)?.let(::parseSubscriptions).orEmpty()
         // 手机上只勾了个性化条目（书签 / 搜索历史 / TXT 分章规则…）导出的包也是合法备份：
         // 以前这类包会被判"不是可识别的 Legado 备份"整包拒收，用户看到的是"我明明导出来了"。
         val keepable = present.intersect(BackupStore.KEEP_NAMES.map { it.lowercase() }.toSet())
@@ -142,22 +250,23 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         // 个性化条目先只登记、不落盘：等整批事务提交成功再写文件。
         // 以前在解析阶段就 keep.keep()，数据库回滚了文件却已经在数据目录里 —— 半套状态。
         val pendingKeeps = mutableListOf<Pair<String, String>>()
-        if (keep != null) {
+        if (migrationKeeps != null) {
+            pendingKeeps += migrationKeeps
+        } else if (keep != null) {
             val handled = (SOURCE_NAMES + RULE_NAMES + SHELF_NAMES + COOKIE_NAMES + GROUP_NAMES + RSS_NAMES)
                 .map { it.lowercase() }.toSet()
             for (entry in entries) {
                 val name = entry.name.substringAfterLast('/')
                 val lower = name.lowercase()
-                if (lower in handled || lower in KEEP_EXCLUDED) continue
+                if (lower in handled || lower in KEEP_EXCLUDED || !isKeepName(name)) continue
                 val text = runCatching { readEntry(zip, entry) }.getOrNull() ?: continue
                 pendingKeeps += name to text
             }
         }
 
-        commit(sources, rules, shelf, groups, rss, subscriptions, present, pendingKeeps) {
-            // 书源先落库，凭据再进全局桶
-            importCookies(zip, entries, password)
-        }
+        val cookies = prepareCookies(zip, nativeEntries, password)
+        PreparedBackup(sources, rules, shelf, groups, rss, subscriptions, present, pendingKeeps, cookies.first, cookies.second,
+            BackupSourceArchive(rawSources, rawShelf))
     }
 
     /**
@@ -168,7 +277,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
      * 认出的小节名不在本服务原生范围内、但属于 [BackupStore.KEEP_NAMES] 的包装键
      * （`bookmark`、`readRecordSession`…）会连同整个值原样收下。
      */
-    private fun importJson(file: Path): BackupImportSummary {
+    private fun prepareJson(file: Path): PreparedBackup {
         val size = runCatching { Files.size(file) }.getOrDefault(0L)
         require(size <= MAX_JSON_BYTES) { "JSON 备份超过 ${MAX_JSON_BYTES / 1024 / 1024} MiB，已拒绝" }
         val text = decode(Files.readAllBytes(file)).trim().removePrefix("\uFEFF")
@@ -178,6 +287,8 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         }
 
         val sources = mutableListOf<String>()
+        val rawSources = mutableListOf<JsonElement>()
+        val rawShelf = mutableListOf<JsonElement>()
         val rules = mutableListOf<ReplaceRule>()
         val shelf = mutableListOf<BackupShelfEntry>()
         val groups = mutableListOf<Pair<Long, String>>()
@@ -190,9 +301,9 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         for (entry in elements) {
             val obj = entry.value as? JsonObject ?: continue
             when (sectionOf(obj)) {
-                Section.SOURCE -> sourceOf(obj)?.let { sources += it }
+                Section.SOURCE -> { rawSources += obj; sourceOf(obj)?.let { sources += it } }
                 Section.RULE -> ruleOf(obj)?.let { rules += it }
-                Section.SHELF -> shelfOf(obj)?.let { shelf += it }
+                Section.SHELF -> { rawShelf += obj; shelfOf(obj)?.let { shelf += it } }
                 Section.GROUP -> groupOf(obj)?.let { groups += it }
                 Section.RSS -> rss += obj.toString()
                 Section.SUBSCRIPTION -> {
@@ -235,9 +346,8 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
                 "也没有能收下的个性化条目"
         }
 
-        return commit(sources, rules, shelf, groups, rss, subscriptions, present, pendingKeeps) {
-            if (cookieRows.isEmpty()) CookieOutcome(0, null) else applyCookies(cookieRows)
-        }
+        return PreparedBackup(sources, rules, shelf, groups, rss, subscriptions, present, pendingKeeps, cookieRows,
+            sourceArchive = BackupSourceArchive(rawSources, rawShelf))
     }
 
     /**
@@ -246,7 +356,8 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
      *
      * **落库是一整笔事务**：六步里任何一步抛错，六个域一起回到导入前，不会再出现
      * 「书源进去了、书架没进去」。个性化条目（[BackupStore]）是磁盘副作用，只能在
-     * 事务提交成功之后写 —— 库回滚了文件却留着，等于给用户半套恢复结果。
+     * 事务提交成功之后写。冲突书源的不可变恢复证据则必须在提交前落盘，失败时阻止提交；
+     * 如 SQLite 最终提交失败，可能保留该证据文件，但它不代表导入成功。
      */
     private fun commit(
         sources: List<String>,
@@ -257,6 +368,10 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         subscriptions: List<BackupSubscriptionEntry>,
         present: Set<String>,
         pendingKeeps: List<Pair<String, String>>,
+        libraryPolicy: BackupLibraryPolicy?,
+        previewToken: String?,
+        fileHash: String,
+        sourceArchive: BackupSourceArchive?,
         cookies: () -> CookieOutcome,
     ): BackupImportSummary {
         var sourceResult = ImportResponse(0, 0, 0, emptyList())
@@ -266,7 +381,14 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         var rssResult = ImportResponse(0, 0, 0, emptyList())
         var appliedSubscriptions = 0
         var cookieOutcome = CookieOutcome(0, null)
+        val sourceEvidence = mutableListOf<KeptBackupEntry>()
         database.transaction { db ->
+            // 必须早于任何域写入；预测和检查共用相同读法，失败则整包没有副作用。
+            val libraryPlan = libraryPolicy?.takeIf { shelf.isNotEmpty() }?.let { policy ->
+                planLibraryRestore(db, shelf, policy, fileHash).also {
+                    if (it.token != previewToken) throw BackupPreviewChangedException()
+                }
+            }
             stepHook?.invoke("sources")
             sourceResult = database.importSourcesOn(db, sources)
             stepHook?.invoke("rules")
@@ -276,17 +398,33 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             stepHook?.invoke("groups")
             groupMap = database.importBookGroupsOn(db, groups)
             stepHook?.invoke("library")
-            library = database.importLibraryOn(db, shelf.map { it.copy(groupId = groupMap[it.phoneGroupId] ?: 0L) })
+            library = if (libraryPlan == null) database.importLibraryOn(db, shelf.map { it.copy(groupId = groupMap[it.phoneGroupId] ?: 0L) })
+            else applyLibraryRestore(db, libraryPlan.copy(actions = libraryPlan.actions.map { action ->
+                action.copy(entry = action.entry.copy(groupId = groupMap[action.entry.phoneGroupId] ?: 0L))
+            }))
             stepHook?.invoke("rss")
             rssResult = database.importRssSourcesOn(db, rss)
             stepHook?.invoke("subscriptions")
             appliedSubscriptions = database.importSubscriptionsOn(db, subscriptions)
             stepHook?.invoke("cookies")
             cookieOutcome = cookies()
+            // Must succeed before SQLite commits. If COMMIT itself fails, immutable evidence may remain;
+            // it is recovery evidence, never an import-success marker, and must not be deleted on a race.
+            try {
+                sourceArchive?.text(fileHash)?.let { text ->
+                    sourceEvidence += requireNotNull(keep) { "此备份存在书源冲突，必须配置留档目录" }.keepSourceArchive(text)
+                }
+                pendingKeeps.filter { BackupMigration.archivePattern.matches(it.first) }.forEach { (name, text) ->
+                    BackupSourceArchive.validate(name, text)
+                    sourceEvidence += requireNotNull(keep) { "恢复书源版本证据需要留档目录" }.keepSourceArchive(text)
+                }
+            } catch (error: Exception) {
+                throw BackupArchiveException(error)
+            }
         }
         // 缓存只在提交成功后失效：回滚时库里没变，清缓存纯属白做。
         database.invalidateSourceCaches()
-        val kept = pendingKeeps.mapNotNull { (name, text) ->
+        val kept = sourceEvidence + pendingKeeps.filterNot { BackupMigration.archivePattern.matches(it.first) }.mapNotNull { (name, text) ->
             if (keep?.keep(name, text) == true) keptEntry(name, text) else null
         }
         val keptNames = kept.map { it.name.lowercase() }.toSet()
@@ -299,6 +437,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             booksUpdated = library.updated,
             booksSkippedDeleted = library.skippedDeleted,
             progress = library.progress,
+            libraryDiff = library.diff,
             cookies = cookieOutcome.applied,
             cookiesNote = cookieOutcome.note,
             bookGroups = groupMap.size,
@@ -331,17 +470,17 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
      *   所以这里把每行直接写进对应域的桶即可，不再"按域名去找哪些书源用得到"逐个发放。
      *   写入走 [Database.setCookieForUrl] 的按键合并，与上游 `CookieStore.restoreCookie` 同语义。
      */
-    private fun importCookies(zip: ZipFile, entries: List<ZipEntry>, password: String?): CookieOutcome {
-        val raw = readSection(zip, entries, COOKIE_NAMES)?.trim() ?: return CookieOutcome(0, null)
-        if (raw.isEmpty()) return CookieOutcome(0, "包内 cookies.json 是空的")
+    private fun prepareCookies(zip: ZipFile, entries: List<ZipEntry>, password: String?): Pair<List<CookieRow>, String?> {
+        val raw = readSection(zip, entries, COOKIE_NAMES)?.trim() ?: return emptyList<CookieRow>() to null
+        if (raw.isEmpty()) return emptyList<CookieRow>() to "包内 cookies.json 是空的"
         if (password.isNullOrBlank()) {
-            return CookieOutcome(0, "包内有加密的 cookies.json（手机备份里的登录态），填备份密码才能恢复")
+            return emptyList<CookieRow>() to "包内有加密的 cookies.json（手机备份里的登录态），填备份密码才能恢复"
         }
         val plain = runCatching { BackupAes.decryptBase64(raw, password) }
-            .getOrElse { return CookieOutcome(0, "cookies.json 解密失败：备份密码不对") }
+            .getOrElse { return emptyList<CookieRow>() to "cookies.json 解密失败：备份密码不对" }
         val rows = runCatching { parseCookieRows(plain) }
-            .getOrElse { return CookieOutcome(0, "cookies.json 内容不是预期的 [{url,cookie}] 数组") }
-        return applyCookies(rows)
+            .getOrElse { return emptyList<CookieRow>() to "cookies.json 内容不是预期的 [{url,cookie}] 数组" }
+        return rows to null
     }
 
     /** 裸 JSON 里的明文凭据与解密后的 zip 凭据走同一套写入与跳过口径。 */
@@ -450,9 +589,6 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
      */
     private fun decode(bytes: ByteArray): String = decodeTextAuto(bytes)
 
-    private fun parseSources(text: String): List<String> =
-        LegacyBackup.elementsOf(text).mapNotNull(::sourceOf)
-
     /** 老格式先按上游映射迁成现版本结构，否则导进来是取不到值的空壳源。 */
     private fun sourceOf(element: JsonElement): String? =
         if (LegacyBackup.isOldSource(element)) LegacyBackup.toNewSourceJson(element) else element.toString()
@@ -521,9 +657,6 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         return BackupSubscriptionEntry(url = url, enabled = enabled)
     }
 
-    private fun parseShelf(text: String): List<BackupShelfEntry> =
-        LegacyBackup.elementsOf(text).mapNotNull(::shelfOf)
-
     private fun shelfOf(element: JsonElement): BackupShelfEntry? {
         val jsonText = if (LegacyBackup.isOldShelfEntry(element)) LegacyBackup.toNewShelfJson(element) else element.toString()
         val book = jsonText?.let { Json.parseToJsonElement(it).jsonObject } ?: return null
@@ -545,6 +678,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
             // 早期兄弟包与老格式转换里。两个都认，否则真实备份导进来会全部落在「未分组」。
             phoneGroupId = book.number("group") ?: book.number("groupId") ?: 0L,
             readAt = book.number("durChapterTime") ?: 0L,
+            hasProgress = book.number("durChapterIndex") != null,
         )
     }
 
@@ -552,7 +686,8 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
     private fun JsonObject.flag(key: String): Boolean? = (this[key] as? JsonPrimitive)?.booleanOrNull
     private fun JsonObject.number(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull
 
-    private companion object {
+    internal companion object {
+        val SECTION_IDS = setOf("sources", "rules", "shelf", "groups", "rss", "subscriptions", "cookies", "kept")
         const val MAX_ENTRY_BYTES = 64L * 1024 * 1024
         const val MAX_TOTAL_BYTES = 256L * 1024 * 1024
         const val MAX_JSON_BYTES = 64L * 1024 * 1024
@@ -586,7 +721,7 @@ class BackupImporter(private val database: Database, private val keep: BackupSto
         )
 
         /**
-         * 书源订阅地址（上游 `sourceSub.json` ← `RuleSub`）。故意不加进 `importZip` 的 `handled`
+         * 书源订阅地址（上游 `sourceSub.json` ← `RuleSub`）。故意不加进 `prepareZip` 的 `handled`
          * 集合：这一节**既落订阅表、又原样留档**，兄弟项目多写的字段不丢。
          */
         val SUB_NAMES = listOf(

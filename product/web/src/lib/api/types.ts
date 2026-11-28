@@ -106,6 +106,7 @@ export type SearchStreamEvent = {
   resultCount: number
   results: SearchResult[]
   message?: string
+  truncated?: boolean
 }
 
 /* ===== 阅读器 ===== */
@@ -596,7 +597,26 @@ export type LogEntry = {
 }
 
 /* ===== 备份 ===== */
+export type BackupSectionId = 'sources' | 'rules' | 'groups' | 'shelf' | 'rss' | 'subscriptions' | 'cookies' | 'kept'
+export type BackupLibraryPolicy = { metadata: 'keep_local' | 'overwrite'; progress: 'newer' | 'overwrite' | 'keep_local' }
+export type BackupLibraryDiff = {
+  booksAdded: number; booksUpdated: number; booksKept: number; skippedDeleted: number
+  progressApplied: number; progressKept: number; progressUnknownTime: number; duplicates: number
+}
+export type BackupWebDavRequest = { url: string; username?: string; password?: string; name?: string }
+export type BackupWebDavEntry = { name: string; bytes?: number | null; modified?: string | null }
+export type BackupWebDavUpload = { name: string; bytes: number; sha256: string; verified: boolean }
+
+export type BackupImportPreview = {
+  sections: { id: BackupSectionId; label: string; items: number; policy: string }[]
+  warnings: string[]
+  libraryPolicy?: BackupLibraryPolicy | null
+  libraryDiff?: BackupLibraryDiff | null
+  previewToken?: string | null
+}
+
 export type BackupImportSummary = {
+  libraryDiff?: BackupLibraryDiff | null
   sources: number
   sourcesUpdated: number
   rules: number
@@ -646,6 +666,33 @@ export type KeptBackupEntry = {
   appliable: boolean
   updatedAt: number
 }
+
+/** 同一标准化书源 ID 的历史规则版本；winner 仅表示导入时采用的版本。 */
+export type SourceVersionGroup = {
+  sourceId: string
+  variants: { index: number; name: string; originalId: string; winner: boolean }[]
+}
+export type SourceVersionList = { total: number; offset: number; groups: SourceVersionGroup[] }
+export type SourceVersionLink = { sourceId: string; bookUrl: string }
+export type SourceVersionRequest = {
+  archive: string
+  index: number
+  relink: SourceVersionLink[]
+  previewToken?: string
+}
+export type SourceVersionAlias = SourceVersionLink & { name: string; conflict: boolean }
+export type SourceVersionPreview = {
+  sourceId: string
+  name: string
+  sourceVersion?: number | null
+  affectedBooks: number
+  affectedBookNames: string[]
+  cacheEntries: number
+  aliases: SourceVersionAlias[]
+  previewToken: string
+  warnings: string[]
+}
+export type SourceVersionResult = { sourceId: string; relinked: number; snapshot: string }
 
 /* ===== 批量书源操作 ===== */
 export type BatchSourceAction = 'enable' | 'disable' | 'delete' | 'set_group' | 'tag_group' | 'untag_group'
