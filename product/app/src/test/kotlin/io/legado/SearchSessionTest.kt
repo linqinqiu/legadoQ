@@ -7,6 +7,11 @@ import io.legado.model.SearchStreamEvent
 import io.legado.model.SourceRecord
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -43,6 +48,8 @@ class SearchSessionTest {
         assertEquals(1, done.failedSources)
         assertEquals(1, done.emptySources)
         assertEquals(2, done.resultCount)
+        assertEquals(false, done.truncated)
+        assertEquals(null, done.message)
     }
 
     @Test
@@ -68,5 +75,46 @@ class SearchSessionTest {
         val partial = runBlocking { session.events().take(2).toList() }
         assertEquals(2, partial.size)
         assertTrue(partial.all { it.type == "start" || it.type == "results" || it.type == "progress" })
+    }
+
+    @Test
+    fun `总截止保留结果如实计数且未启动排队源`() = runBlocking {
+        val launched = mutableListOf<String>()
+        var exited = false
+        val session = SearchSession(listOf(rec("fast"), rec("slow"), rec("queued")), 1, 500) { source ->
+            launched.add(source.id)
+            if (source.id == "fast") matched(1) else try {
+                awaitCancellation()
+            } finally {
+                exited = true
+            }
+        }
+        val events = withTimeout(3_000) { session.events().toList() }
+        val done = events.last()
+        assertEquals(listOf("fast", "slow"), launched)
+        assertTrue(exited)
+        assertEquals("done", done.type)
+        assertEquals(true, done.truncated)
+        assertEquals(1, done.completedSources)
+        assertEquals(1, done.resultCount)
+        assertEquals(0, done.failedSources)
+        assertEquals(1, events.sumOf { it.results.size })
+        assertTrue(done.message!!.contains("1 / 3"))
+    }
+
+    @Test
+    fun `取消收集不会被吞成超时完成`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val events = mutableListOf<SearchStreamEvent>()
+        var exited = false
+        val session = SearchSession(listOf(rec("slow"), rec("queued")), 1, 10_000) {
+            started.complete(Unit)
+            try { awaitCancellation() } finally { exited = true }
+        }
+        val job = async { session.events().toList(events) }
+        withTimeout(3_000) { started.await(); job.cancelAndJoin() }
+        assertTrue(job.isCancelled)
+        assertTrue(exited)
+        assertTrue(events.none { it.type == "done" })
     }
 }

@@ -14,6 +14,7 @@ import java.time.Duration
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,6 +50,23 @@ class PinnedProxyTest {
                 out.flush()
                 assertEquals("分块必须立刻到达，不能被攒包", chunk, String(readExactly(client, chunk.toByteArray().size)))
             }
+        }
+    }
+
+    @Test
+    fun `CONNECT 请求头与首包同次写入时字节不丢失`() {
+        val origin = echoServer()
+        val proxy = PinnedProxy(allowLoopback = true).also { closables += it }
+        val payload = ByteArray(1_024) { it.toByte() }
+        Socket(InetAddress.getLoopbackAddress(), proxy.port).use { client ->
+            client.soTimeout = 5_000
+            val head = "CONNECT 127.0.0.1:${origin.localPort} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".toByteArray()
+            client.getOutputStream().write(head + payload)
+            client.getOutputStream().flush()
+            // 先将头和首包一起排入 socket，再开始 accept，覆盖读头时预读隧道字节的场景。
+            proxy.start()
+            assertTrue(readHead(client).startsWith("HTTP/1.1 200"))
+            assertArrayEquals("读头时预读的二进制首包必须完整透传", payload, readExactly(client, payload.size))
         }
     }
 

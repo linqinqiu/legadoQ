@@ -65,7 +65,7 @@ internal class PinnedProxy(
         val head = readHead(input) ?: return@use
         val requestLine = head.lineSequence().firstOrNull().orEmpty()
         when {
-            requestLine.startsWith("CONNECT ") -> tunnel(client, head, requestLine)
+            requestLine.startsWith("CONNECT ") -> tunnel(client, input, requestLine)
             requestLine.endsWith(" HTTP/1.1") || requestLine.endsWith(" HTTP/1.0") ->
                 forward(client, input, head, requestLine)
             else -> respondAndClose(client, "400 Bad Request")
@@ -73,7 +73,7 @@ internal class PinnedProxy(
     }
 
     /** `CONNECT host:port`：校验一次 → 连同一个地址 → 回 200 → 双向盲转发。 */
-    private fun tunnel(client: Socket, head: String, requestLine: String) {
+    private fun tunnel(client: Socket, input: InputStream, requestLine: String) {
         val authority = requestLine.removePrefix("CONNECT ").substringBefore(" HTTP/").trim()
         val host = authority.substringBeforeLast(':', authority).trim('[', ']')
         val port = authority.substringAfterLast(':', "").toIntOrNull() ?: 443
@@ -91,7 +91,8 @@ internal class PinnedProxy(
                     client.soTimeout = 0
                     origin.soTimeout = 0
                     val upstream = thread(isDaemon = true) {
-                        runCatching { client.getInputStream().copyTo(origin.getOutputStream()) }
+                        // 读头时可能预读了隧道首包，必须继续消费同一缓冲流。
+                        runCatching { input.copyTo(origin.getOutputStream()) }
                     }
                     runCatching { origin.getInputStream().copyTo(client.getOutputStream()) }
                     runCatching { client.shutdownInput() }

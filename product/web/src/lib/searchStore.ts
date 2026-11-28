@@ -245,6 +245,7 @@ export class SearchStore {
 
   /** 把攒着的 progress 一次性落进 state（状态行因此每 PROGRESS_FLUSH_MS 最多重排一次）。 */
   private flushProgress = () => {
+    if (this.progressTimer !== null) clearTimeout(this.progressTimer)
     this.progressTimer = null
     const packet = this.pendingProgress
     this.pendingProgress = null
@@ -333,22 +334,26 @@ export class SearchStore {
           this.socket = null
           return
         }
-        this.setState({ progress: packet, loading: false })
+        this.setState({ progress: packet, loading: false, message: packet.message || '' })
         this.socket = null
       },
       error => {
         if (this.socket === socket) {
+          this.flushProgress()
           this.setState({
             message: error,
             loading: false,
           })
           this.socket = null
+          socket.close()
         }
       },
       () => {
         if (this.socket === socket) {
+          this.flushProgress()
           this.setState({
             loading: false,
+            message: '搜索连接已关闭，已保留当前结果，请重试',
           })
           this.socket = null
         }

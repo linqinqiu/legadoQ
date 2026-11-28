@@ -66,19 +66,14 @@ object AppConfig {
     val searchConcurrencyMin: Int = int("LEGADO_SEARCH_CONCURRENCY_MIN", 16)
     val searchConcurrencyMax: Int = int("LEGADO_SEARCH_CONCURRENCY_MAX", 32)
 
-    /** 单次搜索整体截止（毫秒）。 */
+    /** 每个书源的搜索超时（毫秒）。 */
     val searchTimeoutMs: Long = long("LEGADO_SEARCH_TIMEOUT_MS", 30_000L)
 
     /**
-     * 同步 `/api/search` 的**总量截止**（毫秒）。
-     *
-     * 为什么需要它：单源超时管不住整批。`RuleRunner` 用的是阻塞式
-     * `HttpClient.send()`，而阻塞调用不响应线程中断 —— 外面套的 `withTimeout`
-     * 取消不掉它，慢源会一直占着并发名额。实测 65 个源的样本就能拖过 300 秒。
-     *
-     * 到点后返回**已经搜到的部分**，并在响应头上如实标出「截断了、搜了多少个」。
-     * 不静默：`X-Search-Truncated` / `X-Search-Completed` / `X-Search-Total` 三个头
-     * 让调用方分得清"就这么多结果"与"没搜完"。
+     * POST `/api/search` 与 WS `/api/search/stream` 的整批预算（毫秒）。
+     * 单源超时管不住大量慢源分批执行的总耗时。到点保留部分结果：POST 用
+     * X-Search-Truncated/Completed/Total 响应头，WS 用 done.truncated/message 明示。
+     * 单源包装会发线程中断；WS 结构化收尾仍要求源实现响应取消或中断。
      *
      * 设为 0 表示不限制（回到旧行为，调用方自己兜超时）。
      */

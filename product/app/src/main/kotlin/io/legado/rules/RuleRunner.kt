@@ -1302,6 +1302,7 @@ class RuleRunner(
         database: PortBundle? = null,
         deadlineMs: Long? = null,
     ): Fetched {
+        RuleIoCancellation.ensureActive()
         fetchedFetcher?.let { return it(url) }
         responseFetcher?.let { return Fetched(url, it(url), 200, emptyMap()) }
         val db = database ?: this.database
@@ -1313,12 +1314,14 @@ class RuleRunner(
         // 不重试会表现为「规则执行成功但内容为空」这类极难排查的现象。
         var transientAttempt = 0
         repeat(4) {
+            RuleIoCancellation.ensureActive()
             // 每一跳都重新算一次剩余预算：这样「4 跳各 20 秒」不会叠乘成 80 秒，
             // 整个抓取被整体约束在调用方给的截止时刻之内。
             val hopRequest = capToDeadline(request, deadlineMs, url, sourceId)
             val response = try {
                 client.send(hopRequest, HttpResponse.BodyHandlers.ofInputStream())
             } catch (error: java.io.IOException) {
+                RuleIoCancellation.ensureActive()
                 // 第一次失败是要重试的信号，不是事故；重试还失败才是。以前两次都记 ERROR，
                 // 于是一个偶发抖动在日志里和"这本书源彻底读不了"长得一模一样。
                 if (transientAttempt == 0) {
@@ -1355,7 +1358,7 @@ class RuleRunner(
                 }
                 // readLimited 自己就在超限时抛 RuleExecutionException，这里不用再判一次
                 // （原先的 `bytes.size > MAX_BODY_BYTES` 永远为假，是死分支）。
-                val bytes = response.body().use { ResponseBody.readLimited(it) }
+                val bytes = RuleIoCancellation.useResponseBody(response.body()) { ResponseBody.readLimited(it) }
                 val charset = (options?.charset)
                 return Fetched(
                     // 落地地址：重定向是这一层自己一跳一跳跟的（`client` 不跟随），

@@ -25,20 +25,21 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import io.legado.rules.RuleIoCancellation
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 
 /**
@@ -49,6 +50,7 @@ import kotlinx.serialization.json.Json
 fun Route.searchRoutes(
     database: Database,
     runner: RuleRunner,
+    streamTotalTimeoutMs: Long = AppConfig.searchTotalTimeoutMs,
 ) {
         post("/search") {
             if (!call.requireSameOriginWrite()) return@post
@@ -63,9 +65,7 @@ fun Route.searchRoutes(
             val ordered = orderByHealth(sourceRecords, database.healthSearchOrder())
             // 带总量截止的收集：到点返回已搜到的部分，而不是无限期挂着。
             //
-            // 旧写法是 `boundedConcurrentMap(...).awaitAll()` —— 它要等**每一个**源都收尾。
-            // 取值链路是阻塞式 `HttpClient.send()`，单源 30 秒的 `withTimeout` 取消不掉它，
-            // 于是 65 个慢站就能把请求拖过 300 秒（selfcheck 实测红在这里）。
+            // 单源预算之外再限制整批耗时，避免大量慢源分批占满并发名额。
             val outcome = collectWithDeadline(
                 ordered,
                 sourceSearchConcurrency(),
@@ -87,7 +87,7 @@ fun Route.searchRoutes(
             call.respond(outcome.values.flatten())
         }
         webSocket("/search/stream") {
-            // 没有凭据可校验了：流式搜索同样只认"这个连接是不是本机页面发起的"
+            // 全局可选令牌校验之外，仍要求连接来自同源页面。
             if (!originMatchesHost(call)) {
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "跨站页面不能驱动本机搜索"))
                 return@webSocket
@@ -105,15 +105,17 @@ fun Route.searchRoutes(
                 close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "搜索条件无效"))
                 return@webSocket
             }
-            val sourceRecords = database.listSearchSourceRecords(request!!.sourceIds)
-            val session = SearchSession(sourceRecords, sourceSearchConcurrency()) { source ->
+            val sourceRecords = database.listSearchSourceRecords(request.sourceIds)
+            // 页面走流式入口，也复用普通搜索的健康、权重与耗时排序。
+            val ordered = orderByHealth(sourceRecords, database.healthSearchOrder())
+            val session = SearchSession(ordered, sourceSearchConcurrency(), streamTotalTimeoutMs) { source ->
                 searchSourceOutcome(runner, source.json, request.keyword, source.id)
             }
             coroutineScope {
                 // 主收集：把领域事件流逐条翻成 Frame 发回；另开一个监听协程读到 cancel 帧就取消收集。
                 val streaming = launch {
                     session.events().collect { event ->
-                        runCatching { send(Frame.Text(Json.encodeToString(event))) }
+                        send(Frame.Text(Json.encodeToString(event)))
                     }
                 }
                 val cancelWatch = launch {
@@ -137,13 +139,18 @@ fun Route.searchRoutes(
                                 break
                             }
                         }
-                    } catch (_: Throwable) {
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
                         // 连接被对端关闭：incoming 抛错，正常收尾
+                    } finally {
+                        // 正常 EOF、异常断连与 cancel 都必须撤销正在搜索的工作。
+                        streaming.cancel()
                     }
                 }
                 streaming.join()
                 // done 已发出、流自然收尾：撤掉那个还在等 cancel 帧的监听，别让它吊着整个 scope。
-                cancelWatch.cancel()
+                cancelWatch.cancelAndJoin()
             }
         }
         get("/explore/sources") {
@@ -229,24 +236,20 @@ internal suspend fun searchSourceOutcome(
     sourceId: String = "",
     timeoutMs: Long = SEARCH_TIMEOUT_MS,
 ): SearchSourceOutcome {
-    /*
-     * 到点的是**这一个源**，不是整次搜索。
-     * `TimeoutCancellationException` 是 `CancellationException` 的子类，而这里原来只有一句
-     * `if (error is CancellationException) throw error` —— 于是库里某一个源拖过 30 秒，取消就顺着
-     * `coroutineScope` 传到整棵搜索树上：别的源已经搜到的那几十本一起作废，界面收到 500
-     * （selfcheck「多源并发搜索返回的是数组」红过一次就是它，`server.log` 里留的是
-     * `Unhandled request failure: TimeoutCancellationException`）。
-     * 真正该往上传的只有"调用方自己取消了"（客户端停读、页面关了）—— 那种情况回答也没人看。
-     */
+    // 只把本层单源超时记为源失败；父级整批截止和用户取消必须继续向上传播。
+    // 同时中断线程、关闭规则 HTTP 响应体；忽略中断的第三方代码仍可能延迟退出。
     val startedAt = System.currentTimeMillis()
     val outcome = try {
-        val results = withTimeout(timeoutMs) { withContext(Dispatchers.IO) { runner.search(sourceJson, keyword) } }
-        SearchSourceOutcome(results, failed = false)
-    } catch (error: TimeoutCancellationException) {
-        SearchSourceOutcome(emptyList(), failed = true, timedOut = true)
+        val results = withTimeoutOrNull(timeoutMs) {
+            RuleIoCancellation.run { runner.search(sourceJson, keyword) }
+        }
+        if (results == null) SearchSourceOutcome(emptyList(), failed = true, timedOut = true)
+        else SearchSourceOutcome(results, failed = false)
     } catch (error: CancellationException) {
         throw error
     } catch (error: Throwable) {
+        // 关闭响应体与线程中断可能先表现为 IOException；调用方已取消时不得记成源失败。
+        currentCoroutineContext().ensureActive()
         SearchSourceOutcome(emptyList(), failed = true)
     }
     Metrics.recordSearch(
@@ -278,21 +281,6 @@ internal data class DeadlineCollection<R>(
     val truncated: Boolean get() = completed < total
 }
 
-/**
- * 带总量截止的并发收集 —— 同步 `/api/search` 用它。
- *
- * 为什么不能用 `withTimeoutOrNull { boundedConcurrentMap(...) }`：
- * 本项目的取值链路是**阻塞式** `HttpClient.send()`，它不响应线程中断，
- * 于是 `withTimeout` 取消不掉正卡在网络上的协程 —— `withTimeoutOrNull` 会一直等
- * 那些协程真正结束才返回，截止等于没有。
- *
- * 所以这里**自己不挂在请求的协程树上等待**：把工作丢进一个独立的 supervisor scope，
- * 用轮询等到"全部完成或到点"，然后返回**已经收到的**结果。
- * 到点被取消的任务由阻塞调用自己走完后释放线程 —— 我们不再等它们。
- *
- * 代价：到点后仍有一批阻塞线程在收尾（最多 [limit] 个）。这是刻意的取舍：
- * 宁可让它们自生自灭，也不要把 HTTP 响应无限期挂着。
- */
 /**
  * 按体检结论给待搜的书源排先后。
  *
@@ -328,6 +316,10 @@ internal fun orderByHealth(
         .map { it.value }
 }
 
+/**
+ * 同步 `/api/search` 的历史独立 scope 收集：到预算返回部分结果，不 await 收尾任务。
+ * 单源会中断线程并关闭响应体，但第三方代码未必配合；返回不等于全部资源已释放。
+ */
 internal suspend fun <T, R> collectWithDeadline(
     values: List<T>,
     limit: Int,

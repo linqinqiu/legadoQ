@@ -59,6 +59,7 @@ import kotlinx.serialization.Serializable
     val resultCount: Int = 0,
     val results: List<SearchResult> = emptyList(),
     val message: String? = null,
+    val truncated: Boolean = false,
 )
 @Serializable data class SearchResult(
     val sourceId: String,

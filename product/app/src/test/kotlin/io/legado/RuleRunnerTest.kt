@@ -1149,9 +1149,10 @@ class RuleRunnerTest {
         // `{"code":-1,"message":"Cannot read properties of undefined (reading 'map')"}`，
         // 书源规则把这个错误当成"没有书"，探索页就显示「返回 0 本」。
         // HttpClient 对 ofString 默认不带任何 Content-Type，所以规则只写 body 时必须由我们补。
+        // 只构造请求、不发网络；公网字面量避免本机 DNS 影响请求头断言。
         val runner = RuleRunner { "" }
         val (url, options) = runner.splitUrlOptions(
-            """https://fanqienovel.com/api/bookshelf/multidetail,{"method":"post","body":{"books":[{"book_id":"1"}]}}"""
+            """https://8.8.8.8/api/bookshelf/multidetail,{"method":"post","body":{"books":[{"book_id":"1"}]}}"""
         )
         val request = runner.buildRequest(java.net.URI(url), options, null, null, null)
         assertEquals("POST", request.method())
@@ -1166,7 +1167,7 @@ class RuleRunnerTest {
     fun `显式 Content-Type 不被自动补的 JSON 头覆盖`() {
         val runner = RuleRunner { "" }
         val (url, options) = runner.splitUrlOptions(
-            """https://fanqienovel.com/api,{"method":"post","body":{"a":1},"headers":{"Content-Type":"application/x-www-form-urlencoded"}}"""
+            """https://8.8.8.8/api,{"method":"post","body":{"a":1},"headers":{"Content-Type":"application/x-www-form-urlencoded"}}"""
         )
         val request = runner.buildRequest(java.net.URI(url), options, null, null, null)
         assertEquals(
@@ -1175,7 +1176,7 @@ class RuleRunnerTest {
         )
 
         // 表单外形的 body（a=1&b=2）不该被加上 JSON 头。
-        val (formUrl, formOptions) = runner.splitUrlOptions("""https://fanqienovel.com/api,{"method":"post","body":"a=1&b=2"}""")
+        val (formUrl, formOptions) = runner.splitUrlOptions("""https://8.8.8.8/api,{"method":"post","body":"a=1&b=2"}""")
         val formRequest = runner.buildRequest(java.net.URI(formUrl), formOptions, null, null, null)
         assertNull("表单 body 不该被当成 JSON", formRequest.headers().firstValue("Content-Type").orElse(null))
     }

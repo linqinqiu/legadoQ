@@ -151,7 +151,8 @@ class RuleUrlScriptsTest {
 
     @Test
     fun `带中文路径的 Reload 地址不能把非 ASCII 塞进 Referer`() {
-        val scriptUrl = "https://qyyuapi.com/sy/js/再漫画/jsLib.js"
+        // 只构造请求；公网字面量不受本机 DNS 影响，保留中文路径和 Referer 判据。
+        val scriptUrl = "https://8.8.8.8/sy/js/再漫画/jsLib.js"
         val composed = io.legado.rules.reloadFetchUrl(scriptUrl)
         val runner = RuleRunner { "" }
         val (bareUrl, options) = runner.splitUrlOptions(composed)
@@ -174,7 +175,7 @@ class RuleUrlScriptsTest {
     fun `书源请求头里的中文会被编码而不是让请求直接失败`() {
         val runner = RuleRunner { "" }
         val options = RuleRunner.UrlOptions(headers = mapOf("Referer" to "https://example.com/再漫画/"))
-        val request = runner.buildRequest(java.net.URI("https://example.com/x"), options, null, null, null)
+        val request = runner.buildRequest(java.net.URI("https://8.8.8.8/x"), options, null, null, null)
 
         assertEquals(
             "非 ASCII 要按 UTF-8 百分号编码后再发出：${request.headers().firstValue("referer")}",

@@ -4,10 +4,12 @@ import io.legado.model.SourceRecord
 import io.legado.model.SearchStreamEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 一次流式搜索的编排（PROPOSAL 之外的解耦重构）：把「并发扇出 → 逐源结局 → 聚合进度 →
@@ -15,9 +17,8 @@ import kotlinx.coroutines.sync.withPermit
  * 直接单测的领域对象。WS 处理器只负责把这里吐出的 [SearchStreamEvent] 流翻译成 Frame、
  * 以及收到 cancel 帧时取消对流的收集。
  *
- * 语义与重构前的 webSocket 块逐字对齐：先 start；每源有结果就先发一条 results，
- * 再发一条由 [SearchStreamCounters] 聚合的 progress；全部收尾后发一条 done。
- * 取消靠 [channelFlow] 的结构化并发——收集方（WS）一停，这里的子协程随之取消，不残留。
+ * 先 start；每源有结果就先发 results，再发 progress；完成或达到总预算后发 done。
+ * 总预算和收集方取消都沿结构化并发传给子任务；阻塞 searcher 仍须响应取消/线程中断。
  *
  * searcher 由调用方注入（生产用 `searchSourceOutcome`，测试给假实现），因此本类不依赖
  * RuleRunner、不发网络，纯编排可测。
@@ -25,23 +26,42 @@ import kotlinx.coroutines.sync.withPermit
 internal class SearchSession(
     private val sources: List<SourceRecord>,
     private val concurrency: Int,
+    private val totalTimeoutMs: Long = 0,
     private val searcher: suspend (SourceRecord) -> SearchSourceOutcome,
 ) {
     fun events(): Flow<SearchStreamEvent> = channelFlow {
         send(SearchStreamEvent(type = "start", totalSources = sources.size))
         val counters = SearchStreamCounters(sources.size)
-        val semaphore = Semaphore(concurrency.coerceAtLeast(1))
-        sources.map { source ->
-            launch {
-                semaphore.withPermit {
-                    val outcome = searcher(source)
-                    if (outcome.results.isNotEmpty()) {
-                        send(SearchStreamEvent(type = "results", results = outcome.results))
+        suspend fun searchAll() = coroutineScope {
+            val sessionContext = coroutineContext
+            val nextSource = AtomicInteger()
+            List(concurrency.coerceAtLeast(1).coerceAtMost(sources.size)) {
+                launch {
+                    while (true) {
+                        // 固定 worker 按已排序的索引领任务；取消传播期间不再启动排队源。
+                        sessionContext.ensureActive()
+                        val source = sources.getOrNull(nextSource.getAndIncrement()) ?: break
+                        val outcome = searcher(source)
+                        ensureActive()
+                        if (outcome.results.isNotEmpty()) {
+                            send(SearchStreamEvent(type = "results", results = outcome.results))
+                        }
+                        send(counters.complete(outcome))
                     }
-                    send(counters.complete(outcome))
                 }
-            }
-        }.joinAll()
-        send(counters.snapshot("done"))
+            }.joinAll()
+        }
+        val finished = if (totalTimeoutMs > 0) {
+            withTimeoutOrNull(totalTimeoutMs) { searchAll(); true } ?: false
+        } else {
+            searchAll()
+            true
+        }
+        val done = counters.snapshot("done")
+        val truncated = !finished && done.completedSources < sources.size
+        send(done.copy(
+            truncated = truncated,
+            message = if (truncated) "搜索已到总时限，已检查 ${done.completedSources} / ${sources.size} 个书源，已保留部分结果；可缩小范围重试" else null,
+        ))
     }
 }

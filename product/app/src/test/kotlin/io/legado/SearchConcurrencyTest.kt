@@ -1,14 +1,19 @@
 package io.legado
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import io.legado.http.SearchSourceOutcome
 import io.legado.http.SearchStreamCounters
 import io.legado.http.boundedConcurrentMap
@@ -92,15 +97,17 @@ class SearchConcurrencyTest {
         val fastSource = """{"bookSourceUrl":"https://src.fast","searchUrl":"/search?k={{key}}","ruleSearch":{"bookList":"$.data","bookUrl":"/b/{{$.id}}","name":"$.title"}}"""
         val runner = RuleRunner { url ->
             if (url.contains("slow")) {
-                Thread.sleep(600)
+                Thread.sleep(5_000)
                 """{"data":[{"id":"9","title":"迟到的书"}]}"""
             } else {
                 """{"data":[{"id":"1","title":"书1"}]}"""
             }
         }
 
+        // 冷启动的规则/脚本类加载不应冒充快源网络耗时。
+        assertEquals(false, searchSourceOutcome(runner, fastSource, "预热", timeoutMs = 5_000).failed)
         val outcomes = boundedConcurrentMap(listOf(slowSource, fastSource), 2) { source ->
-            searchSourceOutcome(runner, source, "测试", timeoutMs = 120)
+            searchSourceOutcome(runner, source, "测试", timeoutMs = 1_000)
         }
 
         assertTrue("慢源应记为这一个源失败，而不是拖死整次搜索", outcomes[0].failed)
@@ -125,6 +132,41 @@ class SearchConcurrencyTest {
         }
         job.join()
         assertTrue("调用方取消必须原样往上传", caught is CancellationException)
+    }
+
+    @Test
+    fun `caller cancellation interrupts blocking source work before returning`() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val exited = CountDownLatch(1)
+        val source = """{"bookSourceUrl":"https://src.example","searchUrl":"/search?k={{key}}","ruleSearch":{"bookList":"$.data","bookUrl":"$.url","name":"$.title"}}"""
+        val runner = RuleRunner {
+            started.countDown()
+            try {
+                check(release.await(5, TimeUnit.SECONDS)) { "blocking source was not interrupted" }
+                """{"data":[]}"""
+            } finally {
+                exited.countDown()
+            }
+        }
+        var cancelled = false
+        val job = launch {
+            try {
+                searchSourceOutcome(runner, source, "test", timeoutMs = 10_000)
+            } catch (_: CancellationException) {
+                cancelled = true
+            }
+        }
+        try {
+            assertTrue(withContext(Dispatchers.IO) { started.await(2, TimeUnit.SECONDS) })
+            job.cancel()
+            withTimeout(1_500) { job.join() }
+            assertEquals("返回取消前阻塞源应已退出", 0L, exited.count)
+            assertTrue("取消不应被归为书源失败", cancelled)
+        } finally {
+            release.countDown()
+            job.cancelAndJoin()
+        }
     }
 }
 

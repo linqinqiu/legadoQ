@@ -51,9 +51,10 @@ class NetworkSecurityTest {
     }
 
     @Test
-    fun `caches resolved DNS lookups for subsequent requests`() {
+    fun `caches validated targets for subsequent requests`() {
         assertEquals(0, NetworkSecurity.cacheSize())
-        val uri = URI("https://example.com/books")
+        // Literal addresses use the same resolution cache without external DNS or network I/O.
+        val uri = URI("https://8.8.8.8/books")
         NetworkSecurity.resolveAndValidateSafeHttpTarget(uri)
         assertEquals(1, NetworkSecurity.cacheSize())
 

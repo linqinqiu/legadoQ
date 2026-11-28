@@ -271,7 +271,7 @@ test('流式合并的规模：常驻判重表线性，整表重建（修前那�
   )
 })
 
-test('流式 progress 攒批：600 条进度封包只换几次渲染，终态与结果仍要立刻可见', () => {
+test('流式 progress 攒批：600 条进度封包只换几次渲染，截止终态与结果仍要立刻可见', () => {
   const originalWebSocket = globalThis.WebSocket
   const originalLocation = globalThis.location
   const created: any[] = []
@@ -321,11 +321,14 @@ test('流式 progress 攒批：600 条进度封包只换几次渲染，终态与
     socket.emit('message', packet({ type: 'results', totalSources: total, results: [{ sourceId: 's1', bookUrl: '/b1', name: '甲', author: 'x' }] }))
     assert.equal(emits, beforeDup, '全是重复的封包不该引发一次空重渲染')
 
-    socket.emit('message', packet({ type: 'done', totalSources: total, completedSources: total, resultCount: 2 }))
+    const deadlineMessage = '搜索已到总时限，已保留部分结果'
+    socket.emit('message', packet({ type: 'done', totalSources: total, completedSources: 600, resultCount: 2, truncated: true, message: deadlineMessage }))
     const snap = searchStore.getSnapshot()
     assert.equal(snap.loading, false, 'done 之后不能再挂着搜索中')
     assert.equal(snap.progress?.type, 'done', '终态不等窗口，立刻可见')
-    assert.equal(snap.progress?.completedSources, total)
+    assert.equal(snap.progress?.completedSources, 600, '截止不能伪装成全源完成')
+    assert.equal(snap.message, deadlineMessage, '截止后仍应显示部分完成原因')
+    assert.equal(snap.results.length, 2, '已收到结果必须保留')
     assert.ok(emits <= 8, `六千条源的真实节奏下这里只发生了 ${emits} 次渲染`)
   } finally {
     if (off) off()
@@ -334,3 +337,59 @@ test('流式 progress 攒批：600 条进度封包只换几次渲染，终态与
     searchStore.reset()
   }
 })
+
+for (const ending of ['error', 'close'] as const) {
+  test(`搜索 ${ending} 后进度立即定格且不残留延时刷新`, async () => {
+    const originalWebSocket = globalThis.WebSocket
+    const originalLocation = globalThis.location
+    const created: any[] = []
+    class MockWebSocket {
+      static OPEN = 1
+      readyState = 1
+      listeners: Record<string, ((e: any) => void)[]> = {}
+      constructor() { created.push(this) }
+      addEventListener(type: string, cb: any) { (this.listeners[type] ||= []).push(cb) }
+      send() {}
+      close() {}
+      emit(type: string, detail: any) { for (const cb of this.listeners[type] || []) cb(detail) }
+    }
+    ;(globalThis as any).WebSocket = MockWebSocket
+    ;(globalThis as any).location = { protocol: 'http:', host: 'localhost:1299' }
+    let emits = 0
+    let off: (() => void) | undefined
+    const packet = (body: unknown) => ({ data: JSON.stringify(body) })
+    try {
+      searchStore.reset()
+      off = searchStore.subscribe(() => { emits++ })
+      searchStore.startSearch('旧搜索')
+      const old = created.at(-1)
+      old.emit('message', packet({ type: 'progress', completedSources: 7, totalSources: 10 }))
+      old.emit(ending, {})
+      assert.equal(searchStore.getSnapshot().loading, false)
+      assert.equal(searchStore.getSnapshot().progress?.completedSources, 7, '断连立即保留最后已知进度')
+      const settled = emits
+      await new Promise(resolve => setTimeout(resolve, PROGRESS_FLUSH_MS + 20))
+      assert.equal(emits, settled, '终态后不应再有旧定时刷新')
+
+      searchStore.startSearch('新搜索')
+      const current = created.at(-1)
+      current.emit('message', packet({ type: 'start', totalSources: 2, completedSources: 0 }))
+      old.emit('message', packet({ type: 'results', results: [{ sourceId: 'old', bookUrl: '/old', name: '旧结果' }] }))
+      old.emit('message', packet({ type: 'done', completedSources: 10, message: '旧提示' }))
+      old.emit('close', {})
+      assert.equal(searchStore.getSnapshot().loading, true)
+      assert.equal(searchStore.getSnapshot().progress?.totalSources, 2)
+      assert.equal(searchStore.getSnapshot().results.length, 0)
+      assert.equal(searchStore.getSnapshot().message, '')
+      searchStore.stopSearch()
+      current.emit('message', packet({ type: 'results', results: [{ sourceId: 'late', bookUrl: '/late', name: '迟到结果' }] }))
+      assert.equal(searchStore.getSnapshot().results.length, 0)
+      assert.equal(searchStore.getSnapshot().stopped, true)
+    } finally {
+      off?.()
+      searchStore.reset()
+      globalThis.WebSocket = originalWebSocket
+      globalThis.location = originalLocation
+    }
+  })
+}
