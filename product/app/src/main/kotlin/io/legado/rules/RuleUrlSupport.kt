@@ -71,15 +71,21 @@ internal fun parseUri(url: String): URI {
     }
 }
 
-/** 对 URL 中 RFC 不允许的字面字符做百分号编码。 */
+/** 对 URL 中 RFC 不允许的字面字符做百分号编码，按 Unicode 码点处理避免拆坏代理对。 */
 internal fun encodeIllegalUrlChars(url: String): String {
     val builder = StringBuilder(url.length + 16)
-    for (ch in url) {
+    var offset = 0
+    while (offset < url.length) {
+        val codePoint = url.codePointAt(offset)
         when {
-            ch == ' ' -> builder.append("%20")
-            ch.code > 127 || ch in "\"<>{}|\\^`" -> builder.append(URLEncoder.encode(ch.toString(), Charsets.UTF_8))
-            else -> builder.append(ch)
+            codePoint == 0x20 -> builder.append("%20")
+            codePoint > 0x7F ->
+                builder.append(URLEncoder.encode(String(Character.toChars(codePoint)), Charsets.UTF_8))
+            url[offset] in "\"<>{}|\\^`" ->
+                builder.append(URLEncoder.encode(url[offset].toString(), Charsets.UTF_8))
+            else -> builder.append(url[offset])
         }
+        offset += Character.charCount(codePoint)
     }
     return builder.toString()
 }
