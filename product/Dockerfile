@@ -14,7 +14,7 @@ COPY web/ ./
 # 少拷贝时 Vite 报 "Could not resolve ../../../docs/功能说明.md?raw"（0.1.8 镜像实测）。
 COPY docs/功能说明.md /src/docs/
 # web/package.json 的 build 调用 product/scripts/build-web.mjs，不能只复制 web/。
-COPY scripts/build-web.mjs scripts/
+COPY scripts/build-web.mjs /src/scripts/
 RUN npm run build
 
 FROM ${DOCKER_REGISTRY}gradle:8.13-jdk17 AS server-build
