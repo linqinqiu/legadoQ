@@ -27,6 +27,8 @@
     "build:bump": "node ../scripts/version.mjs bump-build",
     "test": "node scripts/tasks.mjs test",
     "test:scripts": "node --test scripts/*.test.mjs",
+    "verify:backup-preview-ui": "node tools/verify/backup-preview-ui-check.mjs",
+    "verify:backup-real-sample": "node tools/verify/backup-real-sample-check.mjs",
     "doctor": "node scripts/doctor.mjs",
     "pr": "node scripts/tasks.mjs pr",
     "full": "node scripts/tasks.mjs full",

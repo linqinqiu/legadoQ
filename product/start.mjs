@@ -1,10 +1,11 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, openSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, openSync, statSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { bundleAssetName, childEnvironment, ensureDirectories, resolveRuntime } from './scripts/runtime.mjs';
+import { childEnvironment, ensureDirectories, readJarStaticHashes, resolveRuntime } from './scripts/runtime.mjs';
 import { ensureFatJar, isBundledUiStale } from './scripts/bootstrap.mjs';
 import { pickPort } from './scripts/port-select.mjs';
+import { verifyLiveUi } from './scripts/live-ui.mjs';
 
 /**
  * 启动 legadoQ：后台拉起服务，等端口真的能连上了再打开浏览器。
@@ -114,6 +115,19 @@ ensureDirectories(runtime);
 /** 浏览器地址：绑 0.0.0.0 时用回环地址访问自己。 */
 const browseHost = runtime.host === '0.0.0.0' || runtime.host === '::' ? '127.0.0.1' : runtime.host;
 let url = `http://${browseHost}:${runtime.port}`;
+
+// 以选中的 jar 为准，兼容没有 dist 的安装包和显式回滚；不能仅凭首页里的 bundle 名判就绪。
+async function requireLiveUi() {
+  const result = await verifyLiveUi(url, readJarStaticHashes(path.join(runtime.libs, jar)));
+  if (!result.ok) {
+    console.error(`界面资源校验失败：${result.failures.join(', ')}`);
+    console.error(`服务地址：${url}。请停止该实例后重新启动；日志：${runtime.logFile}`);
+    process.exitCode = 1;
+    return false;
+  }
+  console.log(`界面资源已对上（${result.checked} 个文件）`);
+  return true;
+}
 
 /** 服务是否已经就绪（/healthz 能答）。端口 listen 不代表能服务：冷启动要十几秒。 */
 async function isReady(target) {
@@ -269,6 +283,7 @@ if (await isReady(url)) {
     process.exit(1);
   }
   if (probe.kind === 'none') {
+    if (!(await requireLiveUi())) process.exit(1);
     console.log(`legadoQ 已在运行 ${url}`);
     if (args.open) openBrowser(url);
     process.exit(0);
@@ -366,30 +381,8 @@ probe.listen(runtime.port, runtime.host, () => {
       console.error(`等了很久服务 ${url} 还没就绪，看看日志：${runtime.logFile}`);
       process.exit(1);
     }
+    if (!(await requireLiveUi())) return;
     console.log(`服务已就绪 ${url}`);
-
-    /**
-     * 启动后自检：**运行实例在发的 bundle** 必须等于 **磁盘上的 web/dist**。
-     *
-     * 光看进程起来没有用 —— 2026-10-26 那次就是"重启成功、界面还是三天前的"。这一步把
-     * 结论变成一句能印在终端上的话；不一致时**不开浏览器**（开了就是让人再看一遍旧界面），
-     * 服务本身继续跑，只把退出码给成 1，脚本调用方能据此判断。
-     */
-    if (existsSync(distIndex)) {
-      const want = bundleAssetName(readFileSync(distIndex, 'utf8'));
-      try {
-        const html = await fetch(`${url}/`, { signal: AbortSignal.timeout(5000) }).then((r) => r.text());
-        const got = bundleAssetName(html);
-        if (want && got && want !== got) {
-          console.error(`界面不一致：运行中的是 ${got}，磁盘上构建出来的是 ${want}。`);
-          console.error(`这个 jar 里没有当前前端。修复：node stop.mjs && npm run build && node start.mjs`);
-          process.exit(1);
-        }
-        if (want && got) console.log(`界面已对上 ${got}`);
-      } catch (error) {
-        console.log(`（启动后自检没跑成：${error instanceof Error ? error.message : error}）`);
-      }
-    }
 
     if (!cdsFresh) void rebuildCds();
     if (args.open) openBrowser(url);

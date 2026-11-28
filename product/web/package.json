@@ -15,8 +15,8 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:fallback": "tsc -b && vite build --target esnext --minify terser",
+    "build": "node ../scripts/build-web.mjs",
+    "build:fallback": "node ../scripts/build-web.mjs --fallback",
     "verify:dist": "node ../tools/verify/dist-check.mjs",
     "budget": "node ../tools/verify/bundle-budget-check.mjs",
     "check": "tsc -b --pretty false",

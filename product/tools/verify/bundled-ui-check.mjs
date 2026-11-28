@@ -9,8 +9,8 @@
 // 只读，不写任何文件。跑法：node tools/verify/bundled-ui-check.mjs
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { ROOT } from './env.mjs'
+import { verifyLiveUi } from '../../scripts/live-ui.mjs'
 // 与 start.mjs / make-cds.mjs 共用同一份"该跑哪个包、构建指纹是什么、怎么读包内条目"的判断：
 // 各写一遍的话，门禁绿而实际跑的是另一个包。
 import {
@@ -76,54 +76,15 @@ if (!jar) {
       : '读不到包内 static/，按失败处理')
 }
 
-/**
- * 带超时地取一次 URL，并且**一定**把定时器收掉。
- *
- * 不能用 `AbortSignal.timeout()`：它留下的定时器会在 `process.exit()` 时撞上 libuv 的
- * handle 收尾，Windows 上直接
- * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src/win/async.c:94`
- * —— 五项判据全 PASS 也会因此判红（本轮实测踩到）。所以自己建 controller，finally 里清定时器。
- */
-async function timed(url, ms) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), ms)
-  try {
-    return await fetch(url, { signal: controller.signal })
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 if (process.env.LEGADO_SKIP_LIVE_UI_CHECK === '1') {
   record('运行中的实例', 'skip', '自动构建期间跳过 live 检查，避免旧实例阻止重建')
 } else {
-  try {
-    const html = await timed(`${BASE}/`, 3000).then((r) => r.text())
-    const live = fingerprint(html)
-    record('运行中的实例 HTML 有主 bundle', !!live, live || 'index.html 里找不到 assets/index-*.js')
-    if (live) record('运行中的实例与 dist 一致', live === dist, `dist=${dist} 运行中=${live}`)
-
-    // 名字对上了仍可能 404 或内容损坏，所以逐个取 dist 里的文件并比对哈希。
-    if (live) {
-      const mismatches = []
-      for (const file of Object.keys(distHashes).sort()) {
-        try {
-          const response = await timed(`${BASE}/${file}`, 5000)
-          if (response.status !== 200) {
-            mismatches.push(`${file}:http=${response.status}`)
-            continue
-          }
-          const hash = createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex')
-          if (hash !== distHashes[file]) mismatches.push(`${file}:hash`)
-        } catch {
-          mismatches.push(`${file}:unreachable`)
-        }
-      }
-      record('运行中的实例全部静态文件与 dist 一致', mismatches.length === 0,
-        mismatches.length ? mismatches.join(', ') : `${Object.keys(distHashes).length} 个文件`)
-    }
-  } catch {
+  const live = await verifyLiveUi(BASE, distHashes)
+  if (!live.reachable) {
     record('运行中的实例', 'skip', `${BASE} 没在跑（这条只在校验已部署实例时才看）`)
+  } else {
+    record('运行中的实例全部静态文件与 dist 一致', live.ok,
+      live.ok ? `${live.checked} 个文件` : live.failures.join(', '))
   }
 }
 

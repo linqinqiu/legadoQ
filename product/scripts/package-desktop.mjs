@@ -13,9 +13,10 @@ import { fileURLToPath } from 'node:url'
  * 界面永远开在 `http://127.0.0.1:<port>`（同源闸门一行不改）。
  *
  * 用法：
- *   node scripts/package-desktop.mjs [--data-dir <路径>] [--jlink] [--no-zip]
+ *   node scripts/package-desktop.mjs [--data-dir <路径>] [--output-dir <路径>] [--jlink] [--no-zip]
  *     --data-dir <路径>  在镜像根写一份 .env，把数据目录指向它（本机首次打包用，复用现有书架）；
  *                        不传则默认 <镜像>/data（便携）。
+ *     --output-dir <路径> 将 staging、runtime、镜像和 zip 写入指定目录（默认 dist）。
  *     --jlink            强制重裁 jlink 运行时（默认复用上一次）。
  *     --no-zip           只出 app-image 目录，不打 zip。
  *
@@ -29,6 +30,8 @@ const hasFlag = flag => process.argv.includes(flag)
 
 const version = (fs.readFileSync(path.join(ROOT, 'app/build.gradle'), 'utf8').match(/^version = '([\d.]+)'/m) ?? [])[1]
 if (!version) fail('app/build.gradle 里找不到 version —— 版本号只有一个来源，别在脚本里补默认值')
+const outputDir = path.resolve(ROOT, arg('--output-dir', 'dist'))
+fs.mkdirSync(outputDir, { recursive: true })
 
 const JAVA_HOME = process.env.JAVA_HOME || ''
 const jbin = p => path.join(JAVA_HOME, 'bin', process.platform === 'win32' ? `${p}.exe` : p)
@@ -52,13 +55,11 @@ const MODULES = 'java.base,java.datatransfer,java.xml,java.prefs,java.desktop,ja
   'java.security.sasl,java.naming,java.net.http,java.scripting,java.transaction.xa,java.sql,' +
   'jdk.crypto.ec,jdk.dynalink,jdk.unsupported'
 function resolveRuntime(target) {
-  // 复用分支只匹配 `dist/legadoq-X.Y.Z/` 目录。当前 dist/ 下只有 `_desktop-runtime/` 与
-  // `desktop/`，没有这种目录，因此**实际总是重裁**；`--jlink` 在当前结构下是显式冗余（带上无害）。
-  // 真要复用，需让这里也认 `dist/_desktop-runtime/`——那是优化，不是当前缺口。
+  // 复用上一次同版本的运行时；不同 output-dir 之间互不共享生成物。
   if (!hasFlag('--jlink')) {
-    const prev = fs.readdirSync(path.join(ROOT, 'dist')).filter(n => /^legadoq-\d+\.\d+\.\d+$/.test(n))
-      .sort().reverse().find(n => fs.existsSync(path.join(ROOT, 'dist', n, 'runtime', 'bin', 'java.exe')))
-    if (prev) { fs.cpSync(path.join(ROOT, 'dist', prev, 'runtime'), target, { recursive: true }); return `复用 dist/${prev}/runtime` }
+    const prev = fs.readdirSync(outputDir).filter(n => /^legadoq-\d+\.\d+\.\d+$/.test(n))
+      .sort().reverse().find(n => fs.existsSync(path.join(outputDir, n, 'runtime', 'bin', 'java.exe')))
+    if (prev) { fs.cpSync(path.join(outputDir, prev, 'runtime'), target, { recursive: true }); return `复用 ${path.relative(ROOT, path.join(outputDir, prev))}/runtime` }
   }
   const jlink = jbin('jlink')
   const ran = spawnSync(jlink, ['--add-modules', MODULES, '--strip-debug', '--no-header-files', '--no-man-pages', '--output', target], { stdio: 'inherit' })
@@ -67,16 +68,16 @@ function resolveRuntime(target) {
 }
 
 // 4) jpackage app-image。
-const staging = path.join(ROOT, 'dist', '_desktop-staging')
+const staging = path.join(outputDir, '_desktop-staging')
 fs.rmSync(staging, { recursive: true, force: true })
 fs.mkdirSync(staging, { recursive: true })
 fs.copyFileSync(jar, path.join(staging, jarName))
 
-const runtimeDir = path.join(ROOT, 'dist', '_desktop-runtime')
+const runtimeDir = path.join(outputDir, '_desktop-runtime')
 fs.rmSync(runtimeDir, { recursive: true, force: true })
 const runtimeNote = resolveRuntime(runtimeDir)
 
-const destDir = path.join(ROOT, 'dist', 'desktop')
+const destDir = path.join(outputDir, 'desktop')
 fs.rmSync(destDir, { recursive: true, force: true })
 fs.mkdirSync(destDir, { recursive: true })
 
@@ -157,7 +158,7 @@ console.log(`    运行时：${runtimeNote}；数据默认 ${dataDir ? dataDir :
 // 8) zip（顶层目录 = legadoQ）。
 if (!hasFlag('--no-zip')) {
   const zipName = `legadoq-desktop-${version}.zip`
-  const zipPath = path.join(ROOT, 'dist', zipName)
+  const zipPath = path.join(outputDir, zipName)
   const files = []
   const collect = dir => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) collect(p); else files.push(p) } }
   collect(imageRoot)
@@ -196,9 +197,9 @@ if (!hasFlag('--no-zip')) {
   eocd.writeUInt32LE(cd.length, 12); eocd.writeUInt32LE(offset, 16)
   fs.writeFileSync(zipPath, Buffer.concat([...chunks, cd, eocd]))
   const bytes = fs.statSync(zipPath)
-  console.log(`OK  dist/${zipName} · ${(bytes.size / 1024 / 1024).toFixed(1)} MB · ${files.length} 条 · 顶层 legadoq/`)
+  console.log(`OK  ${path.relative(ROOT, zipPath)} · ${(bytes.size / 1024 / 1024).toFixed(1)} MB · ${files.length} 条 · 顶层 legadoq/`)
   console.log(`    sha256 ${crypto.createHash('sha256').update(fs.readFileSync(zipPath)).digest('hex').slice(0, 16).toUpperCase()}…`)
 }
 
 fs.rmSync(staging, { recursive: true, force: true })
-console.log('下一步：双击 dist/desktop/legadoq/legadoq.exe（或在干净 PATH 下跑 tools/verify/desktop-check.mjs 验）')
+console.log(`下一步：双击 ${path.relative(ROOT, path.join(imageRoot, 'legadoq.exe'))}（或在干净 PATH 下跑 tools/verify/desktop-check.mjs 验）`)
