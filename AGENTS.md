@@ -33,7 +33,7 @@
 
 ## 4. 后端要点
 - 后端主代码在 `product/app/src/main/kotlin/io/legado/`：`http/`（路由）· `data/`（Repository，**一律放 data/**，放 `source/` 会撞 `ArchitectureBoundaryTest`）· `rules/`（`RuleRunner` + `RuleProcessor` 扩展点）· `tts/`；`AppContainer.kt` 是组合根。纯 DTO 在 `:core:model`，网络与指标基础设施在 `:core:ops`，SQLite 引擎/建表/快照在 `:core:data`；业务 DAO 与版本迁移仍留 `app`。AI 那一整套 2026-11-17 已挪到 `product/experimental/ai/`（不参与编译与打包），见该目录 README。
-- 端点 **147 条 / 19 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
+- 端点 **153 条 / 19 组**（以 `product/app/src/main/resources/agent-api.json` 的 `count` 为准，别抄）；改接口后必须重跑 `npm --prefix product run docs:api`（文档首行带版本号）。
 
 ## 5. 常见坑（详见 facts.md / 研究文档）
 - 池里只有一条写连接：DAO 的 `write{}` 不能被外层 `write{}` 包（内层退出复位 autoCommit → commit 抛错）。

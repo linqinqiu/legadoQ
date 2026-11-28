@@ -25,7 +25,7 @@
 | **图片与媒体** | 漫画逐图、音频、视频、文件直链 |
 | **朗读** | Edge TTS、自定义 HTTP 音频接口、浏览器语音；跨章连播、定时 |
 | **RSS** | 订阅源与文章读取 |
-| **备份** | Legado 备份包导入（含 AES 凭据解密）；导出支持整包与按域（书源 / 替换规则 / 分组 / RSS / 书架含进度） |
+| **备份** | Legado 备份包预览与按模块导入（含 AES 凭据解密）；六域导出与含留档迁移包；冲突书源可预览后启用历史版本，启用前强制安全快照；手动公网 HTTPS WebDAV 上传回读校验、拉取后预览确认；数据库快照可排定下次启动恢复 |
 | **系统** | 服务端口、运行日志等 |
 | **PWA** | 可安装到桌面，支持离线壳 |
 
@@ -54,7 +54,7 @@
 | `source.bookSourceComment` 中的脚本 | 支持 | 原文注入，可用 `eval` 执行 |
 | `Packages.*`、`JavaImporter`、`importPackage` | 支持（白名单） | 加解密、Base64、Hash、UUID、okhttp3 等；Java 反射禁用 |
 | `java.ajax`、`java.ajaxAll`、`cache`、`cookie()`、`jsLib` | 支持 | 远端 `jsLib` 会下载后求值；`ajaxAll` 按入参顺序返回 |
-| `java.t2s` / `java.s2t`（繁简转换） | 不支持 | 零实现，脚本调用直接失败（详见兼容性说明 §6） |
+| `java.t2s` / `java.s2t`（繁简转换） | 支持 | Rhino 已绑定；与阅读器共用 OpenCC 派生词库，词组最长匹配、逐字兜底（详见兼容性说明 §6） |
 | `ruleContent.imageDecode` | 支持 | 可返回 Base64 或 data URL |
 | 图片、音频、视频、文件源（`bookSourceType` 1–4） | 支持 | 按媒体类型展示与播放 |
 | 登录（`loginUrl`、`loginUi`、填表、Cookie） | 支持 | 五种入口；纯前端登录页需手动粘贴 Cookie |
@@ -95,7 +95,7 @@ Windows 也可以双击 `scripts\start.cmd`；Linux/macOS 用 `scripts/start.sh`
 安全模型：
 
 - 默认只监听 `127.0.0.1`；可选 `LEGADO_ACCESS_TOKEN` 为访问令牌，未设时保持历史行为。
-- `GET` / `HEAD` 直接放行；浏览器发起的 `POST` / `PUT` / `PATCH` / `DELETE` 跨站写请求必须带同源 `Origin`，无 `Origin` 的命令行与非浏览器客户端保持放行。
+- 同源写保护不限制 `GET` / `HEAD`；浏览器发起的 `POST` / `PUT` / `PATCH` / `DELETE` 跨站写请求必须带同源 `Origin`，无 `Origin` 的命令行与非浏览器客户端保持放行。配置访问令牌后，非回环请求的读写都须通过令牌校验。
 - 把 `LEGADO_HOST` 改成 `0.0.0.0` 前必须显式加 `--allow-external-bind` 或 `LEGADO_ALLOW_EXTERNAL_BIND=1`；配置 access token 后，非回环请求还必须带 Bearer 头或 `?token=`。
 
 ---

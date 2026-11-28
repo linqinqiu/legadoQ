@@ -53,7 +53,7 @@
 | **没有 Android WebView** | 架构决定是纯 JVM + Rhino 沙箱；`webView: true` 只作为体检的**提示**参与分档（`source/SourceHealth.kt` 的 `probe()` 里 `wantsWebView`） | 需要真浏览器执行 JS 过挑战的站点（部分 SPA、带风控的站）在服务端跑不通；这类源在界面上会被判成 `needs_webview`，**不算坏** |
 | **四个字段零执行（2026-11-13 起校验即告警）** | `ruleToc.preUpdateJs`、`ruleToc.formatJs`、`concurrentRate` 在后端没有执行点；`ruleContent.webJs` 是 Android WebView 取正文的入口，同属不执行 | 编辑器「校验」（`POST /api/sources/validate` → `source/SourceCodec.kt` 的 `scanIncompatibilities`）逐项提示；导入接口本身只回 errors，不带 warnings。preUpdateJs 本机库非空 36 条（其中 32 条只想调 `java.refreshTocUrl`/`reGetBook`），依赖它轮换目录地址的源会停在旧地址；formatJs 6 条、concurrentRate 42 条、webJs 8 条 |
 | **登录是五条路，不是一条** | 上游只有一个登录 WebView；这里是：填表 / 内置反向代理浏览器 / 拉起真浏览器抓取 / 粘贴 Cookie / 书签回传（`web/src/sources/SourceLoginModal.tsx`） | 书签与真浏览器抓取靠服务端 Cookie jar 按域归桶，跨域 Origin 由 `http/SourcesRoutes.kt` 的 `allowCookieSyncOrigin` 判 |
-| **不设身份** | 没有账号、登录页、会话；写操作唯一的门是 `http/Guard.kt` 的 `ServerIdentity` + `isSameOriginIdentity()`（Origin 的主机**与端口**都要等于服务自己的绑定身份） | 默认只绑 `127.0.0.1`。把 `LEGADO_HOST` 改成 `0.0.0.0` 等于把整个书库交给局域网 |
+| **单用户，可选访问令牌** | 没有账号、登录页或用户会话；同源写保护由 `http/Guard.kt` 的 `ServerIdentity` + `isSameOriginIdentity()` 承担（Origin 的主机**与端口**都要等于服务自己的绑定身份）。可选 `LEGADO_ACCESS_TOKEN` 由 `http/AccessTokenGate.kt` 独立检查非回环请求，支持 Bearer 头或 `?token=`，回环请求放行 | 默认只绑 `127.0.0.1`。非回环绑定必须显式放行；未配置令牌时，局域网访问者可读改整库。令牌不是多用户权限或只读模式；反向代理还须控制谁能访问 |
 | **凭据按域共享** | 一台机器一个 Cookie 罐，同域的书源共用（`cookie` 表 + `source_login_state`） | 删一条凭据会影响同域其它源，界面上必须这样说明 |
 | **TTS 只有两副引擎** | 浏览器 `speechSynthesis` 与服务端 Edge-TTS 会话流（外加自定义 HTTP 参数一档）；不实现上游其它 TTS 后端 | Edge-TTS 握手要带匹配的 `Sec-MS-GEC-Version` 与 `muid` Cookie，微软改协议时改 `LEGADO_EDGE_TTS_CHROMIUM_VERSION` 免重编译 |
 

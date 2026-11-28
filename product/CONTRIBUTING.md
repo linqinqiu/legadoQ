@@ -37,8 +37,12 @@ node start.mjs       # 起服务并自动开浏览器（默认 127.0.0.1:1234）
 | 3/4 | `gradlew :app:fatJar` | `app/build/libs/legado-<版本>-all.jar`（把 `web/dist` 烤进 `static/`） |
 | 4/4 | `tools/verify/bundled-ui-check.mjs` | 断言「jar 内 == processResources == dist == 运行中的实例」四处前端一致 |
 
-**构建报 `[vite:esbuild-transpile] remove ... Access is denied` 时**：这是 esbuild 对 >1 MiB 的
-transform 输入改走临时文件、而本机删除临时文件被拒（Windows 环境问题，不是源码问题）。用
+**Windows 构建临时目录**：`web` 的标准及备用构建均经 `scripts/build-web.mjs` 执行，保留
+`tsc -b` 和各自 Vite 参数。每次为子进程分配仓库根目录下独立的 `tmp/web-build-*`（已忽略），
+结束后清理，避免共享 `TEMP/TMP` 中的 esbuild 大块输入删除失败；不改系统环境变量。
+
+**仍报 `[vite:esbuild-transpile] remove ... Access is denied` 时**：检查报错路径是否为上述
+独立目录，再排查文件权限及外部占用；本次实测仅确认更换目录可解除故障，未确定占用程序。可用
 `LEGADO_WEB_BUILD=fallback npm run build`（PowerShell：`$env:LEGADO_WEB_BUILD='fallback'; npm run build`）
 让整条链改走 `build:fallback`（`--target esnext --minify terser`，仍然压缩），并在提交说明里注明；
 **不要**把这条兜底当成发布默认值 —— 发布仍应在正常环境用标准 `npm run build`。两条路都会经过
@@ -47,7 +51,7 @@ transform 输入改走临时文件、而本机删除临时文件被拒（Windows
 **为什么必须先 `node stop.mjs`**：跑着的服务加载的是磁盘上那份 `-all.jar`。Windows 上覆盖它其实会成功（不是文件锁问题），但如果构建中途有东西把服务拉起来，那个进程读到的就是**写了一半的包** —— 表现是首页已经新了、`/healthz` 还报旧哈希。真正出过的事故是另一头：`fatJar` 一度只被 `npm run build` 调用，谁走 `gradlew build` / IDE 构建就只刷新普通 jar，`-all.jar` 静默留在过去，重启了也还是旧界面。现在两侧都有守卫：
 
 - `start.mjs` 启动前：当前版本 fatJar 缺失，或包内界面指纹与 `web/dist` 不一致 → **自动重建一次**并复验；`--no-build` / `LEGADO_NO_AUTO_BUILD=1` 可禁用，显式回滚旧包仍用 `LEGADO_ALLOW_STALE_JAR=1`。
-- `start.mjs` 启动后：抓 `/` 与 `web/dist` 比主 bundle 哈希，不一致就不打开浏览器、以退出码 1 结束。
+- `start.mjs` 启动及复用前：按选中 jar 检查实际 HTTP 首页与静态资源内容，失败时不打开浏览器、以非零退出；动态品牌 manifest 校验成功响应与结构。
 - `app/build.gradle`：有 `web/dist` 时 `assemble` 依赖 `fatJar`，走 Gradle 的构建也会刷新可运行包。
 
 一条命令确认"跑的是哪份前端"：`curl -s http://127.0.0.1:1234/healthz` —— 0.8.7 起它会回显 `ui`（包内主 bundle 哈希）与 `startedAtMs`（进程启动时刻）。

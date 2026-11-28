@@ -158,24 +158,34 @@ npm run dev             # 前端热重载
 
 `start.mjs` / `stop.mjs` 是可选封装（后台拉起、按端口停进程），以脚本自己所在目录为安装根，整个文件夹可以改名或搬盘。`start.mjs` 支持 `--port 1235` 换端口、`--host 0.0.0.0 --allow-external-bind` 换绑定地址（非回环必须显式放行）、`--no-open` 只起服务不开浏览器（默认起来后自动打开浏览器）、`--no-build` 禁用缺失或陈旧 fatJar 的自动重建。端口也可以**在界面上改**（设置 → 服务 → 服务端口，重启后生效，写的是安装根下的 `port.txt`）；优先级 `--port` > `port.txt` > `.env` / 环境变量 > 1234。同目录的 `start.cmd` 是给双击用的门面：服务没跑就起、等就绪再开界面；已经在跑就直接开界面。
 
+启动后和复用既有实例前还会检查界面文件：HTML、JS、CSS、SW 等响应须与选中 jar 的字节一致；动态品牌 manifest 检查结构。校验失败会提示资源名和重启建议，退出码为 1。重打 jar 后应停止旧实例再启动，避免旧进程只返回新首页却找不到新脚本。隔离验收命令为 `node tools/verify/start-ui-check.mjs`（临时空库、随机端口，不连接日常实例）。
+
 ## 想给手机用之前
 
 默认只绑回环，所以手机连不上是设计如此。要跨设备用，设 `LEGADO_HOST=0.0.0.0` 并显式放行（`LEGADO_ALLOW_EXTERNAL_BIND=1`，或 `start.mjs --allow-external-bind`）后重启。未设 `LEGADO_ACCESS_TOKEN` 时同一张网里任何人都能读改这个库（书源、书架、登录凭据）；配置令牌后，非回环请求仍须带令牌。要认真暴露到公网，就在前面放一层带鉴权的反向代理，或者走隧道。
 
 ## 手机备份包
 
-手机上「我的 → 备份与恢复 → 备份到本地」产出的 zip，选进「备份」页（`#backup`）即可导入，全程只在本机与这个服务之间传输。
+手机上「我的 → 备份与恢复 → 备份到本地」产出的 zip，选进「备份」页（`#backup`）先预览，再勾选模块并确认导入，全程只在本机与这个服务之间传输。
 
 | 项目 | 说明 |
 | --- | --- |
-| 接口 | `POST /api/backup/import`（multipart：`file` + 可选 `password`） |
-| 恢复内容 | 书源 / 替换净化规则 / 书架与阅读进度 / RSS 订阅源 / 分组 / 登录凭据 |
+| 接口 | `POST /api/backup/import?preview=true` 只读预览；确认使用原路径（multipart：`file`、可选 `password` / `sections` JSON 数组；新流程还提交 `libraryPolicy` JSON 对象与 `previewToken`）。旧调用方省略策略和凭证保持原语义，不传 `sections` 时导入全部 |
+| 导出 | `GET /api/backup/export` 默认导出六个原生域；`domain` 可选 `source` / `rule` / `group` / `rss` / `shelf` / `subscription`。`domain=recovery`（「导出含留档的迁移包」）另带全部已留档文件、冲突书源证据和大小/哈希清单，恢复仍先预览按模块确认；两者均不含封面、本地书或完整数据库状态 |
+| 恢复内容 | 可选书源 / 替换净化规则 / 书架与阅读进度 / RSS 订阅源 / 分组 / 书源订阅 / 登录凭据 / 个性化留档；登录凭据默认不选 |
+| 预览 | 模块数量表示包内可解析数；另按本机数据库预测书架/进度新增、更新、保留、墓碑跳过与重复数，不预测其他模块。修改解密密码或策略后需重新预览 |
+| 冲突边界 | 默认保留本机书架信息，进度只采用时间明确且严格较新者（相等或缺时间跳过）；可选采用备份信息、强制采用进度或不恢复进度。删除决定、已有分组与书源启用位保留；重复书取最后一条。相关书架/进度在预览后变化，确认返回 409，整次不写入；详见 [冲突策略](docs/import-conflict-policy.md) |
 | 启用位 | 已存在的书源保留本机启用/停用状态，只更新规则内容；新入库的按包内值启用 |
+| 书源版本 | `#` / `##` 注解归一化，同标识运行版本取包内最后一条。冲突留档可下载或随迁移包带走，也可「查看版本」→只读预览→确认启用；同 ID 全局替换规则。仅显式勾选的别名书籍保全式关联，启用前强制完整数据库快照；不会自动重抓缓存或启用全部版本，请保留原始包 |
 | 分组 | 包内 `bookGroup.json` 的组号按组名映射到本机现有组，同名只留一个 |
 | 加密条目 | 包内 `cookies.json` 用备份密码加密（口径同上游：`AES(MD5(password)[:16])`），填密码才解得开 |
 | 原样收下 | 包里没有原生归宿的个性化条目（TXT 分章规则、搜索历史、阅读样式、朗读引擎……）不会让整包被拒收：条目原样存在数据目录里，界面按条列出名字与大小、可下载，其中阅读样式、朗读引擎与分章规则能一步套到本机 |
-| 临时文件 | 读完即删，不留在数据目录；日志里只有文件名与条数 |
+| 临时文件 | 每次上传解析结束即删，不留在数据目录；导入日志只记条数，不记文件名或密码 |
 | 承接不了的条目 | 条目名会在导入结果里念出来，不静默丢弃 |
+
+真实手机备份的隔离导入及六个原生域再次导出/导入见 `docs/restructure/facts.md` §22；冲突书源原始版本与书架引用留档、失败回滚及独立下载见 §23；含留档的显式迁移包与验证边界见 §24。尚未将导出包恢复到手机 App，不能据此宣称手机双向无损迁移。
+
+备份页另提供手动 WebDAV 迁移：填写已创建的公网 HTTPS 目录及可选账号密码，列出迁移包、上传并回读校验，或拉取后进入既有只读预览，再按模块确认恢复。上传采用唯一文件名及 `If-None-Match:*` 请求不覆盖；单包最多 64 MiB，凭据仅当次请求使用，不保存到配置或浏览器存储。失败可能在远端留有文件，请刷新核对。当前不支持 NAS 私网直连、自动同步或冲突合并；迁移包可能含私密留档，SHA-256 只检损坏、不认证来源。接口为同源 POST `/api/backup/webdav/list`、`upload`、`pull`；公网服务账号与手机恢复仍需独立验收。
 
 ## 目录结构
 
@@ -201,7 +211,7 @@ app/                        Ktor 服务端（Kotlin JVM，按职责拆包；Grad
     ops/                    NetworkSecurity.kt 出站 SSRF 闸门 · PinnedProxy.kt 连接级 IP 固定 · GuardedHttpClient.kt · ProxyHeaders.kt · ServerIdentity.kt · LogService.kt · UpdateCheck.kt · Metrics.kt · UiPrefsStore.kt
     port/                   规则内核需要的窄接口（PortBundle 等），把 rules → data 的横穿收成一组访问器
     model/                  纯请求 / 响应数据类型，按系统、书源、发现、阅读、书架、替换规则、备份分文件
-  src/main/resources/       agent-api.json（147 条端点契约）· assets/txtTocRule.json
+  src/main/resources/       agent-api.json（153 条端点契约）· assets/txtTocRule.json
 web/                        前端（React 19 + TS + Vite，构建产物进同一个 jar）
   src/main.tsx              应用外壳 + hash 路由 + 全局快捷键
   src/app/                  AppHeader.tsx 顶栏 · pages.tsx 页面注册表（导航项在 lib/nav.ts）

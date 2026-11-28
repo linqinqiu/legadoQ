@@ -19,7 +19,7 @@ flowchart LR
 
     subgraph PROC["单个 JVM 进程 · Ktor Netty 3.4.3 · 默认 127.0.0.1:1234"]
         GUARD["同源写门<br/>http/Guard.kt<br/>只拦跨站写"]
-        ROUTE["路由层<br/>http/Routes.kt 装配点 + 15 个组文件<br/>147 个端点 / 19 组<br/>WS /api/search/stream"]
+        ROUTE["路由层<br/>http/Routes.kt 装配点 + 15 个组文件<br/>153 个端点 / 19 组<br/>WS /api/search/stream"]
         STATIC["静态资源<br/>StaticWeb.kt<br/>SPA 壳 + /next 挂载点"]
 
         subgraph DOMAIN["业务模块"]
@@ -150,7 +150,7 @@ sequenceDiagram
     R-->>UI: JSON / WS 流
 ```
 
-搜索走 `WS /api/search/stream`：多书源并发，结果边到边推，可中途停止；其余环节走普通 HTTP。
+搜索走 `WS /api/search/stream`：按健康/权重/耗时排序，以固定数量 worker 有界并发，结果边到边推，可中途停止。2026-11-27 工作树让 WS 复用 POST 的整批预算；截止保留已有结果，以 `done.truncated/message` 提示未完成。单源取消既发送线程中断，也关闭规则 HTTP 响应体；断连不再启动排队源。忽略中断的第三方代码仍可能延迟收尾，不能把预算承诺成任意代码的硬截止；其余环节走普通 HTTP。相关回归与验证范围见 `product/docs/restructure/facts.md` §18。
 
 ## 4. 数据与文件
 
@@ -204,6 +204,8 @@ flowchart LR
   裸跑 jar 不经过启动器时，缺省端口是 8080 而不是 1234。
 - 数据与日志都相对安装根解析，换盘或改名后无需改配置。
 - `npm start` 发现当前版本 fatJar 缺失或界面指纹过期时自动构建一次；`--no-build`（或 `LEGADO_NO_AUTO_BUILD=1`）可禁用，显式回滚旧包仍用 `LEGADO_ALLOW_STALE_JAR=1`。
+- 前端标准及备用构建均通过 `scripts/build-web.mjs` 顺序执行类型检查与 Vite；Windows 为构建子进程创建仓库根目录下独立的 `tmp/web-build-*`，结束后有界重试清理，避免共享 TEMP 的 esbuild 临时文件删除故障。标准编译参数不变，非 Windows 保留原环境；实测见 facts.md §28。
+- 启动后和复用既有实例前，`scripts/live-ui.mjs` 以选中 jar 的静态文件清单检查实际 HTTP 响应；首页及静态文件比较 SHA-256，运行时品牌 manifest 检查可读性与结构。四路有界请求、15 秒总时限覆盖响应体读取，缺失/损坏/超时会返回失败、阻止打开浏览器。jar-only 安装与显式回滚同样按选中包校验，不依赖本地 dist。交付门禁共享此检查；隔离实测见 facts.md §27。
 - 开发体检用 `npm run doctor`（只读，支持 `--json`）；提交前用 `npm run pr`；完整构建与发布预算用 `npm run full` 或 `npm run release:check`。
 - 停止用 `npm run stop`（`product/stop.mjs`），只结束本目录启动的进程。
 
@@ -253,7 +255,7 @@ flowchart TB
 
 ## 8. 接口分组
 
-`/api/catalog` 当前返回 147 条，按 19 组分布（2026-11-24 快照）：
+`/api/catalog` 当前返回 153 条，按 19 组分布（2026-11-28 工作树）：
 
 | 分组 | 条数 | 分组 | 条数 |
 |---|---:|---|---:|
@@ -262,7 +264,7 @@ flowchart TB
 | 系统 | 11 | 净化规则 | 10 |
 | 进度与笔记 | 9 | 朗读 | 9 |
 | 分章规则 | 7 | 阅读 | 7 |
-| RSS | 7 | 备份 | 6 |
+| RSS | 7 | 备份 | 12 |
 | 图片与媒体 | 6 | 书源订阅 | 5 |
 | 发现页 | 3 | 离线缓存 | 3 |
 | 搜索 | 2 | 目录 | 1 |
@@ -276,7 +278,7 @@ flowchart TB
 
 ## 0. 系统定位
 
-一台机器上跑的单进程本地阅读服务：**Kotlin/Ktor 后端 + 同源内置 Web UI**，数据落本地 SQLite 与文件系统，默认只监听 `127.0.0.1:1234`，无账号无 token。
+一台机器上跑的单进程本地阅读服务：**Kotlin/Ktor 后端 + 同源内置 Web UI**，数据落本地 SQLite 与文件系统，默认只监听 `127.0.0.1:1234`，无账号；可选 `LEGADO_ACCESS_TOKEN` 校验非回环 TCP 对端请求，见安全边界一节。
 
 ```
 浏览器 / PWA / curl / AI 客户端
@@ -288,7 +290,7 @@ flowchart TB
 │  RequestBodyLimit（全局插件，声明长度超限 → 413）            │
 │  SameOriginWriteGate（全局插件，拦跨站写）                    │
 │  ─────────────────────────────────────────────────────────  │
-│  Routes.kt 装配点 + 15 个域路由文件（147 端点 / 19 组）        │
+│  Routes.kt 装配点 + 15 个域路由文件（153 端点 / 19 组）        │
 │  ─────────────────────────────────────────────────────────  │
 │  领域层：source · rules · content · localbook · cache ·       │
 │          tts · subscription · backup · ops · ai · reading    │
@@ -408,7 +410,7 @@ Ktor Call
 
 ### 3.3 端点契约与门禁
 
-- 契约文件：`product/app/src/main/resources/agent-api.json`（147 条 / 19 组）。
+- 契约文件：`product/app/src/main/resources/agent-api.json`（153 条 / 19 组）。
 - `web/test/ApiCatalog.test.ts` 双向核对：源码里多一条 / 目录里少一条都红。
 - `npm run docs:api-check` 校验 `docs/API-REFERENCE.md` 与契约一致。
 - ⚠️ 目录是**扫源码文本**得出的，不是运行时路由表 —— 曾经因此漏过「路由写进别的 handler 里、启动后 404」的缺陷。现在有 `RouteCatalogTest` 真起服务打一发的判据兜底。
@@ -426,11 +428,21 @@ Ktor Call
 | `cache/` | `BookCacheService`、`CoverCache` | 整书缓存（协程 + 信号量 + 断点续传）、封面落盘 |
 | `tts/` | `EdgeTtsService`、`TtsSessionService` | Edge TTS 合成、会话流、自定义 TTS（逐跳复查重定向，跨源跳转丢弃自定义头，跳转方法按 RFC 9110 归一） |
 | `subscription/` | `SubscriptionService` | 书源订阅、RSS 拉取 |
-| `backup/` | `BackupStore` | 备份包导入导出、无归宿条目的保留区 |
+| `backup/` | `BackupStore`、`BackupSourceVersions` | 备份包导入导出、只读预览与按模块确认、无归宿条目的保留区、冲突书源历史版本预览与显式启用 |
 | `ops/` | `LogService`、`LogRedaction`、`UpdateCheck` | 结构化日志落库（出口统一脱敏）、更新检查 |
 | `feedback/` | `FeedbackService`、`FeedbackRelay` | Supabase 匿名反馈中转；服务端持有 anon key，前端不接触 |
 | `reading/` | `ReadingRepository` | 阅读域收口：进度、阅读记录、笔记/划线/书签、本书检索、章节窗口 |
 | `port/` | `PortBundle`、`StorePorts` | 规则内核需要的窄接口，`rules/` 只依赖它而不依赖 `data/` |
+
+备份沿用 `POST /api/backup/import`：`preview=true` 将 ZIP / 裸 JSON 准备为内存模型，返回包内模块、数量及书架/进度差异预测。`data/LibraryRestoreDao.kt` 共用规划与执行判据：读连接只读快照预测，写事务最前验证文件、策略和相关本机行的指纹；失效返回 409，其他域也不写。确认重新上传同一文件，以 multipart `sections` JSON 数组选择模块，并带 `libraryPolicy` 与 `previewToken`。新界面默认保留本机元数据、只采用明确且严格较新的进度；可显式覆盖或不恢复进度。删除墓碑与已有书本机分组始终保留。同键重复书取最后一条，明确携带的首章 0 可恢复。修改策略或密码后重新预览；凭据默认不选。同时省略策略和凭证维持旧客户端语义。其他模块数量不预测数据库冲突；数据库域共用事务，书源冲突证据在最终提交前强制写入、失败回滚数据库，普通个性化文件仍在提交后保存；不构成库与文件的跨存储原子事务。
+
+`GET /api/backup/export` 默认只导出六个原生域。显式 `domain=recovery` 由 `backup/BackupMigration.kt` 另带 `kept/` 下的全部已留档文件和 `legadoq-migration.json` 清单，校验后暂存 ZIP 再发送；响应流结束时清理临时文件。导入在写入前校验精确路径、清单、实际大小、留档哈希和源证据冲突索引；根原生域与历史留档分开读取，不自动激活历史书源或套用设置。这不是完整数据库、Android 备份或同一时刻的全域一致快照；容量和恢复边界见 `product/docs/import-conflict-policy.md`。
+
+书源冲突留档由 `backup/BackupSourceVersions.kt` 与 `data/SourceVersionDao.kt` 承接，提供三个同源 POST：`/api/backup/source-versions/list` 按标准化 ID 分组分页列出版本，`/api/backup/source-versions/preview` 只读预测全部关联书籍、缓存与可选别名关联，`/api/backup/source-versions/activate` 在确认后启用。规则按同一标准化 ID **全局替换**，并非只对勾选书籍生效；保留当前启停、排序、缓存、登录与脚本状态，旧缓存不自动联网重抓；旧规则的体检结论与健康分档会清除。别名关联默认不选，仅接受留档证明的原始别名与精确书籍 URL；显式选择后保全迁移书架、阅读进度、笔记、阅读记录及缓存，目标已有冲突记录时拒绝，不做覆盖合并或整源登录状态迁移。
+
+版本预览令牌绑定留档、所选规则、关联选择及相关本机记录；确认时在写锁内重新计算，源、书架、进度或相关关联记录变化以及旧请求重放返回 409，要求重新预览。缓存任务通过 job gate 与版本启用互斥，并在写入前复查相关书源的活动缓存状态。启用前强制创建并校验完整数据库快照，失败不改库；规则与显式关联共用事务。恢复需到「启动快照（回滚点）」选择返回的快照并排定恢复，重启后执行整库回滚，其后新增改动也会回退，不是单书撤销。
+
+手动 WebDAV 由 `http/BackupWebDavRoutes.kt` 装配三个同源 POST，`backup/BackupWebDav.kt` 复用 guarded/pinned 客户端，仅访问公网 HTTPS 且不跟随重定向。上传采用唯一名及不覆盖条件，GET 回读核对大小与 SHA-256 后才报告成功；拉取验证后仅进入既有预览确认流程。凭据不持久化，ZIP 上限 64 MiB，目录 XML 限读并禁用外部实体，正文停滞另有流关闭截止。当前没有 NAS 私网例外、自动恢复或双向同步协议；受控 HTTP 与浏览器模拟验收边界见 facts.md §25。
 
 ---
 
@@ -618,6 +630,8 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 - JDK 内建：anyLocal / loopback / linkLocal / siteLocal / `169.254.169.254`
 - 补洞：`0/8`、`100.64/10`（CGNAT）、`198.18/15`、`224/4` 组播、`240/4` 保留、IPv6 `fc00::/7` ULA、`ff00::/8`、`2001:db8::/32`
 
+CONNECT 从读请求头到隧道转发持续使用同一缓冲输入流，保留读头时预读的二进制首包；2026-11-28 新增本机同次写入回归，修复前超时。代理 `close()` 的活跃连接回收与完整取消退出仍待独立验证，见 facts.md §29。
+
 异常分两类：`BlockedAddressException`（客户端可修 → 4xx）与 `UnreachableTargetException`（网络/上游问题 → 502）。
 
 **调用点**：书源抓取、封面、媒体代理、订阅、AI 外呼、登录页走 `NetworkSecurity`；自定义 TTS 走 `ops/CustomTtsClient.kt`（独立签发点：**有意**放行本机/RFC1918/ULA，但逐跳拦截 `169.254/16`、`fe80::/10`、CGNAT、组播/保留段）。跨站风险由写门兜住。
@@ -639,7 +653,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 数据库读 | 连接池（`ConcurrentLinkedQueue`，上限可配）；`SQLException` 换连接重试一次 |
 | 整书缓存 | 协程 + `Semaphore(CACHE_CONCURRENCY)` 限并发，分批 + 批间节流，断点续传（跳过已缓存 URL） |
 | 书源体检 | 有界并发，逐跳 `isCancelled` 检查，支持 AbortSignal 取消 |
-| 搜索 | 流式（WebSocket `/api/search/stream`）+ 截止时间，按体检结论排序（能用的在前、快的在前） |
+| 搜索 | 流式（WebSocket `/api/search/stream`）、有界并发和单源超时包装，按健康/权重/耗时排序；POST/WS 共用整批预算，WS 截止返回部分结果与明确提示；取消中断等待并关闭规则 HTTP 响应体，第三方代码仍受其可中断能力限制 |
 | 前端排版 | Web Worker 计算 + IndexedDB 缓存，主线程不阻塞 |
 | 日志 | 按 5000 行滚动淘汰，避免无限膨胀 |
 | 数据库文件 | 启动按 freelist 比例（>25%）决定是否 `VACUUM`，压完 `pragma optimize` |
@@ -762,7 +776,7 @@ Origin 指向服务自己（按 ServerIdentity，不按 Host 头）→ 放行
 | 步 | 端点 | 关键实现 | 为什么长这样 |
 | :--- | :--- | :--- | :--- |
 | 导入 | `POST /api/sources/import` | `http/SourcesRoutes.kt` + 前端 `features/source-editor/bookSourceFields.ts` | 兼容 BOM、`{data｜sources｜bookSources: []}` 外层包装，以及中文自定义标识 |
-| 搜索 | `webSocket /api/search/stream` | `SearchConcurrencyTest` 守着的那条：一个慢源的 30 秒超时算"这一个源失败"，不能把整次搜索取消成 500 | 边搜边出；前端判重表常驻（`lib/searchStore.ts`），每条结果不再 O(N×M) |
+| 搜索 | `webSocket /api/search/stream` | 单源超时只记该源失败；整批截止保留部分结果，cancel/断连停止排队任务；`SearchHttpCancellationTest` 用受控 HTTP 检查头等待与体读取退出 | 边搜边出；前端判重表常驻（`lib/searchStore.ts`），截止提示、停止/重搜旧包隔离与异常断连进度有回归 |
 | 详情 | `POST /api/books/details` | `RuleRunner.details` | 只请求主书源；候补源按需再取 |
 | 目录 | `POST /api/books/chapters` | `book_toc_cache` | 命中缓存直接回，几千章不再重抓 |
 | 正文 | `POST /api/books/content` | `RuleRunner.contentPage` + `ContentProcessor` | 命中本机离线分片优先直出；媒体型章节走 `mediaUrl` 分流 |
