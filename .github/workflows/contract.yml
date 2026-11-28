@@ -4,7 +4,7 @@
 #   前端双锁 —— product/web/test/ApiCatalog.test.ts（端点契约 ↔ 代码路由双向核对）
 #                + ArchitectureBoundary.test.ts（依赖方向零基线 + 扫描器有效性守卫）。
 #                本子集入口 test/run-locks.ts；**全量套件在 ci.yml web-check**，不重复跑（S-18）。
-#   后端守门 —— :app:verifyFramework（plugin/ 容器不夹带具体功能 + 端点计数契约）
+#   后端守门 —— :app:verifyFramework（随包 agent-api.json 的端点计数契约）
 #   文档第三锁 —— scripts/gen-api-reference.mjs --check（agent-api.json ↔ docs/API-REFERENCE.md）
 #   日志第四锁 —— scripts/changelog.mjs --check（有 feat/fix 提交却没进日志就红）
 #   结构第五锁 —— tools/verify/depth-check.mjs（域包平铺、前端限深）
@@ -87,7 +87,7 @@ jobs:
         run: node scripts/changelog.mjs --check
 
   backend-gate:
-    name: 后端守门（框架不夹带内容 + 端点计数契约）
+    name: 后端守门（端点计数契约）
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -100,7 +100,7 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: 跑框架契约测试（不拉起 headless Chrome，快且稳）
+      - name: 跑端点契约测试（不拉起 headless Chrome，快且稳）
         run: |
           chmod +x gradlew
           ./gradlew :app:verifyFramework --no-daemon --console=plain

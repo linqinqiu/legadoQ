@@ -13,6 +13,8 @@ COPY web/ ./
 # 不在前端再抄一遍）。构建上下文是 product/，所以这份 docs/ 要按相对路径放到 /src/docs，
 # 少拷贝时 Vite 报 "Could not resolve ../../../docs/功能说明.md?raw"（0.1.8 镜像实测）。
 COPY docs/功能说明.md /src/docs/
+# web/package.json 的 build 调用 product/scripts/build-web.mjs，不能只复制 web/。
+COPY scripts/build-web.mjs scripts/
 RUN npm run build
 
 FROM ${DOCKER_REGISTRY}gradle:8.13-jdk17 AS server-build

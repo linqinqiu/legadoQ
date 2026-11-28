@@ -75,6 +75,16 @@ Luoyacheng 历史入口 `Luoyacheng/legado` 经 GitHub API 重定向为 `Luoyach
 
 隔离工作树首次运行前端时因尚未安装依赖而找不到 `tsx`/`tsc`，不计作代码回归；执行 `npm ci` 后，`npm --prefix product/web test` 实跑 **153 个测试文件 / 1,188 项 / 0 失败、错误或跳过**，`npm --prefix product/web run check` 通过。构建脚本回归实跑 **33 项 / 0 失败或跳过**。`package-lock.json` 未变化；这三组数字口径不同，不与后端 99 项合并成“全量”结论。
 
+## 推送后 CI 失败与门禁修复
+
+`2b809ca` 同步到 `main` 后，普通 CI、JAR 构建与覆盖率成功，版本/变更日志工作流跳过；框架契约、真浏览器冒烟与 Docker 三条工作流失败。三项都在独立工作树修复，没有改动主工作树中其他 agent 的代理文件。
+
+1. **框架契约任务筛选了已删除的测试类。** `verifyFramework` 仍指向 `PluginFrameworkHasNoContentTest` 与 `FrameworkContractTest`；AI 与 plugin 框架移出编译路径后这两类已不存在。本地修复前稳定复现 `No tests found for given includes`。任务改为只跑仍生效的 `ApiContractTest`，工作流名称同步改为“端点计数契约”，不恢复已删除的 AI 框架。修复后 `:app:verifyFramework` 成功，XML 为 **1 项 / 0 失败、错误或跳过**。
+2. **开源卫生门禁仍把 WebDAV 当整体已删除。** 当前手动迁移真实存在于 `BackupWebDav.kt`、`BackupWebDavRoutes.kt` 与备份页，旧规则扫描所有 `webdav` 字面量，必然误红。规则收窄为“旧独立 `/api/webdav` 路由不恢复”，允许 `/api/backup/webdav`；仅保留负向测试自身豁免。修复后门禁 **PASS 11 / FAIL 0 / NOTE 1**。全量门禁里的 `source-editor-check.mjs` 也仍断言备份页不许出现 WebDAV，并会把 WebDAV 密码框误判为本地备份密码默认展开；已改为检查手动迁移文案、不承诺自动同步，且密码折叠判据排除 `.backup-webdav`。
+3. **Docker 构建上下文缺少前端构建脚本。** `web/package.json` 的 `build` 调用 `../scripts/build-web.mjs`，而 Dockerfile 只复制 `web/` 与产品说明，容器内必然 `MODULE_NOT_FOUND`。已在 `web-build` 阶段补 `COPY scripts/build-web.mjs scripts/`；没有根据未取得的底层日志猜测依赖问题，也没有放宽 npm 安装策略。本机没有 Docker，镜像成功与否由推送后的真实工作流确认。
+
+本轮复验：前端 **153 个测试文件 / 1,188 项 / 0 失败、错误或跳过**，TypeScript 类型检查与生产构建通过；脚本回归 **33 项 / 0 失败或跳过**；版本、API 文档、更新日志、协议与目录深度检查通过；`git diff --check` 通过。没有重启或覆盖 1234 日常实例，没有运行会写入共享书库的全量浏览器门禁；相关真实浏览器与 Docker 结果以新提交的 Actions 为准。
+
 ## 后续推荐与验收条件
 
 1. **优先补代理关闭与取消的资源回收判据。** 首包修复版本中 `close()` 只关监听 socket，没有管理活跃 client/origin。CONNECT client→origin 复制遇到 EOF 后未传播 half-close，origin→client 在源站静默时可能继续阻塞。应先加“proxy.close 后两端都退出”、半截请求头关闭、真实 JDK 请求取消测试；再实现注册/注销与关闭竞争处理。必须保留合法 `shutdownOutput()` 后源站返回尾响应的正向用例，避免把半关闭当成整连接取消而截断数据。明文 HTTP 的源站静默取消也需单独验。

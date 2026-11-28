@@ -265,7 +265,7 @@ if (loginRow) {
   }
 }
 
-// ---------- 7. 备份页：WebDAV 删掉之后，恢复入口只剩"选包即导入" ----------
+// ---------- 7. 备份页：本地导入 + 手动 WebDAV 迁移，不恢复旧独立设置页 ----------
 await p.goto(`${BASE}/#backup`, { waitUntil: 'domcontentloaded', timeout: 40000 })
 await wait(1200)
 // 0.6.27 起备份是悬浮层：标题在层头（.dialog-head h2），正文不再重复一遍 h1。
@@ -273,9 +273,10 @@ await wait(1200)
 const backupHead = await p.$eval('.page-dialog .dialog-head h2', el => el.innerText.trim()).catch(() => '')
 check('备份悬浮层标题就叫「备份包」', backupHead === '备份包', backupHead)
 const backupButtons = await p.$$eval('.backup-actions button', nodes => nodes.map(n => n.innerText.replace(/\s+/g, ' ').trim()))
-check('页上有选包导入按钮，且不再承诺任何网络服务', backupButtons.some(t => t.includes('选择备份包导入')), backupButtons.join(' / '))
+check('页上有选包导入按钮', backupButtons.some(t => t.includes('选择备份包导入')), backupButtons.join(' / '))
 const backupBody = await p.$eval('.backup-page', el => el.innerText)
-check('备份页不再出现 WebDAV 字样', !/webdav/i.test(backupBody), /webdav/i.exec(backupBody)?.[0] ?? '无')
+check('备份页保留手动 WebDAV 迁移，且不承诺自动同步',
+  /手动 WebDAV 迁移/.test(backupBody) && /不会自动同步或自动恢复/.test(backupBody), backupBody.slice(0, 160))
 check('备份页不把主语安在手机上', !/手机恢复|手机端恢复|手机导入/.test(backupBody), /手机\S{0,4}/.exec(backupBody)?.[0] ?? '无')
 // #64：备份密码从主操作行撤掉了 —— 判据按**行为**判，不按措辞判。
 // 原来这条只匹配「填备份密码」这个字符串，界面上那句话换成「需要解开包里的登录凭据？」
@@ -286,7 +287,8 @@ const pwBefore = await p.evaluate(() => {
   const buttons = [...document.querySelectorAll('.backup-page button')]
   return {
     toggle: buttons.map(n => (n.innerText ?? '').replace(/\s+/g, ' ').trim()).find(t => /凭据/.test(t)) ?? '',
-    hasInput: !!document.querySelector('.backup-password, .backup-page input[type=password]'),
+    hasInput: [...document.querySelectorAll('.backup-password, .backup-page input[type=password]')]
+      .some(el => !el.closest('.backup-webdav')),
   }
 })
 check('备份密码默认折叠：主操作行上没有密码框，只有一个提到「凭据」的开关',
@@ -296,7 +298,8 @@ await p.evaluate(() => {
   ;[...document.querySelectorAll('.backup-page button')].find(n => /凭据/.test(n.innerText ?? ''))?.click()
 })
 await wait(500)
-const pwAfter = await p.evaluate(() => !!document.querySelector('.backup-password, .backup-page input[type=password]'))
+const pwAfter = await p.evaluate(() => [...document.querySelectorAll('.backup-password, .backup-page input[type=password]')]
+  .some(el => !el.closest('.backup-webdav')))
 check('点开开关才出现密码框（折叠不等于没有这个能力）', pwAfter, pwAfter ? '密码框出现了' : '仍没有出现')
 
 // ---------- 8. 体检进度条：静态取证 ----------

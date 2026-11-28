@@ -77,23 +77,12 @@ const rules = [
     only: /^(product\/(README\.md|\.env\.example|compose\.yml|Dockerfile)|\.github\/|scripts\/|product\/scripts\/)/,
   },
   {
-    name: '代码与配置里没有 WebDAV 残留（`/webdav`、`WebDav`、`webdav`）',
-    pattern: /\/webdav|WebDav|webdav/,
-    // 归档文档与"已删除"的说明允许提到它；这里只扫代码/配置/部署面
+    name: '旧独立 `/api/webdav` 路由不恢复（手动迁移只走 `/api/backup/webdav`）',
+    pattern: /"\/webdav(?:\/|")|\/api\/webdav(?:\/|["'?])/,
     only: /(\.kt|\.ts|\.tsx|\.mjs|\.py|\.yml|\.yaml|\.json|Dockerfile.*|\.env.*)$/,
-    // 门禁自己的匹配串 + 四个"负向测试"（正是用字符串断言 webdav 端点/页面已不存在）按设计就该出现该词，跳过它们。
-    // backup-page.test.ts 是 2026-10-01 这轮进来的：它断言的是"页面上不许再出现 WebDAV 字样"，
-    // 于是它自己命中了这条扫描 —— 判据扫到的是**守卫的文本**，不是残留的功能（AGENTS §3：先问是判据旧了还是产品坏了）。
     exempt: [
       'product/tools/verify/opensource-hygiene-check.mjs',
       'product/tools/verify/backup-upload-check.mjs',
-      'product/tools/verify/backup-cookie-import-check.mjs',
-      'product/tools/verify/rss-check.mjs',
-      'product/tools/verify/source-editor-check.mjs',
-      'product/web/test/backup-page.test.ts',
-      // 这条判据的职责就是"断言验收手册里不再出现已删功能的形状"，所以它的正则与注释里必须出现那些字面串。
-      // 与上面几份负向测试同理（AGENTS：门禁扫到的是守卫的文本，那要进 exempt，不是把测试删掉）。
-      'product/web/test/AcceptanceFresh.test.ts',
     ],
   },
   {
