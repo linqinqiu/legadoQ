@@ -4,6 +4,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import org.jsoup.Jsoup
 import org.mozilla.javascript.BaseFunction
 import org.mozilla.javascript.ClassShutter
@@ -29,6 +31,7 @@ data class JsExecutionContext(
     val sourceId: String? = null,
     val sourceName: String? = null,
     val sourceComment: String? = null,
+    val ruleContent: JsonObject? = null,
     val database: PortBundle? = null,
     val initialLoginInfo: MutableMap<String, String> = mutableMapOf(),
     val isLongClick: Boolean = false,
@@ -834,6 +837,50 @@ class JsSandbox(
         override fun getDefaultValue(typeHint: Class<*>?): Any = text
     }
 
+    private fun createRuleContentBridge(scope: Scriptable, rule: JsonObject?): Scriptable? {
+        if (rule == null) return null
+        fun text(key: String): String? = (rule[key] as? JsonPrimitive)?.contentOrNull
+        val content = text("content")
+        val subContent = text("subContent")
+        val title = text("title")
+        val nextContentUrl = text("nextContentUrl")
+        val webJs = text("webJs")
+        val sourceRegex = text("sourceRegex")
+        val replaceRegex = text("replaceRegex")
+        val imageStyle = text("imageStyle")
+        val imageDecode = text("imageDecode")
+        val payAction = text("payAction")
+        val callBackJs = text("callBackJs")
+        val contentBatch = text("contentBatch")
+        val maxBatchSize = (rule["maxBatchSize"] as? JsonPrimitive)?.intOrNull
+        val legacyText = buildString {
+            append("ContentRule(content=$content, subContent=$subContent, title=$title, ")
+            append("nextContentUrl=$nextContentUrl, webJs=$webJs, sourceRegex=$sourceRegex, ")
+            append("replaceRegex=$replaceRegex, imageStyle=$imageStyle, imageDecode=$imageDecode, ")
+            append("payAction=$payAction, callBackJs=$callBackJs")
+            if (contentBatch != null || maxBatchSize != null) {
+                append(", contentBatch=$contentBatch, maxBatchSize=$maxBatchSize")
+            }
+            append(')')
+        }
+        // Rhino 会先把 NativeString 转成文本再 JSON 化；挂属性即可同时保住旧校验文本与字段读取。
+        val value = Context.getCurrentContext().newObject(scope, "String", arrayOf(legacyText))
+        ScriptableObject.putProperty(value, "content", content)
+        ScriptableObject.putProperty(value, "subContent", subContent)
+        ScriptableObject.putProperty(value, "title", title)
+        ScriptableObject.putProperty(value, "nextContentUrl", nextContentUrl)
+        ScriptableObject.putProperty(value, "webJs", webJs)
+        ScriptableObject.putProperty(value, "sourceRegex", sourceRegex)
+        ScriptableObject.putProperty(value, "replaceRegex", replaceRegex)
+        ScriptableObject.putProperty(value, "imageStyle", imageStyle)
+        ScriptableObject.putProperty(value, "imageDecode", imageDecode)
+        ScriptableObject.putProperty(value, "payAction", payAction)
+        ScriptableObject.putProperty(value, "callBackJs", callBackJs)
+        ScriptableObject.putProperty(value, "contentBatch", contentBatch)
+        ScriptableObject.putProperty(value, "maxBatchSize", maxBatchSize)
+        return value
+    }
+
     private fun createSourceBridge(
         scope: Scriptable,
         sourceId: String,
@@ -851,6 +898,7 @@ class JsSandbox(
         ScriptableObject.putProperty(api, "key", sourceId)
         ScriptableObject.putProperty(api, "bookSourceName", execContext?.sourceName ?: sourceId)
         ScriptableObject.putProperty(api, "bookSourceComment", execContext?.sourceComment ?: "")
+        ScriptableObject.putProperty(api, "ruleContent", createRuleContentBridge(scope, execContext?.ruleContent))
         // 上游 `source.loginUrl` 是原样字段；qyyuapi 系脚本靠 `eval(String(source.loginUrl))`
         // 在 searchUrl 里自己决定何时跑登录脚本（见 loginUrl.js 的 `put($$$)` 初始化）。
         ScriptableObject.putProperty(api, "loginUrl", execContext?.loginUrl ?: "")

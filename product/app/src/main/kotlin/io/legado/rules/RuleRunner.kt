@@ -553,6 +553,7 @@ class RuleRunner(
             sourceId = sourceUrl,
             sourceName = source.string("bookSourceName"),
             sourceComment = source.string("bookSourceComment"),
+            ruleContent = source["ruleContent"] as? JsonObject,
             database = database,
             jsLib = source.string("jsLib")?.takeIf { it.isNotBlank() },
             loginScript = loginScript(source),
